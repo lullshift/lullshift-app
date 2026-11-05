@@ -25,6 +25,7 @@ Providers emit partial, duplicated and reordered lifecycle signals. The product 
 | `needs_attention` | `needs_attention` |
 | `turn_ended` | `idle` (never `completed`) |
 | `completed` / `failed` / `cancelled` | that terminal state |
+| `session_ended` | `ended` (terminal; the provider closed the session without saying the task was done; added in Sprint 02) |
 | `heartbeat` | no change; refreshes liveness only |
 
 ### Ordering

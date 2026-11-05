@@ -29,6 +29,8 @@ pub enum EventType {
     Completed,
     Failed,
     Cancelled,
+    /// The provider closed the session (not task completion).
+    SessionEnded,
     Heartbeat,
 }
 
@@ -42,6 +44,7 @@ impl EventType {
             "completed" => Self::Completed,
             "failed" => Self::Failed,
             "cancelled" => Self::Cancelled,
+            "session_ended" => Self::SessionEnded,
             "heartbeat" => Self::Heartbeat,
             _ => return None,
         })
@@ -57,6 +60,7 @@ impl EventType {
             Self::Completed => "completed",
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
+            Self::SessionEnded => "session_ended",
             Self::Heartbeat => "heartbeat",
         }
     }

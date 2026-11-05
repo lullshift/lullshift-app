@@ -35,6 +35,7 @@ pub fn reported_state(event_type: EventType) -> Option<SessionState> {
         EventType::Completed => Some(SessionState::Completed),
         EventType::Failed => Some(SessionState::Failed),
         EventType::Cancelled => Some(SessionState::Cancelled),
+        EventType::SessionEnded => Some(SessionState::Ended),
         EventType::Heartbeat => None,
     }
 }
@@ -42,7 +43,10 @@ pub fn reported_state(event_type: EventType) -> Option<SessionState> {
 pub fn is_terminal(state: SessionState) -> bool {
     matches!(
         state,
-        SessionState::Completed | SessionState::Failed | SessionState::Cancelled
+        SessionState::Completed
+            | SessionState::Failed
+            | SessionState::Cancelled
+            | SessionState::Ended
     )
 }
 
@@ -185,6 +189,7 @@ mod tests {
             ("completed", SessionState::Completed),
             ("failed", SessionState::Failed),
             ("cancelled", SessionState::Cancelled),
+            ("session_ended", SessionState::Ended),
         ] {
             assert_eq!(run(&[("working", T0), (kind, T0 + s)]).state, state);
         }

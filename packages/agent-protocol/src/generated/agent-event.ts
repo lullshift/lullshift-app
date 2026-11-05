@@ -22,6 +22,7 @@ export interface AgentEventV1 {
     | "completed"
     | "failed"
     | "cancelled"
+    | "session_ended"
     | "heartbeat";
   /**
    * Strict RFC 3339: T separator, seconds 00-59, 1-9 fractional digits, Z or +HH:MM/-HH:MM.

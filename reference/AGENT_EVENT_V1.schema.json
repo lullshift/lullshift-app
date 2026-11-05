@@ -42,6 +42,7 @@
         "completed",
         "failed",
         "cancelled",
+        "session_ended",
         "heartbeat"
       ]
     },

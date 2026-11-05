@@ -2,7 +2,14 @@
 // session's displayed state, including unknown/stale. This file only labels what it returns.
 
 export type SessionState =
-  "unknown" | "idle" | "working" | "needs_attention" | "completed" | "failed" | "cancelled";
+  | "unknown"
+  | "idle"
+  | "working"
+  | "needs_attention"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "ended";
 
 export type ViewReason = "observed" | "unconfirmed_after_restart" | "stale" | "not_reported";
 
@@ -39,6 +46,7 @@ const VIEWS: Record<SessionState, StateView> = {
   completed: { label: "Completed", tone: "success" },
   failed: { label: "Failed", tone: "danger" },
   cancelled: { label: "Cancelled", tone: "neutral" },
+  ended: { label: "Ended", tone: "neutral" },
 };
 
 export function stateView(state: SessionState): StateView {
