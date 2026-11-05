@@ -170,12 +170,12 @@ There are **no accounts and no hosted identity** (ADR-001). Consequently:
 
 ### 6.2 Activity model (ADR-003)
 
-Three tiers, chosen by the creator: **custom code activity** (any static web app implementing the SDK lifecycle), **code activity on a kit**, and **content pack** (JSON data plus optional static media for a named engine; runs no code).
+Three tiers, chosen by the creator: **custom code activity** (any static web app implementing the SDK lifecycle), **code activity on a kit**, and **content pack** (JSON data plus a preview image for a named engine; runs no code; v1 packs carry no other media, ADR-016).
 
 **Manifest v1** (`reference/ACTIVITY_MANIFEST_V1.schema.json`) gains `kind: "app" | "content"`:
 
 - `kind: "app"` requires `entrypoint` and `runtime` (`isolated-web-v1`), `sdkVersion`, `permissions` and `interruptibility`.
-- `kind: "content"` requires `engine` (`id@major`, e.g. `com.lullshift.engine.breathing@1`) and `data` (path to the JSON data file within the pack) and **forbids executable files** (no `.js`, `.mjs`, `.wasm`, `.html`, native binaries, scripts). Allowed static media types are allowlisted by the host.
+- `kind: "content"` requires `engine` (`id@major`, e.g. `com.lullshift.engine.breathing@1`) and `data` (path to the JSON data file within the pack) and **forbids executable files** (no `.js`, `.mjs`, `.wasm`, `.html`, native binaries, scripts). In v1 a pack holds only its manifest, data file (at most 256 KiB), a preview image and `.md`/`.txt` notes (ADR-016).
 
 Illustrative content pack manifest (an `app` manifest instead carries `entrypoint`, `runtime`, `sdkVersion`, `permissions` and `interruptibility`):
 
@@ -230,9 +230,10 @@ Kits (`packages/activity-kits/{grid,card,arcade}`) are optional first-party Type
 
 An engine is a **first-party code activity** that renders a family of experiences from data (breathing, movement routine, guided pause, quiz, brain teaser, reflection prompts, creative toy, typing drills, away prompts).
 
-- Referenced by `id@major`; each major publishes a **public data JSON Schema** in `reference/`.
-- Breaking data changes require a new major. **Old majors keep running installed packs**; the app ships every engine major until an ADR retires it.
-- Pack data is untrusted: render text as text (no HTML injection), check media references against the pack file list, bound lists and durations. Packs run inside their engine's sandboxed WebView.
+- Referenced by `id@major`; each major publishes a **public data JSON Schema** beside its `engine.json` (`activities/engines/<name>/data.schema.json`), with valid and invalid fixtures in `tests/fixtures/engines/<id>@<major>/`.
+- Breaking data changes require a new major, shipped beside the old one. **Old majors keep running installed packs**; no major is removed within v1, and the app ships every major any bundled or installed pack uses (ADR-016).
+- The app lists each pack as its own activity and serves the engine's files at the pack's address, so snapshots, storage and time played belong to the pack. Engines are hidden. Before starting a pack, the host resolves `id@major` and re-validates the data against the engine schema in Rust; a pack that fails shows a calm error and never starts (ADR-016).
+- Pack data is untrusted: render text as text (no HTML injection), bound lists and durations. Packs run inside their engine's sandboxed WebView.
 
 ### 6.7 Host features (not activities)
 
@@ -330,7 +331,7 @@ Accepted:
 - [ADR-011](adr/ADR-011-ui-design-system.md): UI design system.
 - [ADR-012](adr/ADR-012-activity-sandbox-and-bridge.md): Activity sandbox strategy and host bridge protocol.
 - [ADR-013](adr/ADR-013-context-keeper-and-opt-in-capture.md): Context Keeper data and opt-in task-context capture.
-- [ADR-016](adr/ADR-016-engines-and-content-packs.md): Engine versioning, data schemas and retirement policy (provisional until Sprint 07).
+- [ADR-016](adr/ADR-016-engines-and-content-packs.md): Engines, data schemas, packs in the app, pack media and retirement policy.
 - [ADR-017](adr/ADR-017-creator-cli-and-simulator.md): Creator CLI implementation language and distribution.
 
 To be recorded in later sprints (numbering indicative):

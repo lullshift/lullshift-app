@@ -25,6 +25,11 @@ const steps = [
   { name: "format", cmd: "pnpm", args: ["format:check"] },
   { name: "unit tests (ts)", cmd: "pnpm", args: ["test"] },
   {
+    name: "engine compatibility (schemas, fixtures, packs)",
+    cmd: "node",
+    args: ["tests/activities/check-engine-compat.mjs"],
+  },
+  {
     name: "bundled activities (validate, simulate)",
     cmd: "node",
     args: ["tests/activities/check-bundled.mjs"],

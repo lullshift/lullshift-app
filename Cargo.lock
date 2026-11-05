@@ -2181,6 +2181,7 @@ dependencies = [
  "chrono",
  "include_dir",
  "local-store",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

@@ -1043,6 +1043,12 @@ th[aria-sort="descending"] .sort {
   color: var(--text-muted);
 }
 
+/* What exactly failed a content pack's check (ADR-016): plain text, may be long. */
+.host-card .host-detail {
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
 .host-actions {
   display: flex;
   flex-wrap: wrap;

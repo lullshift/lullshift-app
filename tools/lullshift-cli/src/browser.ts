@@ -94,7 +94,8 @@ export async function launchBrowser(
   const child: ChildProcess = spawn(exe, args, { stdio: "ignore" });
   const portFile = path.join(profile, "DevToolsActivePort");
   let wsPath = "";
-  for (let i = 0; i < 100 && !wsPath; i++) {
+  // Up to 30 s: a cold Edge start under load (the full gate) can take more than 10 s.
+  for (let i = 0; i < 300 && !wsPath; i++) {
     await sleep(100);
     if (existsSync(portFile)) {
       const [port, p] = readFileSync(portFile, "utf8").split("\n");

@@ -79,7 +79,7 @@ These are optional additions; an older host drops the new message as an unknown 
   - One to four items. `label` is plain text of 1–24 characters, and `value` is plain text of 1–24 characters or a finite number.
   - The host shows the latest summary in the paused view, as text. It is held in memory for the current visit and never stored, so an activity can't use it as a hidden store.
   - The host keeps only the latest summary. Summaries count against the normal message rate limit.
-- **`init.content`:** the validated pack data for engines (ADR-016), `null` for other activities.
+- **`init.content`:** the validated pack data for engines (ADR-016), `null` for other activities. The UI fetches it with `activity_content(id)`, which re-validates the data in Rust against the engine's schema; a pack that fails never starts.
 - **Help and preview come from the manifest, not the bridge.** The host renders `help` as plain text in its own panel; nothing in it is HTML. The host reads `preview` itself and shows it only as an `<img>` from a `data:` URL, so the app's CSP is unchanged and an SVG preview never runs script.
 - **Time played** is measured by the host: the time an activity is running in a visible window. The host adds it to a per-activity total in SQLite (migration 0005) on every pause and close. The activity can't report or change it.
 - **The bridge client always answers `save`** with the last known state if `saveState` returns nothing (ADR-017), which closes the "nothing to save looks like no answer" gap for activities using the SDK.

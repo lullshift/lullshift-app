@@ -85,11 +85,11 @@ h1 {
 .controls button[hidden] {
   display: none;
 }
-/* One row of controls. Buttons share the width and never break mid-label; only a very narrow
-   window lets them wrap. */
+/* One row of controls at normal widths. Labels never break mid-word; at narrow widths or high zoom
+   the row wraps rather than scrolling sideways. */
 .controls {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .controls button {
@@ -103,11 +103,6 @@ h1 {
   padding: 10px 10px;
   min-height: 44px;
   cursor: pointer;
-}
-@media (max-width: 340px) {
-  .controls {
-    flex-wrap: wrap;
-  }
 }
 .controls button:hover:not(:disabled) {
   background: var(--accent-soft);

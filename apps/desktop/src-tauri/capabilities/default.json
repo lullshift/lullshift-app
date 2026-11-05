@@ -20,6 +20,7 @@
     "allow-activity-clear-snapshot",
     "allow-activity-preview",
     "allow-activity-add-play",
+    "allow-activity-content",
     "allow-session-detail",
     "allow-set-session-notes",
     "allow-set-session-intent",

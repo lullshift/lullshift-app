@@ -6,6 +6,7 @@ import path from "node:path";
 import { BRIDGE_FILE, SDK_VERSION } from "@lullshift/activity-sdk";
 import {
   createAjv,
+  friendlyErrors,
   validateActivityManifest,
   type ActivityManifestV1,
 } from "@lullshift/agent-protocol";
@@ -55,6 +56,9 @@ const RISKY: [RegExp, string][] = [
 const KIT_FILE = /^lullshift-([a-z0-9]+(?:-[a-z0-9]+)*)-kit-v1[.]js$/;
 
 const ENGINE_REF = /^([a-z0-9]+(?:\.[a-z0-9-]+)+)@([0-9]+)$/;
+
+/** Notes a pack may keep beside its data (packed, never served). */
+const PACK_NOTE_TYPES = new Set(["md", "txt"]);
 
 const readJson = (file: string): unknown => JSON.parse(readFileSync(file, "utf8"));
 
@@ -247,7 +251,20 @@ function checkContent(
 ) {
   const m = report.manifest!;
   for (const f of report.files) {
-    if (CODE_TYPES.has(f.ext)) report.errors.push(`${f.rel}: content packs can't contain code`);
+    if (CODE_TYPES.has(f.ext)) {
+      report.errors.push(`${f.rel}: content packs can't contain code`);
+    } else if (
+      f.rel !== "manifest.json" &&
+      f.rel !== m.data &&
+      f.rel !== m.preview &&
+      !PACK_NOTE_TYPES.has(f.ext)
+    ) {
+      // v1 packs are data plus a preview (ADR-016): the host serves only the engine's files,
+      // so any other media would never reach the player.
+      report.errors.push(
+        `${f.rel}: content packs hold only manifest.json, their data file, a preview image and notes (.md, .txt)`,
+      );
+    }
   }
   const ref = ENGINE_REF.exec(m.engine ?? "");
   const dataFile = m.data ? has(m.data) : undefined;
@@ -284,9 +301,9 @@ function checkContent(
     return;
   }
   if (!validate(data)) {
-    for (const e of validate.errors ?? []) {
-      report.errors.push(`${m.data} ${e.instancePath || "/"} ${e.message ?? "is invalid"}`);
-    }
+    // Plain words with a data path (S07-A03): "deck.json: cards[3].front is longer than 200
+    // characters". The app's own check words problems the same way.
+    report.errors.push(...friendlyErrors(validate.errors, m.data));
   }
 }
 

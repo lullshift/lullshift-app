@@ -1,0 +1,275 @@
+[
+  {
+    "name": "dot: plain",
+    "schema": { "type": "string", "pattern": "^.{1,5}$" },
+    "data": "abc",
+    "valid": true
+  },
+  {
+    "name": "dot: empty",
+    "schema": { "type": "string", "pattern": "^.{1,5}$" },
+    "data": "",
+    "valid": false
+  },
+  {
+    "name": "dot: CR",
+    "schema": { "type": "string", "pattern": "^.{1,5}$" },
+    "data": "a\rb",
+    "valid": false
+  },
+  {
+    "name": "dot: LF",
+    "schema": { "type": "string", "pattern": "^.{1,5}$" },
+    "data": "a\nb",
+    "valid": false
+  },
+  {
+    "name": "dot: LS",
+    "schema": { "type": "string", "pattern": "^.{1,5}$" },
+    "data": "a b",
+    "valid": false
+  },
+  {
+    "name": "dot: PS",
+    "schema": { "type": "string", "pattern": "^.{1,5}$" },
+    "data": "a b",
+    "valid": false
+  },
+  {
+    "name": "dot: NEL is not a line end",
+    "schema": { "type": "string", "pattern": "^.{1,5}$" },
+    "data": "a\u0085b",
+    "valid": true
+  },
+  {
+    "name": "dot: astral is one char",
+    "schema": { "type": "string", "pattern": "^.$" },
+    "data": "😀",
+    "valid": true
+  },
+  {
+    "name": "dot: two astral are two",
+    "schema": { "type": "string", "pattern": "^.$" },
+    "data": "😀😀",
+    "valid": false
+  },
+  {
+    "name": "dot in class is literal",
+    "schema": { "type": "string", "pattern": "^[.]$" },
+    "data": "a",
+    "valid": false
+  },
+  {
+    "name": "dot in class matches dot",
+    "schema": { "type": "string", "pattern": "^[.]$" },
+    "data": ".",
+    "valid": true
+  },
+  {
+    "name": "escaped dot",
+    "schema": { "type": "string", "pattern": "^a\\.b$" },
+    "data": "axb",
+    "valid": false
+  },
+  {
+    "name": "dollar does not match before a final newline",
+    "schema": { "type": "string", "pattern": "^a$" },
+    "data": "a\n",
+    "valid": false
+  },
+  {
+    "name": "space: NEL is not whitespace",
+    "schema": { "type": "string", "pattern": "^\\s$" },
+    "data": "\u0085",
+    "valid": false
+  },
+  {
+    "name": "space: BOM is whitespace",
+    "schema": { "type": "string", "pattern": "^\\s$" },
+    "data": "﻿",
+    "valid": true
+  },
+  {
+    "name": "space: no-break space",
+    "schema": { "type": "string", "pattern": "^\\s$" },
+    "data": " ",
+    "valid": true
+  },
+  {
+    "name": "space: ideographic space",
+    "schema": { "type": "string", "pattern": "^\\s$" },
+    "data": "　",
+    "valid": true
+  },
+  {
+    "name": "space: zero-width space is not whitespace",
+    "schema": { "type": "string", "pattern": "^\\s$" },
+    "data": "​",
+    "valid": false
+  },
+  {
+    "name": "space: mongolian vowel separator is not whitespace",
+    "schema": { "type": "string", "pattern": "^\\s$" },
+    "data": "᠎",
+    "valid": false
+  },
+  {
+    "name": "non-space: NEL",
+    "schema": { "type": "string", "pattern": "^\\S$" },
+    "data": "\u0085",
+    "valid": true
+  },
+  {
+    "name": "non-space: BOM",
+    "schema": { "type": "string", "pattern": "^\\S$" },
+    "data": "﻿",
+    "valid": false
+  },
+  {
+    "name": "space in class: BOM",
+    "schema": { "type": "string", "pattern": "^[\\s]$" },
+    "data": "﻿",
+    "valid": true
+  },
+  {
+    "name": "space in class: NEL",
+    "schema": { "type": "string", "pattern": "^[\\s]$" },
+    "data": "\u0085",
+    "valid": false
+  },
+  {
+    "name": "non-space in class: NEL",
+    "schema": { "type": "string", "pattern": "^[\\S]$" },
+    "data": "\u0085",
+    "valid": true
+  },
+  {
+    "name": "negated space class: BOM",
+    "schema": { "type": "string", "pattern": "^[^\\s]$" },
+    "data": "﻿",
+    "valid": false
+  },
+  {
+    "name": "negated space class: NEL",
+    "schema": { "type": "string", "pattern": "^[^\\s]$" },
+    "data": "\u0085",
+    "valid": true
+  },
+  {
+    "name": "digit is ASCII only",
+    "schema": { "type": "string", "pattern": "^\\d$" },
+    "data": "١",
+    "valid": false
+  },
+  {
+    "name": "digit ASCII",
+    "schema": { "type": "string", "pattern": "^\\d$" },
+    "data": "7",
+    "valid": true
+  },
+  {
+    "name": "word is ASCII only",
+    "schema": { "type": "string", "pattern": "^\\w$" },
+    "data": "é",
+    "valid": false
+  },
+  {
+    "name": "maxLength counts code points: one emoji",
+    "schema": { "type": "string", "maxLength": 1 },
+    "data": "😀",
+    "valid": true
+  },
+  {
+    "name": "maxLength counts code points: two emoji",
+    "schema": { "type": "string", "maxLength": 1 },
+    "data": "😀😀",
+    "valid": false
+  },
+  {
+    "name": "maxLength mixed",
+    "schema": { "type": "string", "maxLength": 2 },
+    "data": "a😀",
+    "valid": true
+  },
+  {
+    "name": "minLength counts code points",
+    "schema": { "type": "string", "minLength": 2 },
+    "data": "😀",
+    "valid": false
+  },
+  {
+    "name": "ZWJ sequence is three code points: fits 3",
+    "schema": { "type": "string", "maxLength": 3 },
+    "data": "👨‍👩",
+    "valid": true
+  },
+  {
+    "name": "ZWJ sequence is three code points: over 2",
+    "schema": { "type": "string", "maxLength": 2 },
+    "data": "👨‍👩",
+    "valid": false
+  },
+  {
+    "name": "multipleOf 1: near-integer is rejected",
+    "schema": { "type": "number", "multipleOf": 1 },
+    "data": 1.0000000001,
+    "valid": false
+  },
+  {
+    "name": "multipleOf 1: half",
+    "schema": { "type": "number", "multipleOf": 1 },
+    "data": 0.5,
+    "valid": false
+  },
+  {
+    "name": "multipleOf 1: integer",
+    "schema": { "type": "number", "multipleOf": 1 },
+    "data": 3,
+    "valid": true
+  },
+  {
+    "name": "multipleOf 5: multiple",
+    "schema": { "type": "number", "multipleOf": 5 },
+    "data": 10,
+    "valid": true
+  },
+  {
+    "name": "multipleOf 5: negative multiple",
+    "schema": { "type": "number", "multipleOf": 5 },
+    "data": -15,
+    "valid": true
+  },
+  {
+    "name": "multipleOf 5: not a multiple",
+    "schema": { "type": "number", "multipleOf": 5 },
+    "data": 11,
+    "valid": false
+  },
+  {
+    "name": "multipleOf 5: fraction",
+    "schema": { "type": "number", "multipleOf": 5 },
+    "data": 10.5,
+    "valid": false
+  },
+  {
+    "name": "uniqueItems: duplicates",
+    "schema": { "type": "array", "uniqueItems": true },
+    "data": [1, 2, 1],
+    "valid": false
+  },
+  {
+    "name": "uniqueItems: object key order",
+    "schema": { "type": "array", "uniqueItems": true },
+    "data": [
+      { "a": 1, "b": 2 },
+      { "b": 2, "a": 1 }
+    ],
+    "valid": false
+  },
+  {
+    "name": "uniqueItems: number and text differ",
+    "schema": { "type": "array", "uniqueItems": true },
+    "data": [1, "1", [1]],
+    "valid": true
+  }
+]

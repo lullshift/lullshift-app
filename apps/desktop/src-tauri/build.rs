@@ -18,6 +18,7 @@ fn main() {
             "activity_clear_snapshot",
             "activity_preview",
             "activity_add_play",
+            "activity_content",
             "session_detail",
             "set_session_notes",
             "set_session_intent",

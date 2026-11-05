@@ -187,7 +187,7 @@ Give buttons a visible `:focus-visible` outline, and turn off transitions when r
 
 ## Content packs and engines
 
-Provisional (ADR-016). A content pack is data only, with no code. It names an engine and a data file in its manifest:
+ADR-016. A content pack is data only, with no code. It names an engine and a data file in its manifest:
 
 ```json
 "kind": "content",
@@ -195,12 +195,34 @@ Provisional (ADR-016). A content pack is data only, with no code. It names an en
 "data": "deck.json"
 ```
 
-An engine is an activity that receives the pack data as `content` in `onInit` (`init.content`). The engine validates the data against its own `data.schema.json`. Data must be at most 256 KiB. Reference files:
+**Engines.** An engine is an `app` activity with one more file, `engine.json`, naming its id, major version and data schema (`data.schema.json`, JSON Schema 2020-12). A pack names it as `id@major`. The bundled engines live in `activities/engines/`; each has fixtures in `tests/fixtures/engines/<id>@<major>/{valid,invalid}/`.
+
+**`init.content`.** The engine receives the pack's data, already checked, as `content` in `onInit`:
+
+```js
+LullshiftBridge.start({
+  onInit({ restore, content }) {
+    // content: the pack's data (an object valid against data.schema.json); null for other activities
+  },
+});
+```
+
+Still treat `content` as untrusted text: render it with `textContent`, never `innerHTML`, and keep the engine's own bounds checks.
+
+**How the app runs a pack.** Packs appear in Activities as their own cards, with the pack's name, description, preview and help; engines are never listed. The app serves the engine's files at the pack's own address, so each pack has its own saved state, storage and time played. Before starting, the app resolves `id@major` to a bundled engine and checks the data against the engine's schema again. If either fails, the player sees "This pack's data doesn't match its engine" (or that the engine is missing) and the engine never starts. A pack may use `activity.storage` only if both the pack and its engine declare it.
+
+**Rules for data schemas.** Objects set `"additionalProperties": false`, strings have `maxLength`, lists have `maxItems`. The app's check understands a subset of JSON Schema: `type`, `enum`, `const`, `properties`, `required`, `additionalProperties`, `min/maxProperties`, `items`, `min/maxItems`, `uniqueItems`, `min/maxLength`, `pattern`, `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`, `allOf`, `anyOf`, `oneOf`, `not`, `if`/`then`/`else`, `$ref` to `#/$defs/<name>`, and annotations such as `title` and `description`. Patterns can't use ``, lookaround or backreferences. `node tests/activities/check-engine-compat.mjs` checks all of this.
+
+**What a pack holds (v1).** `manifest.json`, the data file (at most 256 KiB), a preview image (at most 256 KiB) and notes (`.md`, `.txt`). No code and no other media: `validate` refuses anything else.
+
+**Compatibility.** A change that would make any existing valid pack invalid, or change how it plays in a way that matters, needs a new major, which ships beside the old one. No major is removed within v1.
+
+Reference files:
 
 - engine: `activities/engines/calm-cards`
 - pack: `activities/content/calm-cards/desk-stretches`
 
-Create a pack with `pnpm lullshift create my-pack --kind content`. Validate it with the engine folder:
+Create a pack with `pnpm lullshift create my-pack --kind content`. Validate it; problems name the file, the place in the data and what is wrong (`deck.json: cards[3].front is longer than 200 characters`):
 
 ```bash
 pnpm lullshift validate activities/content/calm-cards/desk-stretches --engines activities/engines/calm-cards

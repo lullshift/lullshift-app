@@ -5,6 +5,7 @@
 mod activities;
 mod adapters;
 mod context;
+mod data_schema;
 mod notify;
 
 use std::sync::{Arc, Mutex};
@@ -505,6 +506,7 @@ pub fn run() {
             activities::activity_clear_snapshot,
             activities::activity_preview,
             activities::activity_add_play,
+            activities::activity_content,
             context::session_detail,
             context::set_session_notes,
             context::set_session_intent,

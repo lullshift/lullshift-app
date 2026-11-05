@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { providerName } from "../format";
 import { Icon } from "../ui/Icon";
 import { Mascot } from "../ui/Mascot";
+import { loadContent, type ContentProblem } from "./content";
 import { HelpDialog } from "./HelpDialog";
 import { formatPlayed } from "./playTime";
 import { usePreview } from "./usePreview";
@@ -38,6 +39,8 @@ export interface ActivityInfo {
   preview: boolean;
   /** Total time played before this visit, in seconds. */
   playedSeconds: number;
+  /** Content packs: the engine that runs them (`id@major`); null for apps. */
+  engine: string | null;
 }
 
 /** A pause the host forced; `seq` changes for every new request. */
@@ -54,7 +57,9 @@ type Phase =
   | { kind: "running" }
   | { kind: "pausing" }
   | { kind: "paused"; reason: PauseReason; provider?: string; saved: boolean }
-  | { kind: "failed" };
+  | { kind: "failed" }
+  /** A content pack whose data or engine failed the host's check; never started. */
+  | { kind: "invalid"; problem: ContentProblem };
 
 /** How long an activity has to answer a save request before the host stops waiting. */
 const SAVE_TIMEOUT_MS = 800;
@@ -105,6 +110,8 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
   const preview = usePreview(activity.id, activity.preview);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const restoreRef = useRef<unknown>(null);
+  // A pack's checked data for `init.content`; null for apps.
+  const contentRef = useRef<unknown>(null);
   const phaseRef = useRef<Phase>({ kind: "loading" });
   const pending = useRef(new Map<string, (ok: boolean) => void>());
   const missed = useRef(0);
@@ -171,7 +178,13 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
   const freeze = useCallback(
     async (reason: PauseReason, provider?: string) => {
       const current = phaseRef.current.kind;
-      if (current === "paused" || current === "failed" || current === "pausing") return;
+      if (
+        current === "paused" ||
+        current === "failed" ||
+        current === "invalid" ||
+        current === "pausing"
+      )
+        return;
       let saved = false;
       if (current === "running") {
         setPhase({ kind: "pausing" });
@@ -183,21 +196,33 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
     [post, requestSave, setPhase],
   );
 
-  /** Loads the last saved state, then creates a fresh iframe for this launch. */
+  /**
+   * Checks a pack's data (Rust validates it against its engine's schema), loads the last saved
+   * state, then creates a fresh iframe for this launch. A pack that fails the check never starts.
+   */
+  const { id: activityId, engine } = activity;
   const start = useCallback(
     () =>
       saveChain.current
-        .then(() => invoke<{ snapshot: string } | null>("activity_snapshot", { id: activity.id }))
-        .then((snap) => (snap ? (JSON.parse(snap.snapshot) as unknown) : null))
-        .catch(() => null)
-        .then((restore) => {
-          restoreRef.current = restore;
-          missed.current = 0;
-          pending.current.clear();
-          setNonce(newNonce());
-          setPhase({ kind: "loading" });
+        .then(() => loadContent({ id: activityId, engine }))
+        .then((checked) => {
+          if (!checked.ok) {
+            setPhase({ kind: "invalid", problem: checked.problem });
+            return;
+          }
+          contentRef.current = checked.content;
+          return invoke<{ snapshot: string } | null>("activity_snapshot", { id: activityId })
+            .then((snap) => (snap ? (JSON.parse(snap.snapshot) as unknown) : null))
+            .catch(() => null)
+            .then((restore) => {
+              restoreRef.current = restore;
+              missed.current = 0;
+              pending.current.clear();
+              setNonce(newNonce());
+              setPhase({ kind: "loading" });
+            });
         }),
-    [activity.id, setPhase],
+    [activityId, engine, setPhase],
   );
 
   // First load.
@@ -251,7 +276,7 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
           restore: restoreRef.current,
           reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
           theme: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
-          content: null,
+          content: contentRef.current,
         });
         setPhase({ kind: "running" });
         frameRef.current?.focus();
@@ -386,7 +411,7 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
               ? "Saving…"
               : phase.kind === "paused"
                 ? "Paused"
-                : phase.kind === "failed"
+                : phase.kind === "failed" || phase.kind === "invalid"
                   ? "Didn't start"
                   : ""}
         </span>
@@ -446,6 +471,9 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
             </div>
           </div>
         )}
+        {phase.kind === "invalid" && (
+          <InvalidPackCard name={activity.name} problem={phase.problem} onClose={onClose} />
+        )}
       </div>
       <HelpDialog
         open={helpOpen}
@@ -455,6 +483,40 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
         onClose={() => setHelpOpen(false)}
       />
     </section>
+  );
+}
+
+/**
+ * A pack that failed the host's check (ADR-016). Calm and honest: it says what happened, that
+ * nothing ran and nothing was lost. Retrying wouldn't help (bundled data doesn't change), so the
+ * only action is going back. The detail is plain text from the host's check.
+ */
+function InvalidPackCard({
+  name,
+  problem,
+  onClose,
+}: {
+  name: string;
+  problem: ContentProblem;
+  onClose: () => void;
+}) {
+  const back = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const at = document.activeElement;
+    if (!at || at === document.body) back.current?.focus();
+  }, []);
+  return (
+    <div className="host-card" role="alert">
+      <Mascot face="asleep" size={72} />
+      <h3>{name} can't start</h3>
+      <p>{problem.message} Nothing was lost.</p>
+      {problem.detail && <p className="host-detail">{problem.detail}</p>}
+      <div className="host-actions">
+        <button type="button" className="btn btn-primary" onClick={onClose} ref={back}>
+          Back to activities
+        </button>
+      </div>
+    </div>
   );
 }
 

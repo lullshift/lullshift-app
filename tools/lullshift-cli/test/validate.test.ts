@@ -1,5 +1,6 @@
 // S05-A02: invalid manifests, unknown permissions and code inside content packs are rejected;
 // plus the folder rules from TECHNICAL_ARCHITECTURE §7.3.
+import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -142,5 +143,35 @@ describe("manifest errors", () => {
       j.category = "puzzle";
     });
     expect(errorsOf(dir)).toMatch(/category .*arcade, break, productivity, interactive/);
+  });
+});
+
+// S07-A03: breaking a pack's data fails validation with a clear message, from the real command.
+describe("validate (content pack data)", () => {
+  const cli = path.resolve(import.meta.dirname, "../src/main.ts");
+
+  it("prints plain-language problems with the file and data path", () => {
+    const dir = scaffold("content");
+    editJson(path.join(dir, "deck.json"), (d) => {
+      const cards = d.cards as { front: string }[];
+      cards[2]!.front = "x".repeat(201);
+      d.colour = "blue";
+    });
+    const r = spawnSync(process.execPath, [cli, "validate", dir], { encoding: "utf8" });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("error   deck.json: cards[2].front is longer than 200 characters");
+    expect(r.stdout).toContain("error   deck.json: colour isn't a known field");
+    expect(r.stdout).not.toMatch(/must NOT|\/cards\/2/);
+  });
+
+  it("allows only data, a preview and notes in a pack (ADR-016)", () => {
+    const dir = scaffold("content");
+    writeFileSync(path.join(dir, "NOTES.md"), "ok");
+    expect(validateFolder(dir).errors).toEqual([]);
+    writeFileSync(path.join(dir, "photo.png"), "png");
+    writeFileSync(path.join(dir, "extra.json"), "{}");
+    const errors = errorsOf(dir);
+    expect(errors).toMatch(/photo\.png: content packs hold only manifest\.json/);
+    expect(errors).toMatch(/extra\.json: content packs hold only manifest\.json/);
   });
 });

@@ -12,6 +12,7 @@ export type { AgentEventV1, ActivityManifestV1, Help, MarketplaceIndexV1 };
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: string[] };
 
 export { createAjv } from "./ajv.ts";
+export { dataPath, friendlyError, friendlyErrors } from "./friendly.ts";
 
 const ajv = createAjv();
 
