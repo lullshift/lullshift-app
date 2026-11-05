@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Step Away</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <p id="welcome" class="welcome" hidden>Welcome back</p>
+      <h1>Step away</h1>
+      <p class="lede">Your agents are working. Lullshift will call you back when one needs you.</p>
+
+      <section class="card" aria-labelledby="away-label">
+        <p id="away-label" class="label">Time away</p>
+        <p id="clock" class="clock">00:00</p>
+      </section>
+
+      <section class="card pacer-card" aria-labelledby="pacer-label">
+        <p id="pacer-label" class="label">Breathing</p>
+        <div id="pacer-area" class="pacer-area" hidden>
+          <div id="circle" class="circle" aria-hidden="true"></div>
+          <p id="cue" class="cue">Breathe in</p>
+        </div>
+        <button id="pacer-toggle" type="button" aria-pressed="false">Start breathing cue</button>
+      </section>
+
+      <section class="card" aria-labelledby="idea-label">
+        <p id="idea-label" class="label">A gentle idea</p>
+        <p id="idea" class="idea" aria-live="polite"></p>
+        <button id="idea-next" type="button">Another idea</button>
+      </section>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

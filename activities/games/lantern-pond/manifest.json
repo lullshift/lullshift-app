@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.lantern-pond",
+  "version": "0.1.0",
+  "name": "Lantern Pond",
+  "description": "Lanterns float on a quiet night pond. Pressing one flips it and the lanterns beside it. Light every lantern in as few presses as you like. A new pond each day, or as many fresh ones as you want.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.1.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true }
+}

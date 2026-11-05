@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.break.step-away",
+  "version": "0.1.0",
+  "name": "Step Away",
+  "description": "A quiet screen for when you step away from the desk while your agents work. Shows how long you have been away, offers an optional slow breathing cue and a few gentle ideas for your break.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["break", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.1.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true }
+}

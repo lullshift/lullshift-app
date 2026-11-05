@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lantern Pond</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Lantern Pond</h1>
+      <p class="lede">Press a lantern to flip it and its neighbours. Light them all.</p>
+
+      <div class="status">
+        <p id="moves" class="moves">Moves: 0</p>
+        <p id="best" class="best" hidden></p>
+      </div>
+
+      <div id="grid" class="grid" role="grid" aria-label="Lantern pond, 5 by 5"></div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="undo" type="button">Undo</button>
+        <button id="restart" type="button">Restart</button>
+        <button id="daily" type="button">Today's pond</button>
+        <button id="fresh" type="button">New pond</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>
