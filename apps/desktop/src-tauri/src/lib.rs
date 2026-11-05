@@ -4,6 +4,7 @@
 
 mod activities;
 mod adapters;
+mod companion_commands;
 mod context;
 mod market;
 mod notify;
@@ -97,6 +98,8 @@ struct Core {
     library: activities::installed::Library,
     /// Marketplace operations in flight and pending install reviews.
     market: market::MarketState,
+    /// Companion (BYOK): keychain, HTTP limits and in-flight sends.
+    companion: companion_commands::CompanionState,
 }
 
 #[cfg(test)]
@@ -113,6 +116,10 @@ impl Core {
             app_dir: app_dir.to_path_buf(),
             library: activities::installed::Library::default(),
             market: market::MarketState::default(),
+            companion: companion_commands::CompanionState::with(
+                std::sync::Arc::new(::companion::MemoryKeyStore::new()),
+                ::companion::HttpConfig::default(),
+            ),
         }
     }
 }
@@ -490,7 +497,9 @@ pub fn run() {
                 app_dir: handle.path().app_data_dir().unwrap_or_default(),
                 library: activities::installed::Library::default(),
                 market: market::MarketState::default(),
+                companion: companion_commands::CompanionState::new(),
             });
+            companion_commands::recover_pending(&core);
             let ipc_health = if store_health == Health::Ok {
                 start_ipc(&handle, &core)
             } else {
@@ -569,7 +578,23 @@ pub fn run() {
             context::context_prefs,
             context::set_context_prefs,
             context::ui_prefs,
-            context::set_ui_prefs
+            context::set_ui_prefs,
+            companion_commands::companion_profiles,
+            companion_commands::companion_save_profile,
+            companion_commands::companion_delete_profile,
+            companion_commands::companion_set_key,
+            companion_commands::companion_clear_key,
+            companion_commands::companion_test,
+            companion_commands::companion_threads,
+            companion_commands::companion_new_thread,
+            companion_commands::companion_rename_thread,
+            companion_commands::companion_delete_thread,
+            companion_commands::companion_messages,
+            companion_commands::companion_preview_context,
+            companion_commands::companion_send,
+            companion_commands::companion_retry,
+            companion_commands::companion_cancel,
+            companion_commands::companion_usage
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lullshift");
@@ -598,7 +623,12 @@ mod tests {
 
     #[test]
     fn only_the_main_window_may_change_agent_settings() {
-        const SENSITIVE: [&str; 8] = [
+        const SENSITIVE: [&str; 13] = [
+            "allow-companion-set-key",
+            "allow-companion-clear-key",
+            "allow-companion-send",
+            "allow-companion-save-profile",
+            "allow-companion-delete-profile",
             "allow-claude-code-install",
             "allow-claude-code-uninstall",
             "allow-marketplace-add",

@@ -17,6 +17,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+companion = { path = "../../../crates/companion" }
 marketplace = { path = "../../../crates/marketplace" }
 agent-adapters.workspace = true
 agent-core.workspace = true
@@ -35,8 +36,11 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
 time.workspace = true
+sha2.workspace = true
+zeroize = "1.9"
 
 [dev-dependencies]
+companion = { path = "../../../crates/companion", features = ["test-support"] }
 # `file://` marketplaces for the command tests. Debug builds of tests only (see the crate docs).
 marketplace = { path = "../../../crates/marketplace", features = ["unsafe-test-file-urls"] }
 rusqlite.workspace = true

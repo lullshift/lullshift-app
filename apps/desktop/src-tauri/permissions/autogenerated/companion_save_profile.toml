@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-companion-save-profile"
+description = "Enables the companion_save_profile command without any pre-configured scope."
+commands.allow = ["companion_save_profile"]
+
+[[permission]]
+identifier = "deny-companion-save-profile"
+description = "Denies the companion_save_profile command without any pre-configured scope."
+commands.deny = ["companion_save_profile"]

@@ -1,0 +1,219 @@
+// Companion commands (Sprint 09, ADR-020). This file mirrors docs/COMPANION_COMMANDS.md; change
+// both together with the Rust commands.
+//
+// Privacy rules for this file (CLAUDE.md rule 7): a key goes through `setKey` once and is never
+// stored, logged or put in an error. Errors are reduced to `{ kind, message }`, where `message`
+// is the backend's fixed friendly sentence, and nothing the caller passed in is ever copied
+// into an error.
+
+import { invoke } from "@tauri-apps/api/core";
+
+export type ErrorKind =
+  | "offline"
+  | "timeout"
+  | "rateLimited"
+  | "keyRejected"
+  | "noKey"
+  | "keychainUnavailable"
+  | "budgetReached"
+  | "providerError"
+  | "invalidResponse"
+  | "invalidInput"
+  | "notFound"
+  | "cancelled"
+  | "busy"
+  | "internal"
+  /** UI only: the backend does not have this command (older or partial build). */
+  | "unavailable";
+
+export interface CommandError {
+  kind: ErrorKind;
+  message: string;
+}
+
+export const ERROR_KINDS: readonly ErrorKind[] = [
+  "offline",
+  "timeout",
+  "rateLimited",
+  "keyRejected",
+  "noKey",
+  "keychainUnavailable",
+  "budgetReached",
+  "providerError",
+  "invalidResponse",
+  "invalidInput",
+  "notFound",
+  "cancelled",
+  "busy",
+  "internal",
+];
+
+export type ProviderKind = "anthropic" | "openai" | "openaiCompatible";
+
+export interface ProviderProfile {
+  id: string;
+  kind: ProviderKind;
+  label: string;
+  baseUrl: string;
+  /** Shown as "Sends to <host>". */
+  host: string;
+  model: string;
+  monthlyTokenBudget: number | null;
+  isDefault: boolean;
+  /** Asked of the keychain; false when the keychain can't be read. */
+  hasKey: boolean;
+  keychainOk: boolean;
+}
+
+export interface ProfileInput {
+  id?: string;
+  kind: ProviderKind;
+  label: string;
+  baseUrl?: string;
+  model: string;
+  monthlyTokenBudget?: number | null;
+  isDefault: boolean;
+}
+
+export type Scope =
+  | { kind: "none" }
+  | { kind: "sessionSummary"; provider: string; sessionId: string }
+  | {
+      kind: "selectedNotes";
+      provider: string;
+      sessionId: string;
+      notes: boolean;
+      itemIds: number[];
+    };
+
+export type ScopeKind = Scope["kind"];
+
+export interface ContextPreview {
+  scope: Scope;
+  /** Exactly what will be attached. */
+  text: string;
+  chars: number;
+  /** Lowercase hex SHA-256 of `text`; pass it to `companionSend`. Null for scope none. */
+  sha256: string | null;
+}
+
+export interface MessageError {
+  kind: string;
+  message: string;
+}
+
+export interface Message {
+  id: number;
+  threadId: number;
+  role: "user" | "assistant";
+  text: string;
+  /** The text that was sent with it. */
+  attachedContext: string | null;
+  scopeKind: ScopeKind;
+  /** The host it was sent to (your messages) or came from (replies). */
+  host: string | null;
+  status: "sent" | "failed" | "pending";
+  error: MessageError | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  createdAt: string;
+}
+
+export interface Thread {
+  id: number;
+  title: string;
+  profileId: string | null;
+  model: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Usage {
+  profileId: string;
+  month: string;
+  inputTokens: number;
+  outputTokens: number;
+  budget: number | null;
+}
+
+/** Turns whatever `invoke` rejected with into a `CommandError`. Never throws, never echoes input. */
+export function toCommandError(err: unknown): CommandError {
+  if (err && typeof err === "object" && "kind" in err) {
+    const e = err as { kind?: unknown; message?: unknown };
+    if (typeof e.kind === "string" && (ERROR_KINDS as readonly string[]).includes(e.kind)) {
+      return {
+        kind: e.kind as ErrorKind,
+        message: typeof e.message === "string" ? e.message.slice(0, 300) : "",
+      };
+    }
+  }
+  const text = typeof err === "string" ? err : err instanceof Error ? err.message : "";
+  // Tauri reports a missing or unpermitted command as a plain string. The text is only
+  // pattern-matched here, never copied into the error.
+  if (/not found|not allowed|unknown command|not registered/i.test(text)) {
+    return { kind: "unavailable", message: "" };
+  }
+  return { kind: "internal", message: "" };
+}
+
+async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return await invoke<T>(command, args);
+  } catch (err) {
+    throw toCommandError(err);
+  }
+}
+
+export const companionProfiles = () => call<ProviderProfile[]>("companion_profiles");
+
+export const companionSaveProfile = (profile: ProfileInput) =>
+  call<ProviderProfile>("companion_save_profile", { profile });
+
+export const companionDeleteProfile = (id: string) =>
+  call<void>("companion_delete_profile", { id });
+
+/**
+ * Sends the key to the keychain, once. The value is passed straight through: this function keeps
+ * no copy, and the rejection never contains it. Callers must clear their own copy right after
+ * calling.
+ */
+export const companionSetKey = (profileId: string, key: string) =>
+  call<void>("companion_set_key", { profileId, key });
+
+export const companionClearKey = (profileId: string) =>
+  call<void>("companion_clear_key", { profileId });
+
+export const companionTest = (profileId: string) =>
+  call<{ ok: true; model: string }>("companion_test", { profileId });
+
+export const companionThreads = () => call<Thread[]>("companion_threads");
+
+export const companionNewThread = (title?: string) =>
+  call<Thread>("companion_new_thread", { title });
+
+export const companionRenameThread = (id: number, title: string) =>
+  call<void>("companion_rename_thread", { id, title });
+
+export const companionDeleteThread = (id: number) => call<void>("companion_delete_thread", { id });
+
+export const companionMessages = (threadId: number) =>
+  call<Message[]>("companion_messages", { threadId });
+
+export const companionPreviewContext = (scope: Scope) =>
+  call<ContextPreview>("companion_preview_context", { scope });
+
+/** Returns the assistant message. */
+export const companionSend = (
+  threadId: number,
+  profileId: string,
+  text: string,
+  scope: Scope,
+  expectedContextSha256: string | null,
+) => call<Message>("companion_send", { threadId, profileId, text, scope, expectedContextSha256 });
+
+export const companionRetry = (messageId: number) =>
+  call<Message>("companion_retry", { messageId });
+
+export const companionCancel = (threadId: number) => call<void>("companion_cancel", { threadId });
+
+export const companionUsage = () => call<Usage[]>("companion_usage");

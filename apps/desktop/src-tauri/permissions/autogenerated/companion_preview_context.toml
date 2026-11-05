@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-companion-preview-context"
+description = "Enables the companion_preview_context command without any pre-configured scope."
+commands.allow = ["companion_preview_context"]
+
+[[permission]]
+identifier = "deny-companion-preview-context"
+description = "Denies the companion_preview_context command without any pre-configured scope."
+commands.deny = ["companion_preview_context"]

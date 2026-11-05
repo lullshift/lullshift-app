@@ -58,6 +58,22 @@
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
     "notification:allow-is-permission-granted",
-    "notification:allow-request-permission"
+    "notification:allow-request-permission",
+    "allow-companion-profiles",
+    "allow-companion-save-profile",
+    "allow-companion-delete-profile",
+    "allow-companion-set-key",
+    "allow-companion-clear-key",
+    "allow-companion-test",
+    "allow-companion-threads",
+    "allow-companion-new-thread",
+    "allow-companion-rename-thread",
+    "allow-companion-delete-thread",
+    "allow-companion-messages",
+    "allow-companion-preview-context",
+    "allow-companion-send",
+    "allow-companion-retry",
+    "allow-companion-cancel",
+    "allow-companion-usage"
   ]
 }

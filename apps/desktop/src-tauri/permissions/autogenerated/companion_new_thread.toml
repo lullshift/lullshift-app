@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-companion-new-thread"
+description = "Enables the companion_new_thread command without any pre-configured scope."
+commands.allow = ["companion_new_thread"]
+
+[[permission]]
+identifier = "deny-companion-new-thread"
+description = "Denies the companion_new_thread command without any pre-configured scope."
+commands.deny = ["companion_new_thread"]

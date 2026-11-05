@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-companion-send"
+description = "Enables the companion_send command without any pre-configured scope."
+commands.allow = ["companion_send"]
+
+[[permission]]
+identifier = "deny-companion-send"
+description = "Denies the companion_send command without any pre-configured scope."
+commands.deny = ["companion_send"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-companion-test"
+description = "Enables the companion_test command without any pre-configured scope."
+commands.allow = ["companion_test"]
+
+[[permission]]
+identifier = "deny-companion-test"
+description = "Denies the companion_test command without any pre-configured scope."
+commands.deny = ["companion_test"]

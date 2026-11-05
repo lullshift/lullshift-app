@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-companion-profiles"
+description = "Enables the companion_profiles command without any pre-configured scope."
+commands.allow = ["companion_profiles"]
+
+[[permission]]
+identifier = "deny-companion-profiles"
+description = "Denies the companion_profiles command without any pre-configured scope."
+commands.deny = ["companion_profiles"]

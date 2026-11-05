@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-companion-usage"
+description = "Enables the companion_usage command without any pre-configured scope."
+commands.allow = ["companion_usage"]
+
+[[permission]]
+identifier = "deny-companion-usage"
+description = "Denies the companion_usage command without any pre-configured scope."
+commands.deny = ["companion_usage"]

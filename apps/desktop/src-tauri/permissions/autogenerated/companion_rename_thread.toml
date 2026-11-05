@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-companion-rename-thread"
+description = "Enables the companion_rename_thread command without any pre-configured scope."
+commands.allow = ["companion_rename_thread"]
+
+[[permission]]
+identifier = "deny-companion-rename-thread"
+description = "Denies the companion_rename_thread command without any pre-configured scope."
+commands.deny = ["companion_rename_thread"]

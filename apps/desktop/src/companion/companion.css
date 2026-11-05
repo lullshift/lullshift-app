@@ -1,0 +1,394 @@
+/* Companion (Sprint 09). Tokens only (ADR-011). Motion is removed by the global
+   prefers-reduced-motion rule in styles.css; nothing here relies on animation. */
+
+.view.companion {
+  max-width: 1040px;
+}
+
+.companion-tabs {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.companion-tabs .btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.companion-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .companion-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.btn-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.btn-link:hover {
+  color: var(--accent-hover);
+}
+
+/* ---------- Threads ---------- */
+
+.thread-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.thread-items {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.thread-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.thread-select {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.thread-select:hover {
+  background: var(--surface-hover);
+}
+
+.thread-select[aria-current="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.thread-title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-meta {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.companion-empty {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* ---------- Conversation ---------- */
+
+.conversation {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.conversation-title {
+  overflow-wrap: anywhere;
+  font-size: var(--text-lg);
+  font-weight: 650;
+}
+
+.messages {
+  max-height: 52vh;
+  min-height: 140px;
+  overflow-y: auto;
+}
+
+.msg-list {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.msg {
+  display: grid;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.msg-user {
+  background: var(--accent-soft);
+}
+
+.msg-assistant {
+  background: var(--surface-2);
+}
+
+.msg-who {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.msg-text,
+.msg-attached {
+  overflow-wrap: anywhere;
+  /* Reply text may hold bidi controls; keep them from reordering anything outside this block. */
+  unicode-bidi: isolate;
+}
+
+/* Each line is its own block so line breaks are kept; the text itself is never parsed. */
+.msg-line {
+  display: block;
+  min-height: 1.4em;
+  line-height: 1.45;
+}
+
+.msg-note {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.msg-shared {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.msg-shared summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.msg-attached {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.msg-failed {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  margin-top: var(--space-2);
+}
+
+/* ---------- Composer ---------- */
+
+.composer {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.composer-provider {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.composer-chip {
+  padding: 2px var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.composer-host {
+  border-color: var(--accent);
+}
+
+.composer-select {
+  min-height: 30px;
+  margin-left: auto;
+}
+
+.composer-text {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.composer-summary {
+  flex: 1 1 220px;
+  margin: 0;
+}
+
+.scope-picker,
+.pick-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.scope-picker legend,
+.pick-list legend {
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.scope-options {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.scope-option,
+.pick {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.scope-option input,
+.pick input {
+  margin-top: 4px;
+  accent-color: var(--accent);
+}
+
+.scope-option > span {
+  display: grid;
+  gap: 2px;
+}
+
+.scope-name {
+  font-weight: 600;
+}
+
+.scope-session {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.preview-text {
+  unicode-bidi: isolate;
+  max-height: 40vh;
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* ---------- Settings ---------- */
+
+.companion-settings {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.profile-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profile-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.profile-buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.profile-form,
+.key-panel {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.usage {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  color: var(--text-muted);
+}
+
+.usage-bar {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--accent);
+}
+
+.usage-near {
+  accent-color: var(--attention-dot);
+}
+
+.usage-reached {
+  accent-color: var(--danger);
+}
+
+.key-status {
+  font-weight: 600;
+}
+
+.field-error {
+  color: var(--danger);
+}
+
+.problem-list {
+  margin: 0;
+  padding-left: var(--space-4);
+}

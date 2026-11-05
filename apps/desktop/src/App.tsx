@@ -3,6 +3,8 @@ import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import ActivitiesView from "./activity/ActivitiesView";
+import CompanionView from "./companion/CompanionView";
+import { shouldMountCompanion } from "./companion/logic";
 import type { PauseRequest } from "./activity/ActivityHost";
 import { createDashboardStore } from "./dashboardStore";
 import Integrations from "./Integrations";
@@ -19,11 +21,12 @@ const CHANGE_DEBOUNCE_MS = 250;
 
 const dashboardStore = createDashboardStore(() => invoke<Dashboard>("dashboard"));
 
-type ViewId = "sessions" | "activities" | "integrations" | "settings";
+type ViewId = "sessions" | "activities" | "companion" | "integrations" | "settings";
 
 const NAV: { id: ViewId; label: string; icon: IconName }[] = [
   { id: "sessions", label: "Sessions", icon: "sessions" },
   { id: "activities", label: "Activities", icon: "activities" },
+  { id: "companion", label: "Companion", icon: "chat" },
   { id: "integrations", label: "Integrations", icon: "plug" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];
@@ -43,7 +46,12 @@ export default function App() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   // The Activities heading while that view is hidden (only the visible view gets focus).
   const unusedHeading = useRef<HTMLHeadingElement>(null);
+  const unusedCompanionHeading = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
+  // Companion reads the keychain when it mounts, so it is mounted on first visit, not at launch.
+  const [companionOpened, setCompanionOpened] = useState(false);
+  // Adjusting state while rendering (React's pattern for state derived from a change).
+  if (view === "companion" && !companionOpened) setCompanionOpened(true);
 
   // An agent needs the user: a running activity pauses whatever the notification settings say.
   useEffect(() => {
@@ -167,6 +175,17 @@ export default function App() {
             onGoToSessions={() => setView("sessions")}
           />
         </div>
+        {/* Mounted on first visit (it reads the keychain), then stays mounted while hidden so a
+            reply in flight isn't lost when you switch views. */}
+        {shouldMountCompanion(view, companionOpened) && (
+          <div hidden={view !== "companion"} className="view-slot">
+            <CompanionView
+              headingRef={view === "companion" ? headingRef : unusedCompanionHeading}
+              sessions={sessions}
+              now={now}
+            />
+          </div>
+        )}
         {view === "integrations" && <Integrations headingRef={headingRef} />}
         {view === "settings" && <Settings headingRef={headingRef} />}
       </main>
