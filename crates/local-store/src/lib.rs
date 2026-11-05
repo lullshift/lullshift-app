@@ -6,6 +6,7 @@
 //! migration runs in its own transaction: a failure rolls that step back and leaves the database
 //! at the last good version. A database newer than this build supports is refused, never touched.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +14,7 @@ mod context;
 
 pub use context::{
     Captured, ContextRecord, ContextSummary, Item, MAX_ASK_CHARS, MAX_INTENT_CHARS, MAX_ITEM_CHARS,
-    MAX_ITEMS_PER_SESSION, MAX_NOTES_CHARS, TimelineRow,
+    MAX_ITEMS_PER_SESSION, MAX_NOTES_CHARS, MAX_TITLE_CHARS, SessionLabels, TimelineRow,
 };
 
 use agent_core::{AgentEvent, SessionRecord, SessionState, apply};
@@ -46,11 +47,11 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 4,
         sql: include_str!("../migrations/0004_session_context.sql"),
     },
-];
     Migration {
         version: 5,
         sql: include_str!("../migrations/0005_activity_play_and_session_tracking.sql"),
     },
+];
 
 pub fn latest_version() -> i64 {
     MIGRATIONS.last().map_or(0, |m| m.version)
@@ -238,6 +239,44 @@ impl Store {
         Ok(out)
     }
 
+    /// Ends tracking of `provider`'s sessions that are not in a terminal state (S05-T10): their
+    /// `disconnected_utc` is set to `now`, in one transaction. Returns how many sessions were
+    /// newly marked; already-disconnected and finished sessions are untouched. Their stored
+    /// state is kept, so History still shows what was last reported. A later event from a
+    /// session clears the mark (see [`Store::ingest`]).
+    pub fn disconnect_provider(&mut self, provider: &str, now: OffsetDateTime) -> Result<usize> {
+        let tx = self.conn.transaction()?;
+        let n = tx.execute(
+            "UPDATE sessions SET disconnected_utc = ?2
+             WHERE provider = ?1 AND disconnected_utc IS NULL
+               AND state NOT IN ('completed', 'failed', 'cancelled', 'ended')",
+            params![provider, fmt_ts(now)?],
+        )?;
+        tx.commit()?;
+        Ok(n)
+    }
+
+    /// Sessions whose tool was disconnected and that sent nothing since: key to the time.
+    pub fn disconnected_sessions(&self) -> Result<HashMap<(String, String), OffsetDateTime>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT provider, provider_session_id, disconnected_utc FROM sessions
+             WHERE disconnected_utc IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut out = HashMap::new();
+        for row in rows {
+            let (p, s, t) = row?;
+            out.insert((p, s), parse_ts(&t)?);
+        }
+        Ok(out)
+    }
+
     pub fn event_count(&self) -> Result<i64> {
         Ok(self
             .conn
@@ -406,45 +445,6 @@ impl Store {
         Ok(())
     }
 
-    /// Marks an adapter uninstalled. The row (and its backup paths) is kept for reference.
-    pub fn mark_adapter_uninstalled(&self, adapter_id: &str) -> Result<()> {
-        self.conn.execute(
-            "UPDATE adapter_installations SET status = 'uninstalled', updated_utc = ?2 WHERE adapter_id = ?1",
-            params![adapter_id, fmt_ts(OffsetDateTime::now_utc())?],
-        )?;
-        Ok(())
-    }
-}
-
-fn configure(conn: &Connection, on_disk: bool) -> Result<()> {
-    if on_disk {
-        let mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
-        if !mode.eq_ignore_ascii_case("wal") {
-            return Err(StoreError::Corrupt("WAL journal mode unavailable"));
-        }
-        conn.pragma_update(None, "synchronous", "NORMAL")?;
-    }
-    // Deleted rows (captured text, deleted sessions) are overwritten, not left in free pages.
-    conn.pragma_update(None, "secure_delete", "ON")?;
-    conn.pragma_update(None, "foreign_keys", "ON")?;
-    conn.busy_timeout(std::time::Duration::from_secs(5))?;
-    Ok(())
-}
-
-fn read_version(conn: &Connection) -> Result<i64> {
-    let has_table: bool = conn.query_row(
-        "SELECT EXISTS (SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_version')",
-        [],
-        |r| r.get(0),
-    )?;
-    if !has_table {
-        return Ok(0);
-    }
-    Ok(conn
-        .query_row("SELECT version FROM schema_version", [], |r| r.get(0))
-        .optional()?
-        .unwrap_or(0))
-}
     /// Adds time an activity spent running in view. `seconds` is clamped to 0..=`max_add`, so a
     /// bad clock or a caller bug can't add hours at once. `launch` counts a new visit.
     pub fn add_play_time(
@@ -490,6 +490,45 @@ fn read_version(conn: &Connection) -> Result<i64> {
             .unwrap_or(0))
     }
 
+    /// Marks an adapter uninstalled. The row (and its backup paths) is kept for reference.
+    pub fn mark_adapter_uninstalled(&self, adapter_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE adapter_installations SET status = 'uninstalled', updated_utc = ?2 WHERE adapter_id = ?1",
+            params![adapter_id, fmt_ts(OffsetDateTime::now_utc())?],
+        )?;
+        Ok(())
+    }
+}
+
+fn configure(conn: &Connection, on_disk: bool) -> Result<()> {
+    if on_disk {
+        let mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
+        if !mode.eq_ignore_ascii_case("wal") {
+            return Err(StoreError::Corrupt("WAL journal mode unavailable"));
+        }
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
+    }
+    // Deleted rows (captured text, deleted sessions) are overwritten, not left in free pages.
+    conn.pragma_update(None, "secure_delete", "ON")?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    Ok(())
+}
+
+fn read_version(conn: &Connection) -> Result<i64> {
+    let has_table: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_version')",
+        [],
+        |r| r.get(0),
+    )?;
+    if !has_table {
+        return Ok(0);
+    }
+    Ok(conn
+        .query_row("SELECT version FROM schema_version", [], |r| r.get(0))
+        .optional()?
+        .unwrap_or(0))
+}
 
 fn backup_path(db: &Path, from_version: i64) -> PathBuf {
     let stamp = OffsetDateTime::now_utc().unix_timestamp();
@@ -615,7 +654,8 @@ fn save_session(tx: &Transaction<'_>, r: &SessionRecord) -> Result<()> {
            state = excluded.state,
            state_timestamp_utc = excluded.state_timestamp_utc,
            last_seen_utc = excluded.last_seen_utc,
-           last_received_utc = excluded.last_received_utc",
+           last_received_utc = excluded.last_received_utc,
+           disconnected_utc = NULL",
         params![
             r.provider,
             r.provider_session_id,

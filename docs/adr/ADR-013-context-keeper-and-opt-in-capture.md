@@ -19,7 +19,7 @@ The product owner chose (2026-11-05) to let users **opt in** to capturing a smal
 - When on, for Claude Code:
   - The first `UserPromptSubmit.prompt` of a session becomes its **intent**. Later prompts are not kept. A later prompt does clear the stored question, since the agent has had its answer.
   - `Notification.message` (permission prompts, questions, idle prompts) becomes **what it's asking**. For `PermissionRequest`, only `tool_name` is used ("Permission to use Bash"); tool inputs are never read.
-- **Never captured,** consent or not: tool inputs and outputs, commands, file paths, the working directory, transcripts, assistant messages, session titles.
+- **Never captured,** consent or not: tool inputs and outputs, commands, file paths, the working directory, transcripts, assistant messages. (Sprint 05 adds one narrow exception: the user-set session title, see "Session titles (Sprint 05)".)
 - **Limits and cleaning,** applied in the forwarder before anything leaves the hook process, and again in the app:
   - Intent: at most 2,000 characters. What it's asking: at most 300.
   - Text over the limit is cut, not rejected, so the event itself is never lost. Empty text counts as absent.
@@ -71,6 +71,40 @@ Migration 0004 adds:
 
 - The session detail panel can be pinned (docked) or floating. The choice is stored as a preference (`ui`), default pinned. Under 720 px the panel always floats, without changing the stored choice.
 - The same preference holds the content width: full (default) or comfortable. Older stored preferences without it read as full width. Each change saves the whole set, so one setting never overwrites another.
+
+## Session titles (Sprint 05)
+
+Product owner decision (2026-11-05, S05-T11): session cards show the task name, as Claude Code does. This amends the list above: a session **title** may be captured under the same consent, and "session titles" is no longer in the never-captured list for the one source below.
+
+### What is read, and from where
+
+- **Source:** Claude Code writes `{"type":"custom-title","customTitle":"…","sessionId":"…"}` records into the session's transcript file, re-appended many times; the last one is current. Only names the user set (`/rename`, `-n`) produce them. Claude Code's AI-generated titles are not stored there, so they cannot be shown.
+- **Who reads:** the hook forwarder, never the app. The app never opens a transcript.
+- **Gate:** only if the consent marker file for the adapter exists (the same marker as intent and ask). Without it the file is not opened; a test proves the reader is not even called.
+- **Which file:** `transcript_path` from the hook payload, only if it is absolute, a regular file (checked with `symlink_metadata`, so a symlink, and on Windows any reparse point, is refused and the opened handle is checked again), and its file name is exactly `<session_id>.jsonl` for the payload's validated session id.
+- **How much:** at most the last 256 KiB. The first line of a window that starts mid-file is cut off and skipped. Lines over 16 KiB are never parsed. Only lines containing `custom-title` are parsed as JSON; the last one whose `type` is `custom-title` and whose `customTitle` is a string wins. A record with a non-string `customTitle` is ignored (an earlier valid one still counts). Malformed lines are skipped.
+- **Failure:** any error, a missing file, no title or an unknown format means no title. The hook still exits 0 with no stdout or stderr (zero-effect contract). The title is never logged.
+- **Fragile by nature:** the transcript format is internal to Claude Code and may change or vanish in any release. Lullshift treats it as best effort and falls back silently.
+
+### Cleaning and limits
+
+The forwarder and the app both apply the captured-text cleaning (control, bidi and invisible characters removed, secret-like strings replaced with `[hidden]`), collapse whitespace into one line, then cut to 120 characters. The cut comes after redaction. Over-long titles are cut, not rejected.
+
+### Where it travels and is stored
+
+- IPC envelope `context` gains an optional `title` string (cap 120). Unknown fields are still rejected. The agent event and the event log are unchanged.
+- The app stores it as `session_context.agent_title` (with `agent_title_utc`) only if the stored capture setting for the provider is on (second gate). A later event without a title keeps the stored one; a newer title replaces it.
+- "Clear captured text", per session and everywhere, also clears `agent_title`. Turning capture off stops new titles; it does not delete old ones (same as other captured text).
+
+### The user's name and the display order
+
+- The user can rename any session: command `set_session_title(provider, sessionId, title)`, stored in `session_context.user_title`. Plain text, trimmed, at most 120 characters, no control, bidi or invisible characters; empty clears it. The user's name needs no consent and is never touched by "clear captured text".
+- Cards (Needs you, Working), compact rows, History and the detail panel show: user title, then agent title, then the first line of the captured intent (cut to 80 characters with an ellipsis), then the tool name. When a title is shown, the tool name and short ID appear as secondary text.
+- Exports include the titles: the user's under "written by you", the agent's labelled as captured from the agent.
+
+### Disconnect (S05-T10)
+
+Disconnecting a tool ends tracking of its open sessions at once. `sessions.disconnected_utc` is set in one transaction for that provider's sessions that are not in a terminal state; their stored state is kept. They leave the live columns, never count toward the mascot, notifications or attention, and History shows them as "Not tracked: disconnected" beside their last state. A new event from such a session clears the mark in the same ingest transaction. No new data is read or kept.
 
 ## Consequences
 

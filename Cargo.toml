@@ -16,6 +16,7 @@ rusqlite = { version = "0.41", features = ["bundled"] }
 tempfile = "3"
 agent-ipc = { path = "crates/agent-ipc" }
 getrandom = "0.4"
+libc = "0.2"
 tokio = "1.54"
 agent-adapters = { path = "crates/agent-adapters" }
 sha2 = "0.11"

@@ -11,7 +11,7 @@ use agent_adapters::claude_code::install::{
 };
 use agent_adapters::claude_code::{ADAPTER_ID, HOOKS};
 use serde::Serialize;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use time::OffsetDateTime;
 
@@ -30,6 +30,9 @@ pub struct AdapterView {
 pub struct UninstallView {
     outcome: UninstallOutcome,
     view: AdapterView,
+    /// How many open sessions stopped being tracked because the tool was disconnected
+    /// (S05-T10). Zero when there were none.
+    sessions_disconnected: usize,
 }
 
 struct Ctx {
@@ -177,6 +180,21 @@ fn install_prompt(settings: &std::path::Path) -> String {
     )
 }
 
+/// Marks the adapter uninstalled and ends tracking of its open sessions. A store problem is
+/// not an uninstall failure: the hooks are already gone. Returns the number of sessions.
+fn disconnect_sessions(core: &Core) -> usize {
+    let Ok(mut guard) = core.store.lock() else {
+        return 0;
+    };
+    let Some(store) = guard.as_mut() else {
+        return 0;
+    };
+    let _ = store.mark_adapter_uninstalled(ADAPTER_ID);
+    store
+        .disconnect_provider(ADAPTER_ID, OffsetDateTime::now_utc())
+        .unwrap_or(0)
+}
+
 #[tauri::command]
 pub async fn claude_code_uninstall(
     app: AppHandle,
@@ -197,14 +215,19 @@ pub async fn claude_code_uninstall(
             created_hooks_key: false,
         });
         let outcome = install::uninstall(&record).map_err(|e| error_code(&e))?;
-        if let Ok(guard) = core.store.lock()
-            && let Some(store) = guard.as_ref()
-        {
-            let _ = store.mark_adapter_uninstalled(ADAPTER_ID);
+        // Disconnecting ends tracking of the tool's open sessions at once, in one transaction.
+        let sessions_disconnected = disconnect_sessions(&core);
+        if sessions_disconnected > 0 {
+            let _ = app.emit(crate::SESSIONS_CHANGED, ());
+        }
+        // The mascot may have been awake for a session that is no longer tracked.
+        if let Some(face) = crate::current_face(&core) {
+            crate::set_tray_face(&app, &core, face);
         }
         Ok(UninstallView {
             outcome,
             view: view(Some(&c)),
+            sessions_disconnected,
         })
     })
     .await

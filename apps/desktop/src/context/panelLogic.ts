@@ -2,7 +2,7 @@
 // that Copy puts on the clipboard. No React and no Tauri here, so the wording is unit-tested.
 
 import { groupSessions } from "../format";
-import type { SessionView } from "../sessions";
+import { liveState, type SessionView } from "../sessions";
 import type { ItemKind, NextMoveCategory, SessionItem, SessionKey, TimelineEntry } from "./api";
 
 /** Under this window width the panel always floats (ADR-013). */
@@ -52,7 +52,8 @@ export const showsReviewPill = (s: Pick<SessionView, "needsReview">) => s.needsR
 /** Which of the panel's states a session is in. */
 export type PanelMode = "needs_you" | "working" | "history";
 
-export function panelMode(state: SessionView["state"]): PanelMode {
+export function panelMode(s: Pick<SessionView, "state" | "disconnectedUtc">): PanelMode {
+  const state = liveState(s);
   if (state === "needs_attention") return "needs_you";
   if (state === "working") return "working";
   return "history";

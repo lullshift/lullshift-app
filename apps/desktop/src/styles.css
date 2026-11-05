@@ -879,6 +879,17 @@ th[aria-sort="descending"] .sort {
   font-weight: 500;
 }
 
+/* A session's title above its short ID in History. */
+.history-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-family: inherit;
+  font-weight: 600;
+}
+
 .history-none {
   height: 100%;
   display: grid;
@@ -1040,17 +1051,6 @@ th[aria-sort="descending"] .sort {
   margin-top: var(--space-2);
 }
 
-/* ---------- Empty and loading ---------- */
-
-.empty {
-  display: grid;
-  justify-items: center;
-  gap: var(--space-3);
-  padding: var(--space-8) var(--space-6);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
-  text-align: center;
 /* Preview, paused stats and help (S05-T07, S05-T09) */
 
 .activity-preview {
@@ -1170,6 +1170,17 @@ th[aria-sort="descending"] .sort {
   color: var(--text-muted);
 }
 
+/* ---------- Empty and loading ---------- */
+
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-6);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  text-align: center;
 }
 
 .empty h2 {
@@ -1688,6 +1699,24 @@ button.session.tone-attention:hover {
 .detail-title {
   font-size: var(--text-lg);
   line-height: 1.25;
+}
+
+.detail-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.detail-title-row .detail-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.title-editor {
+  display: grid;
+  gap: var(--space-2);
 }
 
 .detail-title:focus {

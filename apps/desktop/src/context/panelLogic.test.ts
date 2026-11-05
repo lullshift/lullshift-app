@@ -26,6 +26,10 @@ const view = (id: string, state: SessionView["state"], needsReview = false): Ses
   lastSeenUtc: "2026-11-05T12:00:00Z",
   lastReceivedUtc: "2026-11-05T12:00:00Z",
   needsReview,
+  userTitle: null,
+  agentTitle: null,
+  intentLine: null,
+  disconnectedUtc: null,
 });
 
 const item = (id: number, kind: SessionItem["kind"], text: string, done = false): SessionItem => ({
@@ -85,11 +89,21 @@ describe("grouping and review pill", () => {
   });
 
   it("picks the panel mode from the state", () => {
-    expect(panelMode("needs_attention")).toBe("needs_you");
-    expect(panelMode("working")).toBe("working");
+    expect(panelMode(view("a", "needs_attention"))).toBe("needs_you");
+    expect(panelMode(view("a", "working"))).toBe("working");
     for (const s of ["unknown", "idle", "completed", "failed", "cancelled", "ended"] as const) {
-      expect(panelMode(s)).toBe("history");
+      expect(panelMode(view("a", s))).toBe("history");
     }
+  });
+
+  it("treats a disconnected session as history whatever it last reported", () => {
+    const gone = { ...view("a", "needs_attention"), disconnectedUtc: "2026-11-05T12:05:00Z" };
+    expect(panelMode(gone)).toBe("history");
+    // It also leaves the pinned and scrolling groups of the compact list.
+    expect(groupedList([gone, view("b", "working")])).toEqual({
+      pinned: [],
+      scrolling: [view("b", "working")],
+    });
   });
 });
 
@@ -183,5 +197,25 @@ describe("nothing is sent to an agent", () => {
     const commands = invoke.mock.calls.map((c) => c[0] as string);
     expect(commands).toHaveLength(18);
     for (const c of commands) expect(c).not.toMatch(/send|inject|agent|paste|answer|reply|type/i);
+  });
+});
+
+describe("setSessionTitle", () => {
+  beforeEach(() => invoke.mockReset());
+
+  it("sends the session key and the title to the Rust command", async () => {
+    invoke.mockResolvedValue(null);
+    await api.setSessionTitle({ provider: "claude-code", sessionId: "s1" }, "Fix login");
+    expect(invoke).toHaveBeenCalledWith("set_session_title", {
+      provider: "claude-code",
+      sessionId: "s1",
+      title: "Fix login",
+    });
+    await api.setSessionTitle({ provider: "claude-code", sessionId: "s1" }, "");
+    expect(invoke).toHaveBeenLastCalledWith("set_session_title", {
+      provider: "claude-code",
+      sessionId: "s1",
+      title: "",
+    });
   });
 });

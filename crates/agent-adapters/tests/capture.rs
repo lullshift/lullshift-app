@@ -102,21 +102,24 @@ async fn with_the_marker_only_the_allowed_fields_are_sent() {
         seen[0].1,
         Some(EventContext {
             intent: Some("SENTINEL_PROMPT fix the bug".into()),
-            ask: None
+            ask: None,
+            title: None
         })
     );
     assert_eq!(
         seen[1].1,
         Some(EventContext {
             intent: None,
-            ask: Some("SENTINEL_MESSAGE Claude needs permission".into())
+            ask: Some("SENTINEL_MESSAGE Claude needs permission".into()),
+            title: None
         })
     );
     assert_eq!(
         seen[2].1,
         Some(EventContext {
             intent: None,
-            ask: Some("Permission to use Bash".into())
+            ask: Some("Permission to use Bash".into()),
+            title: None
         })
     );
     assert_eq!(seen[3].1, None, "Stop: assistant message is never read");

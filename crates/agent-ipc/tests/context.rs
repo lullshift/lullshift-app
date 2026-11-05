@@ -22,6 +22,7 @@ fn envelope_has_no_context_key_without_context() {
     let ctx = EventContext {
         intent: Some("do it".into()),
         ask: None,
+        title: None,
     };
     let text =
         String::from_utf8(request_line("tok", EVENT, Some(&ctx)).expect("line")).expect("utf8");
@@ -42,6 +43,7 @@ async fn context_travels_beside_the_event_over_the_real_endpoint() {
     let ctx = EventContext {
         intent: Some("fix it".into()),
         ask: Some("Permission to use Bash".into()),
+        title: None,
     };
     let r = send_event_with_context(dir.path(), EVENT, Some(&ctx), DEADLINE)
         .await
@@ -53,4 +55,16 @@ async fn context_travels_beside_the_event_over_the_real_endpoint() {
 
     let got = seen.lock().expect("lock").clone();
     assert_eq!(got, vec![Some(ctx), None]);
+}
+
+#[test]
+fn title_is_part_of_the_envelope_and_skipped_when_absent() {
+    let ctx = EventContext {
+        title: Some("My task".into()),
+        ..EventContext::default()
+    };
+    let text =
+        String::from_utf8(request_line("tok", EVENT, Some(&ctx)).expect("line")).expect("utf8");
+    assert!(text.contains(r#""context":{"title":"My task"}"#), "{text}");
+    assert!(!ctx.is_empty());
 }

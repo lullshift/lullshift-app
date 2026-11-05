@@ -41,6 +41,10 @@ export interface SessionContext {
   reviewedUtc: string | null;
   /** True if any captured (agent) text is stored for this session. */
   hasCaptured: boolean;
+  /** A name the user gave the session; null when none. */
+  userTitle: string | null;
+  /** The agent's own title (captured with consent, so labelled as such); null when none. */
+  agentTitle: { text: string; capturedUtc: string } | null;
 }
 
 export interface TimelineEntry {
@@ -85,6 +89,13 @@ export const setSessionNotes = (s: SessionKey, notes: string) =>
 /** An empty string removes the user's intent (the captured one, if any, shows again). */
 export const setSessionIntent = (s: SessionKey, intent: string) =>
   invoke<null>("set_session_intent", { ...k(s), intent });
+
+/**
+ * Names a session. Plain text, trimmed, at most 120 characters, no control characters; an empty
+ * string removes the name (the agent's title or another fallback shows again).
+ */
+export const setSessionTitle = (s: SessionKey, title: string) =>
+  invoke<null>("set_session_title", { ...k(s), title });
 
 export const addSessionItem = (
   s: SessionKey,

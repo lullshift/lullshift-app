@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  disconnectNotice,
+  ellipsize,
   filterSessions,
   groupSessions,
   providerIcon,
   providerName,
   relativeTime,
+  sessionName,
   shortId,
   sortHistory,
   summarize,
@@ -29,6 +32,10 @@ function session(
     lastSeenUtc: ago(10),
     lastReceivedUtc: ago(10),
     needsReview: false,
+    userTitle: null,
+    agentTitle: null,
+    intentLine: null,
+    disconnectedUtc: null,
   } satisfies SessionView;
 }
 
@@ -153,5 +160,108 @@ describe("sortHistory", () => {
   it("keeps the incoming order for ties", () => {
     const c = { ...a, providerSessionId: "zzz" };
     expect(sortHistory([c, a], { key: "tool", descending: false })).toEqual([c, a]);
+  });
+});
+
+describe("sessionName", () => {
+  const named = (over: Partial<SessionView>) => ({
+    ...session("working", "0b1c2d3e-1111"),
+    ...over,
+  });
+
+  it("prefers the user's title, then the agent's, then the intent, then the tool", () => {
+    const both = named({ userTitle: "Mine", agentTitle: "Agent", intentLine: "Intent" });
+    expect(sessionName(both)).toEqual({
+      primary: "Mine",
+      secondary: "Claude Code · 0b1c2d3e",
+      source: "user",
+    });
+    expect(sessionName(named({ agentTitle: "Agent", intentLine: "Intent" })).primary).toBe("Agent");
+    expect(sessionName(named({ intentLine: "Fix the login bug" }))).toEqual({
+      primary: "Fix the login bug",
+      secondary: "Claude Code · 0b1c2d3e",
+      source: "intent",
+    });
+    expect(sessionName(named({}))).toEqual({
+      primary: "Claude Code",
+      secondary: null,
+      source: "tool",
+    });
+  });
+
+  it("skips empty and blank titles and flattens whitespace", () => {
+    expect(sessionName(named({ userTitle: "   ", agentTitle: "A  \n b" })).primary).toBe("A b");
+    expect(sessionName(named({ userTitle: "", agentTitle: "", intentLine: " " })).source).toBe(
+      "tool",
+    );
+  });
+
+  it("cuts an intent title to 80 characters with an ellipsis, but not a real title", () => {
+    const long = "word ".repeat(40).trim();
+    const intent = sessionName(named({ intentLine: long })).primary;
+    expect([...intent].length).toBeLessThanOrEqual(80);
+    expect(intent.endsWith("…")).toBe(true);
+    expect(sessionName(named({ agentTitle: long })).primary).toBe(long);
+    expect(ellipsize("short", 80)).toBe("short");
+    expect(ellipsize("abcdef", 4)).toBe("abc…");
+  });
+
+  it("is searchable by title", () => {
+    const list = [named({ agentTitle: "Billing refactor", providerSessionId: "x1" }), named({})];
+    expect(filterSessions(list, { query: "billing", tool: "all" })).toHaveLength(1);
+  });
+
+  it("sorts named sessions by the name shown", () => {
+    const list = [
+      named({ providerSessionId: "z", userTitle: "Alpha" }),
+      named({ providerSessionId: "a", userTitle: "Zulu" }),
+    ];
+    const sorted = sortHistory(list, { key: "session", descending: false });
+    expect(sorted.map((s) => s.userTitle)).toEqual(["Alpha", "Zulu"]);
+  });
+});
+
+describe("disconnected sessions in the dashboard", () => {
+  const gone = (state: SessionState, id: string): SessionView => ({
+    ...session(state, id),
+    disconnectedUtc: "2026-11-05T11:59:00Z",
+  });
+
+  it("leave Needs you and Working and go to History", () => {
+    const g = groupSessions([
+      gone("needs_attention", "a"),
+      gone("working", "b"),
+      session("working", "c"),
+    ]);
+    expect(g.needsYou).toEqual([]);
+    expect(g.working.map((s) => s.providerSessionId)).toEqual(["c"]);
+    expect(g.recent.map((s) => s.providerSessionId)).toEqual(["a", "b"]);
+    // The raw last state is still there for the History label to build on.
+    expect(g.recent[0]?.lastKnownState).toBe("needs_attention");
+  });
+
+  it("never count toward the summary", () => {
+    expect(summarize([gone("needs_attention", "a"), gone("working", "b")]).title).toBe("All quiet");
+    const s = summarize([gone("working", "a"), session("working", "b")]);
+    expect(s.title).toBe("1 agent working");
+    // A silent, untracked session is not reported as "hasn't reported recently".
+    expect(summarize([{ ...gone("working", "x"), reason: "stale" as const }]).detail).not.toMatch(
+      /reported recently/,
+    );
+  });
+});
+
+describe("disconnectNotice", () => {
+  it("is calm, singular or plural, and empty for none", () => {
+    expect(disconnectNotice("claude-code", 2)).toBe(
+      "Claude Code disconnected. 2 sessions are no longer tracked.",
+    );
+    expect(disconnectNotice("claude-code", 1)).toBe(
+      "Claude Code disconnected. 1 session is no longer tracked.",
+    );
+    expect(disconnectNotice("claude-code", 0)).toBeNull();
+    expect(disconnectNotice("cursor", 3)).toBe(
+      "Cursor disconnected. 3 sessions are no longer tracked.",
+    );
   });
 });

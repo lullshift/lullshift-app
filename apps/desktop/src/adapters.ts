@@ -12,6 +12,8 @@ export interface AdapterView {
 export interface UninstallView {
   outcome: "restored" | "removed" | "nothing_to_remove";
   view: AdapterView;
+  /** Open sessions that stopped being tracked because of the disconnect (S05-T10). */
+  sessionsDisconnected: number;
 }
 
 const STATUS: Record<AdapterStatus, string> = {

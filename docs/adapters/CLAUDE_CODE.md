@@ -13,7 +13,7 @@ Re-check these pages when Claude Code changes its hooks; the adapter must not re
 | `canObserveAttention` | Yes | `PermissionRequest` (about to ask), `Notification` with `notification_type` `permission_prompt` (after about 6 s), `idle_prompt` (about 60 s after Claude finished with no typing), `elicitation_dialog`. |
 | Turn end | Yes | `Stop` runs when the main agent finishes responding: **per turn, not task completion**. It does not run after a user interrupt (Esc). `background_tasks` lists work still running. `StopFailure` reports API errors. |
 | `canObserveCompletion` | **No** | No event says the task is done. Lullshift never maps any Claude Code event to `completed`. |
-| `canProvideTaskSummary` | Not used | `prompt`, `session_title`, `last_assistant_message`, tool inputs and transcripts exist but are task content. The adapter never reads or forwards them (PRD privacy rules). |
+| `canProvideTaskSummary` | Not used | `prompt`, `session_title`, `last_assistant_message`, tool inputs and transcripts exist but are task content. The adapter never reads or forwards them (PRD privacy rules), with one opt-in exception: the user-set session name from the transcript (see below). |
 | `canRemoteApprove` | No (out of scope) | Hooks could answer permission requests; Lullshift never does. |
 
 Known gaps, shown honestly in the UI:
@@ -37,7 +37,9 @@ Known gaps, shown honestly in the UI:
 | `StopFailure` | `failed` | an API error ended the turn; the next prompt reopens the session |
 | `SessionEnd` | `session_ended` → Ended | `metadata.reason`; ended is not completed |
 
-Fields forwarded: `session_id` (as `providerSessionId`), the event type, the forwarder's clock time and the small `metadata` hints above. Never forwarded: `transcript_path`, `cwd`, titles, assistant messages, tool inputs or responses. Prompts, `Notification.message` and the `PermissionRequest` tool name are forwarded only when the user has turned on task-context capture, cleaned and capped, in the IPC envelope's `context` field rather than in the event (ADR-013).
+Fields forwarded: `session_id` (as `providerSessionId`), the event type, the forwarder's clock time and the small `metadata` hints above. Never forwarded: `cwd`, assistant messages, tool inputs or responses, and the transcript itself. Prompts, `Notification.message` and the `PermissionRequest` tool name are forwarded only when the user has turned on task-context capture, cleaned and capped, in the IPC envelope's `context` field rather than in the event (ADR-013).
+
+**Session title (opt-in, Sprint 05).** With the same capture consent marker, the forwarder reads the last 256 KiB of the file named by the hook's `transcript_path` and looks for the last `{"type":"custom-title","customTitle":"…"}` line, which Claude Code writes when the user names a session (`/rename`, `-n`). Only that string is kept: cleaned, redacted, one line, at most 120 characters, sent as `context.title`. The path must be absolute, a regular file (not a link) named exactly `<session_id>.jsonl`; anything else, a missing file or an unknown format means no title, silently. Claude Code's own AI-generated titles are not stored in the transcript, so they are not available. The transcript format is internal to Claude Code and may change without notice. Details: ADR-013, "Session titles (Sprint 05)".
 
 Replays and duplicates: each hook run gets a fresh random `eventId`. A repeated signal for the same state doesn't change state, and notifications fire only on a change into `needs_attention`, so replays never produce duplicate notifications.
 

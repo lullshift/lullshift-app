@@ -7,8 +7,8 @@ pub mod token;
 pub mod transport;
 
 pub use protocol::{
-    Config, ErrorCode, EventContext, EventSink, MAX_ASK_CHARS, MAX_INTENT_CHARS, Reply, SinkError,
-    StatsSnapshot,
+    Config, ErrorCode, EventContext, EventSink, MAX_ASK_CHARS, MAX_INTENT_CHARS, MAX_TITLE_CHARS,
+    Reply, SinkError, StatsSnapshot,
 };
 pub use token::Token;
 pub use transport::{

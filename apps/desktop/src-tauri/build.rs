@@ -21,6 +21,7 @@ fn main() {
             "session_detail",
             "set_session_notes",
             "set_session_intent",
+            "set_session_title",
             "add_session_item",
             "update_session_item",
             "delete_session_item",

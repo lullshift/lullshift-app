@@ -98,10 +98,13 @@ fn run_inner(args: &HookArgs, mut stdin: impl Read, started: OffsetDateTime) -> 
     let (event, context) = match args.adapter.as_str() {
         claude_code::ADAPTER_ID => match build_claude_code_event(&buf, started) {
             Some(e) => {
-                // Second look at the hook payload, only with consent.
-                let context = capture_enabled(&args.data_dir, &args.adapter)
-                    .then(|| claude_code::map_context(&buf))
-                    .flatten();
+                // Second look at the hook payload and the transcript title, only with consent.
+                let context = context_for(
+                    &args.data_dir,
+                    &args.adapter,
+                    &buf,
+                    claude_code::title::read_title,
+                );
                 (e, context)
             }
             None => return Outcome::Ignored,
@@ -109,6 +112,25 @@ fn run_inner(args: &HookArgs, mut stdin: impl Read, started: OffsetDateTime) -> 
         _ => return Outcome::BadArguments,
     };
     send(&args.data_dir, &event, context.as_ref())
+}
+
+/// The optional task text for one Claude Code hook (ADR-013): prompt, question and the session
+/// title. Without the consent marker this returns `None` before anything is read; in
+/// particular `read_title` is not called, so the transcript file is never opened. `read_title`
+/// is a parameter so tests can prove that.
+pub fn context_for(
+    data_dir: &Path,
+    adapter: &str,
+    payload: &[u8],
+    read_title: impl FnOnce(&Path, &str) -> Option<String>,
+) -> Option<EventContext> {
+    if !capture_enabled(data_dir, adapter) {
+        return None;
+    }
+    let mut context = claude_code::map_context(payload).unwrap_or_default();
+    context.title = claude_code::transcript_ref(payload)
+        .and_then(|(path, session)| read_title(&path, &session));
+    context.normalized()
 }
 
 /// Builds and validates the agent event JSON for one Claude Code hook payload.

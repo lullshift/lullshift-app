@@ -137,7 +137,13 @@ async fn dashboard(app: AppHandle, core: tauri::State<'_, Arc<Core>>) -> Result<
             set_tray_face(
                 &app,
                 &core,
-                TrayFace::of(dashboard.sessions.iter().map(|s| &s.view)),
+                TrayFace::of(
+                    dashboard
+                        .sessions
+                        .iter()
+                        .filter(|s| s.disconnected_utc.is_none())
+                        .map(|s| &s.view),
+                ),
             );
         }
         dashboard
@@ -150,12 +156,28 @@ async fn dashboard(app: AppHandle, core: tauri::State<'_, Arc<Core>>) -> Result<
 fn current_face(core: &Core) -> Option<TrayFace> {
     let now = OffsetDateTime::now_utc();
     let guard = core.store.lock().ok()?;
-    let records = guard.as_ref()?.sessions().ok()?;
+    let store = guard.as_ref()?;
+    let records = store.sessions().ok()?;
+    let disconnected = store.disconnected_sessions().unwrap_or_default();
+    Some(face_for(&records, &disconnected, core.started_utc, now))
+}
+
+/// The mascot's face for these sessions. Sessions of a disconnected tool never wake it
+/// (S05-T10).
+fn face_for(
+    records: &[SessionRecord],
+    disconnected: &std::collections::HashMap<(String, String), OffsetDateTime>,
+    started: OffsetDateTime,
+    now: OffsetDateTime,
+) -> TrayFace {
     let views: Vec<SessionView> = records
         .iter()
-        .map(|r| view(r, core.started_utc, now, DEFAULT_STALE_AFTER))
+        .filter(|r| {
+            !disconnected.contains_key(&(r.provider.clone(), r.provider_session_id.clone()))
+        })
+        .map(|r| view(r, started, now, DEFAULT_STALE_AFTER))
         .collect();
-    Some(TrayFace::of(&views))
+    TrayFace::of(&views)
 }
 
 fn build_dashboard(core: &Core) -> Dashboard {
@@ -178,13 +200,13 @@ fn build_dashboard(core: &Core) -> Dashboard {
             Some(s) => match s.sessions() {
                 Ok(records) => {
                     // A failure here only hides the review flag; the dashboard still works.
-                    let summaries = s.context_summaries().unwrap_or_default();
+                    let lookups = context::DashboardLookups::load(s);
                     (
                         records
                             .iter()
                             .map(|r| {
                                 let v = view(r, core.started_utc, now, DEFAULT_STALE_AFTER);
-                                context::dashboard_session(v, r, &summaries)
+                                context::dashboard_session(v, r, &lookups)
                             })
                             .collect(),
                         core.store_health,
@@ -481,9 +503,12 @@ pub fn run() {
             activities::activity_snapshot,
             activities::activity_save_snapshot,
             activities::activity_clear_snapshot,
+            activities::activity_preview,
+            activities::activity_add_play,
             context::session_detail,
             context::set_session_notes,
             context::set_session_intent,
+            context::set_session_title,
             context::add_session_item,
             context::update_session_item,
             context::delete_session_item,
@@ -503,8 +528,6 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running Lullshift");
 }
-            activities::activity_preview,
-            activities::activity_add_play,
 
 #[cfg(test)]
 mod tests {
@@ -592,6 +615,31 @@ mod tests {
             last_seen_utc: t,
             last_received_utc: t,
         }
+    }
+
+    #[test]
+    fn disconnected_sessions_never_wake_the_mascot() {
+        let t = OffsetDateTime::now_utc();
+        let record = |id: &str| SessionRecord {
+            provider: "claude-code".into(),
+            provider_session_id: id.into(),
+            state: SessionState::NeedsAttention,
+            state_timestamp_utc: Some(t),
+            last_seen_utc: t,
+            last_received_utc: t,
+        };
+        let started = t - time::Duration::minutes(1);
+        let records = [record("a"), record("b")];
+        let mut gone = std::collections::HashMap::new();
+        assert_eq!(face_for(&records, &gone, started, t), TrayFace::Awake);
+        gone.insert(("claude-code".to_owned(), "a".to_owned()), t);
+        assert_eq!(
+            face_for(&records, &gone, started, t),
+            TrayFace::Awake,
+            "b still needs you"
+        );
+        gone.insert(("claude-code".to_owned(), "b".to_owned()), t);
+        assert_eq!(face_for(&records, &gone, started, t), TrayFace::Asleep);
     }
 
     #[test]

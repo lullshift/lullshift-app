@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { providerName, relativeTime, shortId } from "../format";
-import { reasonText, stateView, type SessionView } from "../sessions";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { providerName, relativeTime, sessionName, shortId } from "../format";
+import { reasonText, sessionStateView, type SessionView } from "../sessions";
 import { Banner } from "../ui/Banner";
 import { Dialog } from "../ui/Dialog";
 import { Icon } from "../ui/Icon";
@@ -16,6 +16,7 @@ import {
   moveSessionItem,
   setSessionIntent,
   setSessionNotes,
+  setSessionTitle,
   unlinkSessions,
   updateSessionItem,
   type ExportFormat,
@@ -74,8 +75,18 @@ export default function DetailPanel(props: Props) {
   }, []);
 
   const detail = load.status === "ready" ? load.detail : load.status === "error" ? load.last : null;
-  const mode = panelMode(session.state);
-  const view = stateView(session.state);
+  const mode = panelMode(session);
+  const view = sessionStateView(session);
+  const sname = sessionName(session);
+  const [renaming, setRenaming] = useState(false);
+  const renameBtn = useRef<HTMLButtonElement>(null);
+  const wasRenaming = useRef(false);
+
+  // Put focus back on "Rename" when the editor closes.
+  useEffect(() => {
+    if (wasRenaming.current && !renaming) renameBtn.current?.focus();
+    wasRenaming.current = renaming;
+  }, [renaming]);
   const name = providerName(session.provider);
   const why = reasonText(session, staleAfterSeconds);
 
@@ -96,7 +107,7 @@ export default function DetailPanel(props: Props) {
     [reload],
   );
 
-  const title =
+  const fallbackTitle =
     mode === "needs_you"
       ? `${name} needs you`
       : mode === "working"
@@ -111,15 +122,44 @@ export default function DetailPanel(props: Props) {
     >
       <header className="detail-head">
         <div className="detail-titles">
-          <h2 ref={headingRef} tabIndex={-1} className="detail-title">
-            {title}
-          </h2>
+          {renaming ? (
+            <TitleEditor
+              initial={session.userTitle ?? ""}
+              onCancel={() => setRenaming(false)}
+              onSave={async (text) => {
+                if (
+                  await run(() => setSessionTitle(key, text), "The name wasn't saved. Try again.")
+                ) {
+                  setRenaming(false);
+                  onChanged();
+                }
+              }}
+            />
+          ) : (
+            <div className="detail-title-row">
+              <h2 ref={headingRef} tabIndex={-1} className="detail-title">
+                {sname.source === "tool" ? fallbackTitle : sname.primary}
+              </h2>
+              <button
+                ref={renameBtn}
+                type="button"
+                className="btn-mini"
+                onClick={() => setRenaming(true)}
+              >
+                Rename
+                <span className="visually-hidden"> session</span>
+              </button>
+            </div>
+          )}
           <p className="detail-sub">
             <StatePill view={view} />
             <span className="session-id" title={session.providerSessionId}>
               <span className="visually-hidden">Session </span>
-              {shortId(session.providerSessionId)}
+              {sname.secondary ?? shortId(session.providerSessionId)}
             </span>
+            {sname.source === "agent" && (
+              <span className="field-note">Title from the agent · captured with your OK</span>
+            )}
             <span className="session-time">{relativeTime(session.lastReceivedUtc, now)}</span>
           </p>
         </div>
@@ -561,6 +601,74 @@ function Timeline({ detail }: { detail: SessionDetail }) {
   );
 }
 
+/** Inline rename: Enter saves, Esc cancels. An empty name removes the user's name. */
+function TitleEditor({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: string;
+  onSave: (text: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const id = useId();
+  const [text, setText] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    input.current?.focus();
+    input.current?.select();
+  }, []);
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave(text);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="title-editor">
+      <label htmlFor={id} className="visually-hidden">
+        Session name
+      </label>
+      <input
+        ref={input}
+        id={id}
+        className="field"
+        type="text"
+        maxLength={120}
+        value={text}
+        placeholder="Name this session"
+        disabled={saving}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void save();
+          } else if (e.key === "Escape") {
+            // Handled here, so Esc doesn't also close the panel.
+            e.preventDefault();
+            onCancel();
+          }
+        }}
+      />
+      <p className="field-note">
+        Enter to save, Esc to cancel. Leave it empty to remove your name.
+      </p>
+      <span className="item-actions">
+        <button type="button" className="btn-mini" disabled={saving} onClick={() => void save()}>
+          Save
+        </button>
+        <button type="button" className="btn-mini" disabled={saving} onClick={onCancel}>
+          Cancel
+        </button>
+      </span>
+    </div>
+  );
+}
+
 function Links({ session, sessions, detail, run, onOpenSession }: BodyProps) {
   const key = viewKey(session);
   const [pick, setPick] = useState("");
@@ -568,7 +676,13 @@ function Links({ session, sessions, detail, run, onOpenSession }: BodyProps) {
   const options = sessions.filter(
     (s) => keyString(viewKey(s)) !== keyString(key) && !linked.has(keyString(viewKey(s))),
   );
-  const label = (k: SessionKey) => `${providerName(k.provider)} · ${shortId(k.sessionId)}`;
+  const label = (k: SessionKey) => {
+    const found = sessions.find((s) => keyString(viewKey(s)) === keyString(k));
+    const name = found ? sessionName(found) : null;
+    return name?.secondary
+      ? `${name.primary} (${name.secondary})`
+      : `${providerName(k.provider)} · ${shortId(k.sessionId)}`;
+  };
   const known = (k: SessionKey) => sessions.some((s) => keyString(viewKey(s)) === keyString(k));
 
   return (
@@ -614,7 +728,7 @@ function Links({ session, sessions, detail, run, onOpenSession }: BodyProps) {
           <option value="">Choose a session…</option>
           {options.map((s) => (
             <option key={keyString(viewKey(s))} value={keyString(viewKey(s))}>
-              {label(viewKey(s))} · {stateView(s.state).label}
+              {label(viewKey(s))} · {sessionStateView(s).label}
             </option>
           ))}
         </select>

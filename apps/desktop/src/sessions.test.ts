@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import { adapterErrorText, adapterStatusText } from "./adapters";
 import { createDashboardStore } from "./dashboardStore";
 import {
+  NOT_TRACKED_LABEL,
   healthProblems,
+  isTracked,
+  liveState,
   reasonText,
+  sessionStateView,
   sortSessions,
   stateView,
   type Dashboard,
@@ -24,6 +28,10 @@ const s = (
   lastSeenUtc: at,
   lastReceivedUtc: at,
   needsReview: false,
+  userTitle: null,
+  agentTitle: null,
+  intentLine: null,
+  disconnectedUtc: null,
   ...extra,
 });
 
@@ -67,6 +75,42 @@ describe("reasonText", () => {
     };
     expect(reasonText(stale, 600)).toBe("No update for over 10 minutes. Last known: Needs you.");
     expect(reasonText({ ...restart, reason: "not_reported" }, 600)).toMatch(/hasn't reported/);
+  });
+});
+
+describe("disconnected sessions", () => {
+  const gone = s("a", "working", "2026-11-05T10:00:00Z", {
+    disconnectedUtc: "2026-11-05T10:05:00Z",
+  });
+
+  it("are not tracked and show the honest label, keeping the raw last state", () => {
+    expect(isTracked(gone)).toBe(false);
+    expect(liveState(gone)).toBe("unknown");
+    expect(sessionStateView(gone)).toEqual({ label: NOT_TRACKED_LABEL, tone: "neutral" });
+    expect(NOT_TRACKED_LABEL).toBe("Not tracked: disconnected");
+    expect(gone.state).toBe("working");
+    expect(gone.lastKnownState).toBe("working");
+    // Tracked sessions are unchanged.
+    const live = s("b", "needs_attention", "2026-11-05T10:00:00Z");
+    expect(isTracked(live)).toBe(true);
+    expect(sessionStateView(live)).toEqual(stateView("needs_attention"));
+  });
+
+  it("explain themselves with the last reported state", () => {
+    expect(reasonText(gone, 600)).toBe(
+      "The tool was disconnected, so this session is no longer tracked. Last known: Working.",
+    );
+  });
+
+  it("sort below live sessions", () => {
+    const sorted = sortSessions([
+      s("gone", "needs_attention", "2026-11-05T11:00:00Z", {
+        disconnectedUtc: "2026-11-05T11:01:00Z",
+      }),
+      s("idle", "idle", "2026-11-05T09:00:00Z"),
+      s("busy", "working", "2026-11-05T08:00:00Z"),
+    ]);
+    expect(sorted.map((x) => x.providerSessionId)).toEqual(["busy", "gone", "idle"]);
   });
 });
 

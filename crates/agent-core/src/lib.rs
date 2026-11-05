@@ -4,6 +4,7 @@
 pub mod event;
 pub mod reducer;
 pub mod session;
+pub mod text;
 
 pub use event::{AgentEvent, EventError, EventType, parse_event};
 pub use reducer::{SessionRecord, SessionView, ViewReason, apply, view};

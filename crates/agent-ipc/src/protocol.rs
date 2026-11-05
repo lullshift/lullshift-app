@@ -88,6 +88,8 @@ impl Reply {
 pub const MAX_INTENT_CHARS: usize = 2000;
 /// Most characters kept of what the agent is asking.
 pub const MAX_ASK_CHARS: usize = 300;
+/// Most characters kept of a session title (Sprint 05, ADR-013).
+pub const MAX_TITLE_CHARS: usize = 120;
 
 /// Optional task text sent beside an event, only with the user's opt-in (ADR-013). Unknown
 /// fields are rejected. Longer strings are cut to the caps; empty strings count as absent.
@@ -98,11 +100,14 @@ pub struct EventContext {
     pub intent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ask: Option<String>,
+    /// The session's own name as the agent stores it (Claude Code `custom-title`), one line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 impl EventContext {
     pub fn is_empty(&self) -> bool {
-        self.intent.is_none() && self.ask.is_none()
+        self.intent.is_none() && self.ask.is_none() && self.title.is_none()
     }
 
     /// Applies the caps and drops empty strings; `None` if nothing is left.
@@ -119,6 +124,7 @@ impl EventContext {
         let out = Self {
             intent: cap(self.intent, MAX_INTENT_CHARS),
             ask: cap(self.ask, MAX_ASK_CHARS),
+            title: cap(self.title, MAX_TITLE_CHARS),
         };
         (!out.is_empty()).then_some(out)
     }
@@ -569,9 +575,34 @@ mod tests {
             got,
             vec![Some(EventContext {
                 intent: Some("fix the bug".into()),
-                ask: Some("ok?".into())
+                ask: Some("ok?".into()),
+                title: None,
             })]
         );
+    }
+
+    #[tokio::test]
+    async fn title_is_accepted_capped_and_alone_is_a_context() {
+        let (h, rec, token) = handler(Config::default());
+        let long = "é".repeat(500);
+        for ctx in [
+            r#"{"title":"My task"}"#.to_owned(),
+            format!(r#"{{"title":"{long}"}}"#),
+            r#"{"title":""}"#.to_owned(),
+        ] {
+            let (r, _) = roundtrip(&h, &request_with_context(token.expose(), &ctx)).await;
+            assert!(r.ok && r.error.is_none());
+        }
+        let (r, _) = roundtrip(&h, &request_with_context(token.expose(), r#"{"title":5}"#)).await;
+        assert_eq!(r.error, Some(ErrorCode::Malformed));
+        let got = rec.contexts.lock().expect("lock").clone();
+        assert_eq!(
+            got[0].as_ref().and_then(|c| c.title.as_deref()),
+            Some("My task")
+        );
+        let capped = got[1].as_ref().and_then(|c| c.title.as_ref());
+        assert_eq!(capped.map(|t| t.chars().count()), Some(120));
+        assert_eq!(got[2], None);
     }
 
     #[tokio::test]

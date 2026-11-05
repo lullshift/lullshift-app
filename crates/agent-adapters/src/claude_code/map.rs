@@ -1,10 +1,11 @@
 //! Claude Code hook payload → normalized agent event (docs/adapters/CLAUDE_CODE.md).
 //!
 //! [`map_hook`] reads only `session_id`, `hook_event_name` and a few enum-like fields. Prompts,
-//! titles, messages, tool data, paths and transcripts are never read into Lullshift types.
+//! messages, tool data, paths and transcripts are never read into Lullshift types.
 //!
 //! [`map_context`] is the one exception, used only when the user opted in to capture
-//! (ADR-013): it reads `prompt`, `message` and `tool_name`, nothing else.
+//! (ADR-013): it reads `prompt`, `message` and `tool_name`, nothing else. With the same consent
+//! [`transcript_ref`] names the transcript file whose session title `title::read_title` reads.
 
 use agent_core::EventType;
 use agent_ipc::{EventContext, MAX_ASK_CHARS, MAX_INTENT_CHARS};
@@ -141,6 +142,7 @@ pub fn map_context(stdin: &[u8]) -> Option<EventContext> {
         "UserPromptSubmit" => EventContext {
             intent: text(&input.prompt).map(|p| redact::clean(&p, MAX_INTENT_CHARS)),
             ask: None,
+            title: None,
         },
         "Notification" => {
             let kind = input.notification_type.as_ref().and_then(Value::as_str)?;
@@ -153,6 +155,7 @@ pub fn map_context(stdin: &[u8]) -> Option<EventContext> {
             EventContext {
                 intent: None,
                 ask: text(&input.message).map(|m| redact::clean(&m, MAX_ASK_CHARS)),
+                title: None,
             }
         }
         "PermissionRequest" => EventContext {
@@ -160,10 +163,24 @@ pub fn map_context(stdin: &[u8]) -> Option<EventContext> {
             ask: text(&input.tool_name)
                 .filter(|t| is_tool_name(t))
                 .map(|t| format!("Permission to use {t}")),
+            title: None,
         },
         _ => return None,
     };
     ctx.normalized()
+}
+
+/// Where the session's transcript is, as the hook reports it: `(transcript_path, session_id)`.
+/// Only for the title read, which runs only with consent (ADR-013); the path goes no further.
+pub fn transcript_ref(stdin: &[u8]) -> Option<(std::path::PathBuf, String)> {
+    #[derive(Deserialize)]
+    struct Refs {
+        session_id: String,
+        transcript_path: Option<Value>,
+    }
+    let refs: Refs = serde_json::from_slice(stdin).ok()?;
+    let path = refs.transcript_path?.as_str()?.to_owned();
+    (!path.is_empty()).then(|| (std::path::PathBuf::from(path), refs.session_id))
 }
 
 /// A short identifier-like tool name (`Bash`, `mcp__server__tool`); anything else is dropped.

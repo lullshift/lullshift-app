@@ -18,6 +18,11 @@ pub const MAX_ASK_CHARS: usize = 300;
 /// One decision, checklist or Next Move item.
 pub const MAX_ITEM_CHARS: usize = 2000;
 pub const MAX_NOTES_CHARS: usize = 20_000;
+/// A session title, the user's or the agent's (S05-T11).
+pub const MAX_TITLE_CHARS: usize = 120;
+/// Longest first line of a captured intent that [`SessionLabels`] carries (the UI cuts it
+/// shorter for display).
+const INTENT_LINE_CHARS: usize = 200;
 pub const MAX_ITEMS_PER_SESSION: usize = 200;
 
 const KINDS: [&str; 3] = ["decision", "checklist", "next_move"];
@@ -38,12 +43,26 @@ pub struct ContextRecord {
     pub captured_intent: Option<Captured>,
     pub ask: Option<Captured>,
     pub reviewed_utc: Option<String>,
+    /// A name the user gave the session.
+    pub user_title: Option<String>,
+    /// The agent's own title, captured only with consent.
+    pub agent_title: Option<Captured>,
 }
 
 impl ContextRecord {
     pub fn has_captured(&self) -> bool {
-        self.captured_intent.is_some() || self.ask.is_some()
+        self.captured_intent.is_some() || self.ask.is_some() || self.agent_title.is_some()
     }
+}
+
+/// What the session lists need to name a session (S05-T11). The display order (user title,
+/// agent title, intent line, tool name and short id) is decided by the UI.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SessionLabels {
+    pub user_title: Option<String>,
+    pub agent_title: Option<String>,
+    /// First line of the captured intent, at most 200 characters.
+    pub intent_line: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,12 +190,15 @@ impl Store {
             Option<String>,
             Option<String>,
             Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
         );
         let row: Option<Row> = self
             .conn
             .query_row(
                 "SELECT user_intent, notes, captured_intent, captured_intent_utc, NULL,
-                        NULL, ask, ask_utc, reviewed_utc
+                        NULL, ask, ask_utc, reviewed_utc, user_title, agent_title, agent_title_utc
                  FROM session_context WHERE provider = ?1 AND provider_session_id = ?2",
                 params![provider, id],
                 |r| {
@@ -190,19 +212,26 @@ impl Store {
                         r.get(6)?,
                         r.get(7)?,
                         r.get(8)?,
+                        r.get(9)?,
+                        r.get(10)?,
+                        r.get(11)?,
                     ))
                 },
             )
             .optional()?;
-        row.map(|(ui, notes, ci, ciu, _lr, _lru, ask, asku, rev)| {
-            Ok(ContextRecord {
-                user_intent: ui,
-                notes,
-                captured_intent: captured(ci, ciu)?,
-                ask: captured(ask, asku)?,
-                reviewed_utc: rev,
-            })
-        })
+        row.map(
+            |(ui, notes, ci, ciu, _lr, _lru, ask, asku, rev, ut, at, atu)| {
+                Ok(ContextRecord {
+                    user_intent: ui,
+                    notes,
+                    captured_intent: captured(ci, ciu)?,
+                    ask: captured(ask, asku)?,
+                    reviewed_utc: rev,
+                    user_title: ut,
+                    agent_title: captured(at, atu)?,
+                })
+            },
+        )
         .transpose()
     }
 
@@ -299,6 +328,90 @@ impl Store {
         Ok(())
     }
 
+    /// Sets the name the user gave the session; empty (or blank) removes it. Plain text on one
+    /// line: at most [`MAX_TITLE_CHARS`] characters and no control characters.
+    pub fn set_user_title(
+        &mut self,
+        provider: &str,
+        id: &str,
+        title: &str,
+        now: OffsetDateTime,
+    ) -> Result<()> {
+        let title = title.trim();
+        if chars(title) > MAX_TITLE_CHARS || agent_core::text::has_unsafe_chars(title, false) {
+            return Err(StoreError::InvalidInput("title"));
+        }
+        let value = (!title.is_empty()).then_some(title);
+        let tx = self.conn.transaction()?;
+        let ts = ensure_row(&tx, provider, id, now)?;
+        tx.execute(
+            "UPDATE session_context SET user_title = ?3, updated_utc = ?4 WHERE provider = ?1 AND provider_session_id = ?2",
+            params![provider, id, value, ts],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Stores the agent's own title (captured), replacing the previous one. The caller has
+    /// cleaned and limited the text. A later event without a title leaves it alone.
+    pub fn record_agent_title(
+        &mut self,
+        provider: &str,
+        id: &str,
+        title: &str,
+        now: OffsetDateTime,
+    ) -> Result<()> {
+        if title.is_empty() || chars(title) > MAX_TITLE_CHARS || title.chars().any(char::is_control)
+        {
+            return Err(StoreError::InvalidInput("captured title"));
+        }
+        let tx = self.conn.transaction()?;
+        let ts = ensure_row(&tx, provider, id, now)?;
+        tx.execute(
+            "UPDATE session_context SET agent_title = ?3, agent_title_utc = ?4, updated_utc = ?4
+             WHERE provider = ?1 AND provider_session_id = ?2",
+            params![provider, id, title, ts],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Names for the session lists: user title, agent title and first intent line, per session.
+    pub fn session_labels(&self) -> Result<HashMap<(String, String), SessionLabels>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT provider, provider_session_id, user_title, agent_title,
+                    substr(captured_intent, 1, ?1)
+             FROM session_context
+             WHERE user_title IS NOT NULL OR agent_title IS NOT NULL OR captured_intent IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([i64::try_from(INTENT_LINE_CHARS * 4).unwrap_or(800)], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+            ))
+        })?;
+        let mut out = HashMap::new();
+        for row in rows {
+            let (p, s, user_title, agent_title, intent) = row?;
+            let intent_line = intent
+                .as_deref()
+                .and_then(|t| t.lines().map(str::trim).find(|l| !l.is_empty()))
+                .map(|l| l.chars().take(INTENT_LINE_CHARS).collect::<String>());
+            out.insert(
+                (p, s),
+                SessionLabels {
+                    user_title,
+                    agent_title,
+                    intent_line,
+                },
+            );
+        }
+        Ok(out)
+    }
+
     pub fn mark_reviewed(&mut self, provider: &str, id: &str, now: OffsetDateTime) -> Result<()> {
         let tx = self.conn.transaction()?;
         let ts = ensure_row(&tx, provider, id, now)?;
@@ -314,7 +427,8 @@ impl Store {
     pub fn clear_captured(&self, provider: &str, id: &str) -> Result<()> {
         self.conn.execute(
             "UPDATE session_context SET captured_intent = NULL, captured_intent_utc = NULL,
-               latest_request = NULL, latest_request_utc = NULL, ask = NULL, ask_utc = NULL
+               latest_request = NULL, latest_request_utc = NULL, ask = NULL, ask_utc = NULL,
+               agent_title = NULL, agent_title_utc = NULL
              WHERE provider = ?1 AND provider_session_id = ?2",
             params![provider, id],
         )?;
@@ -326,7 +440,8 @@ impl Store {
     pub fn clear_all_captured(&self) -> Result<()> {
         self.conn.execute_batch(
             "UPDATE session_context SET captured_intent = NULL, captured_intent_utc = NULL,
-               latest_request = NULL, latest_request_utc = NULL, ask = NULL, ask_utc = NULL",
+               latest_request = NULL, latest_request_utc = NULL, ask = NULL, ask_utc = NULL,
+               agent_title = NULL, agent_title_utc = NULL",
         )?;
         self.checkpoint();
         Ok(())

@@ -20,8 +20,10 @@ use agent_adapters::claude_code::ADAPTER_ID;
 use agent_adapters::forward::CAPTURE_DIR;
 use agent_adapters::redact;
 use agent_core::{AgentEvent, SessionRecord, SessionState, SessionView};
-use agent_ipc::{EventContext, MAX_ASK_CHARS, MAX_INTENT_CHARS};
-use local_store::{ContextRecord, ContextSummary, IngestOutcome, Item, Store, StoreError};
+use agent_ipc::{EventContext, MAX_ASK_CHARS, MAX_INTENT_CHARS, MAX_TITLE_CHARS};
+use local_store::{
+    ContextRecord, ContextSummary, IngestOutcome, Item, SessionLabels, Store, StoreError,
+};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
@@ -253,7 +255,37 @@ pub fn capture(
             stored = true;
         }
     }
+    if let Some(title) = ctx.title.as_deref()
+        && let Some(text) = clean_title(title)
+    {
+        store.record_agent_title(provider, session, &text, now)?;
+        stored = true;
+    }
     Ok(stored)
+}
+
+/// A session title as stored: cleaned like captured text, collapsed to one line and cut to
+/// [`MAX_TITLE_CHARS`] characters (after redaction, so a cut can't expose half a secret).
+/// `None` if nothing is left.
+pub fn clean_title(raw: &str) -> Option<String> {
+    let cleaned = redact::clean(raw, MAX_INTENT_CHARS);
+    let line = one_line(&cleaned);
+    let cut: String = line.chars().take(MAX_TITLE_CHARS).collect();
+    let cut = cut.trim_end().to_owned();
+    (!cut.is_empty()).then_some(cut)
+}
+
+/// A name typed by the user: plain text, trimmed, at most [`MAX_TITLE_CHARS`] characters, no
+/// control, bidi or invisible characters. Empty is allowed (it clears the name).
+pub fn validate_user_title(raw: &str) -> Result<String, &'static str> {
+    let t = raw.trim();
+    if t.chars().count() > MAX_TITLE_CHARS
+        || t.chars().any(char::is_control)
+        || redact::strip_unsafe(t) != t
+    {
+        return Err("invalid_input");
+    }
+    Ok(t.to_owned())
 }
 
 // ---- dashboard review flag ---------------------------------------------------------------
@@ -265,6 +297,35 @@ pub struct DashboardSession {
     #[serde(flatten)]
     pub view: SessionView,
     pub needs_review: bool,
+    /// A name the user gave the session.
+    pub user_title: Option<String>,
+    /// The agent's own title (captured with consent).
+    pub agent_title: Option<String>,
+    /// First line of the captured intent, for the title fallback.
+    pub intent_line: Option<String>,
+    /// Set when the session's tool was disconnected and the session sent nothing since: it is
+    /// no longer tracked. `view` keeps the last reported state (S05-T10).
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub disconnected_utc: Option<OffsetDateTime>,
+}
+
+/// Everything the dashboard joins onto the session list. A failed read of any part only hides
+/// that part; the list still shows.
+#[derive(Default)]
+pub struct DashboardLookups {
+    pub summaries: HashMap<(String, String), ContextSummary>,
+    pub labels: HashMap<(String, String), SessionLabels>,
+    pub disconnected: HashMap<(String, String), OffsetDateTime>,
+}
+
+impl DashboardLookups {
+    pub fn load(store: &Store) -> Self {
+        Self {
+            summaries: store.context_summaries().unwrap_or_default(),
+            labels: store.session_labels().unwrap_or_default(),
+            disconnected: store.disconnected_sessions().unwrap_or_default(),
+        }
+    }
 }
 
 /// True when the session reached an end state, holds any context or items, and the user has
@@ -294,12 +355,24 @@ pub fn needs_review(
 pub fn dashboard_session(
     view: SessionView,
     record: &SessionRecord,
-    summaries: &HashMap<(String, String), ContextSummary>,
+    lookups: &DashboardLookups,
 ) -> DashboardSession {
-    let summary = summaries.get(&(record.provider.clone(), record.provider_session_id.clone()));
+    let key = (record.provider.clone(), record.provider_session_id.clone());
+    let labels = lookups.labels.get(&key).cloned().unwrap_or_default();
+    let disconnected_utc = lookups.disconnected.get(&key).copied();
     DashboardSession {
-        needs_review: needs_review(view.state, record.state_timestamp_utc, summary),
+        // A session that is no longer tracked has no return card waiting either.
+        needs_review: disconnected_utc.is_none()
+            && needs_review(
+                view.state,
+                record.state_timestamp_utc,
+                lookups.summaries.get(&key),
+            ),
         view,
+        user_title: labels.user_title,
+        agent_title: labels.agent_title,
+        intent_line: labels.intent_line,
+        disconnected_utc,
     }
 }
 
@@ -410,6 +483,10 @@ pub struct ContextDto {
     notes: String,
     reviewed_utc: Option<String>,
     has_captured: bool,
+    /// A name the user gave the session.
+    user_title: Option<String>,
+    /// The agent's own title, captured with consent.
+    agent_title: Option<CapturedDto>,
 }
 
 #[derive(Serialize)]
@@ -447,6 +524,8 @@ fn context_dto(rec: Option<&ContextRecord>) -> ContextDto {
             notes: String::new(),
             reviewed_utc: None,
             has_captured: false,
+            user_title: None,
+            agent_title: None,
         };
     };
     let intent = match (&rec.user_intent, &rec.captured_intent) {
@@ -467,6 +546,8 @@ fn context_dto(rec: Option<&ContextRecord>) -> ContextDto {
         notes: rec.notes.clone(),
         reviewed_utc: rec.reviewed_utc.clone(),
         has_captured: rec.has_captured(),
+        user_title: rec.user_title.clone(),
+        agent_title: captured_dto(rec.agent_title.as_ref()),
     }
 }
 
@@ -588,6 +669,17 @@ pub fn render_markdown(d: &ExportData) -> String {
     let _ = writeln!(o, "# Lullshift session export\n");
     let _ = writeln!(o, "- Agent: {}", code_span(&r.provider));
     let _ = writeln!(o, "- Session: {}", code_span(&r.provider_session_id));
+    let ctx = d.context.clone().unwrap_or_default();
+    if let Some(t) = &ctx.user_title {
+        let _ = writeln!(o, "- Title (written by you): {}", code_span(t));
+    }
+    if let Some(t) = &ctx.agent_title {
+        let _ = writeln!(
+            o,
+            "- Title (captured from the agent, opt-in): {}",
+            code_span(&t.text)
+        );
+    }
     let _ = writeln!(o, "- Last reported state: {}", r.state.as_str());
     if let Some(t) = r.state_timestamp_utc {
         let _ = writeln!(o, "- State reported at: {}", ts(t));
@@ -595,7 +687,6 @@ pub fn render_markdown(d: &ExportData) -> String {
     let _ = writeln!(o, "- Last seen: {}", ts(r.last_seen_utc));
     let _ = writeln!(o, "- Exported: {}\n", ts(d.generated_utc));
 
-    let ctx = d.context.clone().unwrap_or_default();
     let _ = writeln!(o, "## Intent\n");
     match (&ctx.user_intent, &ctx.captured_intent) {
         (None, None) => {
@@ -708,11 +799,13 @@ pub fn render_json(d: &ExportData) -> Result<String, serde_json::Error> {
             "lastSeenUtc": ts(r.last_seen_utc),
         },
         "writtenByYou": {
+            "title": ctx.user_title,
             "intent": ctx.user_intent,
             "notes": ctx.notes,
         },
         "capturedFromAgent": {
             "note": "Captured only because capture was turned on (ADR-013).",
+            "title": cap(&ctx.agent_title),
             "intent": cap(&ctx.captured_intent),
             "ask": cap(&ctx.ask),
         },
@@ -815,6 +908,27 @@ pub async fn set_session_intent(
     blocking(move || {
         with_store(&core, |s| {
             s.set_user_intent(&provider, &session_id, &intent, OffsetDateTime::now_utc())
+        })
+    })
+    .await?;
+    notify_changed(&app);
+    Ok(())
+}
+
+/// Names a session. Plain text, trimmed, at most 120 characters; empty removes the name.
+#[tauri::command]
+pub async fn set_session_title(
+    app: AppHandle,
+    core: CoreState<'_>,
+    provider: String,
+    session_id: String,
+    title: String,
+) -> Result<(), String> {
+    let title = validate_user_title(&title).map_err(str::to_owned)?;
+    let core = Arc::clone(&core);
+    blocking(move || {
+        with_store(&core, |s| {
+            s.set_user_title(&provider, &session_id, &title, OffsetDateTime::now_utc())
         })
     })
     .await?;
@@ -1170,6 +1284,14 @@ mod tests {
         EventContext {
             intent: intent.map(str::to_owned),
             ask: ask.map(str::to_owned),
+            title: None,
+        }
+    }
+
+    fn title_ctx(title: &str) -> EventContext {
+        EventContext {
+            title: Some(title.to_owned()),
+            ..EventContext::default()
         }
     }
 
@@ -1384,7 +1506,7 @@ mod tests {
         store.ingest(&ev(1, "completed", "a"), T0).expect("ingest");
         store.ingest(&ev(2, "completed", "b"), T0).expect("ingest");
         store.set_notes(P, "a", "x", T0).expect("notes");
-        let summaries = store.context_summaries().expect("summaries");
+        let summaries = DashboardLookups::load(&store);
         let rows: Vec<_> = store
             .sessions()
             .expect("sessions")
@@ -1781,5 +1903,202 @@ mod tests {
         assert_eq!(code(&StoreError::InvalidInput("x")), "invalid_input");
         assert_eq!(code(&StoreError::TooMany { limit: 1 }), "too_many");
         assert_eq!(code(&StoreError::Corrupt("x")), "store_unavailable");
+    }
+
+    // -- session titles and disconnects (Sprint 05)
+
+    #[test]
+    fn agent_title_is_stored_only_with_capture_on_and_kept_when_missing_later() {
+        let mut store = Store::open_in_memory().expect("open");
+        // Second gate: capture off discards the title.
+        ingest_with_context(
+            &mut store,
+            &ev(1, "working", "s"),
+            Some(title_ctx("SENTINEL_TITLE")),
+            T0,
+        )
+        .expect("ingest");
+        assert!(store.context(P, "s").expect("ctx").is_none());
+        assert!(store.session_labels().expect("labels").is_empty());
+
+        set_prefs(&store, &capture_on_prefs());
+        ingest_with_context(
+            &mut store,
+            &ev(2, "working", "s"),
+            Some(title_ctx("  Fix the\nlogin   bug ")),
+            T0,
+        )
+        .expect("ingest");
+        let rec = store.context(P, "s").expect("ctx").expect("row");
+        assert_eq!(
+            rec.agent_title.as_ref().map(|c| c.text.as_str()),
+            Some("Fix the login bug")
+        );
+        // A later event without a title keeps the stored one.
+        ingest_with_context(&mut store, &ev(3, "turn_ended", "s"), None, T0).expect("ingest");
+        ingest_with_context(
+            &mut store,
+            &ev(4, "working", "s"),
+            Some(ctx(Some("an intent"), None)),
+            T0,
+        )
+        .expect("ingest");
+        let rec = store.context(P, "s").expect("ctx").expect("row");
+        assert_eq!(
+            rec.agent_title.as_ref().map(|c| c.text.as_str()),
+            Some("Fix the login bug")
+        );
+        // A newer title replaces it.
+        ingest_with_context(
+            &mut store,
+            &ev(5, "working", "s"),
+            Some(title_ctx("Renamed")),
+            T0,
+        )
+        .expect("ingest");
+        assert_eq!(
+            store
+                .context(P, "s")
+                .expect("ctx")
+                .expect("row")
+                .agent_title
+                .map(|c| c.text),
+            Some("Renamed".to_owned())
+        );
+        // Clearing captured text clears it; the user's own name stays.
+        store.set_user_title(P, "s", "Mine", T0).expect("title");
+        store.clear_captured(P, "s").expect("clear");
+        let rec = store.context(P, "s").expect("ctx").expect("row");
+        assert!(rec.agent_title.is_none() && rec.user_title.as_deref() == Some("Mine"));
+    }
+
+    #[test]
+    fn titles_are_cleaned_and_cut_again_in_the_app() {
+        let key = concat!("sk-", "abcd1234efgh5678");
+        let t = clean_title(&format!("\u{202e}deploy {key}\r\n now")).expect("title");
+        assert!(
+            !t.contains("sk-") && !t.contains('\u{202e}') && !t.contains('\n'),
+            "{t}"
+        );
+        let long = clean_title(&"é ".repeat(300)).expect("title");
+        assert!((119..=120).contains(&long.chars().count()));
+        assert_eq!(clean_title(" \n\u{200b} "), None);
+    }
+
+    #[test]
+    fn user_titles_are_plain_trimmed_and_bounded() {
+        assert_eq!(
+            validate_user_title("  Fix login  "),
+            Ok("Fix login".to_owned())
+        );
+        assert_eq!(validate_user_title("   "), Ok(String::new()));
+        assert_eq!(
+            validate_user_title(&"x".repeat(120)).map(|t| t.len()),
+            Ok(120)
+        );
+        for bad in [
+            "x".repeat(121),
+            "a\nb".to_owned(),
+            "a\tb".to_owned(),
+            "a\u{202e}b".to_owned(),
+            "a\u{200b}b".to_owned(),
+            "a\u{0000}b".to_owned(),
+        ] {
+            assert_eq!(validate_user_title(&bad), Err("invalid_input"), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn dashboard_carries_titles_and_the_disconnected_mark() {
+        let mut store = Store::open_in_memory().expect("open");
+        set_prefs(&store, &capture_on_prefs());
+        store.ingest(&ev(1, "working", "a"), T0).expect("ingest");
+        store.ingest(&ev(2, "completed", "b"), T0).expect("ingest");
+        store.set_notes(P, "b", "x", T0).expect("notes");
+        ingest_with_context(
+            &mut store,
+            &ev(3, "working", "a"),
+            Some(EventContext {
+                intent: Some("first line\nmore".into()),
+                ask: None,
+                title: Some("Agent title".into()),
+            }),
+            T0,
+        )
+        .expect("ingest");
+        store.set_user_title(P, "a", "My title", T0).expect("title");
+        assert_eq!(store.disconnect_provider(P, T0).expect("disconnect"), 1);
+
+        let lookups = DashboardLookups::load(&store);
+        let rows: Vec<_> = store
+            .sessions()
+            .expect("sessions")
+            .into_iter()
+            .map(|r| {
+                let v = agent_core::view(&r, T0, T0, time::Duration::minutes(10));
+                serde_json::to_value(dashboard_session(v, &r, &lookups)).expect("json")
+            })
+            .collect();
+        let a = rows
+            .iter()
+            .find(|r| r["providerSessionId"] == "a")
+            .expect("a");
+        let b = rows
+            .iter()
+            .find(|r| r["providerSessionId"] == "b")
+            .expect("b");
+        assert_eq!(a["userTitle"], "My title");
+        assert_eq!(a["agentTitle"], "Agent title");
+        assert_eq!(a["intentLine"], "first line");
+        assert_eq!(a["lastKnownState"], "working", "the raw last state is kept");
+        assert!(a["disconnectedUtc"].is_string());
+        assert_eq!(a["needsReview"], false);
+        assert!(
+            b["disconnectedUtc"].is_null(),
+            "finished sessions are not marked"
+        );
+        assert_eq!(b["needsReview"], true);
+        assert!(b["userTitle"].is_null() && b["agentTitle"].is_null());
+
+        // A new event brings the session back.
+        store.ingest(&ev(9, "working", "a"), T0).expect("ingest");
+        let lookups = DashboardLookups::load(&store);
+        assert!(lookups.disconnected.is_empty());
+    }
+
+    #[test]
+    fn exports_include_labelled_titles() {
+        let mut store = Store::open_in_memory().expect("open");
+        set_prefs(&store, &capture_on_prefs());
+        ingest_with_context(
+            &mut store,
+            &ev(1, "working", "s"),
+            Some(title_ctx("Agent `title`")),
+            T0,
+        )
+        .expect("ingest");
+        store.set_user_title(P, "s", "My title", T0).expect("title");
+        let data = export_data(&store, P, "s").expect("data");
+        let md = render_markdown(&data);
+        assert!(md.contains("Title (written by you): ` My title `"), "{md}");
+        assert!(
+            md.contains("Title (captured from the agent, opt-in): `` Agent `title` ``"),
+            "{md}"
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&render_json(&data).expect("json")).expect("parse");
+        assert_eq!(json["writtenByYou"]["title"], "My title");
+        assert_eq!(json["capturedFromAgent"]["title"]["text"], "Agent `title`");
+        // No titles: the lines are absent, not empty.
+        store.ingest(&ev(2, "working", "t"), T0).expect("ingest");
+        let md = render_markdown(&export_data(&store, P, "t").expect("data"));
+        assert!(!md.contains("Title ("), "{md}");
+        let detail_json =
+            serde_json::to_value(detail(&store, P, "s").expect("detail")).expect("json");
+        assert_eq!(detail_json["context"]["userTitle"], "My title");
+        assert_eq!(
+            detail_json["context"]["agentTitle"]["text"],
+            "Agent `title`"
+        );
     }
 }

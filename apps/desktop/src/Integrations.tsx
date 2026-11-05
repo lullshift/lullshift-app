@@ -9,6 +9,7 @@ import {
   type UninstallView,
 } from "./adapters";
 import { TaskContextSwitch } from "./context/TaskContextSwitch";
+import { disconnectNotice } from "./format";
 import { Banner } from "./ui/Banner";
 import { Dialog } from "./ui/Dialog";
 import { Icon } from "./ui/Icon";
@@ -34,6 +35,8 @@ export default function Integrations({
   const [dialog, setDialog] = useState<"install" | "uninstall" | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+  /** How many sessions stopped being tracked after a disconnect (S05-T10); null if none. */
+  const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = () =>
     invoke<AdapterView>("claude_code_status")
@@ -47,6 +50,7 @@ export default function Integrations({
   const act = async (kind: "install" | "uninstall") => {
     setBusy(true);
     setMessage(null);
+    setNotice(null);
     try {
       if (kind === "install") {
         const view = await invoke<AdapterView>("claude_code_install");
@@ -67,6 +71,7 @@ export default function Integrations({
                 ? "Disconnected. Changes you made to the file since connecting were kept."
                 : "There were no Lullshift hooks to remove.",
         });
+        setNotice(disconnectNotice("claude-code", r.sessionsDisconnected ?? 0));
       }
     } catch (err: unknown) {
       // "cancelled": the user said no in the system dialog; nothing changed and nothing to say.
@@ -95,6 +100,7 @@ export default function Integrations({
       </header>
 
       {message && <Banner tone={message.tone}>{message.text}</Banner>}
+      {notice && <Banner tone="info">{notice}</Banner>}
 
       <article className="card integration" aria-labelledby="claude-code-title">
         <div className="integration-head">

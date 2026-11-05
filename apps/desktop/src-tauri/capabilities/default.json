@@ -23,6 +23,7 @@
     "allow-session-detail",
     "allow-set-session-notes",
     "allow-set-session-intent",
+    "allow-set-session-title",
     "allow-add-session-item",
     "allow-update-session-item",
     "allow-delete-session-item",

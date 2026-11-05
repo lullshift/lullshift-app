@@ -49,30 +49,10 @@ pub fn clean(text: &str, max_chars: usize) -> String {
 /// characters, which can disguise text or break its layout.
 pub fn strip_unsafe(text: &str) -> String {
     text.chars()
-        .filter(|&c| (!c.is_control() || c == '\n' || c == '\t') && !is_invisible(c))
+        .filter(|&c| {
+            (!c.is_control() || c == '\n' || c == '\t') && !agent_core::text::is_invisible(c)
+        })
         .collect()
-}
-
-fn is_invisible(c: char) -> bool {
-    matches!(
-        u32::from(c),
-        0x00AD
-            | 0x034F
-            | 0x061C
-            | 0x115F..=0x1160
-            | 0x17B4..=0x17B5
-            | 0x180B..=0x180E
-            | 0x200B..=0x200F
-            | 0x2028..=0x202E
-            | 0x2060..=0x206F
-            | 0x3164
-            | 0xFEFF
-            | 0xFFA0
-            | 0xFFF9..=0xFFFB
-            | 0x1BCA0..=0x1BCA3
-            | 0x1D173..=0x1D17A
-            | 0xE0000..=0xE007F
-    )
 }
 
 /// Replaces secret-like strings with [`HIDDEN`]: private key blocks, common key prefixes,

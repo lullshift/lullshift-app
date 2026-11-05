@@ -23,6 +23,18 @@ export interface SessionView {
   lastReceivedUtc: string;
   /** True when the session ended and the user hasn't reviewed it yet (return card, ADR-013). */
   needsReview: boolean;
+  /** A name the user gave the session (S05-T11); null when none. */
+  userTitle: string | null;
+  /** The agent's own title, only present if the user opted in to capture. */
+  agentTitle: string | null;
+  /** First line of the captured intent (at most 200 characters), for the title fallback. */
+  intentLine: string | null;
+  /**
+   * Set when the user disconnected the session's tool and the session sent nothing since
+   * (S05-T10). `state` and `lastKnownState` still hold what it last reported; the session is no
+   * longer tracked and is never shown as Working or Needs you.
+   */
+  disconnectedUtc: string | null;
 }
 
 export type Health = { status: "ok" } | { status: "error"; code: string };
@@ -55,9 +67,31 @@ export function stateView(state: SessionState): StateView {
   return VIEWS[state];
 }
 
+export const NOT_TRACKED_LABEL = "Not tracked: disconnected";
+
+/** False once the session's tool was disconnected and it hasn't reported since. */
+export function isTracked(s: Pick<SessionView, "disconnectedUtc">): boolean {
+  return !s.disconnectedUtc;
+}
+
+/**
+ * The state that counts for grouping, summaries and the panel: a session that is no longer
+ * tracked is "unknown", whatever it last reported.
+ */
+export function liveState(s: Pick<SessionView, "state" | "disconnectedUtc">): SessionState {
+  return isTracked(s) ? s.state : "unknown";
+}
+
+/** The pill for a session. Untracked sessions say so instead of showing their last state. */
+export function sessionStateView(s: Pick<SessionView, "state" | "disconnectedUtc">): StateView {
+  return isTracked(s) ? VIEWS[s.state] : { label: NOT_TRACKED_LABEL, tone: "neutral" };
+}
+
 /** Why a session shows what it shows, or null when the state is simply observed. */
 export function reasonText(s: SessionView, staleAfterSeconds: number): string | null {
   const lastKnown = `Last known: ${VIEWS[s.lastKnownState].label}.`;
+  if (!isTracked(s))
+    return `The tool was disconnected, so this session is no longer tracked. ${lastKnown}`;
   switch (s.reason) {
     case "observed":
       return null;
@@ -75,7 +109,7 @@ export function sortSessions(sessions: readonly SessionView[]): SessionView[] {
   const rank = (s: SessionState) => (s === "needs_attention" ? 0 : s === "working" ? 1 : 2);
   return [...sessions].sort(
     (a, b) =>
-      rank(a.state) - rank(b.state) ||
+      rank(liveState(a)) - rank(liveState(b)) ||
       Date.parse(b.lastReceivedUtc) - Date.parse(a.lastReceivedUtc),
   );
 }

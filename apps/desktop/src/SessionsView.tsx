@@ -23,6 +23,7 @@ import {
   groupSessions,
   providerName,
   relativeTime,
+  sessionName,
   shortId,
   sortHistory,
   summarize,
@@ -30,7 +31,7 @@ import {
   type HistorySort,
   type HistorySortKey,
 } from "./format";
-import { reasonText, stateView, type SessionView } from "./sessions";
+import { reasonText, sessionStateView, type SessionView } from "./sessions";
 import { Banner } from "./ui/Banner";
 import { Icon } from "./ui/Icon";
 import { Mascot } from "./ui/Mascot";
@@ -194,7 +195,7 @@ export default function SessionsView({
               type="search"
               className="board-search"
               placeholder="Search…"
-              aria-label="Search sessions by ID or tool"
+              aria-label="Search sessions by name, ID or tool"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -534,10 +535,10 @@ function History({
                 </button>
               </td>
               <td className="history-id" title={s.providerSessionId}>
-                {shortId(s.providerSessionId)}
+                <HistoryName s={s} />
               </td>
               <td>
-                <StatePill view={stateView(s.state)} />
+                <StatePill view={sessionStateView(s)} />
                 {showsReviewPill(s) && <ReviewPill />}
               </td>
               <td>
@@ -554,6 +555,18 @@ function History({
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** A session's name in History: its title (if it has one) above the short ID. */
+function HistoryName({ s }: { s: SessionView }) {
+  const name = sessionName(s);
+  return (
+    <>
+      {name.source !== "tool" && <span className="history-name">{name.primary}</span>}
+      <span className="visually-hidden">Session </span>
+      {shortId(s.providerSessionId)}
+    </>
   );
 }
 
@@ -596,7 +609,7 @@ function CompactRows({
         <li key={keyString(viewKey(s))}>
           <button
             type="button"
-            className={`compact-row tone-${stateView(s.state).tone}${
+            className={`compact-row tone-${sessionStateView(s).tone}${
               sameSession(viewKey(s), selected) ? " is-selected" : ""
             }`}
             data-session-key={keyString(viewKey(s))}
@@ -605,16 +618,18 @@ function CompactRows({
             onClick={() => onOpen(s)}
           >
             <span className="compact-dot" aria-hidden="true" />
-            <span className="compact-name">{providerName(s.provider)}</span>
+            <span className="compact-name" title={sessionName(s).primary}>
+              {sessionName(s).primary}
+            </span>
             <span className="compact-time session-time">
               {relativeTime(s.lastReceivedUtc, now)}
             </span>
             <span className="compact-meta">
               <span className="session-id">
                 <span className="visually-hidden">Session </span>
-                {shortId(s.providerSessionId)}
+                {sessionName(s).secondary ?? shortId(s.providerSessionId)}
               </span>
-              <span className="visually-hidden">, {stateView(s.state).label}</span>
+              <span className="visually-hidden">, {sessionStateView(s).label}</span>
               {showsReviewPill(s) && <ReviewPill />}
             </span>
           </button>
@@ -689,7 +704,8 @@ function SessionCard({
   selected: boolean;
   onOpen: (s: SessionView) => void;
 }) {
-  const view = stateView(s.state);
+  const view = sessionStateView(s);
+  const name = sessionName(s);
   const why = reasonText(s, staleAfterSeconds);
   return (
     <li>
@@ -702,13 +718,15 @@ function SessionCard({
         onClick={() => onOpen(s)}
       >
         <span className="session-row">
-          <span className="session-name">{providerName(s.provider)}</span>
+          <span className="session-name" title={name.primary}>
+            {name.primary}
+          </span>
           <StatePill view={view} />
         </span>
         <span className="session-row">
           <span className="session-id" title={s.providerSessionId}>
             <span className="visually-hidden">Session </span>
-            {shortId(s.providerSessionId)}
+            {name.secondary ?? shortId(s.providerSessionId)}
           </span>
           <span className="session-row">
             {showsReviewPill(s) && <ReviewPill />}

@@ -1,6 +1,6 @@
 // Display helpers: names, short IDs, relative times and the dashboard summary. Pure functions,
 // so the wording is unit-tested.
-import type { SessionState, SessionView } from "./sessions";
+import { liveState, type SessionState, type SessionView } from "./sessions";
 import type { IconName } from "./ui/Icon";
 
 /** Display name and generic glyph per agent tool (never the tool's own logo, ADR-011). */
@@ -22,6 +22,61 @@ export function providerIcon(provider: string): IconName {
 /** First 8 characters of a session ID, enough to tell sessions apart. */
 export function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
+}
+
+/** Titles from the intent are cut to this many characters. */
+export const INTENT_TITLE_CHARS = 80;
+
+export interface SessionName {
+  /** What the card or row is called. */
+  primary: string;
+  /** Provider name and short ID, shown beside a real title; null when they are the name. */
+  secondary: string | null;
+  source: "user" | "agent" | "intent" | "tool";
+}
+
+const clean = (t: string | null | undefined) => (t ?? "").replace(/\s+/g, " ").trim();
+
+/** Cuts to `max` characters in total, ending in an ellipsis when something was removed. */
+export function ellipsize(text: string, max: number): string {
+  const chars = [...text];
+  return chars.length <= max
+    ? text
+    : `${chars
+        .slice(0, max - 1)
+        .join("")
+        .trimEnd()}…`;
+}
+
+/**
+ * What to call a session: the name the user gave it, else the agent's title, else the first
+ * line of the captured intent, else the tool's name (with the short ID beside it, as before).
+ */
+export function sessionName(
+  s: Pick<
+    SessionView,
+    "provider" | "providerSessionId" | "userTitle" | "agentTitle" | "intentLine"
+  >,
+): SessionName {
+  const tool = `${providerName(s.provider)} · ${shortId(s.providerSessionId)}`;
+  const user = clean(s.userTitle);
+  if (user) return { primary: user, secondary: tool, source: "user" };
+  const agent = clean(s.agentTitle);
+  if (agent) return { primary: agent, secondary: tool, source: "agent" };
+  const intent = clean(s.intentLine);
+  if (intent) {
+    return { primary: ellipsize(intent, INTENT_TITLE_CHARS), secondary: tool, source: "intent" };
+  }
+  return { primary: providerName(s.provider), secondary: null, source: "tool" };
+}
+
+/** The calm line after disconnecting a tool; empty when no session was affected. */
+export function disconnectNotice(provider: string, count: number): string | null {
+  if (count <= 0) return null;
+  const who = providerName(provider);
+  return count === 1
+    ? `${who} disconnected. 1 session is no longer tracked.`
+    : `${who} disconnected. ${count} sessions are no longer tracked.`;
 }
 
 /** "just now", "3 min ago", "2 hr ago", "yesterday", "4 days ago". Future times read "just now". */
@@ -47,13 +102,14 @@ export interface Summary {
 }
 
 const count = (sessions: readonly SessionView[], state: SessionState) =>
-  sessions.filter((s) => s.state === state).length;
+  sessions.filter((s) => liveState(s) === state).length;
 
 /** The one-line answer to "do my agents need me?" shown at the top of the Sessions view. */
 export function summarize(sessions: readonly SessionView[]): Summary {
-  const needs = sessions.filter((s) => s.state === "needs_attention");
+  const needs = sessions.filter((s) => liveState(s) === "needs_attention");
   const working = count(sessions, "working");
-  const unknown = sessions.filter((s) => s.reason !== "observed").length;
+  // Sessions that are no longer tracked are not "quiet", they are simply not counted.
+  const unknown = sessions.filter((s) => s.reason !== "observed" && !s.disconnectedUtc).length;
   const unknownNote =
     unknown > 0
       ? ` ${unknown === 1 ? "One session hasn't" : `${unknown} sessions haven't`} reported recently.`
@@ -96,9 +152,12 @@ export interface SessionGroups {
 /** Splits already-sorted sessions into the three groups shown on the dashboard. */
 export function groupSessions(sorted: readonly SessionView[]): SessionGroups {
   return {
-    needsYou: sorted.filter((s) => s.state === "needs_attention"),
-    working: sorted.filter((s) => s.state === "working"),
-    recent: sorted.filter((s) => s.state !== "needs_attention" && s.state !== "working"),
+    needsYou: sorted.filter((s) => liveState(s) === "needs_attention"),
+    working: sorted.filter((s) => liveState(s) === "working"),
+    recent: sorted.filter((s) => {
+      const state = liveState(s);
+      return state !== "needs_attention" && state !== "working";
+    }),
   };
 }
 
@@ -110,7 +169,7 @@ export function toolChoices(sessions: readonly SessionView[]): string[] {
 }
 
 export interface SessionFilter {
-  /** Free text matched against the session ID and the tool name, ignoring case. */
+  /** Free text matched against the title, the session ID and the tool name, ignoring case. */
   query: string;
   /** A provider ID, or "all". */
   tool: string;
@@ -127,7 +186,8 @@ export function filterSessions(
       (tool === "all" || s.provider === tool) &&
       (q === "" ||
         s.providerSessionId.toLowerCase().includes(q) ||
-        providerName(s.provider).toLowerCase().includes(q)),
+        providerName(s.provider).toLowerCase().includes(q) ||
+        sessionName(s).primary.toLowerCase().includes(q)),
   );
 }
 
@@ -147,10 +207,13 @@ export function sortHistory(
     switch (key) {
       case "tool":
         return providerName(s.provider).toLowerCase();
-      case "session":
-        return s.providerSessionId.toLowerCase();
+      case "session": {
+        // Named sessions sort by the name that is shown, the others by their ID.
+        const name = sessionName(s);
+        return (name.source === "tool" ? s.providerSessionId : name.primary).toLowerCase();
+      }
       case "state":
-        return s.state;
+        return liveState(s);
       case "lastSeen": {
         const t = Date.parse(s.lastReceivedUtc);
         return Number.isNaN(t) ? -Infinity : t;
