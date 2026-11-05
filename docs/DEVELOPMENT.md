@@ -40,7 +40,24 @@ pnpm check
 pnpm desktop:dev
 ```
 
-This opens the Lullshift window showing a **mock agent feed** (Sprint 00). Real agent sessions arrive in Sprints 01–02.
+This opens Lullshift. Closing the window keeps it running in the tray; quit from the tray menu.
+
+Local data lives in the app data directory (`%APPDATA%pp.lullshift.desktop` on Windows,
+`~/Library/Application Support/app.lullshift.desktop` on macOS, `~/.local/share/app.lullshift.desktop`
+on Linux): `lullshift.db` (SQLite, WAL), upgrade backups `lullshift.db.v<N>-<time>.bak`, and
+`ipc/` with `endpoint.json` and the per-install `token` (ADR-009). Delete `ipc/token` and restart
+to rotate the token.
+
+### Send a test agent event
+
+Agent adapters arrive in Sprint 02. Until then, send events by hand with the dev client:
+
+```bash
+cargo run -p agent-ipc --example send_event -- "<app data dir>" tests/fixtures/agent-event/valid/working-minimal.json
+```
+
+It prints the reply (`{"ok":true}`, `{"ok":true,"duplicate":true}` or `{"ok":false,"error":"<code>"}`).
+Use a fresh `eventId` for each new event; reusing one is reported as a duplicate.
 
 ## 4. Optional Git hooks
 

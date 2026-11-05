@@ -2,7 +2,7 @@
 
 **The human attention layer for asynchronous AI work.** While your AI agents work, Lullshift lets you disconnect (games, breaks) or stay in flow (Next Move, Companion), tells you the moment an agent needs you, and helps you return with context.
 
-> Status: early development. Sprint 00 (foundation) provides the workspace, contracts and a desktop scaffold with a mock agent feed. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) to build it and [CONTRIBUTING.md](CONTRIBUTING.md) to help.
+> Status: early development. The desktop app runs from the tray, stores agent sessions locally and accepts agent events over authenticated local IPC (Sprint 01). Agent adapters arrive in Sprint 02. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) to build it and [CONTRIBUTING.md](CONTRIBUTING.md) to help.
 
 ## Principles
 

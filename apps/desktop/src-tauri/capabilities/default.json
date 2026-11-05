@@ -1,7 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: only the app commands the UI uses. Add permissions deliberately, one per need.",
+  "description": "Main window: only what the UI uses. Add permissions deliberately, one per need.",
   "windows": ["main"],
-  "permissions": ["allow-mock-sessions"]
+  "permissions": [
+    "allow-dashboard",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission"
+  ]
 }

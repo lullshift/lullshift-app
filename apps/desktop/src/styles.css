@@ -62,7 +62,7 @@ h2 {
 .session {
   display: grid;
   grid-template-columns: 1fr auto auto;
-  grid-template-areas: "title state time" "provider state time";
+  grid-template-areas: "title state time" "provider state time" "reason reason reason";
   gap: 2px 12px;
   align-items: center;
   padding: 12px;
@@ -74,6 +74,40 @@ h2 {
 .title {
   grid-area: title;
   font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reason {
+  grid-area: reason;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.problem {
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+}
+.empty {
+  color: var(--muted);
+}
+.settings {
+  margin-top: 24px;
+}
+.setting {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+}
+button {
+  font: inherit;
+  padding: 4px 10px;
+}
+:focus-visible {
+  outline: 2px solid var(--active);
+  outline-offset: 2px;
 }
 .provider {
   grid-area: provider;
