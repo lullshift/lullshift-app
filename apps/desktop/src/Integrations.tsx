@@ -1,20 +1,38 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import {
   adapterErrorText,
   adapterStatusText,
+  hookEventText,
+  type AdapterStatus,
   type AdapterView,
   type UninstallView,
 } from "./adapters";
+import { Banner } from "./ui/Banner";
+import { Dialog } from "./ui/Dialog";
+import { Icon } from "./ui/Icon";
 
 type Load = { status: "loading" } | { status: "ready"; view: AdapterView } | { status: "error" };
+type Message = { tone: "success" | "danger"; text: string };
 
-/** Claude Code hook setup. Nothing is written until the user confirms the consent panel. */
-export default function Integrations() {
+const PILL: Record<AdapterStatus, { label: string; tone: string }> = {
+  installed: { label: "Connected", tone: "success" },
+  not_installed: { label: "Not connected", tone: "neutral" },
+  needs_update: { label: "Needs repair", tone: "attention" },
+  partial: { label: "Partly connected", tone: "attention" },
+  settings_invalid: { label: "Can't connect", tone: "danger" },
+};
+
+/** Claude Code hook setup. Nothing is written until the user confirms the consent dialog. */
+export default function Integrations({
+  headingRef,
+}: {
+  headingRef: RefObject<HTMLHeadingElement | null>;
+}) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
-  const [confirming, setConfirming] = useState<"install" | "uninstall" | null>(null);
+  const [dialog, setDialog] = useState<"install" | "uninstall" | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<Message | null>(null);
 
   const refresh = () =>
     invoke<AdapterView>("claude_code_status")
@@ -32,123 +50,219 @@ export default function Integrations() {
       if (kind === "install") {
         const view = await invoke<AdapterView>("claude_code_install");
         setLoad({ status: "ready", view });
-        setMessage("Claude Code hooks added. Sessions appear here as Claude Code reports them.");
+        setMessage({
+          tone: "success",
+          text: "Claude Code is connected. Its sessions appear under Sessions as they report.",
+        });
       } else {
         const r = await invoke<UninstallView>("claude_code_uninstall");
         setLoad({ status: "ready", view: r.view });
-        setMessage(
-          r.outcome === "restored"
-            ? "Hooks removed. Your settings file was restored exactly as it was."
-            : r.outcome === "removed"
-              ? "Hooks removed. Changes you made to the file since then were kept."
-              : "There were no Lullshift hooks to remove.",
-        );
+        setMessage({
+          tone: "success",
+          text:
+            r.outcome === "restored"
+              ? "Disconnected. Your settings file was restored exactly as it was."
+              : r.outcome === "removed"
+                ? "Disconnected. Changes you made to the file since connecting were kept."
+                : "There were no Lullshift hooks to remove.",
+        });
       }
     } catch (err: unknown) {
-      setMessage(adapterErrorText(String(err)));
+      setMessage({ tone: "danger", text: adapterErrorText(String(err)) });
       void refresh();
     } finally {
       setBusy(false);
-      setConfirming(null);
+      setDialog(null);
     }
   };
 
   const view = load.status === "ready" ? load.view : null;
-  const connected = view?.status === "installed";
   const canInstall = view && view.status !== "installed" && view.status !== "settings_invalid";
   const canRemove = view && ["installed", "needs_update", "partial"].includes(view.status);
+  const pill = view ? PILL[view.status] : null;
 
   return (
-    <section aria-labelledby="integrations-heading" className="integrations">
-      <h2 id="integrations-heading">Agent integrations</h2>
-      <div className="card">
-        <h3>Claude Code</h3>
+    <section aria-labelledby="integrations-heading" className="view">
+      <header className="view-header">
+        <h1 id="integrations-heading" ref={headingRef} tabIndex={-1}>
+          Integrations
+        </h1>
+        <p className="view-lede">Connect the agents you use so Lullshift can follow them.</p>
+      </header>
+
+      {message && <Banner tone={message.tone}>{message.text}</Banner>}
+
+      <article className="card integration" aria-labelledby="claude-code-title">
+        <div className="integration-head">
+          <span className="session-glyph" aria-hidden="true">
+            <Icon name="terminal" />
+          </span>
+          <div className="integration-titles">
+            <h2 id="claude-code-title" className="card-title">
+              Claude Code
+            </h2>
+            <p className="card-sub">Anthropic's coding agent in your terminal</p>
+          </div>
+          {pill && (
+            <span className={`pill tone-${pill.tone}`}>
+              <span className="pill-dot" aria-hidden="true" />
+              {pill.label}
+            </span>
+          )}
+        </div>
+
         {load.status === "loading" && <p role="status">Checking…</p>}
         {load.status === "error" && (
-          <p role="alert">Couldn't check the Claude Code setup. Its status is unknown.</p>
+          <Banner tone="danger">
+            Couldn't check the Claude Code setup. Its status is unknown.
+          </Banner>
         )}
-        {view && <p>{adapterStatusText(view.status)}</p>}
-        {message && <p role="status">{message}</p>}
+        {view && <p className="card-text">{adapterStatusText(view.status)}</p>}
 
-        {confirming === null && (
+        <ul className="facts">
+          <li>
+            <Icon name="lock" size={18} />
+            <span>
+              Only the session ID, event type and time reach Lullshift. Never your prompts, code or
+              files.
+            </span>
+          </li>
+          <li>
+            <Icon name="bell" size={18} />
+            <span>You get one gentle notification when a session needs you.</span>
+          </li>
+        </ul>
+
+        {(canInstall || canRemove) && (
           <div className="actions">
             {canInstall && (
-              <button type="button" disabled={busy} onClick={() => setConfirming("install")}>
-                {view.status === "not_installed" ? "Connect Claude Code…" : "Repair hooks…"}
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => setDialog("install")}
+              >
+                {view.status === "not_installed" ? "Connect Claude Code" : "Repair connection"}
               </button>
             )}
             {canRemove && (
-              <button type="button" disabled={busy} onClick={() => setConfirming("uninstall")}>
-                Disconnect…
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy}
+                onClick={() => setDialog("uninstall")}
+              >
+                Disconnect
               </button>
             )}
           </div>
         )}
+      </article>
 
-        {confirming === "install" && view && (
-          <div className="consent" role="group" aria-labelledby="consent-heading">
-            <h4 id="consent-heading">Add Lullshift hooks to Claude Code?</h4>
-            <p>
-              Lullshift will edit <code>{view.settingsPath ?? "your Claude Code settings"}</code> so
-              Claude Code runs Lullshift on these events: {view.events.join(", ")}.
-            </p>
-            <ul>
-              <li>
-                Lullshift receives only the session ID, the event type and the time. It never
-                receives your prompts, code, file paths or Claude's replies.
-              </li>
-              <li>
-                A backup of the file is saved first. Your other settings stay, though the file's
-                spacing and formatting may change.
-              </li>
-              <li>
-                Disconnect at any time. If nothing else changed the file, it's restored exactly.
-              </li>
-              <li>Folders Claude Code doesn't trust yet send no events.</li>
-              <li>
-                If you set <code>CLAUDE_CONFIG_DIR</code>, Lullshift uses the value it was started
-                with. Check the path above matches the Claude Code you use.
-              </li>
-              <li>
-                Disconnect before uninstalling or moving Lullshift; otherwise Claude Code keeps
-                trying to run it.
-              </li>
-            </ul>
-            <div className="actions">
-              <button type="button" disabled={busy} onClick={() => void act("install")}>
-                Add hooks
-              </button>
-              <button type="button" disabled={busy} onClick={() => setConfirming(null)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
+      <Dialog
+        open={dialog === "install"}
+        title="Connect Claude Code?"
+        busy={busy}
+        onClose={() => setDialog(null)}
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={busy}
+              onClick={() => setDialog(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy}
+              onClick={() => void act("install")}
+            >
+              {busy ? "Connecting…" : "Add hooks"}
+            </button>
+          </>
+        }
+      >
+        <p>Lullshift will add a small hook to this file:</p>
+        <p className="path">
+          <code>{view?.settingsPath ?? "your Claude Code settings file"}</code>
+        </p>
+        <p>Then Claude Code tells Lullshift when {hookEventText(view?.events ?? []).join(", ")}.</p>
+        <ul className="checklist">
+          <li>
+            <Icon name="check" size={18} />
+            <span>
+              Lullshift receives only the session ID, the event type and the time. Never your
+              prompts, code, file paths or Claude's replies.
+            </span>
+          </li>
+          <li>
+            <Icon name="check" size={18} />
+            <span>
+              A backup is saved first. Your other settings stay, though the file's spacing and
+              formatting may change.
+            </span>
+          </li>
+          <li>
+            <Icon name="check" size={18} />
+            <span>
+              Disconnect at any time. If nothing else changed the file, it's restored exactly.
+            </span>
+          </li>
+          <li>
+            <Icon name="info" size={18} />
+            <span>Folders Claude Code doesn't trust yet send no events.</span>
+          </li>
+          <li>
+            <Icon name="info" size={18} />
+            <span>
+              If you set <code>CLAUDE_CONFIG_DIR</code>, Lullshift uses the value it was started
+              with. Check the path above is the one your Claude Code uses.
+            </span>
+          </li>
+          <li>
+            <Icon name="info" size={18} />
+            <span>
+              Disconnect before uninstalling or moving Lullshift; otherwise Claude Code keeps trying
+              to run it.
+            </span>
+          </li>
+        </ul>
+      </Dialog>
 
-        {confirming === "uninstall" && (
-          <div className="consent" role="group" aria-labelledby="remove-heading">
-            <h4 id="remove-heading">Remove Lullshift's hooks from Claude Code?</h4>
-            <p>
-              Lullshift stops receiving Claude Code events. Your own hooks and settings stay as they
-              are.
-            </p>
-            <div className="actions">
-              <button type="button" disabled={busy} onClick={() => void act("uninstall")}>
-                Remove hooks
-              </button>
-              <button type="button" disabled={busy} onClick={() => setConfirming(null)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-        {connected && confirming === null && (
-          <p className="note">
-            Claude Code sessions started before connecting begin reporting once Claude Code reloads
-            its settings.
-          </p>
-        )}
-      </div>
+      <Dialog
+        open={dialog === "uninstall"}
+        title="Disconnect Claude Code?"
+        busy={busy}
+        onClose={() => setDialog(null)}
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={busy}
+              onClick={() => setDialog(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              disabled={busy}
+              onClick={() => void act("uninstall")}
+            >
+              {busy ? "Disconnecting…" : "Remove hooks"}
+            </button>
+          </>
+        }
+      >
+        <p>
+          Lullshift removes its hooks and stops receiving Claude Code events. Your own hooks and
+          settings stay as they are.
+        </p>
+      </Dialog>
     </section>
   );
 }

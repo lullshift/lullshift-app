@@ -211,3 +211,74 @@ Once installers exist (Sprint 11), repeat the app checks with the installed buil
 - At step 5, or once that session goes stale and the window refreshes, the tray goes back to asleep.
 
 **Result:** \_\_\_
+
+---
+
+## Sprint 02b – Design system and UX
+
+### M02B-1: Screen reader pass
+
+**Why manual:** keyboard behaviour was checked automatically, but no real screen reader was used.
+
+1. Turn on Narrator (Windows: Ctrl+Win+Enter), VoiceOver (macOS: Cmd+F5) or Orca (Linux).
+2. Use only the keyboard: move through the sidebar, Sessions, Integrations and Settings.
+3. Open **Connect Claude Code**, read the dialog, then press Esc.
+4. Toggle **Start with your computer** and toggle it back.
+
+**Expected:**
+
+- Each view announces its heading when you switch to it.
+- Sessions read as "Claude Code, session 3f2a9c1b", then the state and the time.
+- The badge on Sessions reads as "1 need you".
+- The dialog announces its title, and focus returns to the button after Esc.
+- The switch announces "on" and "off".
+
+**Result:** \_\_\_
+
+### M02B-2: Looks right on macOS and Linux
+
+**Why manual:** fonts, scrollbars and blur render differently on each OS; only Windows was seen.
+
+1. On each OS, open all three views in light and in dark system theme.
+2. Make the window narrower than 720 px.
+
+**Expected:**
+
+- The Figtree font is used.
+- Colours match the Windows screenshots.
+- Under 720 px the sidebar becomes a top bar of icons with the attention badge.
+
+**Result:** macOS: \_\_\_ Linux: \_\_\_
+
+### M02B-3: Empty and error states
+
+**Why manual:** the development database already had sessions, so these states weren't seen in the app.
+
+1. Quit Lullshift. Rename the app data folder (see "Before you start") to keep it.
+2. Start Lullshift.
+3. Quit, restore the folder, and start Lullshift again.
+
+**Expected:**
+
+- At step 2, Sessions shows the mascot, "No agent sessions yet" and a **Connect Claude Code** button that opens Integrations.
+- At step 3, your sessions are back.
+
+**Result:** \_\_\_
+
+### M02B-4: Live columns with real sessions
+
+**Why manual:** when the layout was checked there were no Working or Needs-you sessions, so the Live columns were only seen empty.
+
+1. Connect Claude Code. Start four or more Claude Code sessions in different terminals and give each a task, so several are **Working** at once.
+2. In one of them, trigger a permission prompt (ask for something that needs approval).
+3. Make the Lullshift window short (about 500-640 px tall) at its default width.
+4. Scroll the **Working** column. Then type part of a session ID in the search box, and click the **Claude Code** chip and then **All tools**.
+5. When the sessions finish, open **History**.
+
+**Expected:**
+
+- At step 2, the card moves to **Needs you** with an orange border, and the summary line says "Claude Code needs you".
+- At step 4, only the Working column scrolls; Needs you and the summary stay in view. Search and chips narrow both columns; the counts on the tabs follow.
+- At step 5, the finished sessions are in History, newest first.
+
+**Result:** \_\_\_

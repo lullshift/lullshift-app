@@ -1,25 +1,43 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { createDashboardStore } from "./dashboardStore";
-import { healthProblems, reasonText, sortSessions, stateView, type Dashboard } from "./sessions";
 import Integrations from "./Integrations";
+import SessionsView from "./SessionsView";
+import { healthProblems, sortSessions, type Dashboard } from "./sessions";
 import Settings from "./Settings";
+import { Icon, type IconName } from "./ui/Icon";
+import { Mascot } from "./ui/Mascot";
 
-/** Re-derive stale/unknown states even when no events arrive. */
+/** Re-derive stale/unknown states and relative times even when no events arrive. */
 const REFRESH_MS = 30_000;
 const CHANGE_DEBOUNCE_MS = 250;
 
 const dashboardStore = createDashboardStore(() => invoke<Dashboard>("dashboard"));
 
+type ViewId = "sessions" | "integrations" | "settings";
+
+const NAV: { id: ViewId; label: string; icon: IconName }[] = [
+  { id: "sessions", label: "Sessions", icon: "sessions" },
+  { id: "integrations", label: "Integrations", icon: "plug" },
+  { id: "settings", label: "Settings", icon: "settings" },
+];
+
 export default function App() {
   const state = useStore(dashboardStore, (s) => s.state);
   const refresh = useStore(dashboardStore, (s) => s.refresh);
+  const [view, setView] = useState<ViewId>("sessions");
+  const [now, setNow] = useState(() => Date.now());
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const firstRender = useRef(true);
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), REFRESH_MS);
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+      void refresh();
+    }, REFRESH_MS);
     let unlisten: (() => void) | undefined;
     let disposed = false;
     // Coalesce bursts of events into one refresh.
@@ -27,6 +45,7 @@ export default function App() {
     const onChanged = () => {
       pending ??= window.setTimeout(() => {
         pending = undefined;
+        setNow(Date.now());
         void refresh();
       }, CHANGE_DEBOUNCE_MS);
     };
@@ -41,64 +60,74 @@ export default function App() {
     };
   }, [refresh]);
 
+  // Move focus to the new view's heading so keyboard and screen-reader users land in it.
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    headingRef.current?.focus();
+  }, [view]);
+
   const dashboard =
     state.status === "ready" ? state.dashboard : state.status === "error" ? state.last : null;
   const problems = useMemo(() => (dashboard ? healthProblems(dashboard) : []), [dashboard]);
   const sessions = useMemo(() => (dashboard ? sortSessions(dashboard.sessions) : []), [dashboard]);
+  const needsYou = sessions.filter((s) => s.state === "needs_attention").length;
 
   return (
-    <main className="app">
-      <header>
-        <h1>Lullshift</h1>
-        <p className="note">Your agent sessions, observed locally.</p>
-      </header>
-
-      {state.status === "error" && (
-        <p role="alert" className="problem">
-          Couldn't reach the Lullshift core. Agent status is unknown
-          {state.last ? "; showing the last list received." : "."}
-        </p>
-      )}
-      {problems.map((p) => (
-        <p role="alert" className="problem" key={p}>
-          {p}
-        </p>
-      ))}
-
-      <section aria-labelledby="sessions-heading">
-        <h2 id="sessions-heading">Agent sessions</h2>
-        {state.status === "loading" && <p role="status">Loading sessions…</p>}
-        {dashboard && sessions.length === 0 && (
-          <p className="empty">
-            No agent sessions yet. Connect Claude Code below; sessions appear here once it reports
-            activity.
-          </p>
-        )}
-        {dashboard && sessions.length > 0 && (
-          <ul className="sessions">
-            {sessions.map((s) => {
-              const view = stateView(s.state);
-              const why = reasonText(s, dashboard.staleAfterSeconds);
-              return (
-                <li key={`${s.provider}:${s.providerSessionId}`} className="session">
-                  <span className="title" title={s.providerSessionId}>
-                    {s.providerSessionId}
-                  </span>
-                  <span className="provider">{s.provider}</span>
-                  <span className={`state tone-${view.tone}`}>{view.label}</span>
-                  <time className="time" dateTime={s.lastReceivedUtc}>
-                    {new Date(s.lastReceivedUtc).toLocaleTimeString()}
-                  </time>
-                  {why && <span className="reason">{why}</span>}
-                </li>
-              );
-            })}
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <Mascot face="watching" size={36} />
+          <span className="brand-name">Lullshift</span>
+        </div>
+        <nav aria-label="Main">
+          <ul className="nav">
+            {NAV.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className="nav-item"
+                  aria-current={view === item.id ? "page" : undefined}
+                  onClick={() => setView(item.id)}
+                >
+                  <Icon name={item.icon} />
+                  <span className="nav-label">{item.label}</span>
+                  {item.id === "sessions" && needsYou > 0 && (
+                    <span className="nav-badge">
+                      {needsYou}
+                      <span className="visually-hidden"> need you</span>
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
           </ul>
-        )}
-      </section>
+        </nav>
+        <p className="sidebar-note">
+          <Icon name="lock" size={16} />
+          <span>Local only. Works offline, no account.</span>
+        </p>
+      </aside>
 
-      <Integrations />
-      <Settings />
-    </main>
+      <main className="content">
+        {view === "sessions" && (
+          <SessionsView
+            headingRef={headingRef}
+            loading={state.status === "loading"}
+            coreError={state.status === "error"}
+            hasLast={state.status === "error" && state.last !== null}
+            problems={problems}
+            sessions={sessions}
+            staleAfterSeconds={dashboard?.staleAfterSeconds ?? 600}
+            now={now}
+            onConnect={() => setView("integrations")}
+          />
+        )}
+        {view === "integrations" && <Integrations headingRef={headingRef} />}
+        {view === "settings" && <Settings headingRef={headingRef} />}
+      </main>
+    </div>
   );
 }

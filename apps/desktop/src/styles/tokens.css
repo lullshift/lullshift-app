@@ -1,0 +1,113 @@
+/* Lullshift design tokens (ADR-011, docs/DESIGN_SYSTEM.md). Components use these only.
+   Text colours are contrast-checked by src/contrast.test.ts; keep the two in sync. */
+
+:root {
+  color-scheme: light dark;
+
+  /* Light: "linen dawn". Colour roles (ADR-011): lavender = interaction, orange = attention only,
+     teal = identity only (mascot and icons, never controls). */
+  --bg: #f6f2ec;
+  --bg-glow-1: #ebe5fb;
+  --bg-glow-2: #f9e6d6;
+  --surface: #fffdf9;
+  --surface-2: #f1ebe3;
+  --surface-hover: #f8f3ec;
+  --border: #e6ded3;
+  --border-strong: #d6ccbf;
+
+  --text: #2a2633;
+  --text-muted: #625b6c;
+  --text-subtle: #726a7b;
+
+  --accent: #6b4fd8;
+  --accent-hover: #4e34b8;
+  --accent-soft: #ece6ff;
+  --on-accent: #ffffff;
+
+  --attention: #964510;
+  --attention-dot: #f08a2a;
+  --attention-soft: #fcead9;
+
+  --success: #3b6b4a;
+  --success-dot: #5f9c71;
+  --success-soft: #e3efe5;
+
+  --danger: #a33a3a;
+  --danger-soft: #f8e3e0;
+
+  --neutral-dot: #a79fae;
+  --neutral-soft: #efeae3;
+
+  --shadow-sm: 0 1px 2px rgb(60 44 30 / 0.05);
+  --shadow-md: 0 1px 2px rgb(60 44 30 / 0.04), 0 8px 24px rgb(60 44 30 / 0.07);
+  --shadow-lg: 0 2px 6px rgb(60 44 30 / 0.06), 0 24px 48px rgb(60 44 30 / 0.14);
+  --backdrop: rgb(42 38 51 / 0.32);
+
+  /* Type */
+  --font: "Figtree Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.75rem;
+
+  /* Space, radius, motion */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-full: 999px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --fast: 160ms;
+  --slow: 240ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Dark: "night lull" */
+    --bg: #17151c;
+    --bg-glow-1: #262040;
+    --bg-glow-2: #2c201b;
+    --surface: #211e28;
+    --surface-2: #2a2632;
+    --surface-hover: #27232f;
+    --border: #35303f;
+    --border-strong: #463f52;
+
+    --text: #ece8f2;
+    --text-muted: #b0a9bb;
+    --text-subtle: #948c9f;
+
+    --accent: #b9a6ff;
+    --accent-hover: #cbbcff;
+    --accent-soft: #2a2148;
+    --on-accent: #17151c;
+
+    --attention: #f4b47c;
+    --attention-dot: #f09a55;
+    --attention-soft: #3a2a20;
+
+    --success: #93cba3;
+    --success-dot: #7dbb90;
+    --success-soft: #1f2f27;
+
+    --danger: #f2a1a1;
+    --danger-soft: #3b2326;
+
+    --neutral-dot: #6f6879;
+    --neutral-soft: #2a2632;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.25);
+    --shadow-lg: 0 2px 6px rgb(0 0 0 / 0.35), 0 24px 48px rgb(0 0 0 / 0.45);
+    --backdrop: rgb(8 6 12 / 0.6);
+  }
+}

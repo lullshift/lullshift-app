@@ -12,6 +12,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@fontsource-variable/figtree": "5.3.0",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-autostart": "2.7.0",
     "@tauri-apps/plugin-notification": "2.8.0",

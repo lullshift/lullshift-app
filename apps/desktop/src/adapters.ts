@@ -24,6 +24,22 @@ const STATUS: Record<AdapterStatus, string> = {
     "Your Claude Code settings file couldn't be read as JSON. Lullshift won't change it. Fix the file, then check again.",
 };
 
+const HOOK_EVENTS: Record<string, string> = {
+  SessionStart: "a session starts",
+  UserPromptSubmit: "you send a prompt",
+  PostToolUse: "it finishes a step",
+  PermissionRequest: "it asks for permission",
+  Notification: "it's waiting for you",
+  Stop: "it finishes a turn",
+  StopFailure: "a turn fails",
+  SessionEnd: "a session ends",
+};
+
+/** Hook event names in plain words, for the consent dialog. Unknown names pass through. */
+export function hookEventText(events: readonly string[]): string[] {
+  return events.map((e) => HOOK_EVENTS[e] ?? e);
+}
+
 export function adapterStatusText(status: AdapterStatus): string {
   return STATUS[status];
 }

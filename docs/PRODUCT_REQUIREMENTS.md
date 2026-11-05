@@ -28,6 +28,7 @@ Agent execution creates unpredictable waiting intervals. People either watch pro
 6. **Agent-neutral:** Adapters supply a common event contract and declare capability limitations.
 7. **No surveillance:** Do not build individual time-on-task scoring, employee ranking or hidden employer monitoring.
 8. **Accessible and lightweight:** Tray-first interaction; keyboards, screen readers, reduced motion and clear notifications.
+9. **Calm, beautiful and effortless:** A polished, calm and soft visual design and a UX where the next step is always obvious (product owner, 2026-11-05; `docs/DESIGN_SYSTEM.md`, ADR-011).
 
 ### Personas
 

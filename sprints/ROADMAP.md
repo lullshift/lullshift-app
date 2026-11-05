@@ -7,6 +7,7 @@
 | 00 | Foundation: monorepo, toolchains, schemas, local checks, ADRs | Reproducible build and validated contracts |
 | 01 | Desktop shell: tray, Rust reducer, SQLite, local IPC, dashboard | App runs, persists and survives restart |
 | 02 | Claude Code adapter | Real hook observations with safe install/uninstall |
+| 02b | Design system and UX pass (product owner request) | Calm, soft visual design; redesigned dashboard, integrations and settings |
 | 03 | Notifications and activity host | Sandboxed, host-interruptible activities; Break; one reference game |
 | 04 | Context Keeper and Next Move | Return card and local decisions |
 | 05 | Activity SDK and creator CLI | SDK, manifest kinds, simulator, `create/dev/simulate/validate/pack` |

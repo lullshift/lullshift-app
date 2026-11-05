@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import "@fontsource-variable/figtree";
+import "./styles/tokens.css";
 import "./styles.css";
 
 const root = document.getElementById("root");
