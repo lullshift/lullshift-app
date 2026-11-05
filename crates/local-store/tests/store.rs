@@ -359,7 +359,10 @@ fn version_2_database_upgrades_and_keeps_adapter_records() {
         .expect("insert");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (2, 3));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (2, latest_version())
+    );
     assert!(report.backup.expect("backup").exists());
     assert_eq!(
         s.adapter_install("claude-code").expect("get").as_deref(),

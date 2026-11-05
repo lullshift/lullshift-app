@@ -3,3 +3,4 @@
 
 pub mod claude_code;
 pub mod forward;
+pub mod redact;

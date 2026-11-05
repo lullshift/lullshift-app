@@ -2180,6 +2180,7 @@ dependencies = [
  "chrono",
  "include_dir",
  "local-store",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",
@@ -2188,6 +2189,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-notification",
  "tauri-plugin-single-instance",
+ "tempfile",
  "time",
 ]
 

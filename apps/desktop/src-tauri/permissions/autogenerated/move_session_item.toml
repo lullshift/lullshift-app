@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-move-session-item"
+description = "Enables the move_session_item command without any pre-configured scope."
+commands.allow = ["move_session_item"]
+
+[[permission]]
+identifier = "deny-move-session-item"
+description = "Denies the move_session_item command without any pre-configured scope."
+commands.deny = ["move_session_item"]

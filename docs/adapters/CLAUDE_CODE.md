@@ -28,7 +28,7 @@ Known gaps, shown honestly in the UI:
 | Claude Code hook | Lullshift event | Notes |
 |---|---|---|
 | `SessionStart` | `session_started` → Idle | `metadata.source` |
-| `UserPromptSubmit` | `working` | prompt text never read |
+| `UserPromptSubmit` | `working` | prompt text read only with opt-in capture (ADR-013) |
 | `PostToolUse` | `working` | tool name and input never read |
 | `PermissionRequest` | `needs_attention` | `metadata.reason = permission` |
 | `Notification` `permission_prompt` / `idle_prompt` / `elicitation_dialog` | `needs_attention` | `metadata.reason`; other notification types are ignored |
@@ -37,7 +37,7 @@ Known gaps, shown honestly in the UI:
 | `StopFailure` | `failed` | an API error ended the turn; the next prompt reopens the session |
 | `SessionEnd` | `session_ended` → Ended | `metadata.reason`; ended is not completed |
 
-Fields forwarded: `session_id` (as `providerSessionId`), the event type, the forwarder's clock time and the small `metadata` hints above. Never forwarded: `transcript_path`, `cwd`, prompts, titles, assistant messages, tool names, inputs or responses.
+Fields forwarded: `session_id` (as `providerSessionId`), the event type, the forwarder's clock time and the small `metadata` hints above. Never forwarded: `transcript_path`, `cwd`, titles, assistant messages, tool inputs or responses. Prompts, `Notification.message` and the `PermissionRequest` tool name are forwarded only when the user has turned on task-context capture, cleaned and capped, in the IPC envelope's `context` field rather than in the event (ADR-013).
 
 Replays and duplicates: each hook run gets a fresh random `eventId`. A repeated signal for the same state doesn't change state, and notifications fire only on a change into `needs_attention`, so replays never produce duplicate notifications.
 

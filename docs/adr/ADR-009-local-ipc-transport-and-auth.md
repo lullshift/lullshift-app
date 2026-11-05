@@ -28,7 +28,7 @@ This is defence in depth: the user-only location protects the token, the token a
 
 ### Protocol (v1)
 
-- **One request per connection:** a single line of JSON, `{"v":1,"token":"<hex>","event":{...agent event v1...}}\n`.
+- **One request per connection:** a single line of JSON, `{"v":1,"token":"<hex>","event":{...agent event v1...}}\n`. Since Sprint 04 the envelope may also carry an optional `"context":{"intent"?,"ask"?}` with opt-in task text. It is sent only when the user has turned capture on, and it is stored apart from the event (ADR-013).
 - **Reply:** one line, `{"ok":true}`, `{"ok":true,"duplicate":true}` or `{"ok":false,"error":"<code>"}`. Error codes are fixed strings and never echo input: `too_large`, `timeout`, `malformed`, `unauthorized`, `invalid_event`, `rate_limited`, `internal`.
 - **Limits:**
   - 64 KiB per request, enforced while reading, before parsing.

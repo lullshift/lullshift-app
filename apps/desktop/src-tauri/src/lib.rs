@@ -4,13 +4,14 @@
 
 mod activities;
 mod adapters;
+mod context;
 mod notify;
 
 use std::sync::{Arc, Mutex};
 
 use agent_core::reducer::DEFAULT_STALE_AFTER;
 use agent_core::{AgentEvent, SessionRecord, SessionState, SessionView, view};
-use agent_ipc::{Config, Running, ServeError, SinkError};
+use agent_ipc::{Config, EventContext, Running, ServeError, SinkError};
 use local_store::{IngestOutcome, Store, StoreError};
 use notify::{Notice, NotificationPrefs};
 use serde::Serialize;
@@ -38,9 +39,9 @@ enum TrayFace {
 }
 
 impl TrayFace {
-    fn of(sessions: &[SessionView]) -> Self {
+    fn of<'a>(sessions: impl IntoIterator<Item = &'a SessionView>) -> Self {
         if sessions
-            .iter()
+            .into_iter()
             .any(|s| s.state == SessionState::NeedsAttention)
         {
             Self::Awake
@@ -115,7 +116,7 @@ fn set_tray_face(app: &AppHandle, core: &Core, face: TrayFace) {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Dashboard {
-    sessions: Vec<SessionView>,
+    sessions: Vec<context::DashboardSession>,
     store: Health,
     ipc: Health,
     stale_after_seconds: i64,
@@ -133,7 +134,11 @@ async fn dashboard(app: AppHandle, core: tauri::State<'_, Arc<Core>>) -> Result<
         // Refreshing here also lets a needs-you session that has since gone stale put the
         // mascot back to sleep without waiting for the next event.
         if dashboard.store == Health::Ok {
-            set_tray_face(&app, &core, TrayFace::of(&dashboard.sessions));
+            set_tray_face(
+                &app,
+                &core,
+                TrayFace::of(dashboard.sessions.iter().map(|s| &s.view)),
+            );
         }
         dashboard
     })
@@ -171,13 +176,20 @@ fn build_dashboard(core: &Core) -> Dashboard {
     let (sessions, store) = match core.store.lock() {
         Ok(guard) => match guard.as_ref() {
             Some(s) => match s.sessions() {
-                Ok(records) => (
-                    records
-                        .iter()
-                        .map(|r| view(r, core.started_utc, now, DEFAULT_STALE_AFTER))
-                        .collect(),
-                    core.store_health,
-                ),
+                Ok(records) => {
+                    // A failure here only hides the review flag; the dashboard still works.
+                    let summaries = s.context_summaries().unwrap_or_default();
+                    (
+                        records
+                            .iter()
+                            .map(|r| {
+                                let v = view(r, core.started_utc, now, DEFAULT_STALE_AFTER);
+                                context::dashboard_session(v, r, &summaries)
+                            })
+                            .collect(),
+                        core.store_health,
+                    )
+                }
                 Err(_) => (Vec::new(), Health::Error("read_failed")),
             },
             None => (Vec::new(), core.store_health),
@@ -215,41 +227,43 @@ fn start_ipc(app: &AppHandle, core: &Arc<Core>) -> Health {
     let sink_core = Arc::clone(core);
     let sink_app = app.clone();
     let gate = std::sync::Mutex::new(AttentionGate::default());
-    let sink = move |event: AgentEvent| -> Result<bool, SinkError> {
-        let received = OffsetDateTime::now_utc();
-        let outcome = {
-            let mut guard = sink_core.store.lock().map_err(|_| SinkError)?;
-            let store = guard.as_mut().ok_or(SinkError)?;
-            store.ingest(&event, received).map_err(|_| SinkError)?
+    let sink =
+        move |event: AgentEvent, task_text: Option<EventContext>| -> Result<bool, SinkError> {
+            let received = OffsetDateTime::now_utc();
+            let outcome = {
+                let mut guard = sink_core.store.lock().map_err(|_| SinkError)?;
+                let store = guard.as_mut().ok_or(SinkError)?;
+                context::ingest_with_context(store, &event, task_text, received)
+                    .map_err(|_| SinkError)?
+            };
+            let new = matches!(outcome, IngestOutcome::Stored { .. });
+            if new {
+                let _ = sink_app.emit(SESSIONS_CHANGED, ());
+                if let Some(face) = current_face(&sink_core) {
+                    set_tray_face(&sink_app, &sink_core, face);
+                }
+            }
+            if let Some((notice, record)) = change_notice(&outcome) {
+                if notice == Notice::NeedsYou {
+                    // The activity host pauses on this whatever the notification settings say.
+                    let _ = sink_app.emit(ATTENTION, &record.provider);
+                }
+                let first = notice != Notice::NeedsYou
+                    || gate.lock().is_ok_and(|mut g| {
+                        g.allow(&record.provider, &record.provider_session_id, received)
+                    });
+                let prefs = load_prefs(&sink_core);
+                if first && notify::should_notify(&prefs, notice, local_minutes()) {
+                    let _ = sink_app
+                        .notification()
+                        .builder()
+                        .title("Lullshift")
+                        .body(notice.text(&record.provider))
+                        .show();
+                }
+            }
+            Ok(new)
         };
-        let new = matches!(outcome, IngestOutcome::Stored { .. });
-        if new {
-            let _ = sink_app.emit(SESSIONS_CHANGED, ());
-            if let Some(face) = current_face(&sink_core) {
-                set_tray_face(&sink_app, &sink_core, face);
-            }
-        }
-        if let Some((notice, record)) = change_notice(&outcome) {
-            if notice == Notice::NeedsYou {
-                // The activity host pauses on this whatever the notification settings say.
-                let _ = sink_app.emit(ATTENTION, &record.provider);
-            }
-            let first = notice != Notice::NeedsYou
-                || gate.lock().is_ok_and(|mut g| {
-                    g.allow(&record.provider, &record.provider_session_id, received)
-                });
-            let prefs = load_prefs(&sink_core);
-            if first && notify::should_notify(&prefs, notice, local_minutes()) {
-                let _ = sink_app
-                    .notification()
-                    .builder()
-                    .title("Lullshift")
-                    .body(notice.text(&record.provider))
-                    .show();
-            }
-        }
-        Ok(new)
-    };
     let result = tauri::async_runtime::block_on(async move {
         agent_ipc::serve(&dir, Arc::new(sink), Config::default())
     });
@@ -435,6 +449,10 @@ pub fn run() {
             if let Some(face) = current_face(&core) {
                 set_tray_face(&handle, &core, face);
             }
+            if let Ok(dir) = handle.path().app_data_dir() {
+                context::reconcile_markers(&core, &dir);
+            }
+            context::spawn_retention(Arc::clone(&core));
             app.manage(core);
             if !std::env::args().any(|a| a == HIDDEN_ARG) {
                 show_main(&handle);
@@ -462,7 +480,25 @@ pub fn run() {
             activities::activity_storage_remove,
             activities::activity_snapshot,
             activities::activity_save_snapshot,
-            activities::activity_clear_snapshot
+            activities::activity_clear_snapshot,
+            context::session_detail,
+            context::set_session_notes,
+            context::set_session_intent,
+            context::add_session_item,
+            context::update_session_item,
+            context::delete_session_item,
+            context::move_session_item,
+            context::link_sessions,
+            context::unlink_sessions,
+            context::mark_reviewed,
+            context::clear_captured_context,
+            context::clear_all_captured_context,
+            context::export_session,
+            context::delete_session,
+            context::context_prefs,
+            context::set_context_prefs,
+            context::ui_prefs,
+            context::set_ui_prefs
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lullshift");

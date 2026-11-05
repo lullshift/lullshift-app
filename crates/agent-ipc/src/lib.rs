@@ -6,6 +6,12 @@ pub mod protocol;
 pub mod token;
 pub mod transport;
 
-pub use protocol::{Config, ErrorCode, EventSink, Reply, SinkError, StatsSnapshot};
+pub use protocol::{
+    Config, ErrorCode, EventContext, EventSink, MAX_ASK_CHARS, MAX_INTENT_CHARS, Reply, SinkError,
+    StatsSnapshot,
+};
 pub use token::Token;
-pub use transport::{ClientError, Endpoint, Running, ServeError, TransportKind, send_event, serve};
+pub use transport::{
+    ClientError, Endpoint, Running, ServeError, TransportKind, request_line, send_event,
+    send_event_with_context, serve,
+};

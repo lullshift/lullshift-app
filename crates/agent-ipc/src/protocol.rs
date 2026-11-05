@@ -84,22 +84,64 @@ impl Reply {
     }
 }
 
+/// Most characters kept of a captured intent / latest request.
+pub const MAX_INTENT_CHARS: usize = 2000;
+/// Most characters kept of what the agent is asking.
+pub const MAX_ASK_CHARS: usize = 300;
+
+/// Optional task text sent beside an event, only with the user's opt-in (ADR-013). Unknown
+/// fields are rejected. Longer strings are cut to the caps; empty strings count as absent.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ask: Option<String>,
+}
+
+impl EventContext {
+    pub fn is_empty(&self) -> bool {
+        self.intent.is_none() && self.ask.is_none()
+    }
+
+    /// Applies the caps and drops empty strings; `None` if nothing is left.
+    pub fn normalized(self) -> Option<Self> {
+        let cap = |s: Option<String>, max: usize| {
+            s.filter(|t| !t.is_empty()).map(|t| {
+                if t.chars().count() > max {
+                    t.chars().take(max).collect()
+                } else {
+                    t
+                }
+            })
+        };
+        let out = Self {
+            intent: cap(self.intent, MAX_INTENT_CHARS),
+            ask: cap(self.ask, MAX_ASK_CHARS),
+        };
+        (!out.is_empty()).then_some(out)
+    }
+}
+
 /// The sink could not store the event; reported to the client as `internal`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SinkError;
 
 /// Where accepted events go (the desktop app's store). Called on a blocking thread.
 pub trait EventSink: Send + Sync + 'static {
-    /// `Ok(true)` if the event was new, `Ok(false)` for a duplicate `eventId`.
-    fn deliver(&self, event: AgentEvent) -> Result<bool, SinkError>;
+    /// `Ok(true)` if the event was new, `Ok(false)` for a duplicate `eventId`. `context` is the
+    /// optional task text from the envelope; the sink stores it only if its own consent gate
+    /// allows, and never in the event log.
+    fn deliver(&self, event: AgentEvent, context: Option<EventContext>) -> Result<bool, SinkError>;
 }
 
 impl<F> EventSink for F
 where
-    F: Fn(AgentEvent) -> Result<bool, SinkError> + Send + Sync + 'static,
+    F: Fn(AgentEvent, Option<EventContext>) -> Result<bool, SinkError> + Send + Sync + 'static,
 {
-    fn deliver(&self, event: AgentEvent) -> Result<bool, SinkError> {
-        self(event)
+    fn deliver(&self, event: AgentEvent, context: Option<EventContext>) -> Result<bool, SinkError> {
+        self(event, context)
     }
 }
 
@@ -181,6 +223,8 @@ struct Envelope<'a> {
     token: &'a str,
     #[serde(borrow)]
     event: &'a RawValue,
+    #[serde(default)]
+    context: Option<EventContext>,
 }
 
 impl Handler {
@@ -273,8 +317,9 @@ impl Handler {
         let Ok(event) = parse_event(env.event.get()) else {
             return Reply::err(ErrorCode::InvalidEvent);
         };
+        let context = env.context.and_then(EventContext::normalized);
         let sink = Arc::clone(&self.sink);
-        match tokio::task::spawn_blocking(move || sink.deliver(event)).await {
+        match tokio::task::spawn_blocking(move || sink.deliver(event, context)).await {
             Ok(Ok(true)) => Reply::stored(),
             Ok(Ok(false)) => Reply::duplicate(),
             _ => Reply::err(ErrorCode::Internal),
@@ -317,11 +362,17 @@ mod tests {
     struct Recorder {
         seen: Mutex<std::collections::HashSet<String>>,
         calls: AtomicUsize,
+        contexts: Mutex<Vec<Option<EventContext>>>,
     }
 
     impl EventSink for Recorder {
-        fn deliver(&self, event: AgentEvent) -> Result<bool, SinkError> {
+        fn deliver(
+            &self,
+            event: AgentEvent,
+            context: Option<EventContext>,
+        ) -> Result<bool, SinkError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
+            self.contexts.lock().map_err(|_| SinkError)?.push(context);
             Ok(self
                 .seen
                 .lock()
@@ -335,6 +386,7 @@ mod tests {
         let rec = Arc::new(Recorder {
             seen: Mutex::default(),
             calls: AtomicUsize::new(0),
+            contexts: Mutex::default(),
         });
         let sink: Arc<dyn EventSink> = rec.clone();
         (Arc::new(Handler::new(token.clone(), sink, cfg)), rec, token)
@@ -486,9 +538,88 @@ mod tests {
     #[tokio::test]
     async fn sink_failure_is_internal() {
         let token = Token::generate().expect("token");
-        let sink: Arc<dyn EventSink> = Arc::new(|_e: AgentEvent| Err(SinkError));
+        let sink: Arc<dyn EventSink> =
+            Arc::new(|_e: AgentEvent, _c: Option<EventContext>| Err(SinkError));
         let h = Arc::new(Handler::new(token.clone(), sink, Config::default()));
         let (r, _) = roundtrip(&h, &request(token.expose(), EVENT)).await;
         assert_eq!(r.error, Some(ErrorCode::Internal));
+    }
+
+    fn request_with_context(token: &str, context: &str) -> Vec<u8> {
+        format!("{{\"v\":1,\"token\":\"{token}\",\"event\":{EVENT},\"context\":{context}}}\n")
+            .into_bytes()
+    }
+
+    #[tokio::test]
+    async fn old_clients_without_context_still_work() {
+        let (h, rec, token) = handler(Config::default());
+        let (r, _) = roundtrip(&h, &request(token.expose(), EVENT)).await;
+        assert_eq!(r, Reply::stored());
+        assert_eq!(*rec.contexts.lock().expect("lock"), vec![None]);
+    }
+
+    #[tokio::test]
+    async fn context_is_delivered_beside_the_event() {
+        let (h, rec, token) = handler(Config::default());
+        let req = request_with_context(token.expose(), r#"{"intent":"fix the bug","ask":"ok?"}"#);
+        let (r, _) = roundtrip(&h, &req).await;
+        assert_eq!(r, Reply::stored());
+        let got = rec.contexts.lock().expect("lock").clone();
+        assert_eq!(
+            got,
+            vec![Some(EventContext {
+                intent: Some("fix the bug".into()),
+                ask: Some("ok?".into())
+            })]
+        );
+    }
+
+    #[tokio::test]
+    async fn context_is_capped_and_empty_context_is_none() {
+        let (h, rec, token) = handler(Config::default());
+        let long = "é".repeat(5000);
+        let req = request_with_context(
+            token.expose(),
+            &format!(r#"{{"intent":"{long}","ask":"{long}"}}"#),
+        );
+        let (r, _) = roundtrip(&h, &req).await;
+        assert_eq!(r, Reply::stored());
+        let empty = request_with_context(token.expose(), r#"{"intent":"","ask":""}"#);
+        let (r, _) = roundtrip(&h, &empty).await;
+        assert_eq!(r.error, None);
+        let got = rec.contexts.lock().expect("lock").clone();
+        let first = got[0].as_ref().expect("context");
+        assert_eq!(first.intent.as_ref().expect("intent").chars().count(), 2000);
+        assert_eq!(first.ask.as_ref().expect("ask").chars().count(), 300);
+        assert_eq!(got[1], None, "empty strings are no context");
+    }
+
+    #[tokio::test]
+    async fn unknown_context_fields_are_rejected_without_echo() {
+        const SENTINEL: &str = "SENTINEL_CONTEXT_FIELD";
+        let (h, rec, token) = handler(Config::default());
+        for ctx in [
+            format!(r#"{{"intent":"x","{SENTINEL}":"y"}}"#),
+            r#"{"intent":5}"#.to_owned(),
+            r#""just a string""#.to_owned(),
+        ] {
+            let (r, raw) = roundtrip(&h, &request_with_context(token.expose(), &ctx)).await;
+            assert_eq!(r.error, Some(ErrorCode::Malformed));
+            assert!(!raw.contains(SENTINEL));
+        }
+        assert_eq!(rec.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn context_is_not_delivered_for_unauthorized_requests() {
+        let (h, rec, _) = handler(Config::default());
+        let wrong = Token::generate().expect("token");
+        let (r, _) = roundtrip(
+            &h,
+            &request_with_context(wrong.expose(), r#"{"intent":"secret"}"#),
+        )
+        .await;
+        assert_eq!(r.error, Some(ErrorCode::Unauthorized));
+        assert_eq!(rec.calls.load(Ordering::SeqCst), 0);
     }
 }

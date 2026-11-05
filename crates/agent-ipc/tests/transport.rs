@@ -14,15 +14,16 @@ const DEADLINE: Duration = Duration::from_secs(5);
 fn sink() -> (Arc<dyn EventSink>, Arc<Mutex<Vec<String>>>) {
     let seen = Arc::new(Mutex::new(Vec::<String>::new()));
     let s2 = Arc::clone(&seen);
-    let sink = move |e: AgentEvent| -> Result<bool, SinkError> {
-        let mut v = s2.lock().map_err(|_| SinkError)?;
-        let id = e.event_id.to_string();
-        let new = !v.contains(&id);
-        if new {
-            v.push(id);
-        }
-        Ok(new)
-    };
+    let sink =
+        move |e: AgentEvent, _c: Option<agent_ipc::EventContext>| -> Result<bool, SinkError> {
+            let mut v = s2.lock().map_err(|_| SinkError)?;
+            let id = e.event_id.to_string();
+            let new = !v.contains(&id);
+            if new {
+                v.push(id);
+            }
+            Ok(new)
+        };
     (Arc::new(sink), seen)
 }
 

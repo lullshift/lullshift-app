@@ -1,11 +1,17 @@
 //! Claude Code hook payload → normalized agent event (docs/adapters/CLAUDE_CODE.md).
 //!
-//! Only `session_id`, `hook_event_name` and a few enum-like fields are read. Prompts, titles,
-//! messages, tool data, paths and transcripts are never read into Lullshift types.
+//! [`map_hook`] reads only `session_id`, `hook_event_name` and a few enum-like fields. Prompts,
+//! titles, messages, tool data, paths and transcripts are never read into Lullshift types.
+//!
+//! [`map_context`] is the one exception, used only when the user opted in to capture
+//! (ADR-013): it reads `prompt`, `message` and `tool_name`, nothing else.
 
 use agent_core::EventType;
+use agent_ipc::{EventContext, MAX_ASK_CHARS, MAX_INTENT_CHARS};
 use serde::Deserialize;
 use serde_json::{Map, Value};
+
+use crate::redact;
 
 pub const PROVIDER: &str = "claude-code";
 pub const CAPABILITIES: [&str; 3] = ["lifecycle", "attention", "turn_end"];
@@ -107,6 +113,64 @@ pub fn map_hook(stdin: &[u8]) -> Option<Mapped> {
         event_type,
         metadata,
     })
+}
+
+/// The only hook fields read in capture mode (ADR-013). Tool inputs and outputs, commands,
+/// paths, the working directory, transcripts and assistant messages are not declared here, so
+/// they are skipped while parsing and never held.
+#[derive(Deserialize)]
+struct ContextInput {
+    hook_event_name: String,
+    #[serde(default)]
+    prompt: Option<Value>,
+    #[serde(default)]
+    message: Option<Value>,
+    #[serde(default)]
+    tool_name: Option<Value>,
+    #[serde(default)]
+    notification_type: Option<Value>,
+}
+
+/// Task text for one hook, cleaned and limited. Call this only when the user has opted in to
+/// capture (the marker file exists): `UserPromptSubmit.prompt` is the intent,
+/// `Notification.message` and `PermissionRequest.tool_name` are what the agent is asking.
+pub fn map_context(stdin: &[u8]) -> Option<EventContext> {
+    let input: ContextInput = serde_json::from_slice(stdin).ok()?;
+    let text = |v: &Option<Value>| v.as_ref().and_then(Value::as_str).map(str::to_owned);
+    let ctx = match input.hook_event_name.as_str() {
+        "UserPromptSubmit" => EventContext {
+            intent: text(&input.prompt).map(|p| redact::clean(&p, MAX_INTENT_CHARS)),
+            ask: None,
+        },
+        "Notification" => {
+            let kind = input.notification_type.as_ref().and_then(Value::as_str)?;
+            if !matches!(
+                kind,
+                "permission_prompt" | "idle_prompt" | "elicitation_dialog"
+            ) {
+                return None;
+            }
+            EventContext {
+                intent: None,
+                ask: text(&input.message).map(|m| redact::clean(&m, MAX_ASK_CHARS)),
+            }
+        }
+        "PermissionRequest" => EventContext {
+            intent: None,
+            ask: text(&input.tool_name)
+                .filter(|t| is_tool_name(t))
+                .map(|t| format!("Permission to use {t}")),
+        },
+        _ => return None,
+    };
+    ctx.normalized()
+}
+
+/// A short identifier-like tool name (`Bash`, `mcp__server__tool`); anything else is dropped.
+fn is_tool_name(s: &str) -> bool {
+    (1..=64).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':'))
 }
 
 /// Enum-like provider values only (`startup`, `prompt_input_exit`): never free text.

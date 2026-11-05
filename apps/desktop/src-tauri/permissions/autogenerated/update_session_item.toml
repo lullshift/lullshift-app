@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-update-session-item"
+description = "Enables the update_session_item command without any pre-configured scope."
+commands.allow = ["update_session_item"]
+
+[[permission]]
+identifier = "deny-update-session-item"
+description = "Denies the update_session_item command without any pre-configured scope."
+commands.deny = ["update_session_item"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-context-prefs"
+description = "Enables the context_prefs command without any pre-configured scope."
+commands.allow = ["context_prefs"]
+
+[[permission]]
+identifier = "deny-context-prefs"
+description = "Denies the context_prefs command without any pre-configured scope."
+commands.deny = ["context_prefs"]

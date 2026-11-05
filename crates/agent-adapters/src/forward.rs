@@ -15,7 +15,19 @@ use serde_json::{Map, Value, json};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use agent_ipc::EventContext;
+
 use crate::claude_code;
+
+/// Directory under the app data dir that holds one consent marker file per adapter. The app
+/// creates `<data-dir>/context-capture/<adapter>` when the user turns capture on and deletes it
+/// when they turn it off (ADR-013). Without the file the forwarder never reads task text.
+pub const CAPTURE_DIR: &str = "context-capture";
+
+/// Whether the user opted in to task-text capture for `adapter`.
+pub fn capture_enabled(data_dir: &Path, adapter: &str) -> bool {
+    data_dir.join(CAPTURE_DIR).join(adapter).is_file()
+}
 
 /// Hard limit for one forwarder run, start to finish.
 pub const DEADLINE: Duration = Duration::from_secs(2);
@@ -83,14 +95,20 @@ fn run_inner(args: &HookArgs, mut stdin: impl Read, started: OffsetDateTime) -> 
         let _ = std::io::copy(&mut stdin, &mut std::io::sink());
         return Outcome::TooLarge;
     }
-    let event = match args.adapter.as_str() {
+    let (event, context) = match args.adapter.as_str() {
         claude_code::ADAPTER_ID => match build_claude_code_event(&buf, started) {
-            Some(e) => e,
+            Some(e) => {
+                // Second look at the hook payload, only with consent.
+                let context = capture_enabled(&args.data_dir, &args.adapter)
+                    .then(|| claude_code::map_context(&buf))
+                    .flatten();
+                (e, context)
+            }
             None => return Outcome::Ignored,
         },
         _ => return Outcome::BadArguments,
     };
-    send(&args.data_dir, &event)
+    send(&args.data_dir, &event, context.as_ref())
 }
 
 /// Builds and validates the agent event JSON for one Claude Code hook payload.
@@ -132,16 +150,17 @@ fn build_event(
     parse_event(&json).ok().map(|_| json)
 }
 
-fn send(data_dir: &Path, event_json: &str) -> Outcome {
+fn send(data_dir: &Path, event_json: &str, context: Option<&EventContext>) -> Outcome {
     let Ok(rt) = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
     else {
         return Outcome::Failed;
     };
-    let reply = rt.block_on(agent_ipc::send_event(
+    let reply = rt.block_on(agent_ipc::send_event_with_context(
         data_dir,
         event_json,
+        context,
         DEADLINE.saturating_sub(Duration::from_millis(250)),
     ));
     match reply {

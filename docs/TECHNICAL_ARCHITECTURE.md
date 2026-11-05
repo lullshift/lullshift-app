@@ -329,16 +329,17 @@ Accepted:
 - [ADR-010](adr/ADR-010-agent-adapters-and-hook-installation.md): Agent adapters, hook forwarder and hook installation.
 - [ADR-011](adr/ADR-011-ui-design-system.md): UI design system.
 - [ADR-012](adr/ADR-012-activity-sandbox-and-bridge.md): Activity sandbox strategy and host bridge protocol.
+- [ADR-013](adr/ADR-013-context-keeper-and-opt-in-capture.md): Context Keeper data and opt-in task-context capture.
 
 To be recorded in later sprints (numbering indicative):
 
-- ADR-013: Git integration (system `git` vs library), hardening, cache layout.
-- ADR-014: Marketplace index schema v1 and install/update/pin semantics.
-- ADR-015: Engine versioning, data schemas and retirement policy.
-- ADR-016: Creator CLI implementation language and distribution.
-- ADR-017: App update signing, release pipeline and key custody.
-- ADR-018: Bundling built-in activities into the installer.
-- ADR-019: BYOK Companion provider abstraction and context boundary.
+- ADR-014: Git integration (system `git` vs library), hardening, cache layout.
+- ADR-015: Marketplace index schema v1 and install/update/pin semantics.
+- ADR-016: Engine versioning, data schemas and retirement policy.
+- ADR-017: Creator CLI implementation language and distribution.
+- ADR-018: App update signing, release pipeline and key custody.
+- ADR-019: Bundling built-in activities into the installer.
+- ADR-020: BYOK Companion provider abstraction and context boundary.
 
 Use the `architecture-decision` skill and link new ADRs here.
 

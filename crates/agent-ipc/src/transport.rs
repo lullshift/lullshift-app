@@ -13,7 +13,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 
-use crate::protocol::{Config, EventSink, Handler, PROTOCOL_VERSION, Reply, StatsSnapshot};
+use crate::protocol::{
+    Config, EventContext, EventSink, Handler, PROTOCOL_VERSION, Reply, StatsSnapshot,
+};
 use crate::token::{Token, create_private_dir};
 
 pub const IPC_DIR: &str = "ipc";
@@ -314,23 +316,48 @@ pub async fn send_event(
     event_json: &str,
     deadline: Duration,
 ) -> Result<Reply, ClientError> {
-    let ipc_dir = data_dir.join(IPC_DIR);
-    let endpoint = Endpoint::read(data_dir).map_err(|_| ClientError::NotRunning)?;
-    let token = fs::read_to_string(ipc_dir.join(crate::token::TOKEN_FILE))
-        .map_err(|_| ClientError::NotRunning)?;
+    send_event_with_context(data_dir, event_json, None, deadline).await
+}
+
+/// The request line for one event: `{"v":1,"token":…,"event":…}` plus `"context"` only when
+/// there is some (ADR-013). Without context the envelope is exactly the old one.
+pub fn request_line(
+    token: &str,
+    event_json: &str,
+    context: Option<&EventContext>,
+) -> Result<Vec<u8>, ClientError> {
     let event: &serde_json::value::RawValue = serde_json::from_str(event_json).map_err(|_| {
         ClientError::Io(io::Error::new(
             io::ErrorKind::InvalidInput,
             "event is not JSON",
         ))
     })?;
-    let mut line = serde_json::to_vec(&serde_json::json!({
+    let mut envelope = serde_json::json!({
         "v": PROTOCOL_VERSION,
-        "token": token.trim(),
+        "token": token,
         "event": event,
-    }))
-    .map_err(|_| ClientError::BadReply)?;
+    });
+    if let Some(c) = context.filter(|c| !c.is_empty()) {
+        envelope["context"] = serde_json::to_value(c).map_err(|_| ClientError::BadReply)?;
+    }
+    let mut line = serde_json::to_vec(&envelope).map_err(|_| ClientError::BadReply)?;
     line.push(b'\n');
+    Ok(line)
+}
+
+/// Like [`send_event`], with optional task text beside the event (ADR-013). The caller must
+/// have the user's consent before passing any.
+pub async fn send_event_with_context(
+    data_dir: &Path,
+    event_json: &str,
+    context: Option<&EventContext>,
+    deadline: Duration,
+) -> Result<Reply, ClientError> {
+    let ipc_dir = data_dir.join(IPC_DIR);
+    let endpoint = Endpoint::read(data_dir).map_err(|_| ClientError::NotRunning)?;
+    let token = fs::read_to_string(ipc_dir.join(crate::token::TOKEN_FILE))
+        .map_err(|_| ClientError::NotRunning)?;
+    let line = request_line(token.trim(), event_json, context)?;
     tokio::time::timeout(deadline, exchange(&endpoint, &line))
         .await
         .map_err(|_| ClientError::Io(io::ErrorKind::TimedOut.into()))?

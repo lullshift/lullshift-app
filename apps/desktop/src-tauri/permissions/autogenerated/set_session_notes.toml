@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-session-notes"
+description = "Enables the set_session_notes command without any pre-configured scope."
+commands.allow = ["set_session_notes"]
+
+[[permission]]
+identifier = "deny-set-session-notes"
+description = "Denies the set_session_notes command without any pre-configured scope."
+commands.deny = ["set_session_notes"]

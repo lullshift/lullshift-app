@@ -9,6 +9,13 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+mod context;
+
+pub use context::{
+    Captured, ContextRecord, ContextSummary, Item, MAX_ASK_CHARS, MAX_INTENT_CHARS, MAX_ITEM_CHARS,
+    MAX_ITEMS_PER_SESSION, MAX_NOTES_CHARS, TimelineRow,
+};
+
 use agent_core::{AgentEvent, SessionRecord, SessionState, apply};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use time::OffsetDateTime;
@@ -35,6 +42,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 3,
         sql: include_str!("../migrations/0003_preferences_and_activities.sql"),
     },
+    Migration {
+        version: 4,
+        sql: include_str!("../migrations/0004_session_context.sql"),
+    },
 ];
 
 pub fn latest_version() -> i64 {
@@ -59,6 +70,14 @@ pub enum StoreError {
     QuotaExceeded {
         limit: usize,
     },
+    /// The session, item or link asked for does not exist.
+    NotFound,
+    /// Text too long, empty, or a kind/category/position the store does not accept.
+    InvalidInput(&'static str),
+    /// A session already holds the maximum number of items.
+    TooMany {
+        limit: usize,
+    },
     Sqlite(rusqlite::Error),
 }
 
@@ -79,6 +98,9 @@ impl fmt::Display for StoreError {
             Self::QuotaExceeded { limit } => {
                 write!(f, "activity storage limit of {limit} bytes reached")
             }
+            Self::NotFound => f.write_str("not found"),
+            Self::InvalidInput(what) => write!(f, "invalid input: {what}"),
+            Self::TooMany { limit } => write!(f, "limit of {limit} items reached"),
             Self::Sqlite(e) => write!(f, "database error: {e}"),
         }
     }
@@ -134,6 +156,14 @@ impl Store {
         configure(&conn, false)?;
         migrate(&conn, MIGRATIONS, None)?;
         Ok(Self { conn })
+    }
+
+    /// Whether freed pages are overwritten (`PRAGMA secure_delete`).
+    pub fn secure_delete_enabled(&self) -> Result<bool> {
+        let v: i64 = self
+            .conn
+            .query_row("PRAGMA secure_delete", [], |r| r.get(0))?;
+        Ok(v != 0)
     }
 
     pub fn schema_version(&self) -> Result<i64> {
@@ -390,6 +420,8 @@ fn configure(conn: &Connection, on_disk: bool) -> Result<()> {
         }
         conn.pragma_update(None, "synchronous", "NORMAL")?;
     }
+    // Deleted rows (captured text, deleted sessions) are overwritten, not left in free pages.
+    conn.pragma_update(None, "secure_delete", "ON")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
     Ok(())

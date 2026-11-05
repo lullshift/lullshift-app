@@ -18,7 +18,7 @@ Lullshift observes agents through the hooks they offer. Hooks run inside the age
 - Hooks are registered in **exec form** (no shell) with `async: true`, so the agent never waits for Lullshift.
 - The event time is taken when the hook process starts, before stdin is read, so separate hook processes keep the order in which the agent ran them.
 - Each hook run gets a fresh random `eventId`. Duplicate protection for users comes from state: notifications fire only when a session changes into `needs_attention`, and at most once per session in 15 seconds. That window covers a `working` event landing between a permission request and Claude Code's permission notification.
-- Only enum-like hints are forwarded; prompts, messages, tool data, paths and transcripts are never read into Lullshift types.
+- Only enum-like hints are forwarded; prompts, messages, tool data, paths and transcripts are never read into Lullshift types. Exception since Sprint 04: when the user opts in to task-context capture, the first prompt and the agent's question text are sent beside the event, cleaned and capped (ADR-013). Tool data, paths and transcripts are still never read.
 
 ### Installer
 
