@@ -33,7 +33,7 @@
 
 ```text
 Sprint: 01
-Completed tasks (commits): not committed yet (awaiting approval)
+Completed tasks (commits): 883d03b (event input hardening), 41c8ec8 (reducer, store, IPC), 5f894a8 (desktop shell, dashboard, closeout)
 
 Commands run and results (Windows 11 Enterprise 10.0.26200, x64, Node 24.14.1, pnpm 12.6.0, Rust 1.99.1):
 - `pnpm check`: all 11 steps pass, after the security-review fixes.
