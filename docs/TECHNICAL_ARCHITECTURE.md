@@ -328,10 +328,10 @@ Accepted:
 - [ADR-009](adr/ADR-009-local-ipc-transport-and-auth.md): Local IPC transport and authentication.
 - [ADR-010](adr/ADR-010-agent-adapters-and-hook-installation.md): Agent adapters, hook forwarder and hook installation.
 - [ADR-011](adr/ADR-011-ui-design-system.md): UI design system.
+- [ADR-012](adr/ADR-012-activity-sandbox-and-bridge.md): Activity sandbox strategy and host bridge protocol.
 
 To be recorded in later sprints (numbering indicative):
 
-- ADR-012: Activity sandbox strategy per OS and host bridge protocol.
 - ADR-013: Git integration (system `git` vs library), hardening, cache layout.
 - ADR-014: Marketplace index schema v1 and install/update/pin semantics.
 - ADR-015: Engine versioning, data schemas and retirement policy.

@@ -282,3 +282,90 @@ Once installers exist (Sprint 11), repeat the app checks with the installed buil
 - At step 5, the finished sessions are in History, newest first.
 
 **Result:** \_\_\_
+
+---
+
+## Sprint 03 – Notifications and activity host
+
+### M03-1: Native install confirmation (S03-T07)
+
+**Why manual:** automated runs never press **Connect** in the native dialog, because doing so would change your real Claude Code settings.
+
+1. Open **Integrations**, then **Connect Claude Code**, and press **Continue**.
+2. In the system dialog, check the text, then press **Cancel**.
+3. Repeat, and press **Connect** this time.
+
+**Expected:**
+
+- The dialog is a native window, not part of the page. It is titled "Connect Claude Code?" and names the exact settings file.
+- After **Cancel**, nothing changes. There is no error, and the settings file is untouched.
+- After **Connect**, Integrations shows Claude Code as connected.
+
+**Result:** \_\_\_
+
+### M03-2: Notifications and quiet hours (S03-T01, S03-A02)
+
+**Why manual:** system notifications appear outside the app, and the quiet-hours check depends on your clock.
+
+1. In **Settings > Notifications**, leave everything on. In Claude Code, trigger a permission prompt.
+2. Let a Claude Code reply finish without the task ending (a normal turn end).
+3. Turn on **Quiet hours** with a window that includes the current time, and turn off "Still tell me when a session needs me". Trigger a permission prompt again.
+4. Turn "Still tell me when a session needs me" back on and repeat.
+
+**Expected:**
+
+- Step 1: one notification, "Claude Code needs you".
+- Step 2: no notification. The session shows as idle, never as finished.
+- Step 3: no notification.
+- Step 4: a notification.
+
+**Result:** \_\_\_
+
+### M03-3: Activities with keyboard and screen reader (S03-A04)
+
+**Why manual:** keyboard play, focus and pause/resume were checked automatically on Windows, but no real screen reader was used.
+
+1. Turn on Narrator, VoiceOver or Orca. Using only the keyboard, open **Activities** and start **Lantern Pond**.
+2. Tab into the pond. Move with the arrow keys, and flip lanterns with Space or Enter.
+3. Press **Pause**, then **Resume**. Then start **Step Away** and turn on the breathing cue.
+4. Turn on reduced motion in the OS and start Step Away again.
+
+**Expected:**
+
+- Each lantern reads as "Lantern row 1, column 2, unlit" (or "lit"). Moves and a win are announced.
+- After Resume, the pond and move count are as you left them.
+- The paused card is announced, and focus lands on its button.
+- With reduced motion, the breathing cue doesn't animate its size.
+
+**Result:** \_\_\_
+
+### M03-4: Agent attention pauses a game (S03-A01, end to end)
+
+**Why manual:** the automated check used the hook forwarder only when run with `--attention`; this check uses a real agent.
+
+1. Start Lantern Pond and make a few moves.
+2. In Claude Code, start a task that will ask for permission.
+
+**Expected:**
+
+- When the prompt appears, the game is replaced at once by "Claude Code needs you", with **Go to Sessions** and **Keep playing**.
+- **Keep playing** brings back the same board.
+
+**Result:** \_\_\_
+
+### M03-5: Sandbox on macOS and Linux (S03-A03)
+
+**Why manual:** the denial runner uses the Chromium debug port, which WebKit doesn't have. Only Windows was run.
+
+1. Build the debug app on macOS or Linux and open **Activities > Sandbox probe (debug builds only)**.
+2. Wait for the results list.
+3. Press **Pause** and **Resume**.
+
+**Expected:**
+
+- Every line starts with "blocked", except WebRTC, which is a known gap (ADR-012).
+- The tick count is restored after Resume.
+
+Record any "ESCAPED" line in ADR-012.
+
+**Result:** macOS: \_\_\_ Linux: \_\_\_

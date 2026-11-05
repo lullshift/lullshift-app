@@ -76,6 +76,11 @@ Each colour family has exactly one job:
   - **History:** finished, idle and unknown sessions in a full-width table (Tool, Session, State, Last seen) that scrolls inside itself. Click a column header to sort; newest first by default.
   - Below 720 px wide or 520 px tall, the fixed height is dropped and the page scrolls as one; below about 480 px of content width, the two columns stack.
 - **Session card:** tool name and state pill on the first line; short session ID and relative time ("2 min ago", exact time on hover) on the second; a reason line when the state isn't directly observed.
+- **Activities view:**
+  - A grid of cards. Each shows a kind label (Break, Game), the name, a description and "Saved 2 min ago" when there is progress. The buttons are **Start**, or **Resume** plus **Start over**.
+  - A running activity fills the content column. Its title bar has the name, **Pause** and **Close**. The activity's own page sits in a rounded frame.
+  - The paused card shows the sleeping mascot, "<Name> is paused" and "Your progress is saved". When an agent caused the pause, the heading says which tool needs you ("Claude Code needs you"), with **Go to Sessions** and **Keep playing**. An activity that stopped answering says so and keeps its last save.
+  - Activities follow the app theme and reduced-motion setting, which the host passes to them at start.
 - **Cards aren't clickable yet.** They don't look like buttons, so they don't promise an action that doesn't exist. A session detail panel opened from a card is planned for Sprint 04 (S04-T07).
 
 ## Review checklist for new UI
