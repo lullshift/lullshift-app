@@ -21,7 +21,7 @@ if (staged.length === 0) {
 }
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), "lullshift-staged-"));
-let code = 1;
+let code;
 try {
   for (const file of staged) {
     const target = path.join(tmp, file);
@@ -52,4 +52,4 @@ try {
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
-process.exit(code);
+process.exit(code ?? 1);
