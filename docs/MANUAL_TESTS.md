@@ -480,3 +480,50 @@ Record any "ESCAPED" line in ADR-012.
 - Step 4: `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test -p agent-adapters` pass on macOS and Linux. The title reader's Unix branch (`O_NOFOLLOW | O_NONBLOCK`, the FIFO test) was only compiled on Windows so far.
 
 **Result:** \_\_\_
+
+## Sprint 06 – Game kits and first games
+
+### M06-1: Play every new game by keyboard and with a screen reader (S06-A02)
+
+**Why manual:** the simulator checks interruption, saving and that something takes focus, but not whether a person can actually play, or what a screen reader says.
+
+1. In **Activities**, open each new game: Moss Paths, Fog Garden, Stone Slide, Petal Grid, Ridge Walk, Tide Pairs, Firefly Catch and Kite Drift.
+2. Play a full round with the keyboard only, following the game's **How to play**.
+3. Repeat one round of each with a screen reader on (Narrator, VoiceOver or Orca).
+4. Pause half way, close the app, reopen it and resume.
+
+**Expected:**
+
+- Step 2: every action works from the keyboard, the focus ring is always visible, and the controls sit on one row.
+- Step 3: each cell, card or control is read with a useful name (for example "Stone 7, can slide"), and wins and important changes are announced once.
+- Step 4: the game comes back exactly as it was, and the paused view shows the game's stats.
+- Nothing looks like a copy of a known branded game.
+
+**Result:** \_\_\_
+
+### M06-2: Real-time games pause, count down and respect reduced motion
+
+**Why manual:** timing and motion need a person watching the real app.
+
+1. Start Firefly Catch, then trigger an agent "needs you" event (or press **Pause**).
+2. Wait 10 seconds, then resume.
+3. Turn on the OS reduced-motion setting and repeat with Kite Drift.
+
+**Expected:**
+
+- Step 1: the game stops at once; the timer and fireflies don't move while paused.
+- Step 2: a 3-2-1 countdown runs before play continues.
+- Step 3: no countdown animation; a static "Ready" prompt waits for Enter or Space, and there is no parallax or pulsing.
+
+**Result:** \_\_\_
+
+### M06-3: Games on macOS and Linux
+
+**Why manual:** the games were simulated on Windows (Microsoft Edge) only.
+
+1. On macOS and Linux, run `node tests/activities/check-bundled.mjs`.
+2. Open two of the new games in the app and play a few moves.
+
+**Expected:** every activity passes validate and simulate, and the games render and play as on Windows.
+
+**Result:** \_\_\_

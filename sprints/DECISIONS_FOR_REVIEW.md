@@ -11,6 +11,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 5 | 06 | ADR number for kits | open |
 | 6 | 06 | The first eight games | open |
 | 7 | 06 | Built-in marketplace lists engines | open |
+| 8 | 06 | Game design details chosen by the game builders | open |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -52,3 +53,17 @@ Lantern Pond stays as written (no kit) for now. **Alternatives:** different game
 ## 7. Engines in the built-in marketplace (Sprint 06)
 
 `.lullshift/marketplace.json` lists every bundled folder, including the Calm Cards engine, so content packs can name an installed engine. The app does not show engines as cards (ADR-016). **Question:** keep engines listed, or mark them differently once the marketplace UI exists (Sprint 08)?
+
+## 8. Game design details (Sprint 06)
+
+Smaller choices made while building the eight games. Each is easy to change.
+
+- **Card kit use:** Ridge Walk and Tide Pairs use the card kit's decks and seeded shuffle but draw their own layout instead of `Table`/`bindTable`, because their layouts don't fit generic piles. The card kit's table binding is tested in the kit only. Alternative: rebuild one of them on `bindTable` to exercise it in a real game.
+- **Daily puzzles:** Moss Paths, Stone Slide, Petal Grid and Tide Pairs have a "today's" puzzle; Fog Garden and Ridge Walk only deal new ones.
+- **Ridge Walk:** no King-to-Ace wrap; flipping a stock card is allowed at any time; every deal is checked to be clearable (about 0.25 s per new deal).
+- **Fog Garden:** 9x9 with 12 brambles; hitting one reveals all and offers Try again (same field) or New field. No timer, no daily field.
+- **Tide Pairs:** with reduced motion, a mismatched pair stays face up until you press another card, so the second card can be seen.
+- **Moss Paths:** 6x6 only; every tile counts as a bed (36), and a crossing tile can't be turned.
+- **Kite Drift:** touching a cloud puts the kite back in the middle of that gap and resets the streak; never a game over.
+- **Firefly Catch:** a round is 90 seconds of game time; missed fireflies fly away, no lives.
+- **Best scores:** stored with `activity.storage` where a game keeps one (Moss Paths per day, Stone Slide per size, Tide Pairs per size, Firefly Catch).
