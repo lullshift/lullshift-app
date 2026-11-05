@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "name": "lullshift",
+  "description": "Activities bundled with Lullshift: original games, breaks, engines and content packs. Open source under Apache-2.0.",
+  "owner": "Lullshift contributors",
+  "activities": [
+    { "id": "app.lullshift.break.step-away", "source": { "path": "activities/break/step-away" } },
+    {
+      "id": "app.lullshift.content.desk-stretches",
+      "source": { "path": "activities/content/calm-cards/desk-stretches" }
+    },
+    {
+      "id": "app.lullshift.engines.calm-cards",
+      "source": { "path": "activities/engines/calm-cards" }
+    },
+    {
+      "id": "app.lullshift.games.lantern-pond",
+      "source": { "path": "activities/games/lantern-pond" },
+      "featured": true
+    }
+  ]
+}

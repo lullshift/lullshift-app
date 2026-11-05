@@ -13,6 +13,7 @@ import {
   initMarketplace,
   nameFromFolder,
   type Kind,
+  type KitName,
 } from "./create.ts";
 import { packFiles } from "./pack.ts";
 import { startServers } from "./serve.ts";
@@ -24,12 +25,14 @@ const HELP = `lullshift ${SDK_VERSION}: build Lullshift activities locally. No n
 Usage
   lullshift create <folder> [--kind app|content] [--name "Name"] [--id reverse.dns.id]
                             [--author "You"] [--engine lullshift.cards@1]
+                            [--kit grid|card|arcade]
   lullshift validate <folder> [--engines <folder>]...
   lullshift simulate <folder> [--browser <path>] [--engines <folder>]... [--json]
   lullshift dev <folder> [--browser <path>] [--engines <folder>]...
   lullshift pack <folder> [--out <file.lullpack>]
   lullshift marketplace init [<repo folder>] --name <name> [--owner "You"]
 
+create --kit copies a game kit (ADR-019) into the folder and loads it after the bridge.
 Exit codes: 0 ok, 1 problems found, 2 usage or environment error.
 simulate and dev use Microsoft Edge, Google Chrome or Chromium already on this computer; point
 at one with --browser or LULLSHIFT_BROWSER.`;
@@ -48,6 +51,7 @@ async function main(argv: string[]): Promise<number> {
       id: { type: "string" },
       author: { type: "string" },
       engine: { type: "string" },
+      kit: { type: "string" },
       engines: { type: "string", multiple: true },
       browser: { type: "string" },
       out: { type: "string" },
@@ -86,6 +90,7 @@ async function main(argv: string[]): Promise<number> {
         id: values.id ?? idFromName(name),
         author: values.author ?? "",
         engine: values.engine ?? "lullshift.cards@1",
+        kit: values.kit as KitName | undefined,
       };
       const problems = checkCreateOptions(options);
       if (problems.length) throw new Usage(problems.join("\n"));

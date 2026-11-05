@@ -1,0 +1,32 @@
+{
+  "name": "@lullshift/activity-kits",
+  "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Grid, card and arcade kits for Lullshift activities: seeded randomness, undo, keyboard play, pause and resume (ADR-019). Each kit ships as one classic script in dist/.",
+  "type": "module",
+  "exports": {
+    "./core": "./src/core/index.ts",
+    "./grid": "./src/grid/index.ts",
+    "./card": "./src/card/index.ts",
+    "./arcade": "./src/arcade/index.ts",
+    "./dist/*": "./dist/*"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build-kits.ts",
+    "build:check": "node scripts/build-kits.ts --check",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

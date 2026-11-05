@@ -6,7 +6,7 @@ Use this prompt with Claude Code, Codex, Cursor or another coding LLM. The offic
 >
 > Activity idea: [DESCRIBE GAME/ACTIVITY].
 >
-> Start with `pnpm lullshift create <folder> --name "<Name>" --author "<You>" --id <reverse.dns.id>`, then change the files. `create` copies the bridge for you. Without `--id` the id is `dev.local.<name>`. `category` is one of `arcade`, `break`, `productivity` or `interactive` (games are usually `arcade`).
+> Start with `pnpm lullshift create <folder> --name "<Name>" --author "<You>" --id <reverse.dns.id>`, then change the files. `create` copies the bridge for you. For a grid, card or real-time game add `--kit grid|card|arcade`: it copies a kit (`window.LullshiftKits.<kit>`, see `packages/activity-kits/README.md`) with seeded puzzles, undo, keyboard navigation and pause handling. Without `--id` the id is `dev.local.<name>`. `category` is one of `arcade`, `break`, `productivity` or `interactive` (games are usually `arcade`).
 >
 > Rules:
 >
@@ -28,6 +28,7 @@ Use this prompt with Claude Code, Codex, Cursor or another coding LLM. The offic
 - [ ] `style.css`
 - [ ] `main.js`
 - [ ] `lullshift-bridge-v1.js` (`create` copies it; never edit it)
+- [ ] `lullshift-<kit>-kit-v1.js` if you used `--kit` (never edit it)
 - [ ] a preview image (original art)
 - [ ] README or `LICENSES.md` with asset sources and tests run
 - [ ] `pnpm lullshift validate <folder>` output, with no errors and no warnings

@@ -17,6 +17,8 @@ The SDK is in this repository for now. Publishing to npm waits for approval, so 
 
 `pnpm lullshift create` copies the bridge for you.
 
+Games can also use a kit from `packages/activity-kits` (grid, card or arcade): seeded puzzles, undo, keyboard navigation, and pause and resume done once and tested. Add `--kit grid|card|arcade` to `create`. See the [kits README](../activity-kits/README.md).
+
 ## Quick start
 
 ```bash
@@ -40,6 +42,7 @@ An activity folder needs these files. No build step is required.
 - `style.css`
 - `main.js`
 - `lullshift-bridge-v1.js` (an identical copy from the SDK)
+- `lullshift-<kit>-kit-v1.js` if you use a kit (an identical copy, loaded after the bridge)
 - a preview image
 
 ## The bridge

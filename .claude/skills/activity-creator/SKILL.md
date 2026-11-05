@@ -11,6 +11,7 @@ description: Create or revise Lullshift games and activities (custom code, code 
    - `pnpm lullshift create <folder> --name "Name" --author "You" --id <reverse.dns.id>` (add `--kind content --engine <id>@<major>` for a pack). Without `--id` the id is `dev.local.<name>`.
    - `category` is one of `arcade`, `break`, `productivity` or `interactive` (games are usually `arcade`).
    - Do not hand-write `lullshift-bridge-v1.js`; `create` copies it from `packages/activity-sdk/bridge/`.
+   - For a grid, card or real-time game, add `--kit grid|card|arcade`. `create` copies `lullshift-<kit>-kit-v1.js` and loads it after the bridge. Never edit the kit copy. API: `packages/activity-kits/README.md`.
 4. Code activities: static HTML, CSS and plain JavaScript as classic scripts. No inline script or style, no modules, no CDN, no network, storage APIs, clipboard or Tauri IPC. Inventory and license-check every asset. Use original names and art; never recreate a specific branded game.
 5. Content packs: `kind: "content"`, `engine`, and a `data` JSON file valid against the engine's `data.schema.json`. No code.
 6. Always meet these three requirements:

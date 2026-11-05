@@ -22,7 +22,8 @@ export default tseslint.config(
   },
   {
     // Activities are classic browser scripts in a sandboxed frame (ADR-012); the bridge client
-    // and shared logic files are loaded first and become page globals.
+    // and shared logic files are loaded first and become page globals. Kit files
+    // (lullshift-<kit>-kit-v1.js, ADR-019) add LullshiftKits.
     files: [
       "activities/**/*.js",
       "packages/activity-sdk/bridge/*.js",
@@ -30,7 +31,12 @@ export default tseslint.config(
     ],
     languageOptions: {
       sourceType: "script",
-      globals: { ...globals.browser, LullshiftBridge: "readonly", LanternLogic: "readonly" },
+      globals: {
+        ...globals.browser,
+        LullshiftBridge: "readonly",
+        LullshiftKits: "readonly",
+        LanternLogic: "readonly",
+      },
     },
     rules: { "@typescript-eslint/no-unused-vars": ["error", { caughtErrors: "none" }] },
   },

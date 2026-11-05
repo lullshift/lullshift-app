@@ -12,9 +12,16 @@ import {
 import path from "node:path";
 import { BRIDGE_FILE, SDK_VERSION, isPlainText } from "@lullshift/activity-sdk";
 import { validateMarketplaceIndex } from "@lullshift/agent-protocol";
-import { BRIDGE_PATH, TEMPLATES_DIR } from "./paths.ts";
+import { BRIDGE_PATH, KITS_DIR, TEMPLATES_DIR } from "./paths.ts";
 
 export type Kind = "app" | "content";
+
+/** Activity kits (ADR-019) that `create --kit` can add. */
+export const KIT_NAMES = ["grid", "card", "arcade"] as const;
+export type KitName = (typeof KIT_NAMES)[number];
+
+/** "grid" → "lullshift-grid-kit-v1.js". */
+export const kitFile = (kit: string): string => `lullshift-${kit}-kit-v1.js`;
 
 export interface CreateOptions {
   dir: string;
@@ -24,6 +31,8 @@ export interface CreateOptions {
   author: string;
   /** Content packs only: `id@major`. */
   engine: string;
+  /** Apps only: copy this kit in and load it after the bridge. */
+  kit?: KitName;
 }
 
 const ID = /^[a-z0-9]+(\.[a-z0-9-]+)+$/;
@@ -65,6 +74,13 @@ export function checkCreateOptions(o: CreateOptions): string[] {
   if (o.kind === "content" && !ENGINE.test(o.engine)) {
     problems.push(`--engine ${o.engine}: use id@major, e.g. lullshift.cards@1`);
   }
+  if (o.kit !== undefined) {
+    if (!(KIT_NAMES as readonly string[]).includes(o.kit)) {
+      problems.push(`--kit ${o.kit}: one of ${KIT_NAMES.join(", ")}`);
+    } else if (o.kind !== "app") {
+      problems.push("--kit is for apps; content packs carry no code");
+    }
+  }
   return problems;
 }
 
@@ -91,15 +107,31 @@ export function createActivity(o: CreateOptions): string[] {
   const written: string[] = [];
   const from = path.join(TEMPLATES_DIR, o.kind);
   for (const file of readdirSync(from).sort()) {
-    const text = readFileSync(path.join(from, file), "utf8");
-    writeFileSync(path.join(target, file), fill(text, file.endsWith(".json")));
+    let text = fill(readFileSync(path.join(from, file), "utf8"), file.endsWith(".json"));
+    if (file === "index.html" && o.kind === "app" && o.kit) text = addKitScript(text, o.kit);
+    writeFileSync(path.join(target, file), text);
     written.push(file);
   }
   if (o.kind === "app") {
     copyFileSync(BRIDGE_PATH, path.join(target, BRIDGE_FILE));
     written.push(BRIDGE_FILE);
+    if (o.kit) {
+      copyFileSync(path.join(KITS_DIR, kitFile(o.kit)), path.join(target, kitFile(o.kit)));
+      written.push(kitFile(o.kit));
+    }
   }
   return written.sort();
+}
+
+/** Loads the kit right after the bridge script, keeping that line's indentation. */
+export function addKitScript(html: string, kit: KitName): string {
+  const tag = `<script src="${BRIDGE_FILE}"></script>`;
+  const lines = html.split("\n");
+  const at = lines.findIndex((l) => l.trim() === tag);
+  if (at < 0) throw new Error(`the template's index.html doesn't load ${BRIDGE_FILE}`);
+  const indent = (lines[at] ?? "").slice(0, (lines[at] ?? "").indexOf("<"));
+  lines.splice(at + 1, 0, `${indent}<script src="${kitFile(kit)}"></script>`);
+  return lines.join("\n");
 }
 
 /** Writes `.lullshift/marketplace.json` in `repo`. Refuses to replace one. */

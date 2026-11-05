@@ -10,7 +10,8 @@ import {
   type ActivityManifestV1,
 } from "@lullshift/agent-protocol";
 import { CODE_TYPES, LIMITS, listFiles, type FileEntry } from "./files.ts";
-import { BRIDGE_PATH, ENGINES_DIR } from "./paths.ts";
+import { KIT_NAMES } from "./create.ts";
+import { BRIDGE_PATH, ENGINES_DIR, KITS_DIR } from "./paths.ts";
 
 export interface Engine {
   id: string;
@@ -49,6 +50,9 @@ const RISKY: [RegExp, string][] = [
   ],
   [/\bnavigator\.clipboard\b/, "the clipboard"],
 ];
+
+// A kit file name; the name part can't hold dots or slashes, so it never leaves KITS_DIR.
+const KIT_FILE = /^lullshift-([a-z0-9]+(?:-[a-z0-9]+)*)-kit-v1[.]js$/;
 
 const ENGINE_REF = /^([a-z0-9]+(?:\.[a-z0-9-]+)+)@([0-9]+)$/;
 
@@ -186,6 +190,17 @@ function checkApp(report: Report, has: (rel: string) => FileEntry | undefined) {
     );
   } else if (!readFileSync(bridge.abs).equals(readFileSync(BRIDGE_PATH))) {
     report.warnings.push(`${BRIDGE_FILE} differs from the SDK's copy (${SDK_VERSION}); replace it`);
+  }
+  // Kits (ADR-019) are copied in like the bridge; a changed copy is the activity's own code then.
+  for (const f of report.files) {
+    const kit = KIT_FILE.exec(path.posix.basename(f.rel));
+    if (!kit) continue;
+    const sdkCopy = path.join(KITS_DIR, `lullshift-${kit[1]}-kit-v1.js`);
+    if (!existsSync(sdkCopy)) {
+      report.warnings.push(`${f.rel} isn't a Lullshift kit (known kits: ${KIT_NAMES.join(", ")})`);
+    } else if (!readFileSync(f.abs).equals(readFileSync(sdkCopy))) {
+      report.warnings.push(`${f.rel} differs from the SDK's copy; replace it`);
+    }
   }
   for (const f of report.files) {
     if (f.rel === BRIDGE_FILE) continue;

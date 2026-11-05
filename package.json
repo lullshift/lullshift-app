@@ -11,6 +11,8 @@
     "check": "node scripts/check.mjs",
     "check:fast": "node scripts/check.mjs --fast",
     "gen:types": "pnpm --filter @lullshift/agent-protocol gen:types",
+    "kits:build": "pnpm --filter @lullshift/activity-kits build",
+    "kits:check": "pnpm --filter @lullshift/activity-kits build:check",
     "validate:schemas": "pnpm --filter @lullshift/agent-protocol validate:fixtures",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "eslint .",

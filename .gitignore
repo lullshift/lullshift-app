@@ -17,6 +17,8 @@ Thumbs.db
 # Build outputs
 node_modules/
 dist/
+# Generated kit scripts are committed (ADR-019); `pnpm kits:check` catches drift.
+!packages/activity-kits/dist/
 target/
 bin/
 obj/

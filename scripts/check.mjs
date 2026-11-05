@@ -19,6 +19,7 @@ const steps = [
     cmd: "pnpm",
     args: ["--filter", "@lullshift/agent-protocol", "gen:types:check"],
   },
+  { name: "activity kits up to date", cmd: "pnpm", args: ["kits:check"] },
   { name: "typecheck", cmd: "pnpm", args: ["typecheck"] },
   { name: "lint", cmd: "pnpm", args: ["lint"] },
   { name: "format", cmd: "pnpm", args: ["format:check"] },
