@@ -683,3 +683,52 @@ Record any "ESCAPED" line in ADR-012.
 **Expected:** the keychain test passes and leaves nothing behind; without a Secret Service, Companion says the system keychain isn't available and does not offer to store the key elsewhere.
 
 **Result:** \_\_\_
+
+## Sprint 10: More adapters and content
+
+### M10-1: Codex
+
+On Windows, use the installed release build (not a debug build): the release app is a GUI program and hooks run through PowerShell may behave differently.
+
+1. With Codex installed, set `CODEX_HOME` to a scratch folder, start Lullshift, open Integrations and choose **Connect Codex**. Confirm both dialogs.
+2. Start Codex with the same `CODEX_HOME`, open `/hooks` and trust the Lullshift hooks. Send a prompt, ask for a command that needs approval, interrupt a turn, then quit.
+3. Set `[features] hooks = false` in that `config.toml` and reopen Integrations.
+4. Disconnect.
+
+**Expected:** hooks.json gains six async entries plus a synchronous SessionEnd; before trusting, no events arrive; afterwards the session shows working, needs you at the approval, an ended turn after interrupt, and ended on quit; step 3 shows "Hooks turned off"; Disconnect restores the file exactly; `config.toml` is never changed.
+
+**Result:** \_\_\_
+
+### M10-2: Cursor (Windows and macOS/Linux)
+
+On Windows, use the installed release build (not a debug build): the release app is a GUI program and hooks run through PowerShell may behave differently.
+
+1. Back up `~/.cursor/hooks.json`. Choose **Connect Cursor** and confirm.
+2. Use Cursor's agent: send a prompt, let it run a tool and finish, then close the session.
+3. Check that your prompt is still sent normally and that no hook output appears in Cursor's Hooks panel or output.
+4. With Lullshift's Claude Code hooks also installed, run one prompt in Cursor.
+5. Disconnect.
+
+**Expected:** six hooks with `"version": 1`; sessions appear as Cursor (never "needs you"); the prompt is never blocked; the Cursor run in step 4 creates no Claude Code session; Disconnect restores the file.
+
+**Result:** \_\_\_
+
+### M10-3: New games and packs with a screen reader and keyboard only
+
+1. With NVDA (Windows) or VoiceOver (macOS) running, open each new game from Sprint 10: Breeze Bounce, Glow Trail, Tea Sort, Pebble Merge, Sea Glass, Thread Picture, Brook Links, Island Bridges, Harvest Pairs, Clock Patience and Frost Steps. Play a few moves with the keyboard only.
+2. In each grid game, choose the daily option twice on the same day (Fog Garden: **Today's field**).
+3. Open three or four of the new content packs (for example a quiz, a teaser set and a calm-cards deck) and go through them with the keyboard.
+4. Turn on reduced motion in the OS and open Breeze Bounce, Glow Trail and Pebble Merge.
+
+**Expected:** every control and cell is announced with a meaningful name and state; nothing depends on colour alone; the daily puzzle is the same both times; reduced motion removes animation without breaking play.
+
+**Result:** \_\_\_
+
+### M10-4: Clock Patience auto-play pauses with the host
+
+1. Start Clock Patience and press **Turn** so it auto-plays.
+2. While cards are turning, trigger a host pause (an agent needs you, or press the pause control), then resume.
+
+**Expected:** auto-play stops while paused and continues from the same card after resume; no cards are turned while paused.
+
+**Result:** \_\_\_

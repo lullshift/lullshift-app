@@ -136,3 +136,36 @@ Taken while the product owner was away; all fail closed. Please confirm or chang
 4. **Retry is refused if the profile's host changed** since the message was written ("Send the message again to review it").
 5. **Reply cleaning uses `agent_core::text::is_invisible`**, which is wider than the list asked for (it also removes e.g. U+034F, U+2060-206F, Mongolian free variation selectors). `companion` now depends on `agent-core`.
 6. **Keychain at launch.** The keyring API in use has no metadata-only check, so `hasKey` still reads the secret. Instead the Companion view is no longer mounted at app launch; it mounts on first visit, so the keychain is not read until then.
+
+## 21. Sprint 10 lineup: eleven new games and 21 packs
+
+**Decision:** to reach the 20-game target, eleven original games on the kits: Tea Sort (pour colour layers until each cup is one colour), Pebble Merge (slide and merge pebbles on a 4x4 tray), Sea Glass (swap to make lines of three, 25 swaps a round), Thread Picture (picture-by-numbers), Brook Links (link matching stones with streams that don't cross), Island Bridges (connect numbered islands), Harvest Pairs (pairs that add to 13 from a triangle of cards), Clock Patience (a calm game of chance), Frost Steps (slide on ice to the lantern), Breeze Bounce (keep a seed aloft, no lives) and Glow Trail (a trail that shortens instead of ending the game). All grid puzzles have a daily puzzle (S10-T03). Plus 21 content packs (two per engine, three for Calm Cards) to bring activities to about 100. Mechanics are generic; names, art and wording are original, and user-facing text avoids product names of well-known games. **Question:** any of these you'd rather drop or replace?
+
+## 22. OpenCode still not added (Sprint 10)
+
+Decision 1 is still open, so Sprint 10 researches and builds only Codex and Cursor adapters, as the sprint says.
+
+## 23. Codex and Cursor adapters: conservative choices taken (ADR-021)
+
+Taken while the product owner was away; all observe-only. Please confirm or change each.
+
+1. **Codex Interrupt maps to `turn_ended`** (reason `interrupted`), not `cancelled`: `cancelled` is terminal and the Codex session continues.
+2. **Cursor `stop` with status `error` is still `turn_ended`** (status kept as a hint), not `failed`, so no "stopped with an error" notification comes from a single hook. Cursor never claims `needs_attention`.
+3. **Cursor payloads reaching the Claude Code hook are dropped, not re-mapped to `cursor`.** Their shape is undocumented, and Cursor's own hooks cover it.
+4. **Command string, not exec form.** Codex and Cursor take a command string (Codex's `args` is undocumented). Paths are single-quoted and limited to letters, digits, space and `_-./\:()@+=,~`; others refuse install. An app folder with an apostrophe, `$`, `&` etc. in its name can't be connected. On Windows both use the PowerShell form (`& '...'`); Codex's Windows shell is undocumented.
+5. **Timeouts:** Codex 2 s for async hooks, SessionEnd (synchronous) 3 s; Cursor 3 s.
+6. **Codex "hooks turned off"** is read only from `[features] hooks = false` (or top-level `features.hooks = false`). The deprecated `codex_hooks` alias is not read. Status shows "Hooks turned off" only when Lullshift's hooks are installed or partly installed; with nothing installed it stays "Not installed".
+7. **Cursor `version` other than 1 is refused** (file left alone).
+8. No task-text capture for Codex or Cursor (capture stays Claude Code only).
+9. **Stricter hook-file parsing (all three adapters, after the security review):** files with duplicate JSON keys, integers beyond 64 bits, or any number of 9e18 or more (for example `1e30`) are refused and left untouched rather than rewritten lossily. Files over 1 MiB or that are not regular files are refused too. A relative `CODEX_HOME` is ignored.
+
+## 24. Sprint 10 content review: choices taken
+
+Taken while the product owner was away. Please confirm or change each.
+
+1. **Tea Sort's sixth tea is now "Sencha"** (was "Matcha"; its pattern also rendered as a solid fill and is now a visible grid), so every tea has its own first letter, as the help promises.
+2. **Island Bridges marks finished islands with a double ring** as well as green, so colour is not the only cue.
+3. **Fog Garden got a daily field** ("Today's field"): today's seed with the centre tile opened for you, so everyone gets the same field. This adds a fourth button to its controls row.
+4. **Size stays a separate `<select>` row** in Thread Picture, Brook Links and Island Bridges. Petal Grid and Stone Slide put a "Size" button in the main controls row instead. This is left inconsistent for now; unifying it is a small follow-up if you want one pattern.
+5. **Name clash not checked.** "Tea Sort" describes a common sort-by-pouring mechanic and may be close to existing app-store titles. No web or store search was done; please check before release, or pick another name (for example "Teacup Tidy").
+6. **Listening prompts** (Pause: Sounds around you and similar) assume hearing; each pack says any step can be skipped. Left as is.

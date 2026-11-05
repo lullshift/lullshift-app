@@ -11,6 +11,12 @@
       }
     },
     {
+      "id": "app.lullshift.content.away-doorstep-air",
+      "source": {
+        "path": "activities/content/away/away-doorstep-air"
+      }
+    },
+    {
       "id": "app.lullshift.content.away-kitchen-break",
       "source": {
         "path": "activities/content/away/away-kitchen-break"
@@ -20,6 +26,12 @@
       "id": "app.lullshift.content.away-look-outside",
       "source": {
         "path": "activities/content/away/away-look-outside"
+      }
+    },
+    {
+      "id": "app.lullshift.content.away-rainy-day-ideas",
+      "source": {
+        "path": "activities/content/away/away-rainy-day-ideas"
       }
     },
     {
@@ -65,9 +77,39 @@
       }
     },
     {
+      "id": "app.lullshift.content.breath-three-beat-pause",
+      "source": {
+        "path": "activities/content/breathing/breath-three-beat-pause"
+      }
+    },
+    {
+      "id": "app.lullshift.content.breath-tide-in-and-out",
+      "source": {
+        "path": "activities/content/breathing/breath-tide-in-and-out"
+      }
+    },
+    {
       "id": "app.lullshift.content.breath-two-minute-settle",
       "source": {
         "path": "activities/content/breathing/breath-two-minute-settle"
+      }
+    },
+    {
+      "id": "app.lullshift.content.cards-before-you-reply",
+      "source": {
+        "path": "activities/content/calm-cards/cards-before-you-reply"
+      }
+    },
+    {
+      "id": "app.lullshift.content.cards-tiny-joys-of-making",
+      "source": {
+        "path": "activities/content/calm-cards/cards-tiny-joys-of-making"
+      }
+    },
+    {
+      "id": "app.lullshift.content.cards-weather-watching",
+      "source": {
+        "path": "activities/content/calm-cards/cards-weather-watching"
       }
     },
     {
@@ -83,21 +125,9 @@
       }
     },
     {
-      "id": "app.lullshift.content.slow-down-ideas",
+      "id": "app.lullshift.content.move-ankles-and-feet-seated",
       "source": {
-        "path": "activities/content/calm-cards/slow-down-ideas"
-      }
-    },
-    {
-      "id": "app.lullshift.content.tiny-desk-tidy",
-      "source": {
-        "path": "activities/content/calm-cards/tiny-desk-tidy"
-      }
-    },
-    {
-      "id": "app.lullshift.content.wonder-facts",
-      "source": {
-        "path": "activities/content/calm-cards/wonder-facts"
+        "path": "activities/content/movement/move-ankles-and-feet-seated"
       }
     },
     {
@@ -125,6 +155,12 @@
       }
     },
     {
+      "id": "app.lullshift.content.move-wrists-after-typing",
+      "source": {
+        "path": "activities/content/movement/move-wrists-after-typing"
+      }
+    },
+    {
       "id": "app.lullshift.content.move-wrists-and-hands",
       "source": {
         "path": "activities/content/movement/move-wrists-and-hands"
@@ -149,6 +185,18 @@
       }
     },
     {
+      "id": "app.lullshift.content.pause-rest-your-hands",
+      "source": {
+        "path": "activities/content/pause/pause-rest-your-hands"
+      }
+    },
+    {
+      "id": "app.lullshift.content.pause-sounds-around-you",
+      "source": {
+        "path": "activities/content/pause/pause-sounds-around-you"
+      }
+    },
+    {
       "id": "app.lullshift.content.pause-unclench",
       "source": {
         "path": "activities/content/pause/pause-unclench"
@@ -167,9 +215,21 @@
       }
     },
     {
+      "id": "app.lullshift.content.quiz-everyday-materials",
+      "source": {
+        "path": "activities/content/quiz/quiz-everyday-materials"
+      }
+    },
+    {
       "id": "app.lullshift.content.quiz-how-computers-count",
       "source": {
         "path": "activities/content/quiz/quiz-how-computers-count"
+      }
+    },
+    {
+      "id": "app.lullshift.content.quiz-how-maps-work",
+      "source": {
+        "path": "activities/content/quiz/quiz-how-maps-work"
       }
     },
     {
@@ -203,9 +263,21 @@
       }
     },
     {
+      "id": "app.lullshift.content.reflect-favourite-tools",
+      "source": {
+        "path": "activities/content/reflection/reflect-favourite-tools"
+      }
+    },
+    {
       "id": "app.lullshift.content.reflect-gratitude-light",
       "source": {
         "path": "activities/content/reflection/reflect-gratitude-light"
+      }
+    },
+    {
+      "id": "app.lullshift.content.reflect-learning-something-new",
+      "source": {
+        "path": "activities/content/reflection/reflect-learning-something-new"
       }
     },
     {
@@ -221,6 +293,12 @@
       }
     },
     {
+      "id": "app.lullshift.content.slow-down-ideas",
+      "source": {
+        "path": "activities/content/calm-cards/slow-down-ideas"
+      }
+    },
+    {
       "id": "app.lullshift.content.teasers-coding-flavoured",
       "source": {
         "path": "activities/content/teaser/teasers-coding-flavoured"
@@ -230,6 +308,12 @@
       "id": "app.lullshift.content.teasers-gentle-logic",
       "source": {
         "path": "activities/content/teaser/teasers-gentle-logic"
+      }
+    },
+    {
+      "id": "app.lullshift.content.teasers-invented-arithmetic",
+      "source": {
+        "path": "activities/content/teaser/teasers-invented-arithmetic"
       }
     },
     {
@@ -245,9 +329,27 @@
       }
     },
     {
+      "id": "app.lullshift.content.teasers-order-and-clues",
+      "source": {
+        "path": "activities/content/teaser/teasers-order-and-clues"
+      }
+    },
+    {
       "id": "app.lullshift.content.teasers-word-play",
       "source": {
         "path": "activities/content/teaser/teasers-word-play"
+      }
+    },
+    {
+      "id": "app.lullshift.content.tiny-desk-tidy",
+      "source": {
+        "path": "activities/content/calm-cards/tiny-desk-tidy"
+      }
+    },
+    {
+      "id": "app.lullshift.content.toy-autumn-leaves",
+      "source": {
+        "path": "activities/content/toy/toy-autumn-leaves"
       }
     },
     {
@@ -281,6 +383,12 @@
       }
     },
     {
+      "id": "app.lullshift.content.toy-winter-frost",
+      "source": {
+        "path": "activities/content/toy/toy-winter-frost"
+      }
+    },
+    {
       "id": "app.lullshift.content.typing-calm-sentences",
       "source": {
         "path": "activities/content/typing/typing-calm-sentences"
@@ -305,9 +413,27 @@
       }
     },
     {
+      "id": "app.lullshift.content.typing-nature-sentences",
+      "source": {
+        "path": "activities/content/typing/typing-nature-sentences"
+      }
+    },
+    {
       "id": "app.lullshift.content.typing-punctuation",
       "source": {
         "path": "activities/content/typing/typing-punctuation"
+      }
+    },
+    {
+      "id": "app.lullshift.content.typing-seasons-short-lines",
+      "source": {
+        "path": "activities/content/typing/typing-seasons-short-lines"
+      }
+    },
+    {
+      "id": "app.lullshift.content.wonder-facts",
+      "source": {
+        "path": "activities/content/calm-cards/wonder-facts"
       }
     },
     {
@@ -371,6 +497,24 @@
       }
     },
     {
+      "id": "app.lullshift.games.breeze-bounce",
+      "source": {
+        "path": "activities/games/breeze-bounce"
+      }
+    },
+    {
+      "id": "app.lullshift.games.brook-links",
+      "source": {
+        "path": "activities/games/brook-links"
+      }
+    },
+    {
+      "id": "app.lullshift.games.clock-patience",
+      "source": {
+        "path": "activities/games/clock-patience"
+      }
+    },
+    {
       "id": "app.lullshift.games.firefly-catch",
       "source": {
         "path": "activities/games/firefly-catch"
@@ -380,6 +524,30 @@
       "id": "app.lullshift.games.fog-garden",
       "source": {
         "path": "activities/games/fog-garden"
+      }
+    },
+    {
+      "id": "app.lullshift.games.frost-steps",
+      "source": {
+        "path": "activities/games/frost-steps"
+      }
+    },
+    {
+      "id": "app.lullshift.games.glow-trail",
+      "source": {
+        "path": "activities/games/glow-trail"
+      }
+    },
+    {
+      "id": "app.lullshift.games.harvest-pairs",
+      "source": {
+        "path": "activities/games/harvest-pairs"
+      }
+    },
+    {
+      "id": "app.lullshift.games.island-bridges",
+      "source": {
+        "path": "activities/games/island-bridges"
       }
     },
     {
@@ -402,6 +570,12 @@
       }
     },
     {
+      "id": "app.lullshift.games.pebble-merge",
+      "source": {
+        "path": "activities/games/pebble-merge"
+      }
+    },
+    {
       "id": "app.lullshift.games.petal-grid",
       "source": {
         "path": "activities/games/petal-grid"
@@ -414,9 +588,27 @@
       }
     },
     {
+      "id": "app.lullshift.games.sea-glass",
+      "source": {
+        "path": "activities/games/sea-glass"
+      }
+    },
+    {
       "id": "app.lullshift.games.stone-slide",
       "source": {
         "path": "activities/games/stone-slide"
+      }
+    },
+    {
+      "id": "app.lullshift.games.tea-sort",
+      "source": {
+        "path": "activities/games/tea-sort"
+      }
+    },
+    {
+      "id": "app.lullshift.games.thread-picture",
+      "source": {
+        "path": "activities/games/thread-picture"
       }
     },
     {
