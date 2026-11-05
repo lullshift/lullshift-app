@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A frozen pond with rocks, a walker and a warm lantern">
+  <rect width="320" height="200" fill="#bcd5e4"/>
+  <rect x="30" y="16" width="260" height="168" rx="16" fill="#e9f5fb" stroke="#b7d3e3" stroke-width="3"/>
+  <g stroke="#b7d3e3" stroke-width="2" fill="none">
+    <path d="M30 58H290M30 100H290M30 142H290M95 16V184M160 16V184M225 16V184"/>
+  </g>
+  <g fill="#6c7783" stroke="#424b55" stroke-width="3">
+    <ellipse cx="127" cy="37" rx="22" ry="18"/>
+    <ellipse cx="258" cy="79" rx="22" ry="18"/>
+    <ellipse cx="62" cy="121" rx="22" ry="18"/>
+    <ellipse cx="192" cy="163" rx="22" ry="18"/>
+  </g>
+  <path d="M62 163H160M160 163V100M160 100H225" stroke="#cfe6f4" stroke-width="12" stroke-linecap="round" fill="none"/>
+  <circle cx="62" cy="163" r="16" fill="#2c6b94" stroke="#fbfdfe" stroke-width="4"/>
+  <rect x="204" y="80" width="42" height="42" rx="8" fill="#fbd9a8" stroke="#e98a2d" stroke-width="3"/>
+  <rect x="214" y="90" width="22" height="22" rx="5" fill="#e98a2d" stroke="#424b55" stroke-width="3"/>
+</svg>

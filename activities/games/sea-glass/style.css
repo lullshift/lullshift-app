@@ -1,0 +1,227 @@
+:root {
+  --bg: #edf3f3;
+  --surface: #f8fbfb;
+  --surface-2: #dce9e9;
+  --border: #bfd3d3;
+  --text: #1c2b2d;
+  --muted: #4b6264;
+  --accent: #1f6c80;
+  --accent-soft: #d0e8ee;
+  --sand: #e7dcc3;
+  --sand-edge: #cdbf9f;
+  --shadow: 0 2px 10px rgba(28, 43, 45, 0.1);
+  --g1: #3f86c7;
+  --g2: #3d9a6b;
+  --g3: #d89a2b;
+  --g4: #d1627f;
+  --g5: #7b63c4;
+  --g6: #aec8d1;
+  --g-edge: rgba(0, 0, 0, 0.35);
+}
+:root[data-theme="dark"] {
+  --bg: #0f1819;
+  --surface: #162122;
+  --surface-2: #1f2f31;
+  --border: #30484b;
+  --text: #e2eeef;
+  --muted: #a3bcbf;
+  --accent: #7ccbe0;
+  --accent-soft: #1d3a42;
+  --sand: #2b2a22;
+  --sand-edge: #4a4836;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  --g1: #5aa3e6;
+  --g2: #55bb87;
+  --g3: #efb44a;
+  --g4: #e57f9b;
+  --g5: #9b84e0;
+  --g6: #cfe2e8;
+  --g-edge: rgba(255, 255, 255, 0.45);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  line-height: 1.5;
+}
+.wrap {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px 20px 36px;
+  display: grid;
+  gap: 14px;
+}
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.lede,
+.stat {
+  margin: 0;
+  color: var(--muted);
+}
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.beach {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  background: var(--sand);
+  border: 1px solid var(--sand-edge);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  width: min(100%, max(280px, calc(100vh - 380px)));
+  justify-self: center;
+  margin-inline: auto;
+}
+.kit-row {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+}
+.kit-gridcell {
+  display: block;
+}
+.kit-cell {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 28px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+/* Each piece is a shape drawn with clip-path, so the form differs as well as the colour. */
+.kit-cell::before {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  background: var(--piece);
+}
+.kit-cell.g1 {
+  --piece: var(--g1);
+}
+.kit-cell.g2 {
+  --piece: var(--g2);
+}
+.kit-cell.g3 {
+  --piece: var(--g3);
+}
+.kit-cell.g4 {
+  --piece: var(--g4);
+}
+.kit-cell.g5 {
+  --piece: var(--g5);
+}
+.kit-cell.g6 {
+  --piece: var(--g6);
+}
+.kit-cell.g1::before {
+  border-radius: 50%;
+}
+.kit-cell.g2::before {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+.kit-cell.g3::before {
+  clip-path: polygon(50% 4%, 100% 94%, 0 94%);
+}
+.kit-cell.g4::before {
+  inset: 18%;
+  border-radius: 3px;
+}
+.kit-cell.g5::before {
+  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
+}
+.kit-cell.g6::before {
+  clip-path: polygon(
+    50% 0,
+    62% 36%,
+    100% 38%,
+    70% 60%,
+    80% 100%,
+    50% 76%,
+    20% 100%,
+    30% 60%,
+    0 38%,
+    38% 36%
+  );
+}
+.kit-cell.picked {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  z-index: 1;
+}
+.kit-cell:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+  z-index: 2;
+}
+.kit-cell.fresh::before {
+  animation: settle 0.3s ease-out;
+}
+@keyframes settle {
+  from {
+    transform: translateY(-60%);
+    opacity: 0.3;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.message {
+  margin: 0;
+  min-height: 3em;
+  color: var(--text);
+}
+/* One row of controls. Buttons share the width and never break mid-label; only a very narrow
+   window lets them wrap. */
+.controls {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.controls button {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+@media (max-width: 340px) {
+  .controls {
+    flex-wrap: wrap;
+  }
+}
+.controls button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.controls button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.reduced *,
+.reduced *::before,
+.reduced *::after {
+  transition: none !important;
+  animation: none !important;
+}

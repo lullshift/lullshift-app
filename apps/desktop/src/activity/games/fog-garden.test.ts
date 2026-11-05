@@ -18,7 +18,9 @@ interface Logic {
   neighbours(i: number): number[];
   placeBrambles(seed: number, safe: number): number[];
   countAround(brambles: number[], i: number): number;
+  CENTRE: number;
   newGame(seed: number): Game;
+  dailyGame(seed: number): Game;
   reveal(g: Game, i: number): { game: Game; changed: boolean };
   toggleMark(g: Game, i: number): { game: Game; changed: boolean };
   tryAgain(g: Game): Game;
@@ -179,5 +181,26 @@ describe("FogLogic", () => {
     expect(L.validate({ ...g, marks: g.marks.map(() => 2) })).toBeNull();
     expect(L.validate({ ...g, brambles: new Array(81).fill(0) })).toBeNull();
     expect(L.validate({ ...g, brambles: null })).toBeNull();
+  });
+});
+
+describe("Fog Garden daily field", () => {
+  it("is the same field for the same seed, opened at the centre", () => {
+    const a = L.dailyGame(20261106);
+    const b = L.dailyGame(20261106);
+    expect(a).toEqual(b);
+    expect(a.first).toBe(L.CENTRE);
+    expect(a.revealed[L.CENTRE]).toBe(1);
+    expect(a.status).toBe("playing");
+    for (const n of L.neighbours(L.CENTRE)) expect((a.brambles as number[])[n]).toBe(0);
+    expect(L.dailyGame(20261107).brambles).not.toEqual(a.brambles);
+  });
+
+  it("try again keeps the daily opening and the state round-trips", () => {
+    const a = L.dailyGame(42);
+    const again = L.tryAgain(a);
+    expect(again.brambles).toEqual(a.brambles);
+    expect(again.revealed).toEqual(a.revealed);
+    expect(L.validate(JSON.parse(JSON.stringify(a)))).toEqual(a);
   });
 });

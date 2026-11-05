@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A garden grid with coloured streams linking pairs of round stones">
+  <rect width="320" height="200" fill="#dbe8e1"/>
+  <rect x="80" y="10" width="160" height="160" rx="14" fill="#c6d8cf"/>
+  <g fill="#f7faf5" stroke="#b4c4b9" stroke-width="2">
+    <rect x="88" y="18" width="28" height="28" rx="6"/><rect x="120" y="18" width="28" height="28" rx="6"/>
+    <rect x="152" y="18" width="28" height="28" rx="6"/><rect x="184" y="18" width="28" height="28" rx="6"/>
+    <rect x="88" y="50" width="28" height="28" rx="6"/><rect x="120" y="50" width="28" height="28" rx="6"/>
+    <rect x="152" y="50" width="28" height="28" rx="6"/><rect x="184" y="50" width="28" height="28" rx="6"/>
+    <rect x="88" y="82" width="28" height="28" rx="6"/><rect x="120" y="82" width="28" height="28" rx="6"/>
+    <rect x="152" y="82" width="28" height="28" rx="6"/><rect x="184" y="82" width="28" height="28" rx="6"/>
+    <rect x="88" y="114" width="28" height="28" rx="6"/><rect x="120" y="114" width="28" height="28" rx="6"/>
+    <rect x="152" y="114" width="28" height="28" rx="6"/><rect x="184" y="114" width="28" height="28" rx="6"/>
+  </g>
+  <g fill="none" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M102 32 L102 96 L134 96 L134 128" stroke="#c9821a"/>
+    <path d="M134 32 L166 32 L166 64 L198 64" stroke="#b23a63"/>
+    <path d="M198 96 L166 96 L166 128 L198 128" stroke="#3f8f3a"/>
+  </g>
+  <g stroke="#ffffff" stroke-width="3">
+    <circle cx="102" cy="32" r="11" fill="#c9821a"/>
+    <circle cx="134" cy="128" r="11" fill="#c9821a"/>
+    <circle cx="134" cy="32" r="11" fill="#b23a63"/>
+    <circle cx="198" cy="64" r="11" fill="#b23a63"/>
+    <circle cx="198" cy="96" r="11" fill="#3f8f3a"/>
+    <circle cx="198" cy="128" r="11" fill="#3f8f3a"/>
+  </g>
+</svg>

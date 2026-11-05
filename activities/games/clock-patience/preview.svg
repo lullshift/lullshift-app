@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A clock face made of thirteen card piles with a stack in the centre">
+  <rect width="320" height="200" fill="#d9e3c7"/>
+  <circle cx="160" cy="100" r="92" fill="#e8efd9" stroke="#b9b296" stroke-width="3"/>
+  <rect x="182.0" y="26.1" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="194.0" cy="41.1" r="5" fill="#a8672f"/>
+  <rect x="206.9" y="51.0" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="218.9" cy="66.0" r="5" fill="#c23b5b"/>
+  <rect x="216.0" y="85.0" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="228.0" cy="100.0" r="5" fill="#5d86b0"/>
+  <rect x="206.9" y="119.0" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="218.9" cy="134.0" r="5" fill="#4f9a4a"/>
+  <rect x="182.0" y="143.9" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="194.0" cy="158.9" r="5" fill="#a8672f"/>
+  <rect x="148.0" y="153.0" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="160.0" cy="168.0" r="5" fill="#c23b5b"/>
+  <rect x="114.0" y="143.9" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="126.0" cy="158.9" r="5" fill="#5d86b0"/>
+  <rect x="89.1" y="119.0" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="101.1" cy="134.0" r="5" fill="#4f9a4a"/>
+  <rect x="80.0" y="85.0" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="92.0" cy="100.0" r="5" fill="#a8672f"/>
+  <rect x="89.1" y="51.0" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="101.1" cy="66.0" r="5" fill="#c23b5b"/>
+  <rect x="114.0" y="26.1" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="126.0" cy="41.1" r="5" fill="#5d86b0"/>
+  <rect x="148.0" y="17.0" width="24" height="30" rx="5" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+  <circle cx="160.0" cy="32.0" r="5" fill="#4f9a4a"/>
+  <rect x="144" y="80" width="32" height="40" rx="6" fill="#8a6a45" stroke="#6e4524" stroke-width="2"/>
+  <path d="M153 110V92L160 102 167 92V110Z" fill="#fffdf6"/>
+</svg>

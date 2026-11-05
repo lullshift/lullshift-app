@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sea Glass</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Sea Glass</h1>
+      <p class="lede">Swap neighbours to line up three or more pieces of sea glass.</p>
+
+      <div class="status">
+        <p id="swaps" class="stat">Swaps left: 25</p>
+        <p id="score" class="stat">Score: 0</p>
+        <p id="best" class="stat">Best: 0</p>
+      </div>
+
+      <div id="grid" class="beach"></div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="restart" type="button">Restart</button>
+        <button id="daily" type="button">Today's board</button>
+        <button id="fresh" type="button">New board</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-grid-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

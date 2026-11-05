@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.thread-picture",
+  "version": "0.1.0",
+  "name": "Thread Picture",
+  "description": "A picture-by-numbers puzzle. Number clues tell you which cells to thread; fill them and a small picture appears. A puzzle each day that remembers your best, or a new one whenever you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "A 5 by 5 or 10 by 10 grid with number clues for every row and column. Each number is the length of a run of filled cells, in order. One answer, reached by logic alone.",
+    "goal": "Fill exactly the cells the clues describe. The picture is complete when every row and column matches its clues. There is no timer, and fewer moves is only a bonus.",
+    "howToPlay": [
+      "Read a clue, for example 3 1 means a run of three filled cells, then a gap, then one filled cell.",
+      "Fill cells you know belong to the picture. Mark cells you know are empty so you can stop thinking about them.",
+      "Work line by line: a clue that nearly fills its line settles many cells at once, and each settled cell helps the crossing lines.",
+      "Today's puzzle is the same for everyone today and remembers your best. New puzzle deals a fresh one. Restart clears the board, and Undo takes back your last move. Pick 5 by 5 or 10 by 10 with Size."
+    ],
+    "controls": [
+      { "keys": "Arrow keys", "action": "Move between cells" },
+      { "keys": "Enter / Space", "action": "Use the current tool on the cell (fill or mark)" },
+      { "keys": "F", "action": "Fill the cell, or clear it if it is filled" },
+      { "keys": "X", "action": "Mark the cell empty, or clear the mark" },
+      { "keys": "Shift+click", "action": "Mark a cell empty with the pointer" },
+      { "keys": "Ctrl+Z", "action": "Undo the last move" },
+      { "keys": "Tab", "action": "Reach Size, Tool, Undo, Restart and the puzzle buttons" }
+    ],
+    "tips": [
+      "Start with the biggest clues: a 5 in a line of 5, or 4 1 in a line of 6, is settled at once.",
+      "Large runs overlap with themselves: a 7 in a line of 10 must fill the middle four cells.",
+      "A screen reader reads each cell with its row clue and column clue.",
+      "You can stop at any time. Your picture is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

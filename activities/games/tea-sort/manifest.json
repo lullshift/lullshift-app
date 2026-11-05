@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.tea-sort",
+  "version": "0.1.0",
+  "name": "Tea Sort",
+  "description": "Eight cups, six teas. Pour the top layers between cups until every cup holds a single tea. Colours also differ by pattern and letter. A puzzle each day, or a new one whenever you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "Eight cups stand on a shelf. Six hold four layers of tea each, mixed up, and two are empty. Pour tea from cup to cup to sort it.",
+    "goal": "Make every cup hold one tea only: four layers of the same tea, or nothing at all. There is no timer, and fewer moves is only a bonus.",
+    "howToPlay": [
+      "Pick up a cup, then choose the cup to pour into. Only the top run of one tea moves, and only as much as fits.",
+      "You can pour onto an empty cup, or onto a cup whose top layer is the same tea.",
+      "Each tea has its own colour, pattern and first letter, so you never need to rely on colour alone.",
+      "Undo has no limit. Restart tangles the same puzzle again. Today's puzzle is the same for everyone today and remembers your best. New puzzle deals a fresh one."
+    ],
+    "controls": [
+      { "keys": "Arrow keys", "action": "Move between cups and layers" },
+      { "keys": "Enter / Space", "action": "Pick up a cup, then pour into another cup" },
+      { "keys": "Escape", "action": "Put the picked-up cup back" },
+      { "keys": "Ctrl+Z", "action": "Undo the last pour" },
+      { "keys": "Tab", "action": "Reach Undo, Restart and the puzzle buttons" }
+    ],
+    "tips": [
+      "Keep an empty cup free as long as you can.",
+      "Uncover a buried layer first, then pour a matching tea onto it.",
+      "If you get stuck, Undo as far back as you like, or Restart.",
+      "You can stop at any time. Your puzzle is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

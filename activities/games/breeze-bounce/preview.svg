@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A seed bouncing off a green leaf toward rows of white dandelion clocks">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bfe3ef"/>
+      <stop offset="0.7" stop-color="#e4f2e4"/>
+      <stop offset="1" stop-color="#b9d9a4"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="200" fill="url(#sky)"/>
+  <path d="M0 200 V182 Q90 168 170 186 Q250 198 320 176 V200 Z" fill="#9ec98a"/>
+  <g stroke="#ffffff" stroke-width="1" fill="#ffffff">
+    <g transform="translate(70 36)"><path d="M0 0L11 0M0 0L-11 0M0 0L0 11M0 0L0 -11M0 0L8 8M0 0L-8 -8M0 0L8 -8M0 0L-8 8" fill="none"/><circle cx="0" cy="0" r="2.5" fill="#c9b86a" stroke="none"/></g>
+    <g transform="translate(120 38)"><path d="M0 0L11 0M0 0L-11 0M0 0L0 11M0 0L0 -11M0 0L8 8M0 0L-8 -8M0 0L8 -8M0 0L-8 8" fill="none"/><circle cx="0" cy="0" r="2.5" fill="#c9b86a" stroke="none"/></g>
+    <g transform="translate(170 34)"><path d="M0 0L11 0M0 0L-11 0M0 0L0 11M0 0L0 -11M0 0L8 8M0 0L-8 -8M0 0L8 -8M0 0L-8 8" fill="none"/><circle cx="0" cy="0" r="2.5" fill="#c9b86a" stroke="none"/></g>
+    <g transform="translate(250 40)"><path d="M0 0L11 0M0 0L-11 0M0 0L0 11M0 0L0 -11M0 0L8 8M0 0L-8 -8M0 0L8 -8M0 0L-8 8" fill="none"/><circle cx="0" cy="0" r="2.5" fill="#c9b86a" stroke="none"/></g>
+    <g transform="translate(95 68)"><path d="M0 0L11 0M0 0L-11 0M0 0L0 11M0 0L0 -11M0 0L8 8M0 0L-8 -8M0 0L8 -8M0 0L-8 8" fill="none"/><circle cx="0" cy="0" r="2.5" fill="#c9b86a" stroke="none"/></g>
+    <g transform="translate(205 70)"><path d="M0 0L11 0M0 0L-11 0M0 0L0 11M0 0L0 -11M0 0L8 8M0 0L-8 -8M0 0L8 -8M0 0L-8 8" fill="none"/><circle cx="0" cy="0" r="2.5" fill="#c9b86a" stroke="none"/></g>
+  </g>
+  <path d="M120 100 Q150 120 175 150" stroke="#ffffff" stroke-width="1.5" stroke-dasharray="3 4" fill="none"/>
+  <circle cx="120" cy="100" r="6" fill="#8a6a3a"/>
+  <path d="M120 100 L120 92" stroke="#ffffff" stroke-width="1"/>
+  <path d="M135 168 Q175 156 215 168 Q175 180 135 168 Z" fill="#4f9a5a"/>
+</svg>

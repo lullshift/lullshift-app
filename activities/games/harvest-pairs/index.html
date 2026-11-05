@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harvest Pairs</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Harvest Pairs</h1>
+      <p class="lede">Clear the stacked cards by pairing two that add up to 13.</p>
+
+      <div class="status">
+        <p id="deal" class="stat"></p>
+        <p id="left" class="stat"></p>
+        <p id="stockstat" class="stat"></p>
+      </div>
+
+      <div id="board" class="board" role="group" aria-label="Harvest Pairs table">
+        <div class="fieldwrap">
+          <div id="field" class="field" role="group" aria-label="Stacked cards, seven rows"></div>
+        </div>
+        <div id="piles" class="piles" role="group" aria-label="Draw pile and waste pile"></div>
+      </div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="undo" type="button">Undo</button>
+        <button id="restart" type="button">Restart</button>
+        <button id="daily" type="button">Today's deal</button>
+        <button id="fresh" type="button">New deal</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-card-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

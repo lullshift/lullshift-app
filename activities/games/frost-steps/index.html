@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Frost Steps</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Frost Steps</h1>
+      <p class="lede">
+        Slide across the frozen pond to the warm lantern. The ice only lets you stop at a rock or an
+        edge.
+      </p>
+
+      <div class="status">
+        <p id="size" class="stat"></p>
+        <p id="moves" class="stat">Moves: 0</p>
+        <p id="besttoday" class="stat" hidden></p>
+        <p id="best" class="stat strong" hidden></p>
+      </div>
+
+      <div id="board" class="board">
+        <div id="grid" class="pond"></div>
+      </div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div id="pad" class="pad" role="group" aria-label="Slide the walker">
+        <button type="button" data-dir="up">Up</button>
+        <button type="button" data-dir="left">Left</button>
+        <button type="button" data-dir="right">Right</button>
+        <button type="button" data-dir="down">Down</button>
+      </div>
+
+      <div class="controls">
+        <button id="undo" type="button">Undo</button>
+        <button id="restart" type="button">Restart</button>
+        <button id="daily" type="button">Today's puzzle</button>
+        <button id="fresh" type="button">New puzzle</button>
+      </div>
+
+      <p class="legend">
+        Blue circle: the walker. Grey stone: a rock. Orange square: the warm lantern. Pale squares:
+        the last slide.
+      </p>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-grid-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

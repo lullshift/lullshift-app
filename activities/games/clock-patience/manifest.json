@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.clock-patience",
+  "version": "0.1.0",
+  "name": "Clock Patience",
+  "description": "A calm game of chance. Thirteen card piles sit like a clock face; turn cards around the dial and see how far you get. No decisions, just a gentle few minutes. A deal each day, or a new one any time.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["cards", "calm", "chance"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "Twelve piles of four face-down cards form a clock face, Ace at 1 o'clock to Queen at 12 o'clock, with a thirteenth pile for the Kings in the centre. You only turn cards; chance does the rest.",
+    "goal": "Get every card face up before the fourth King turns up. That is rare, so most games end with a few piles left, and the game tells you honestly how many.",
+    "howToPlay": [
+      "Start at the King pile in the centre. Turn its top card.",
+      "Place the card face up under the pile for its rank: a 7 goes to the 7 pile, a Jack to the 11 o'clock pile, a Queen to the 12 o'clock pile, a King to the centre.",
+      "Carry on from that pile: turn its top face-down card, and so on around the clock.",
+      "The game ends when the fourth King is turned. If every pile is complete by then, you win. Otherwise you see how many piles were left this time. Turn plays on its own, one card at a time, until you press Pause."
+    ],
+    "controls": [
+      { "keys": "Enter / Space", "action": "Press Turn: play on step by step, or pause" },
+      { "keys": "Escape", "action": "Pause while turning" },
+      { "keys": "Tab", "action": "Reach One card, Restart and the deal buttons" }
+    ],
+    "tips": [
+      "There is nothing to decide, so you can simply watch. Press One card to turn a single card at a time.",
+      "Every pile and card is read aloud as it changes, for example Turned 7 of Shells.",
+      "Today's deal is the same for everyone today. New deal gives a fresh shuffle.",
+      "You can stop at any time. Your place in the deal is saved."
+    ]
+  },
+  "preview": "preview.svg"
+}

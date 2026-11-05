@@ -1,0 +1,254 @@
+:root {
+  --bg: #f3efe5;
+  --surface: #fbf8f0;
+  --surface-2: #ebe4d4;
+  --border: #d8cfba;
+  --text: #2b2519;
+  --muted: #5d5646;
+  --accent: #8a4b2d;
+  --accent-soft: #f0dccf;
+  --cell: #fbf7ee;
+  --cell-edge: #c8bba0;
+  --thread: #b5543c;
+  --mark: #7d7360;
+  --clue: #5d5646;
+  --clue-on: #8a4b2d;
+  --shadow: 0 2px 10px rgba(43, 37, 25, 0.1);
+}
+:root[data-theme="dark"] {
+  --bg: #1a1713;
+  --surface: #231f19;
+  --surface-2: #2e2920;
+  --border: #433c2f;
+  --text: #efe8d8;
+  --muted: #b5ab96;
+  --accent: #e4a07d;
+  --accent-soft: #3e2c20;
+  --cell: #2b261d;
+  --cell-edge: #5d5443;
+  --thread: #e3846a;
+  --mark: #a39882;
+  --clue: #b5ab96;
+  --clue-on: #f0c0a4;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  line-height: 1.5;
+}
+.wrap {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 20px 20px 32px;
+  display: grid;
+  gap: 12px;
+}
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.lede,
+.stat {
+  margin: 0;
+  color: var(--muted);
+}
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.stat[hidden] {
+  display: none;
+}
+.options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.options label {
+  color: var(--muted);
+}
+.options select,
+.options button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+  min-height: 40px;
+}
+.options button {
+  cursor: pointer;
+}
+.options button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.options select:focus-visible,
+.options button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Clues sit in two strips beside a board that keeps square cells. */
+.frame {
+  --pad: 10px;
+  --gap: 4px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px;
+  width: min(100%, max(280px, calc(100vh - 430px)));
+  justify-self: center;
+  margin-inline: auto;
+}
+.frame[data-size="10"] {
+  --pad: 6px;
+  --gap: 2px;
+}
+.colclues,
+.rowclues {
+  display: grid;
+  gap: var(--gap);
+  color: var(--clue);
+  font-size: 0.8rem;
+  line-height: 1.1;
+}
+.colclues {
+  padding: 0 calc(var(--pad) + 1px);
+  align-items: end;
+}
+.rowclues {
+  padding: calc(var(--pad) + 1px) 0;
+  align-items: center;
+}
+.clue {
+  display: flex;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+}
+.clue.col {
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.clue.row {
+  justify-content: flex-end;
+  padding-right: 4px;
+}
+.clue.on {
+  color: var(--clue-on);
+  font-weight: 700;
+}
+.picture {
+  display: grid;
+  gap: var(--gap);
+  padding: var(--pad);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+.kit-row {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 5), 1fr);
+  gap: var(--gap);
+}
+.picture[data-size="5"] {
+  --n: 5;
+}
+.picture[data-size="10"] {
+  --n: 10;
+}
+.kit-gridcell {
+  display: block;
+}
+.kit-cell {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 0;
+  padding: 0;
+  border-radius: 8px;
+  border: 2px solid var(--cell-edge);
+  background: var(--cell);
+  cursor: pointer;
+}
+.kit-cell.filled {
+  background: var(--thread);
+  border-color: var(--thread);
+}
+.kit-cell.empty::after {
+  content: "";
+  position: absolute;
+  left: 30%;
+  top: 30%;
+  width: 40%;
+  height: 40%;
+  background:
+    linear-gradient(45deg, transparent 43%, var(--mark) 43% 57%, transparent 57%),
+    linear-gradient(-45deg, transparent 43%, var(--mark) 43% 57%, transparent 57%);
+}
+.kit-cell:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  z-index: 2;
+}
+.message {
+  margin: 0;
+  min-height: 1.5em;
+  color: var(--text);
+}
+/* One row of controls. */
+.controls {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.controls button {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+@media (max-width: 340px) {
+  .controls {
+    flex-wrap: wrap;
+  }
+}
+.controls button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.controls button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.controls button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.reduced *,
+.reduced *::before,
+.reduced *::after {
+  transition: none !important;
+  animation: none !important;
+}

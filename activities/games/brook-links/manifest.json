@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.brook-links",
+  "version": "0.1.0",
+  "name": "Brook Links",
+  "description": "A quiet garden of paired stones. Draw a stream between each matching pair without crossing. A garden each day that remembers your best, or a new one whenever you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "A garden of 5 by 5 up to 7 by 7 with pairs of matching stones. Draw a stream between each pair; streams never cross or branch.",
+    "goal": "Link every pair of stones. Covering every cell with a stream is optional and earns a full garden bonus. There is no timer, and fewer moves is only a bonus.",
+    "howToPlay": [
+      "Find two stones with the same letter and colour. Each pair is one stream.",
+      "Start on a stone and draw toward its partner, one cell at a time. A stream cannot pass through another stream or another colour's stone.",
+      "Streams that run out of room can be pulled back and redrawn. Take your time: every garden has a way to link all pairs, and one that also fills every cell.",
+      "Today's garden is the same for everyone today and remembers your best. New garden deals a fresh one. Restart clears the streams, and Undo takes back your last stroke. Pick a size with Size."
+    ],
+    "controls": [
+      {
+        "keys": "Arrow keys",
+        "action": "Move between cells, or extend the stream you are drawing"
+      },
+      {
+        "keys": "Enter / Space",
+        "action": "On a stone, start its stream; on the stream's end, stop drawing"
+      },
+      { "keys": "Backspace", "action": "Retract the stream you are drawing by one cell" },
+      { "keys": "Escape", "action": "Stop drawing" },
+      { "keys": "Ctrl+Z", "action": "Undo the last stroke" },
+      { "keys": "Tab", "action": "Reach Size, Undo, Restart and the garden buttons" }
+    ],
+    "tips": [
+      "Start with stones in corners and along the edges: they have fewest ways out.",
+      "Press Enter on any cell of a stream to carry on drawing from there.",
+      "Hug the edges and walls of other streams so no empty pocket is left behind.",
+      "You can stop at any time. Your garden is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

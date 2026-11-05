@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A triangle of harvest cards with leaves, acorns, berries and shells">
+  <rect width="320" height="200" fill="#d9e3c7"/>
+  <g stroke="#b9b296" stroke-width="2">
+    <rect x="136" y="14" width="48" height="62" rx="7" fill="#fffdf6"/>
+    <rect x="108" y="40" width="48" height="62" rx="7" fill="#fffdf6"/>
+    <rect x="164" y="40" width="48" height="62" rx="7" fill="#fffdf6"/>
+    <rect x="80" y="66" width="48" height="62" rx="7" fill="#fffdf6"/>
+    <rect x="136" y="66" width="48" height="62" rx="7" fill="#fffdf6"/>
+    <rect x="192" y="66" width="48" height="62" rx="7" fill="#fffdf6"/>
+    <rect x="52" y="92" width="48" height="62" rx="7" fill="#fffdf6"/>
+    <rect x="108" y="92" width="48" height="62" rx="7" fill="#fffdf6"/>
+    <rect x="164" y="92" width="48" height="62" rx="7" fill="#fffdf6"/>
+    <rect x="220" y="92" width="48" height="62" rx="7" fill="#fffdf6"/>
+  </g>
+  <path d="M160 26C170 31 171 43 160 54 149 43 150 31 160 26Z" fill="#4f9a4a" stroke="#2b2a22"/>
+  <circle cx="126" cy="76" r="5" fill="#c23b5b"/><circle cx="136" cy="76" r="5" fill="#c23b5b"/><circle cx="131" cy="68" r="5" fill="#c23b5b"/>
+  <path d="M176 70H200C199 80 195 84 188 86 181 84 177 80 176 70Z" fill="#a8672f"/>
+  <path d="M174 70C174 60 180 58 188 58S202 60 202 70Z" fill="#6e4524"/>
+  <path d="M160 120L146 104C152 92 168 92 174 104Z" fill="#5d86b0" stroke="#2b2a22"/>
+  <g stroke="#2b2a22" stroke-width="1.5"><path d="M122 130L106 118"/></g>
+  <rect x="40" y="166" width="50" height="26" rx="6" fill="#8a6a45" stroke="#b9b296" stroke-width="2"/>
+  <rect x="100" y="166" width="50" height="26" rx="6" fill="#fffdf6" stroke="#b9b296" stroke-width="2"/>
+</svg>

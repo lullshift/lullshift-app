@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pebble Merge</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Pebble Merge</h1>
+      <p class="lede">Slide the river pebbles. Two of a size become the next size up.</p>
+
+      <div class="status">
+        <p id="moves" class="stat">Slides: 0</p>
+        <p id="largest" class="stat">Largest: none yet</p>
+        <p id="best" class="stat" hidden></p>
+      </div>
+
+      <div id="grid" class="tray"></div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="undo" type="button">Undo</button>
+        <button id="daily" type="button">Today's tray</button>
+        <button id="fresh" type="button">New tray</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-grid-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.harvest-pairs",
+  "version": "0.1.0",
+  "name": "Harvest Pairs",
+  "description": "A calm card puzzle. Clear a stacked triangle of cards by pairing two that add up to 13, with leaves, acorns, berries and shells. A deal each day, or a new one whenever you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "cards", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "Twenty-eight cards sit in a stacked triangle of seven rows, with a draw pile and a waste pile below. Remove cards in pairs that add up to 13.",
+    "goal": "Clear every card from the triangle. The draw pile does not have to be emptied. There is no timer.",
+    "howToPlay": [
+      "Only uncovered cards can be used: a card is free when no card in the row below overlaps it.",
+      "Pick a free card, then pick another free card so their values add up to 13. Ace is 1, Jack 11, Queen 12. A King is 13 and goes alone: pick it once.",
+      "Draw a card onto the waste pile when you need one. The top of the waste pile can pair with a free card. When the draw pile runs out, turn the waste pile over and go through it again as often as you like.",
+      "Each deal is checked with a solver before it is dealt, so it can be cleared. If you take a path that cannot be cleared, the game tells you, and Undo takes any number of moves back. Today's deal is the same for everyone today."
+    ],
+    "controls": [
+      {
+        "keys": "Arrow keys",
+        "action": "Move between free cards, and down to the draw and waste piles"
+      },
+      { "keys": "Enter / Space", "action": "Pick up a card, pair it with another, or draw" },
+      { "keys": "D", "action": "Draw a card, or turn the waste pile over" },
+      { "keys": "Escape", "action": "Put a picked-up card back" },
+      { "keys": "Ctrl+Z", "action": "Undo, as many moves as you like" },
+      { "keys": "Tab", "action": "Reach Undo, Restart and the deal buttons" }
+    ],
+    "tips": [
+      "Each card reads its value and suit aloud, for example 7 of Acorns. The suits are Leaves, Acorns, Berries and Shells, and each also has its own shape.",
+      "Before pairing, check whether another card could use the same partner, for example two 5s and one 8.",
+      "Kings never need a partner, so take them as soon as they are free.",
+      "You can stop at any time. Your deal and your undo history are saved."
+    ]
+  },
+  "preview": "preview.svg"
+}

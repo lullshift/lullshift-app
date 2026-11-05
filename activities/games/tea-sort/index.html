@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tea Sort</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Tea Sort</h1>
+      <p class="lede">Pour tea between cups until each cup holds one tea.</p>
+
+      <div class="status">
+        <p id="moves" class="stat">Moves: 0</p>
+        <p id="best" class="stat" hidden></p>
+        <p id="sorted" class="stat">Sorted 0 of 6</p>
+      </div>
+
+      <div id="grid" class="shelf"></div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="undo" type="button">Undo</button>
+        <button id="restart" type="button">Restart</button>
+        <button id="daily" type="button">Today's puzzle</button>
+        <button id="fresh" type="button">New puzzle</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-grid-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

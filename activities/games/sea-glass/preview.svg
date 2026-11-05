@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A beach grid of sea glass in round, diamond, triangle, square, hexagon and star shapes">
+  <rect width="320" height="200" fill="#e7dcc3"/>
+  <g fill="#3f86c7"><circle cx="60" cy="40" r="16"/><circle cx="196" cy="108" r="16"/></g>
+  <g fill="#3d9a6b"><path d="M112 22l18 18-18 18-18-18z"/><path d="M248 90l18 18-18 18-18-18z"/></g>
+  <g fill="#d89a2b"><path d="M164 24l18 32h-36z"/><path d="M60 124l18 32H42z"/></g>
+  <g fill="#d1627f"><rect x="212" y="26" width="28" height="28" rx="4"/><rect x="108" y="126" width="28" height="28" rx="4"/></g>
+  <g fill="#7b63c4"><path d="M264 24l20 0 10 16-10 16h-20l-10-16z"/><path d="M150 76l20 0 10 16-10 16h-20l-10-16z"/></g>
+  <g fill="#aec8d1"><path d="M60 76l5 14 15 1-12 9 4 15-12-9-12 9 4-15-12-9 15-1z"/><path d="M212 142l5 14 15 1-12 9 4 15-12-9-12 9 4-15-12-9 15-1z"/></g>
+</svg>

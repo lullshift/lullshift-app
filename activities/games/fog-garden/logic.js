@@ -148,6 +148,13 @@
 
   // Same field (same brambles), everything covered again, then the first safe tile is opened
   // again so a retry also starts gently.
+  // A daily field: the same seed and the same opening for everyone, so the field does not depend
+  // on where the first tile is revealed. The centre tile and its neighbours start revealed.
+  var CENTRE = Math.floor(SIZE / 2) * SIZE + Math.floor(SIZE / 2);
+  function dailyGame(seed) {
+    return reveal(newGame(seed), CENTRE).game;
+  }
+
   function tryAgain(game) {
     var fresh = {
       seed: game.seed,
@@ -233,7 +240,9 @@
     neighbours: neighbours,
     placeBrambles: placeBrambles,
     countAround: countAround,
+    CENTRE: CENTRE,
     newGame: newGame,
+    dailyGame: dailyGame,
     reveal: reveal,
     toggleMark: toggleMark,
     tryAgain: tryAgain,

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.island-bridges",
+  "version": "0.1.0",
+  "name": "Island Bridges",
+  "description": "A quiet sea of numbered islands. Join them with bridges until every island has its number and the whole archipelago is connected. A sea each day that remembers your best, or a new one whenever you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "Numbered islands in a 7 by 7 or 9 by 9 sea. Join them with straight bridges, at most two between any pair, until every island has its number.",
+    "goal": "Give each island exactly as many bridges as its number, with no bridges crossing, so that all islands form one connected group. Any layout that meets these rules wins. There is no timer.",
+    "howToPlay": [
+      "Select an island, then add bridges toward the next island up, down, left or right of it.",
+      "A bridge runs in a straight line between two islands with no island in between. Two islands side by side have no room for one. At most two bridges join a pair.",
+      "Bridges cannot cross each other, and an island never takes more bridges than its number. Finished islands turn green and get a double ring.",
+      "Watch the group count: you win when every island has its number and only one group is left.",
+      "Today's sea is the same for everyone today and remembers your best. New sea deals a fresh one. Restart clears the bridges, and Undo takes back your last move. Pick 7 by 7 or 9 by 9 with Size."
+    ],
+    "controls": [
+      {
+        "keys": "Arrow keys",
+        "action": "Move between cells, or add a bridge from the selected island"
+      },
+      { "keys": "Enter / Space", "action": "Select the island, or release it if selected" },
+      { "keys": "Shift+Arrow keys", "action": "Remove a bridge from the selected island" },
+      { "keys": "Escape", "action": "Release the selected island" },
+      {
+        "keys": "Click",
+        "action": "Select an island, click a facing island to bridge, click a bridge to remove one"
+      },
+      { "keys": "Ctrl+Z", "action": "Undo the last move" },
+      { "keys": "Tab", "action": "Reach Size, Undo, Restart and the sea buttons" }
+    ],
+    "tips": [
+      "A 3 in a corner, or a 5 on an edge, needs at least one bridge in every direction it can use, so start there.",
+      "An island whose number is twice its number of neighbours needs a double bridge to each.",
+      "Watch for two finished islands cut off from the rest: they would stay a separate group.",
+      "You can stop at any time. Your sea is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

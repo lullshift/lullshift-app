@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.pebble-merge",
+  "version": "0.1.0",
+  "name": "Pebble Merge",
+  "description": "A sliding merge puzzle on a 4 by 4 river tray. Slide the pebbles, join two of a size into the next size, and see how large a stone you can make. A tray each day, or a new one whenever you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "A 4 by 4 tray of river pebbles. Every slide moves all the pebbles one way, and a new small pebble rolls in. Pebbles come in eleven sizes, from Grain up to Peak.",
+    "goal": "Join pebbles to make a larger one than before. There is no score to chase and nothing to lose. When no slide is left the tray is full, and you can start a new tray.",
+    "howToPlay": [
+      "Press an arrow key to slide every pebble that way until it meets the edge or another pebble.",
+      "When two pebbles of the same size meet, they join into the next size up. Each pair joins once per slide.",
+      "After each slide that moves something, one new small pebble arrives in an empty spot.",
+      "Undo takes back your last slide, one step only. Today's tray is the same for everyone today and remembers the largest pebble you made. New tray deals a fresh one."
+    ],
+    "controls": [
+      { "keys": "Arrow keys", "action": "Slide all the pebbles that way" },
+      { "keys": "Swipe", "action": "Slide, when using a touch screen or pointer" },
+      { "keys": "Ctrl+Z", "action": "Undo the last slide (one step)" },
+      { "keys": "Tab", "action": "Reach Undo, Today's tray and New tray" }
+    ],
+    "tips": [
+      "Keep your largest pebble in a corner and build next to it.",
+      "Try to use only two or three directions most of the time.",
+      "A slide that moves nothing does not count, so you cannot waste one.",
+      "You can stop at any time. Your tray is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

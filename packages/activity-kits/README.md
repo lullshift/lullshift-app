@@ -113,6 +113,13 @@ var view = K.bindGrid(document.getElementById("board"), grid, {
 function save() { LullshiftBridge.autosave({ version: 1, grid: grid.snapshot() }); }
 ```
 
+Things to know when building on the grid kit:
+
+- Arrow keys move the cursor before `onAction` runs. A game where arrows mean something else (sliding a piece, steering) should listen for `keydown` on a wrapper element in the capture phase and stop the event there.
+- `keyAction` ignores Shift on arrow keys, so Shift+Arrow reads as a plain arrow; with the `wasd` option, Shift+W/A/S/D is not mapped. Ctrl+Shift+Z is redo.
+- `bindGrid` calls `label` and `className` while it builds the grid, so set up the game state they read before calling it.
+- Rows use `.kit-row` with no column count; set the board's grid layout in the game's own CSS.
+
 ## Card kit
 
 ```ts

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A tray of round river pebbles in several sizes and colours">
+  <rect width="320" height="200" fill="#dfe8e6"/>
+  <rect x="70" y="10" width="180" height="180" rx="22" fill="#b9c9c4" stroke="#9fb3ad" stroke-width="3"/>
+  <g stroke="#1f2c2a" stroke-opacity="0.25" stroke-width="2">
+    <ellipse cx="102" cy="42" rx="24" ry="21" fill="#e9e2cf"/>
+    <ellipse cx="148" cy="42" rx="24" ry="22" fill="#e1d3a8"/>
+    <ellipse cx="194" cy="40" rx="23" ry="21" fill="#a9d1b8"/>
+    <ellipse cx="238" cy="42" rx="12" ry="11" fill="#e9e2cf"/>
+    <ellipse cx="102" cy="88" rx="24" ry="22" fill="#cfd9b0"/>
+    <ellipse cx="148" cy="88" rx="22" ry="21" fill="#8cc7cf"/>
+    <ellipse cx="196" cy="90" rx="24" ry="22" fill="#8fb2dc"/>
+    <ellipse cx="102" cy="134" rx="23" ry="21" fill="#a5a0dd"/>
+    <ellipse cx="148" cy="134" rx="24" ry="22" fill="#e1d3a8"/>
+    <ellipse cx="196" cy="136" rx="12" ry="11" fill="#e9e2cf"/>
+    <ellipse cx="102" cy="176" rx="12" ry="9" fill="#e9e2cf"/>
+  </g>
+  <g fill="#cfdcd8">
+    <ellipse cx="240" cy="90" rx="22" ry="20"/>
+    <ellipse cx="240" cy="136" rx="22" ry="20"/>
+    <ellipse cx="148" cy="174" rx="20" ry="9"/>
+    <ellipse cx="196" cy="174" rx="20" ry="9"/>
+    <ellipse cx="240" cy="174" rx="20" ry="9"/>
+  </g>
+</svg>

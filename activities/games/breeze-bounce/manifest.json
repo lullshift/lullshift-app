@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.breeze-bounce",
+  "version": "0.1.0",
+  "name": "Breeze Bounce",
+  "description": "A light seed floats on the breeze. Bounce it off a leaf to release soft dandelion clocks. No lives: a missed seed just drifts back in from the top.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["arcade", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "A light seed floats and bounces. Move a leaf under it and let it touch the dandelion clocks to release them.",
+    "goal": "Release every dandelion. There are no lives: a missed seed drifts back down from the top after a short pause, and the number of drifts is only counted, never judged.",
+    "howToPlay": [
+      "Slide the leaf left and right to catch the seed and bounce it back up.",
+      "Where the seed lands on the leaf changes the angle it leaves at.",
+      "Every dandelion the seed touches is released.",
+      "When all dandelions are released the round ends and shows your time and your best time. Pausing stops the clock.",
+      "Press Play again for a new layout. Each round has a different layout."
+    ],
+    "controls": [
+      { "keys": "Left / Right arrow keys", "action": "Move the leaf" },
+      { "keys": "A / D", "action": "Move the leaf" },
+      { "keys": "Enter / Space", "action": "Start or resume after the Ready prompt" },
+      { "keys": "Escape", "action": "Pause" },
+      { "keys": "Tab", "action": "Reach the on-screen Left, Right and New round buttons" }
+    ],
+    "tips": [
+      "Hit the seed with the edge of the leaf to send it sideways to far dandelions.",
+      "Reduced motion makes the seed slower and turns off the drifting particles.",
+      "You can stop at any time. Your round is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

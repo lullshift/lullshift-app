@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.glow-trail",
+  "version": "0.1.0",
+  "name": "Glow Trail",
+  "description": "A firefly leaves a short glowing trail across a night garden. Collect dew drops to grow it. Bumping never ends anything: the trail just eases back.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["arcade", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "A firefly glides across a grid leaving a glowing trail. Steer it to the dew drops to make the trail longer.",
+    "goal": "Grow the longest trail you can in a calm round of 2 minutes. Touching your own trail or the edge never ends the game: the trail simply shortens back to its starting length and you carry on.",
+    "howToPlay": [
+      "Steer the firefly with the arrow keys. It keeps gliding in the direction you chose.",
+      "Glide over a dew drop to collect it. Each drop makes the trail one cell longer.",
+      "If you touch your own trail or the edge, the trail shortens back to its starting length. Nothing else is lost.",
+      "After 2 minutes of play the round ends and shows your longest trail and your best. Pausing stops the clock.",
+      "Turn on Slower for a gentler pace. Press Play again for a new garden."
+    ],
+    "controls": [
+      { "keys": "Arrow keys", "action": "Steer the firefly" },
+      { "keys": "W / A / S / D", "action": "Steer the firefly" },
+      { "keys": "Enter / Space", "action": "Start or resume after the Ready prompt" },
+      { "keys": "Escape", "action": "Pause" },
+      { "keys": "Tab", "action": "Reach the Up, Left, Down, Right, Slower and New round buttons" }
+    ],
+    "tips": [
+      "Wide, lazy turns keep the trail out of your way.",
+      "Slower gives you more time to plan each turn.",
+      "You can stop at any time. Your round is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

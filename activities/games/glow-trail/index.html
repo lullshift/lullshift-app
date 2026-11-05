@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Glow Trail</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Glow Trail</h1>
+      <p class="lede">Steer a firefly to the dew. Every drop makes the glowing trail longer.</p>
+      <p id="status" class="status">Trail 3. Longest 3. Best none yet. Time left 120.</p>
+      <canvas
+        id="field"
+        class="field"
+        width="400"
+        height="300"
+        tabindex="0"
+        role="application"
+        aria-label="Night garden grid. Steer the firefly with the arrow keys to collect dew drops and grow its glowing trail."
+      ></canvas>
+      <p id="prompt" class="prompt" role="status" aria-live="polite"></p>
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+      <div class="pad">
+        <button id="up" type="button" aria-label="Steer up">Up</button>
+        <button id="left" type="button" aria-label="Steer left">Left</button>
+        <button id="down" type="button" aria-label="Steer down">Down</button>
+        <button id="right" type="button" aria-label="Steer right">Right</button>
+      </div>
+      <div class="controls">
+        <button id="slower" type="button" aria-pressed="false">Slower</button>
+        <button id="again" type="button">New round</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-arcade-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

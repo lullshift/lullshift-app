@@ -201,6 +201,15 @@
       view.focus();
     });
 
+    $("daily").addEventListener("click", function () {
+      game = L.dailyGame(K.dailySeed(new Date(), "fog-garden"));
+      grid.setCursor(Math.floor(SIZE / 2), Math.floor(SIZE / 2));
+      setMessage("Today's field. The middle is already clear.");
+      render();
+      save();
+      view.focus();
+    });
+
     if (restored && game.status === "hit") setMessage(HIT_TEXT);
     else if (restored && game.status === "won") setMessage(WON_TEXT);
     else if (!restored) setMessage("Reveal a tile to begin. The first one is always safe.");

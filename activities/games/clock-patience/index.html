@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clock Patience</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Clock Patience</h1>
+      <p class="lede">
+        Turn cards around the clock and see how far the hands go. Pure chance, no decisions.
+      </p>
+
+      <div class="status">
+        <p id="deal" class="stat"></p>
+        <p id="turned" class="stat"></p>
+        <p id="where" class="stat"></p>
+      </div>
+
+      <ul
+        id="face"
+        class="face"
+        role="list"
+        aria-label="Clock of thirteen piles, Kings in the centre"
+      ></ul>
+
+      <p id="last" class="last"></p>
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="turn" type="button" class="primary">Turn</button>
+        <button id="one" type="button">One card</button>
+        <button id="restart" type="button">Restart</button>
+        <button id="daily" type="button">Today's deal</button>
+        <button id="fresh" type="button">New deal</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-card-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

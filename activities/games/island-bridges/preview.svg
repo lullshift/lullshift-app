@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Round islands in calm water joined by wooden bridges">
+  <rect width="320" height="200" fill="#cfe1ee"/>
+  <g stroke="#6b4f2a" stroke-width="5" stroke-linecap="round">
+    <path d="M90 50 H230"/>
+    <path d="M90 142 H150"/>
+    <path d="M230 50 V142"/>
+  </g>
+  <g stroke="#6b4f2a" stroke-width="4" stroke-linecap="round">
+    <path d="M86 56 V136 M94 56 V136"/>
+    <path d="M150 146 H228 M150 138 H228"/>
+  </g>
+  <g fill="#e7d9a8" stroke="#a58f4a" stroke-width="5">
+    <circle cx="90" cy="50" r="26"/>
+    <circle cx="230" cy="50" r="26"/>
+    <circle cx="90" cy="142" r="26"/>
+    <circle cx="230" cy="142" r="26" fill="#b8d9a6" stroke="#5b9444"/>
+  </g>
+  <g fill="#2a2f33">
+    <circle cx="90" cy="50" r="5"/><circle cx="102" cy="50" r="5"/><circle cx="78" cy="50" r="5"/>
+    <circle cx="230" cy="44" r="5"/><circle cx="230" cy="58" r="5"/>
+    <circle cx="84" cy="142" r="5"/><circle cx="96" cy="142" r="5"/>
+    <circle cx="224" cy="136" r="5"/><circle cx="236" cy="136" r="5"/><circle cx="224" cy="148" r="5"/><circle cx="236" cy="148" r="5"/>
+  </g>
+</svg>

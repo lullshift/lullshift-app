@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Six cups of layered tea in different colours and patterns">
+  <rect width="320" height="200" fill="#f1e8d6"/>
+  <rect x="0" y="162" width="320" height="38" fill="#d9c7a3"/>
+  <g stroke="#8d7c58" stroke-width="3" fill="#fffdf8">
+    <path d="M30 40h44l-4 120h-36z"/>
+    <path d="M90 40h44l-4 120h-36z"/>
+    <path d="M150 40h44l-4 120h-36z"/>
+    <path d="M210 40h44l-4 120h-36z"/>
+    <path d="M270 40h30l-3 120h-24z"/>
+  </g>
+  <g>
+    <rect x="35" y="130" width="34" height="28" fill="#f3d36b"/>
+    <rect x="35" y="100" width="34" height="28" fill="#6fbf8a"/>
+    <rect x="35" y="70" width="34" height="28" fill="#b4713f"/>
+    <rect x="95" y="130" width="34" height="28" fill="#a84f86"/>
+    <rect x="95" y="100" width="34" height="28" fill="#c9453a"/>
+    <rect x="95" y="70" width="34" height="28" fill="#f3d36b"/>
+    <rect x="155" y="130" width="34" height="28" fill="#5f8f3d"/>
+    <rect x="155" y="100" width="34" height="28" fill="#5f8f3d"/>
+    <rect x="155" y="70" width="34" height="28" fill="#5f8f3d"/>
+    <rect x="215" y="130" width="34" height="28" fill="#6fbf8a"/>
+    <rect x="215" y="100" width="34" height="28" fill="#a84f86"/>
+  </g>
+  <g fill="#1f1a10" opacity="0.55">
+    <circle cx="44" cy="140" r="2.5"/><circle cx="52" cy="148" r="2.5"/><circle cx="60" cy="140" r="2.5"/>
+    <rect x="44" y="102" width="4" height="24"/><rect x="54" y="102" width="4" height="24"/><rect x="64" y="102" width="4" height="24"/>
+    <rect x="100" y="104" width="24" height="4"/><rect x="100" y="114" width="24" height="4"/>
+    <rect x="160" y="136" width="24" height="3"/>
+  </g>
+</svg>

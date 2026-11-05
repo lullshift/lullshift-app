@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Breeze Bounce</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Breeze Bounce</h1>
+      <p class="lede">Keep the seed aloft with your leaf and release every dandelion.</p>
+      <p id="status" class="status">Released 0 of 0. Drifts 0. Time 0:00.0.</p>
+      <canvas
+        id="field"
+        class="field"
+        width="400"
+        height="300"
+        tabindex="0"
+        role="application"
+        aria-label="Breeze field. Move the leaf with the Left and Right arrow keys to bounce the seed into the dandelions and release them all."
+      ></canvas>
+      <p id="prompt" class="prompt" role="status" aria-live="polite"></p>
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+      <div class="controls">
+        <button id="left" type="button" aria-label="Move leaf left (hold)">Left</button>
+        <button id="right" type="button" aria-label="Move leaf right (hold)">Right</button>
+        <button id="again" type="button">New round</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-arcade-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.frost-steps",
+  "version": "0.1.0",
+  "name": "Frost Steps",
+  "description": "A quiet sliding puzzle on a frozen pond. Slide the walker until a rock or the edge stops it, and find the way to the warm lantern. Every puzzle is checked to be solvable, with a puzzle each day.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm", "grid"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "A walker stands on a square frozen pond with a few rocks. Each move sends the walker sliding in one direction until something stops it.",
+    "goal": "Reach the warm lantern square. The lantern is warm, so the walker stops there. When you arrive the game shows the best possible number of moves. There is no timer.",
+    "howToPlay": [
+      "Find the walker, a blue circle, and the lantern, an orange square. Rocks are grey stones.",
+      "Choose a direction. The walker slides straight until the next square is a rock or the edge of the pond, or until it reaches the lantern.",
+      "Plan where each slide ends, since the walker cannot stop in the middle of the ice.",
+      "Every puzzle can be solved. Today's puzzle is the same for everyone today and remembers your fewest moves. New puzzle gives a fresh one. Restart goes back to the start, and Undo takes back a slide."
+    ],
+    "controls": [
+      { "keys": "Arrow keys or W A S D", "action": "Slide the walker in that direction" },
+      {
+        "keys": "Enter / Space on a square",
+        "action": "Slide toward it, when it is in the walker's row or column"
+      },
+      { "keys": "Ctrl+Z", "action": "Undo the last slide" },
+      {
+        "keys": "Tab",
+        "action": "Reach the slide buttons, Undo, Restart and the puzzle buttons"
+      }
+    ],
+    "tips": [
+      "Work backwards from the lantern: which squares can reach it in one slide?",
+      "A rock one square beyond a spot is a good place to stop.",
+      "Slides that go nowhere do not count as moves.",
+      "You can stop at any time. Your puzzle and undo history are saved."
+    ]
+  },
+  "preview": "preview.svg"
+}

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Thread Picture</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Thread Picture</h1>
+      <p class="lede">Use the number clues to thread a hidden picture, one cell at a time.</p>
+
+      <div class="options">
+        <label for="size">Size</label>
+        <select id="size">
+          <option value="5">5 by 5</option>
+          <option value="10">10 by 10</option>
+        </select>
+        <button id="tool" type="button" aria-pressed="false">Tool: Fill</button>
+      </div>
+
+      <div class="status">
+        <p id="moves" class="stat">Moves: 0</p>
+        <p id="best" class="stat" hidden></p>
+        <p id="filled" class="stat">Filled 0</p>
+      </div>
+
+      <div class="frame">
+        <div class="corner"></div>
+        <div id="colclues" class="colclues"></div>
+        <div id="rowclues" class="rowclues"></div>
+        <div id="grid" class="picture"></div>
+      </div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="undo" type="button">Undo</button>
+        <button id="restart" type="button">Restart</button>
+        <button id="daily" type="button">Today's puzzle</button>
+        <button id="fresh" type="button">New puzzle</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-grid-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

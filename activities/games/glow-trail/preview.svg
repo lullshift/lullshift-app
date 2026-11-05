@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A glowing firefly with a fading trail heading toward blue dew drops on a dark garden grid">
+  <defs>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#fff0a0" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#fff0a0" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="320" height="200" fill="#13213a"/>
+  <g stroke="#22375a" stroke-width="1">
+    <path d="M0 40H320M0 80H320M0 120H320M0 160H320M40 0V200M80 0V200M120 0V200M160 0V200M200 0V200M240 0V200M280 0V200"/>
+  </g>
+  <g fill="#fff0a0">
+    <rect x="62" y="124" width="16" height="16" rx="5" fill-opacity="0.25"/>
+    <rect x="82" y="124" width="16" height="16" rx="5" fill-opacity="0.4"/>
+    <rect x="102" y="124" width="16" height="16" rx="5" fill-opacity="0.55"/>
+    <rect x="122" y="124" width="16" height="16" rx="5" fill-opacity="0.7"/>
+    <rect x="122" y="104" width="16" height="16" rx="5" fill-opacity="0.85"/>
+    <rect x="142" y="104" width="16" height="16" rx="5" fill-opacity="0.95"/>
+  </g>
+  <circle cx="150" cy="112" r="22" fill="url(#glow)"/>
+  <circle cx="150" cy="112" r="5" fill="#fffbe0"/>
+  <g fill="#8fd3ff"><path d="M230 70 q-7 10 0 16 q7 -6 0 -16z"/><path d="M90 50 q-7 10 0 16 q7 -6 0 -16z"/><path d="M250 150 q-7 10 0 16 q7 -6 0 -16z"/></g>
+</svg>
