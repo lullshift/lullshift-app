@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Wrists After Typing: two arcs and dots">
+  <rect width="320" height="200" fill="#e8f4f1"/>
+  <path d="M60 140 Q110 60 160 120" fill="none" stroke="#4e9d8e" stroke-width="8" stroke-linecap="round"/>
+  <path d="M160 120 Q210 60 260 140" fill="none" stroke="#7bbfb2" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="90" cy="60" r="8" fill="#4e9d8e"/>
+  <circle cx="160" cy="45" r="8" fill="#7bbfb2"/>
+  <circle cx="230" cy="60" r="8" fill="#4e9d8e"/>
+</svg>

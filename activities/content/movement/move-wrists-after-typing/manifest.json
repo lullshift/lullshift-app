@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.move-wrists-after-typing",
+  "version": "0.1.0",
+  "name": "Wrists After Typing",
+  "description": "Five very light moves to shake out and soften the wrists and forearms.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["movement", "wrists", "forearms"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.movement@1",
+  "data": "routine.json",
+  "help": {
+    "summary": "Five light moves for wrists and forearms, with counted and timed steps, on Movement Routine.",
+    "goal": "There is nothing to finish. Do one move or all five.",
+    "howToPlay": [
+      "Take your hands off the keyboard and read the move.",
+      "Press Start timer for timed moves, or count at your own pace.",
+      "Press Next for the following move, or Skip to leave one out."
+    ],
+    "tips": [
+      "General ideas for a break, not advice. Keep every move small and easy, and stop if anything feels uncomfortable."
+    ]
+  },
+  "preview": "preview.svg"
+}

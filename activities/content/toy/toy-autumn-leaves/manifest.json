@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.toy-autumn-leaves",
+  "version": "0.1.0",
+  "name": "Autumn Leaves",
+  "description": "A mosaic in leaf colours: russet, gold, plum and moss.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["mosaic", "autumn", "colour"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.toy@1",
+  "data": "toy.json",
+  "help": {
+    "summary": "Tiles in autumn leaf colours, shown on Creative Toy.",
+    "goal": "There is nothing to finish. Make a picture, or just play with the colours.",
+    "howToPlay": [
+      "Click the canvas, or move with the arrow keys and press Space, to place a tile.",
+      "Pick a colour with the number keys or the round swatches.",
+      "Press Undo to take the last tile back, or Clear to start over."
+    ],
+    "tips": [
+      "Mirror symmetry makes leaf-like patterns almost by accident.",
+      "Your picture stays on this device and cannot be exported."
+    ]
+  },
+  "preview": "preview.svg"
+}

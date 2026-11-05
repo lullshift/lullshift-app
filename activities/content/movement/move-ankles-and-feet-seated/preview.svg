@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Ankles and Feet: two rounded foot shapes">
+  <rect width="320" height="200" fill="#f6efe2"/>
+  <ellipse cx="120" cy="120" rx="42" ry="20" fill="#d9b98a"/>
+  <ellipse cx="210" cy="100" rx="42" ry="20" fill="#c9a06b"/>
+  <circle cx="120" cy="78" r="10" fill="#e9d4b0"/>
+  <circle cx="210" cy="58" r="10" fill="#e9d4b0"/>
+</svg>

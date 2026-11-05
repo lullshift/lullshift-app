@@ -230,8 +230,8 @@ describe("bundled quiz packs", () => {
   const base = join(root, "activities/content/quiz");
   const packs = existsSync(base) ? readdirSync(base) : [];
 
-  it("has five packs", () => {
-    expect(packs).toHaveLength(5);
+  it("has seven packs", () => {
+    expect(packs).toHaveLength(7);
   });
 
   for (const slug of packs) {

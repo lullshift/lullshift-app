@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Rainy Day Ideas: a cloud with raindrops">
+  <rect width="320" height="200" fill="#e6edf5"/>
+  <ellipse cx="160" cy="70" rx="60" ry="28" fill="#b3c2d6"/>
+  <ellipse cx="125" cy="82" rx="34" ry="22" fill="#9fb1c9"/>
+  <ellipse cx="195" cy="82" rx="34" ry="22" fill="#9fb1c9"/>
+  <ellipse cx="120" cy="145" rx="5" ry="11" fill="#5f86b8"/>
+  <ellipse cx="160" cy="160" rx="5" ry="11" fill="#5f86b8"/>
+  <ellipse cx="200" cy="140" rx="5" ry="11" fill="#5f86b8"/>
+  <ellipse cx="140" cy="120" rx="5" ry="11" fill="#7ea1cf"/>
+  <ellipse cx="180" cy="125" rx="5" ry="11" fill="#7ea1cf"/>
+</svg>

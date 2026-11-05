@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Autumn Leaves: overlapping leaf-shaped ellipses">
+  <rect width="320" height="200" fill="#2b2118"/>
+  <ellipse cx="110" cy="100" rx="42" ry="22" fill="#b5532f" transform="rotate(-30 110 100)"/>
+  <ellipse cx="170" cy="85" rx="42" ry="22" fill="#e4a53c" transform="rotate(20 170 85)"/>
+  <ellipse cx="210" cy="125" rx="42" ry="22" fill="#6d3a5c" transform="rotate(-10 210 125)"/>
+  <ellipse cx="140" cy="140" rx="36" ry="18" fill="#6b7f3a" transform="rotate(35 140 140)"/>
+</svg>

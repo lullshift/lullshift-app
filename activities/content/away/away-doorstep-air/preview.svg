@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Doorstep Air: an open doorway with a sunny sky">
+  <rect width="320" height="200" fill="#e8f3fb"/>
+  <rect x="110" y="40" width="100" height="130" rx="4" fill="#cfe6f5"/>
+  <rect x="120" y="50" width="80" height="120" rx="0" fill="#f9e9a6"/>
+  <circle cx="170" cy="90" r="16" fill="#f4c542"/>
+  <rect x="100" y="170" width="120" height="10" rx="0" fill="#8b7a5e"/>
+</svg>

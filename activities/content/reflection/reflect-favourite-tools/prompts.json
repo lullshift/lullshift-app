@@ -1,0 +1,32 @@
+{
+  "title": "Favourite tools",
+  "intro": "The things you use every day shape how a day feels. A few open questions about them. No right answers.",
+  "allowNotes": true,
+  "prompts": [
+    {
+      "text": "Which tool do you reach for without thinking, and why do you like it?"
+    },
+    {
+      "text": "What is one small thing about your setup that makes the day nicer?"
+    },
+    {
+      "text": "Is there a shortcut or trick you are glad you learned?",
+      "followUp": "Who or what showed you?"
+    },
+    {
+      "text": "What is a tool you have not tried yet but are curious about?"
+    },
+    {
+      "text": "Which tool would you miss most if it vanished tomorrow?"
+    },
+    {
+      "text": "What is one thing you could tweak this week to make your workspace more comfortable?"
+    },
+    {
+      "text": "What is a habit around your tools that works well for you?"
+    },
+    {
+      "text": "Think of something you made well recently. What helped you make it?"
+    }
+  ]
+}

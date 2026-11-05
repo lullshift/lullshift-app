@@ -185,8 +185,8 @@ describe("compatibility fixtures (lullshift.pause@1)", () => {
 describe("bundled pause packs", () => {
   const packsDir = join(root, "activities/content/pause");
   const packs = readdirSync(packsDir);
-  it("has five packs", () => {
-    expect(packs).toHaveLength(5);
+  it("has seven packs", () => {
+    expect(packs).toHaveLength(7);
   });
   for (const slug of packs) {
     it(`${slug} is valid`, () => {

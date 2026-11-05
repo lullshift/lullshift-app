@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.typing-seasons-short-lines",
+  "version": "0.1.0",
+  "name": "Seasons in Short Lines",
+  "description": "Twelve short lines about spring, summer, autumn and winter, three of each.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["typing", "seasons", "short"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.typing@1",
+  "data": "lines.json",
+  "help": {
+    "summary": "Twelve short seasonal lines to type, shown on Typing Drills in flow mode.",
+    "goal": "Nothing to beat. Type at a pace that suits you and stop whenever you like.",
+    "howToPlay": [
+      "Type the line shown.",
+      "Keep going without worrying about mistakes.",
+      "At the end of a line the next one appears."
+    ],
+    "tips": [
+      "Lines are short so they are easy to pick up and put down. Your place is saved on this device."
+    ]
+  },
+  "preview": "preview.svg"
+}

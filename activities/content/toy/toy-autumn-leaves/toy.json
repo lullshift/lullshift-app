@@ -1,0 +1,37 @@
+{
+  "title": "Autumn leaves",
+  "intro": "Russet, gold, plum and moss. Tiles fall like leaves, mirrored left and right.",
+  "palette": [
+    {
+      "name": "Russet",
+      "color": "#b5532f"
+    },
+    {
+      "name": "Maple gold",
+      "color": "#e4a53c"
+    },
+    {
+      "name": "Plum bark",
+      "color": "#6d3a5c"
+    },
+    {
+      "name": "Moss",
+      "color": "#6b7f3a"
+    },
+    {
+      "name": "Chestnut",
+      "color": "#8a5a34"
+    },
+    {
+      "name": "Pale straw",
+      "color": "#efe0b0"
+    }
+  ],
+  "mode": "mosaic",
+  "symmetry": "mirror",
+  "brushSize": {
+    "min": 6,
+    "max": 24
+  },
+  "background": "#2b2118"
+}

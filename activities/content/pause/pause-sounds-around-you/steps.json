@@ -1,0 +1,32 @@
+{
+  "title": "Sounds around you",
+  "intro": "A short pause for the ears. Skip any step that does not suit you.",
+  "steps": [
+    {
+      "text": "Let your hands rest, and simply listen. Notice the first sound that reaches you.",
+      "seconds": 15,
+      "look": "breath"
+    },
+    {
+      "text": "Find the closest sound. It might be a keyboard, a fan or your own movement.",
+      "seconds": 15,
+      "look": "hands"
+    },
+    {
+      "text": "Now find the farthest sound you can. Traffic, birds, a door or a distant voice all count.",
+      "seconds": 20,
+      "look": "window"
+    },
+    {
+      "text": "Listen for any sound that comes and goes. Notice how it fades in and out.",
+      "seconds": 15,
+      "look": "breath"
+    },
+    {
+      "text": "Listen for the quiet between sounds, then let your attention come back to the room.",
+      "seconds": 15,
+      "look": "eyes"
+    }
+  ],
+  "closing": "That was a short spell of listening. Carry on when you are ready."
+}

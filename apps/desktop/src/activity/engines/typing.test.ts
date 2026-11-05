@@ -131,8 +131,8 @@ describe("bundled typing packs", () => {
   const base = join(root, "activities/content/typing");
   const packs = readdirSync(base);
 
-  it("ships five packs", () => {
-    expect(packs).toHaveLength(5);
+  it("ships seven packs", () => {
+    expect(packs).toHaveLength(7);
   });
 
   for (const slug of packs) {

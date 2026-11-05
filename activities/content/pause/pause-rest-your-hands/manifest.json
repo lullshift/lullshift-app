@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.pause-rest-your-hands",
+  "version": "0.1.0",
+  "name": "Rest Your Hands",
+  "description": "A short pause to let your hands, arms and shoulders go still and heavy.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["pause", "hands", "rest"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.pause@1",
+  "data": "steps.json",
+  "help": {
+    "summary": "Five short steps for letting the hands and arms rest, on Guided Pause.",
+    "goal": "There is nothing to finish. Stop after any step.",
+    "howToPlay": [
+      "Press Begin and move your hands off the keyboard.",
+      "Follow each step in your own time. It moves on by itself.",
+      "Press Next to skip a step or Back to repeat one."
+    ],
+    "tips": [
+      "This is a break, not advice. Skip any step that does not suit you, and stop if anything feels uncomfortable."
+    ]
+  },
+  "preview": "preview.svg"
+}

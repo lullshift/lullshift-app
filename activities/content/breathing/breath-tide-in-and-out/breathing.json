@@ -1,0 +1,18 @@
+{
+  "title": "Tide in and out",
+  "intro": "A wave comes in a little, then goes out a little more. Let your breath do the same, at an easy pace.",
+  "phases": [
+    {
+      "kind": "inhale",
+      "seconds": 4,
+      "cue": "Tide comes in"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 6,
+      "cue": "Tide goes out"
+    }
+  ],
+  "rounds": 6,
+  "closing": "The tide has gone out. Notice the room, then carry on when you like."
+}

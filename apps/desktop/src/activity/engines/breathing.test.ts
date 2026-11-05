@@ -194,8 +194,8 @@ describe("compatibility fixtures (lullshift.breathing@1)", () => {
 describe("bundled breathing packs", () => {
   const packsDir = join(root, "activities/content/breathing");
   const packs = readdirSync(packsDir);
-  it("has five packs", () => {
-    expect(packs).toHaveLength(5);
+  it("has seven packs", () => {
+    expect(packs).toHaveLength(7);
   });
   for (const slug of packs) {
     it(`${slug} is valid and gentle`, () => {

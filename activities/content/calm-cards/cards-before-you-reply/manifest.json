@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.cards-before-you-reply",
+  "version": "0.1.0",
+  "name": "Before You Reply",
+  "description": "Ten gentle ideas to try before answering a message or comment.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["cards", "messages", "kindness"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.cards@1",
+  "data": "deck.json",
+  "help": {
+    "summary": "Ten cards for pausing before you reply, shown on Calm Cards.",
+    "goal": "There is nothing to finish. Read a card or two and go back to your day.",
+    "howToPlay": [
+      "Read the idea on the card.",
+      "Press Show more for a little more detail.",
+      "Try it, or press Next for something different."
+    ],
+    "tips": ["These are ideas, not rules. Reply in whatever way feels right to you."]
+  },
+  "preview": "preview.svg"
+}

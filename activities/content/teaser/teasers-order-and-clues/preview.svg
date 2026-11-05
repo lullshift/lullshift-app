@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Order and Clues: four bars in rising order">
+  <rect width="320" height="200" fill="#e9eef7"/>
+  <rect x="80" y="130" width="30" height="40" rx="3" fill="#8da9d8"/>
+  <rect x="125" y="110" width="30" height="60" rx="3" fill="#6f90c8"/>
+  <rect x="170" y="85" width="30" height="85" rx="3" fill="#5578b8"/>
+  <rect x="215" y="55" width="30" height="115" rx="3" fill="#3c5f9f"/>
+</svg>

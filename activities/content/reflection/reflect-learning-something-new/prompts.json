@@ -1,0 +1,33 @@
+{
+  "title": "Learning something new",
+  "intro": "Trying something unfamiliar can feel odd and interesting at once. A few open questions, with no right answers.",
+  "allowNotes": true,
+  "prompts": [
+    {
+      "text": "What is something you are curious to learn at the moment?",
+      "followUp": "What is one small step you could take towards it?"
+    },
+    {
+      "text": "Think of a time you got the hang of something that once felt awkward. What helped?"
+    },
+    {
+      "text": "What does it feel like when you meet something unfamiliar?"
+    },
+    {
+      "text": "Who or what has been a good teacher for you, and what made them good?"
+    },
+    {
+      "text": "What is a question you would like to ask, if there were no such thing as a silly question?"
+    },
+    {
+      "text": "What is a small thing you understand now that you did not understand last month?"
+    },
+    {
+      "text": "How do you like to practise something new: little and often, or in one long go?",
+      "followUp": "What would make it more enjoyable?"
+    },
+    {
+      "text": "What would you try this week if it did not matter whether you were good at it?"
+    }
+  ]
+}

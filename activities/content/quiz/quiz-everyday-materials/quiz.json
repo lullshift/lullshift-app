@@ -1,0 +1,71 @@
+{
+  "title": "Everyday materials",
+  "intro": "What are the things around you made of? Ten questions, no pressure.",
+  "shuffle": true,
+  "questions": [
+    {
+      "prompt": "Glass is made mainly by melting which common material?",
+      "choices": ["Clay", "Chalk", "Sand", "Salt"],
+      "answer": 2,
+      "explanation": "Most glass is made by heating sand, which is rich in silica, with a few other ingredients until it melts."
+    },
+    {
+      "prompt": "Which of these metals is liquid at ordinary room temperature?",
+      "choices": ["Mercury", "Iron", "Copper", "Aluminium"],
+      "answer": 0,
+      "explanation": "Mercury melts at a very low temperature, so it stays liquid in a normal room. The others are solid."
+    },
+    {
+      "prompt": "Most paper is made from fibres of what?",
+      "choices": ["Sand", "Animal bone", "Volcanic rock", "Plants, often wood"],
+      "answer": 3,
+      "explanation": "Paper is a mat of fibres, usually from wood or other plants, pressed flat and dried."
+    },
+    {
+      "prompt": "Which of these lets electricity flow through it most easily?",
+      "choices": ["Rubber", "Copper", "Dry wood", "Glass"],
+      "answer": 1,
+      "explanation": "Metals such as copper carry electricity well. That is why wires are metal inside and covered in plastic outside."
+    },
+    {
+      "prompt": "Traditional bricks are made by baking which material?",
+      "choices": ["Salt", "Cotton", "Clay", "Ice"],
+      "answer": 2,
+      "explanation": "Shaped clay is dried and fired until it is hard and strong."
+    },
+    {
+      "prompt": "Steel is mostly iron with a small amount of which other element?",
+      "choices": ["Helium", "Silver", "Sulphur", "Carbon"],
+      "answer": 3,
+      "explanation": "A little carbon makes iron much stronger, and the result is steel."
+    },
+    {
+      "prompt": "Which of these floats on water?",
+      "choices": ["An iron nail", "Cork", "A pebble", "A glass marble"],
+      "answer": 1,
+      "explanation": "Cork is full of tiny air pockets, so it is less dense than water and floats."
+    },
+    {
+      "prompt": "Which of these is a natural fibre?",
+      "choices": ["Cotton", "Nylon", "Polyester", "Acrylic"],
+      "answer": 0,
+      "explanation": "Cotton grows on a plant. Nylon, polyester and acrylic are made in factories."
+    },
+    {
+      "prompt": "A material that lets light pass straight through, so you can see clearly through it, is called what?",
+      "choices": ["Opaque", "Translucent", "Transparent"],
+      "answer": 2,
+      "explanation": "Clear glass is transparent. Opaque things block light, and translucent things let some through but scatter it."
+    },
+    {
+      "prompt": "Why does ice float in a glass of water?",
+      "choices": [
+        "It is heavier than water",
+        "It is less dense than the liquid water",
+        "It is magnetic"
+      ],
+      "answer": 1,
+      "explanation": "Water expands a little as it freezes, so ice is less dense than liquid water and floats."
+    }
+  ]
+}

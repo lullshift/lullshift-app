@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Rest Your Hands: two soft rounded shapes">
+  <rect width="320" height="200" fill="#fdf0e6"/>
+  <ellipse cx="120" cy="110" rx="50" ry="34" fill="#f5c9a3"/>
+  <ellipse cx="215" cy="100" rx="44" ry="30" fill="#eeb485"/>
+  <circle cx="160" cy="52" r="12" fill="#f9dcc2"/>
+</svg>

@@ -1,0 +1,56 @@
+{
+  "title": "Rainy day ideas",
+  "intro": "Wet weather can be a good reason for a short break. Pick one idea and leave the rest.",
+  "shuffle": true,
+  "prompts": [
+    {
+      "text": "Stand by a window and watch how the rain runs down the glass.",
+      "category": "window"
+    },
+    {
+      "text": "Listen to the rain for a full minute without doing anything else.",
+      "category": "rest"
+    },
+    {
+      "text": "Make a warm drink and hold the cup in both hands for a moment.",
+      "category": "water"
+    },
+    {
+      "text": "Find a spot where you can see the sky, and look at the shades of grey.",
+      "category": "window"
+    },
+    {
+      "text": "If you have an umbrella, step outside for a few minutes of fresh, damp air.",
+      "category": "walk"
+    },
+    {
+      "text": "Look for puddles or drips and notice how the surface ripples.",
+      "category": "window"
+    },
+    {
+      "text": "Fill a glass of water and take your time drinking it.",
+      "category": "water"
+    },
+    {
+      "text": "Walk to the far end of the building and back, listening for rain.",
+      "category": "walk"
+    },
+    {
+      "text": "Notice what the damp air smells like when you open a door or window.",
+      "category": "rest"
+    },
+    {
+      "text": "Wipe your desk or screen with a cloth and enjoy a tidy surface.",
+      "category": "tidy"
+    },
+    {
+      "text": "Check where the coats and umbrellas are, and tidy them if they have slipped.",
+      "category": "tidy"
+    },
+    {
+      "text": "Ask someone how their day is going, or send a friendly note.",
+      "category": "chat"
+    }
+  ],
+  "backAtDesk": "Back at your desk. Warm and dry, and ready when you are."
+}

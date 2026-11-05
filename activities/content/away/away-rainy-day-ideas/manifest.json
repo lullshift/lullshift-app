@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.away-rainy-day-ideas",
+  "version": "0.1.0",
+  "name": "Rainy Day Ideas",
+  "description": "Twelve ideas for a short break when it is wet outside.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["away", "rain", "weather"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.away@1",
+  "data": "prompts.json",
+  "help": {
+    "summary": "Twelve ideas for a break on a wet day, one at a time, shown on Away Prompts.",
+    "goal": "There is nothing to finish. Do one idea, or none.",
+    "howToPlay": [
+      "Read the idea and step away from the screen.",
+      "Press Another idea for a different one.",
+      "Press Back at desk when you return."
+    ],
+    "tips": [
+      "Ideas are only suggestions. Dress for the weather if you go outside, and skip anything that does not suit you."
+    ]
+  },
+  "preview": "preview.svg"
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.typing-nature-sentences",
+  "version": "0.1.0",
+  "name": "Nature Sentences",
+  "description": "Ten sentences about plants, water and weather to type at your own pace.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["typing", "nature"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.typing@1",
+  "data": "lines.json",
+  "help": {
+    "summary": "Ten sentences about the natural world to type, shown on Typing Drills.",
+    "goal": "Nothing to beat. Type gently and stop whenever you like.",
+    "howToPlay": [
+      "Type the sentence shown.",
+      "Correct characters are underlined and mistakes are struck through.",
+      "At the end of a sentence the next one appears."
+    ],
+    "tips": ["Your place is saved. What you type never leaves this page."]
+  },
+  "preview": "preview.svg"
+}

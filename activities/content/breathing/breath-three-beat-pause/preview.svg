@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Three-Beat Pause: three circles in a row">
+  <rect width="320" height="200" fill="#f2eefc"/>
+  <circle cx="90" cy="100" r="14" fill="#cdbdf7" stroke="#7557d6" stroke-width="3"/>
+  <circle cx="160" cy="100" r="26" fill="#b9a6ff" stroke="#7557d6" stroke-width="3"/>
+  <circle cx="230" cy="100" r="14" fill="#cdbdf7" stroke="#7557d6" stroke-width="3"/>
+</svg>

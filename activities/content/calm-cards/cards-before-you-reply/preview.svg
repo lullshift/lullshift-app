@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Before You Reply: two speech bubbles">
+  <rect width="320" height="200" fill="#eef1fa"/>
+  <rect x="70" y="50" width="120" height="60" rx="16" fill="#b7c6ee"/>
+  <polygon points="90,110 90,135 120,110" fill="#b7c6ee"/>
+  <rect x="140" y="100" width="120" height="60" rx="16" fill="#8da4e0"/>
+  <polygon points="230,160 230,180 205,160" fill="#8da4e0"/>
+</svg>

@@ -1,0 +1,23 @@
+{
+  "title": "Three-beat pause",
+  "intro": "In, a short soft rest, then out. The rest is only two seconds, so there is nothing to hold on to.",
+  "phases": [
+    {
+      "kind": "inhale",
+      "seconds": 3,
+      "cue": "In"
+    },
+    {
+      "kind": "rest",
+      "seconds": 2,
+      "cue": "Soft rest"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 4,
+      "cue": "Out"
+    }
+  ],
+  "rounds": 5,
+  "closing": "Five rounds done. Nothing more to do, so go back to your day whenever you like."
+}

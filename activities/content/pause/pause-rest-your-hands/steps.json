@@ -1,0 +1,32 @@
+{
+  "title": "Rest your hands",
+  "intro": "Your hands have been busy. Give them a short rest. Skip any step you like.",
+  "steps": [
+    {
+      "text": "Lift your hands away from the keys and let them rest in your lap or on the desk.",
+      "seconds": 10,
+      "look": "hands"
+    },
+    {
+      "text": "Look at your hands for a moment, as if you were seeing them for the first time.",
+      "seconds": 15,
+      "look": "hands"
+    },
+    {
+      "text": "Let your fingers curl or open however they like. There is no right shape.",
+      "seconds": 15,
+      "look": "hands"
+    },
+    {
+      "text": "Let the chair or desk take the full weight of your arms.",
+      "seconds": 20,
+      "look": "shoulders"
+    },
+    {
+      "text": "Take one easy breath and notice whether your shoulders can sit a little lower.",
+      "seconds": 15,
+      "look": "breath"
+    }
+  ],
+  "closing": "Hands rested. Pick up where you left off whenever you like."
+}

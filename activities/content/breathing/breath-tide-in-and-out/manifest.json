@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.breath-tide-in-and-out",
+  "version": "0.1.0",
+  "name": "Tide In and Out",
+  "description": "Six slow rounds of a long in-breath and a longer out-breath, like a tide.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["breathing", "tide", "slow"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.breathing@1",
+  "data": "breathing.json",
+  "help": {
+    "summary": "Six easy rounds, each a long in-breath and a longer out-breath, on Breathing Space.",
+    "goal": "There is nothing to finish. Stop after any round.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Breathe in as the shape swells, like a wave coming up the shore.",
+      "Breathe out as it draws back. Follow the words if they help."
+    ],
+    "tips": [
+      "Breathe only as deeply as feels easy. If anything feels uncomfortable, stop and breathe normally."
+    ]
+  },
+  "preview": "preview.svg"
+}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Learning Something New: a seedling in soil">
+  <rect width="320" height="200" fill="#eef6e6"/>
+  <rect x="0" y="150" width="320" height="50" rx="0" fill="#b99a73"/>
+  <path d="M160 150 V100" stroke="#5a9a45" stroke-width="6" stroke-linecap="round"/>
+  <ellipse cx="135" cy="95" rx="28" ry="14" fill="#7fbf62"/>
+  <ellipse cx="188" cy="82" rx="28" ry="14" fill="#6aaf4d"/>
+  <circle cx="250" cy="50" r="20" fill="#f7dc7a"/>
+</svg>

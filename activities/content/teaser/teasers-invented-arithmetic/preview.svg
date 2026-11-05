@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Invented Arithmetic: dots arranged in a grid">
+  <rect width="320" height="200" fill="#f0efe6"/>
+  <circle cx="95" cy="60" r="12" fill="#6b8e9b"/>
+  <circle cx="139" cy="60" r="12" fill="#e0a458"/>
+  <circle cx="183" cy="60" r="12" fill="#6b8e9b"/>
+  <circle cx="227" cy="60" r="12" fill="#e0a458"/>
+  <circle cx="95" cy="100" r="12" fill="#e0a458"/>
+  <circle cx="139" cy="100" r="12" fill="#6b8e9b"/>
+  <circle cx="183" cy="100" r="12" fill="#e0a458"/>
+  <circle cx="227" cy="100" r="12" fill="#6b8e9b"/>
+  <circle cx="95" cy="140" r="12" fill="#6b8e9b"/>
+  <circle cx="139" cy="140" r="12" fill="#e0a458"/>
+  <circle cx="183" cy="140" r="12" fill="#6b8e9b"/>
+  <circle cx="227" cy="140" r="12" fill="#e0a458"/>
+</svg>

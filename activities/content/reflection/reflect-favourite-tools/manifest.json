@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.reflect-favourite-tools",
+  "version": "0.1.0",
+  "name": "Favourite Tools",
+  "description": "Eight light prompts about the tools, habits and little setups you like working with.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["reflection", "tools", "habits"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.reflection@1",
+  "data": "prompts.json",
+  "help": {
+    "summary": "Eight light prompts about the tools and setups you like, with optional notes, on Reflection Prompts.",
+    "goal": "There is nothing to finish. Follow whichever prompt you like.",
+    "howToPlay": [
+      "Read the prompt and see where your mind goes.",
+      "If you like, type a few words in the notes box. They stay on this device.",
+      "Press Next for another prompt, or Back to return."
+    ],
+    "tips": ["Notes are optional and can be as short as one word. Clear them any time."]
+  },
+  "preview": "preview.svg"
+}

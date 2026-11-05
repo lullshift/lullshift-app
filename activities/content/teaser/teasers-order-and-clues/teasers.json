@@ -1,0 +1,62 @@
+{
+  "title": "Order and clues",
+  "intro": "Each puzzle has just enough clues to give one answer. Piece them together.",
+  "teasers": [
+    {
+      "question": "Four plants stand in a row on a shelf: ivy, cactus, fern and palm. The ivy is at the left end. The cactus is next to the fern. The palm is not next to the ivy. The fern is not next to the ivy. What is the order, left to right?",
+      "hint": "Who can stand next to the ivy?",
+      "answer": "Ivy, cactus, fern, palm",
+      "explanation": "The ivy is first, and only the cactus can stand beside it, since the fern and palm cannot. The fern must be next to the cactus, so it is third, and the palm is last.",
+      "kind": "logic"
+    },
+    {
+      "question": "Ria, Tom and Sam each choose a different drink from hot tea, hot coffee and cold juice. Ria does not want a hot drink. Tom does not want tea. Who has what?",
+      "hint": "Start with Ria.",
+      "answer": "Ria has juice, Tom has coffee, Sam has tea",
+      "explanation": "Ria avoids hot drinks, so she has juice. Tom does not want tea, so he has coffee. That leaves tea for Sam.",
+      "kind": "logic"
+    },
+    {
+      "question": "A drawer holds lots of red, green and yellow mugs. You reach in without looking. What is the fewest mugs you must take to be sure of having two the same colour?",
+      "hint": "What is the worst luck you could have?",
+      "answer": "4",
+      "explanation": "With three colours you could pick one of each and still have no match. The fourth mug has to match one of them.",
+      "kind": "logic"
+    },
+    {
+      "question": "The day after tomorrow is Friday. What day was it yesterday?",
+      "hint": "Find today first.",
+      "answer": "Tuesday",
+      "explanation": "If the day after tomorrow is Friday, tomorrow is Thursday and today is Wednesday. Yesterday was Tuesday.",
+      "kind": "logic"
+    },
+    {
+      "question": "In a queue, Kit is ahead of Lou and Mo is behind Lou. Nia is somewhere between Kit and Lou. What is the order from front to back?",
+      "hint": "Place Kit, Lou and Mo first.",
+      "answer": "Kit, Nia, Lou, Mo",
+      "explanation": "Kit, Lou and Mo line up in that order. Nia fits between Kit and Lou, giving Kit, Nia, Lou, Mo.",
+      "kind": "logic"
+    },
+    {
+      "question": "The quiet carriage is second from the front of a five-carriage train. The cafe is two carriages behind it. Counting from the back, which carriage is the cafe?",
+      "hint": "Number the carriages from the front first.",
+      "answer": "Second from the back",
+      "explanation": "The quiet carriage is number 2, so the cafe is number 4 from the front. In a train of five, carriage 4 is second from the back.",
+      "kind": "logic"
+    },
+    {
+      "question": "Pick any two of the cards 2, 5 and 9 and add them. How many different totals can you make?",
+      "hint": "There are three ways to pick two cards.",
+      "answer": "3",
+      "explanation": "The pairs give 2 plus 5 which is 7, 2 plus 9 which is 11, and 5 plus 9 which is 14. All three totals are different.",
+      "kind": "logic"
+    },
+    {
+      "question": "Book A is taller than book B. Book C is shorter than B. Book D is taller than A. Which book is the shortest?",
+      "hint": "Line them up from tallest to shortest.",
+      "answer": "Book C",
+      "explanation": "From tallest to shortest the order is D, A, B, C. So C is the shortest.",
+      "kind": "logic"
+    }
+  ]
+}

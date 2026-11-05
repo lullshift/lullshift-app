@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Tide In and Out: layered waves">
+  <rect width="320" height="200" fill="#e3f3f7"/>
+  <path d="M0 120 Q40 90 80 120 T160 120 T240 120 T320 120 V200 H0 Z" fill="#9fd3e0"/>
+  <path d="M0 150 Q40 120 80 150 T160 150 T240 150 T320 150 V200 H0 Z" fill="#5fb1c8"/>
+  <circle cx="250" cy="55" r="22" fill="#fbe7a8"/>
+</svg>

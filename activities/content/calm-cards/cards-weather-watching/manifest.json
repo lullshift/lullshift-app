@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.cards-weather-watching",
+  "version": "0.1.0",
+  "name": "Weather Watching",
+  "description": "Ten small things to notice about the sky and the weather.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["cards", "weather", "noticing"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.cards@1",
+  "data": "deck.json",
+  "help": {
+    "summary": "Ten cards about noticing the sky and weather, shown on Calm Cards.",
+    "goal": "There is nothing to finish. Read a card or two and go back to your day.",
+    "howToPlay": [
+      "Read the idea on the card.",
+      "Press Show more for a little more detail.",
+      "Try it, or press Next for something different."
+    ],
+    "tips": ["These are only ideas. If you cannot see outside, skip the card or look at a photo."]
+  },
+  "preview": "preview.svg"
+}

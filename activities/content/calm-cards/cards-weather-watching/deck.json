@@ -1,0 +1,46 @@
+{
+  "title": "Weather watching",
+  "intro": "The weather is always doing something. Ten cards for noticing it. Take what you like.",
+  "cards": [
+    {
+      "front": "Which way are the clouds moving?",
+      "back": "Pick a cloud and follow it for a few seconds. See whether it moves quickly or drifts slowly."
+    },
+    {
+      "front": "What shade is the sky?",
+      "back": "Try to name the colour in your own words. Is it nearer white, blue or grey, or something in between?"
+    },
+    {
+      "front": "Is there any wind?",
+      "back": "Look at trees, flags or loose leaves for clues. Or open a window and feel the air."
+    },
+    {
+      "front": "How does the light fall today?",
+      "back": "Notice whether shadows are sharp or soft, and which way they point."
+    },
+    {
+      "front": "Can you smell the weather?",
+      "back": "Rain, cut grass, warm pavement and cold air can all smell different."
+    },
+    {
+      "front": "What would you wear outside right now?",
+      "back": "A thought experiment is enough. No need to go and get the coat."
+    },
+    {
+      "front": "Find the highest cloud you can see",
+      "back": "High clouds often look thin and wispy. Lower ones usually look thicker and darker."
+    },
+    {
+      "front": "Listen for the weather",
+      "back": "Wind, rain and even a very still day each have a sound of their own."
+    },
+    {
+      "front": "How is the weather different from yesterday?",
+      "back": "Even small changes in temperature or cloud count. If you do not remember, that is fine."
+    },
+    {
+      "front": "Say the weather in one word",
+      "back": "Choose a word that feels right to you. It does not have to be the usual one."
+    }
+  ]
+}

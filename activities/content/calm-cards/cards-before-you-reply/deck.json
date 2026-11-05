@@ -1,0 +1,46 @@
+{
+  "title": "Before you reply",
+  "intro": "A moment before replying can make a message kinder and clearer. Take what helps.",
+  "cards": [
+    {
+      "front": "Read it once more",
+      "back": "A second read often shows a friendlier meaning than the first."
+    },
+    {
+      "front": "What is actually being asked?",
+      "back": "Try to say it in one sentence. If you cannot, a short question back may be best."
+    },
+    {
+      "front": "Take one easy breath",
+      "back": "Just one, at your own pace. Then start typing."
+    },
+    {
+      "front": "Imagine a kind voice",
+      "back": "Read the message as if it came from someone in a good mood. See whether it sounds different."
+    },
+    {
+      "front": "Lead with the useful part",
+      "back": "Put the main answer first, then any detail underneath."
+    },
+    {
+      "front": "Can it wait a few minutes?",
+      "back": "If it is not urgent, you can reply after a short break. Come back with fresh eyes."
+    },
+    {
+      "front": "Thank them if it fits",
+      "back": "A short thank you for the question or the effort costs very little."
+    },
+    {
+      "front": "Cut one extra word",
+      "back": "Look for a word or sentence you can remove without losing meaning."
+    },
+    {
+      "front": "Check the plain facts",
+      "back": "Names, dates and links. A quick look can save a follow-up."
+    },
+    {
+      "front": "Read it aloud in your head",
+      "back": "If it sounds like something you would say to a friend, it is probably fine."
+    }
+  ]
+}

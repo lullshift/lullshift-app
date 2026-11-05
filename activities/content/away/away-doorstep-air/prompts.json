@@ -1,0 +1,48 @@
+{
+  "title": "Doorstep air",
+  "intro": "A step outside, or even just to a window, can reset the room. Try one small idea.",
+  "shuffle": true,
+  "prompts": [
+    {
+      "text": "Step through the nearest outside door and stand still for a few breaths.",
+      "category": "walk"
+    },
+    {
+      "text": "Notice the temperature of the air on your face and hands.",
+      "category": "rest"
+    },
+    {
+      "text": "Look for the tallest thing you can see and follow it to the top.",
+      "category": "window"
+    },
+    {
+      "text": "Find something green and spend a moment looking at its shape.",
+      "category": "window"
+    },
+    {
+      "text": "Listen for the farthest sound from where you stand.",
+      "category": "rest"
+    },
+    {
+      "text": "Take a slow lap of the doorstep, car park or courtyard.",
+      "category": "walk"
+    },
+    {
+      "text": "Check which way the wind is blowing by watching leaves, flags or smoke.",
+      "category": "window"
+    },
+    {
+      "text": "Take your water bottle and refill it on the way back.",
+      "category": "water"
+    },
+    {
+      "text": "Look at the sky and describe its colour to yourself in three words.",
+      "category": "window"
+    },
+    {
+      "text": "Say hello to a neighbour, a passer-by or a friendly pet, if you meet one.",
+      "category": "chat"
+    }
+  ],
+  "backAtDesk": "Back inside. Take the fresh air with you."
+}

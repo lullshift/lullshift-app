@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.away-doorstep-air",
+  "version": "0.1.0",
+  "name": "Doorstep Air",
+  "description": "Ten ideas for a two-minute step outside, or to the nearest open window.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["away", "outside", "fresh-air"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.away@1",
+  "data": "prompts.json",
+  "help": {
+    "summary": "Ten ideas for a very short trip to a door or window, one at a time, shown on Away Prompts.",
+    "goal": "There is nothing to finish. Even one idea counts as a break.",
+    "howToPlay": [
+      "Stand up and head for a door or window.",
+      "Read the idea and try it for as long as you like.",
+      "Press Another idea for a different one, or Back at desk when you return."
+    ],
+    "tips": [
+      "Ideas are only suggestions. If you cannot go outside, an open window or a far corner of the room works too."
+    ]
+  },
+  "preview": "preview.svg"
+}

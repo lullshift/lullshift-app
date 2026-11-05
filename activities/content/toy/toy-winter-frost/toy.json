@@ -1,0 +1,33 @@
+{
+  "title": "Winter frost",
+  "intro": "Icy blues and silver on a slate-blue sky. Each mark spreads into a little frost pattern.",
+  "palette": [
+    {
+      "name": "Ice white",
+      "color": "#eef6fb"
+    },
+    {
+      "name": "Frost blue",
+      "color": "#a9d0e8"
+    },
+    {
+      "name": "Glacier",
+      "color": "#6fa8cc"
+    },
+    {
+      "name": "Silver",
+      "color": "#b8c4cf"
+    },
+    {
+      "name": "Winter lilac",
+      "color": "#b9a8dc"
+    }
+  ],
+  "mode": "stars",
+  "symmetry": "quad",
+  "brushSize": {
+    "min": 4,
+    "max": 20
+  },
+  "background": "#1c2a3a"
+}

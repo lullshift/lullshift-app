@@ -1,0 +1,46 @@
+{
+  "title": "Tiny joys of making",
+  "intro": "Making something small, even for two minutes, can be a nice change from a screen. Pick one idea.",
+  "cards": [
+    {
+      "front": "Fold a paper boat or plane",
+      "back": "Any scrap of paper will do. It does not have to float or fly."
+    },
+    {
+      "front": "Doodle a pattern",
+      "back": "Draw one shape and repeat it, nudging it each time. Stop when it feels finished."
+    },
+    {
+      "front": "Tie a neat knot",
+      "back": "Use a shoelace, a string or a loose cable. Aim for tidy rather than fancy."
+    },
+    {
+      "front": "Rearrange three things on your desk",
+      "back": "Make a small arrangement that pleases you and leave it there."
+    },
+    {
+      "front": "Write a note for later",
+      "back": "Just one friendly line you will see tomorrow, such as a reminder to enjoy lunch."
+    },
+    {
+      "front": "Straighten something that has slipped",
+      "back": "A picture, a pile of books or a crooked stack of paper. A small repair is satisfying."
+    },
+    {
+      "front": "Sketch an object near you",
+      "back": "Draw the outline of your mug, a plant or a pen. A rough shape is fine."
+    },
+    {
+      "front": "Roll a ball from scrap paper",
+      "back": "Scrunch it in your hands and feel how the paper changes. Recycle it afterwards."
+    },
+    {
+      "front": "Name something you made today",
+      "back": "A function, a note, a sandwich or a plan all count. Say what it is in a few words."
+    },
+    {
+      "front": "Make a tiny list of three",
+      "back": "Three things for the weekend, three tunes, or three plants you like."
+    }
+  ]
+}

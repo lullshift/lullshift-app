@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Nature Sentences: a tree and a hill">
+  <rect width="320" height="200" fill="#e9f4e3"/>
+  <path d="M0 170 Q100 110 200 160 T320 140 V200 H0 Z" fill="#a9cf8e"/>
+  <rect x="150" y="90" width="14" height="60" rx="0" fill="#8a6a4a"/>
+  <circle cx="157" cy="75" r="36" fill="#5c9e57"/>
+  <circle cx="130" cy="90" r="22" fill="#6fb06a"/>
+  <circle cx="185" cy="90" r="22" fill="#6fb06a"/>
+</svg>

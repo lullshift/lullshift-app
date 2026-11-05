@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.teasers-invented-arithmetic",
+  "version": "0.1.0",
+  "name": "Invented Arithmetic",
+  "description": "Nine small number puzzles with tidy answers.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["puzzle", "numbers", "arithmetic"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.teaser@1",
+  "data": "teasers.json",
+  "help": {
+    "summary": "Nine small number puzzles to think about, shown on Brain Teasers.",
+    "goal": "Nothing to win. Think it over, then reveal the answer when you are ready.",
+    "howToPlay": [
+      "Read the teaser and take your time.",
+      "Press Hint for a nudge, if there is one.",
+      "Press Reveal answer to see the answer and why.",
+      "Press Next for another teaser."
+    ],
+    "tips": ["Scribbling on paper is allowed. So is skipping."]
+  },
+  "preview": "preview.svg"
+}

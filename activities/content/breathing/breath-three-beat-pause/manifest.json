@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.breath-three-beat-pause",
+  "version": "0.1.0",
+  "name": "Three-Beat Pause",
+  "description": "Breathe in for three, rest for two, breathe out for four, with only a brief pause between.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["breathing", "pause", "gentle"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.breathing@1",
+  "data": "breathing.json",
+  "help": {
+    "summary": "A gentle in, short rest, longer out pattern with a rest of only 2 seconds, on Breathing Space.",
+    "goal": "There is nothing to finish. Five rounds take about a minute and a half.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Breathe in while the shape grows.",
+      "Let the breath rest softly, then breathe out as the shape shrinks."
+    ],
+    "tips": [
+      "The rest is short and soft, not a held breath. If it feels odd, breathe out sooner or press Stop."
+    ]
+  },
+  "preview": "preview.svg"
+}

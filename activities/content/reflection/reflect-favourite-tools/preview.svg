@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Favourite Tools: a spanner shape and a pencil">
+  <rect width="320" height="200" fill="#f3eee6"/>
+  <rect x="95" y="95" width="130" height="14" rx="7" fill="#8e99a6" transform="rotate(-25 160 100)"/>
+  <rect x="95" y="115" width="130" height="14" rx="3" fill="#e2b04a" transform="rotate(20 160 120)"/>
+  <circle cx="110" cy="78" r="18" fill="#6f7b89"/>
+</svg>

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.move-ankles-and-feet-seated",
+  "version": "0.1.0",
+  "name": "Ankles and Feet, Seated",
+  "description": "Four easy moves for ankles and feet that you can do at your chair.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["movement", "feet", "ankles", "seated"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.movement@1",
+  "data": "routine.json",
+  "help": {
+    "summary": "Four easy seated moves for ankles and feet, on Movement Routine.",
+    "goal": "There is nothing to finish. Do one move or all four.",
+    "howToPlay": [
+      "Sit comfortably with both feet near the floor and read the move.",
+      "Press Start timer for timed moves, or count at your own pace.",
+      "Press Next for the following move, or Skip to leave one out."
+    ],
+    "tips": [
+      "General ideas for a break, not advice. Keep each move small, and stop if anything feels uncomfortable."
+    ]
+  },
+  "preview": "preview.svg"
+}

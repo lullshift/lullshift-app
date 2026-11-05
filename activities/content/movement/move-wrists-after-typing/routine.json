@@ -1,0 +1,62 @@
+{
+  "title": "Wrists after typing",
+  "intro": "A few light moves to loosen up after a long stretch of typing. Keep everything easy.",
+  "moves": [
+    {
+      "name": "Shake it out",
+      "steps": [
+        "Let your arms hang loose, or rest them in your lap.",
+        "Shake your hands gently, as if flicking off water.",
+        "Keep it light and relaxed."
+      ],
+      "seconds": 15,
+      "position": "either"
+    },
+    {
+      "name": "Thumb circles",
+      "steps": [
+        "Make a loose fist with your thumb resting on top.",
+        "Draw small slow circles with the thumb.",
+        "Change direction halfway through."
+      ],
+      "seconds": 20,
+      "side": "left-right",
+      "position": "either"
+    },
+    {
+      "name": "Palm press",
+      "steps": [
+        "Rest your palms flat on the desk.",
+        "Press down very lightly and then release.",
+        "Never push into discomfort."
+      ],
+      "reps": 6,
+      "position": "seated"
+    },
+    {
+      "name": "Soft forearm stroke",
+      "steps": [
+        "Rest one forearm on your lap, palm up.",
+        "Stroke it from wrist to elbow with the other hand, using a light touch.",
+        "Then switch arms."
+      ],
+      "seconds": 30,
+      "side": "left-right",
+      "position": "seated"
+    },
+    {
+      "name": "Fingertip taps",
+      "steps": [
+        "Tap each fingertip against your thumb in turn.",
+        "Go slowly and keep your hand loose.",
+        "Repeat in the other direction."
+      ],
+      "reps": 5,
+      "side": "left-right",
+      "position": "either"
+    }
+  ],
+  "restSeconds": 5,
+  "closing": "Hands loosened for now. Come back to this whenever you like.",
+  "wayOut": "Stop if anything feels uncomfortable, and skip anything that does not suit you."
+}

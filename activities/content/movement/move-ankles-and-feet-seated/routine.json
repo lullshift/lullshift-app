@@ -1,0 +1,50 @@
+{
+  "title": "Ankles and feet, seated",
+  "intro": "Small, easy moves for the feet that have been still for a while. All of them work from your chair.",
+  "moves": [
+    {
+      "name": "Toe lift and lower",
+      "steps": [
+        "Keep your heels on the floor.",
+        "Lift your toes a little, then lower them.",
+        "Move slowly and stay relaxed."
+      ],
+      "reps": 8,
+      "position": "seated"
+    },
+    {
+      "name": "Heel lift and lower",
+      "steps": [
+        "Keep your toes on the floor.",
+        "Raise your heels a little, then lower them.",
+        "Keep the movement small."
+      ],
+      "reps": 8,
+      "position": "seated"
+    },
+    {
+      "name": "Ankle circles",
+      "steps": [
+        "Lift one foot slightly off the floor.",
+        "Draw slow, small circles with your toes.",
+        "Change direction halfway, then switch feet."
+      ],
+      "seconds": 40,
+      "side": "left-right",
+      "position": "seated"
+    },
+    {
+      "name": "Slide apart and together",
+      "steps": [
+        "Rest your feet flat on the floor.",
+        "Slide them a little apart, then back together.",
+        "Keep it slow and easy."
+      ],
+      "reps": 6,
+      "position": "seated"
+    }
+  ],
+  "restSeconds": 5,
+  "closing": "Feet woken up a little. Carry on whenever you are ready.",
+  "wayOut": "Stop if anything feels uncomfortable, and skip anything that does not suit you."
+}

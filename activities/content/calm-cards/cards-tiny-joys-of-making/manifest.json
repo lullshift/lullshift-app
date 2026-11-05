@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.cards-tiny-joys-of-making",
+  "version": "0.1.0",
+  "name": "Tiny Joys of Making",
+  "description": "Ten small, optional ideas for making or fixing something with your hands.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["cards", "making", "hands-on"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.cards@1",
+  "data": "deck.json",
+  "help": {
+    "summary": "Ten cards of small making ideas, shown on Calm Cards.",
+    "goal": "There is nothing to finish. Read a card or two and go back to your day.",
+    "howToPlay": [
+      "Read the idea on the card.",
+      "Press Show more for a hint on how to do it.",
+      "Try it, or press Next for something different."
+    ],
+    "tips": [
+      "Use whatever is nearby, take care with scissors and anything sharp, and skip any idea that does not suit you."
+    ]
+  },
+  "preview": "preview.svg"
+}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Weather Watching: a sun peeking behind a cloud">
+  <rect width="320" height="200" fill="#e8f2fa"/>
+  <circle cx="205" cy="80" r="34" fill="#f7cf55"/>
+  <ellipse cx="150" cy="112" rx="62" ry="28" fill="#ffffff"/>
+  <ellipse cx="115" cy="120" rx="32" ry="20" fill="#f1f5f9"/>
+  <ellipse cx="185" cy="120" rx="34" ry="20" fill="#f1f5f9"/>
+</svg>

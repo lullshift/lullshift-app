@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="How Maps Work: contour rings and a path">
+  <rect width="320" height="200" fill="#eef2e2"/>
+  <ellipse cx="150" cy="100" rx="100" ry="68" fill="#d4e2b5"/>
+  <ellipse cx="150" cy="100" rx="70" ry="46" fill="#b9d08b"/>
+  <ellipse cx="150" cy="100" rx="38" ry="24" fill="#9ab96a"/>
+  <path d="M40 160 Q120 130 180 150 T290 120" fill="none" stroke="#c9704f" stroke-width="5" stroke-dasharray="10 8"/>
+</svg>

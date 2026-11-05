@@ -1,0 +1,87 @@
+{
+  "title": "How maps work",
+  "intro": "Scale, keys, contours and compasses. Ten questions about how maps show the world.",
+  "shuffle": true,
+  "questions": [
+    {
+      "prompt": "By convention, which direction is usually at the top of a map?",
+      "choices": ["South", "East", "North", "West"],
+      "answer": 2,
+      "explanation": "Most maps are drawn with north at the top, but it is a habit rather than a law of nature."
+    },
+    {
+      "prompt": "What does a map's scale tell you?",
+      "choices": [
+        "How old the map is",
+        "How map distances relate to real distances",
+        "Which way is north",
+        "How many roads there are"
+      ],
+      "answer": 1,
+      "explanation": "A scale such as one to fifty thousand compares a length on paper with the real length on the ground."
+    },
+    {
+      "prompt": "On a map drawn at a scale of one to one hundred thousand, one centimetre stands for how far?",
+      "choices": ["100 metres", "10 kilometres", "100 kilometres", "1 kilometre"],
+      "answer": 3,
+      "explanation": "One hundred thousand centimetres is one thousand metres, which is one kilometre."
+    },
+    {
+      "prompt": "What do contour lines join?",
+      "choices": [
+        "Points at the same height",
+        "Places with the same name",
+        "Roads of the same type",
+        "Towns of the same size"
+      ],
+      "answer": 0,
+      "explanation": "Each contour line follows one height above sea level, so walking along it keeps you level."
+    },
+    {
+      "prompt": "When contour lines are packed close together, what does that show?",
+      "choices": ["Flat ground", "A lake", "Steep ground", "A road"],
+      "answer": 2,
+      "explanation": "Close lines mean the height changes quickly over a short distance, which is steep. Widely spaced lines are gentler."
+    },
+    {
+      "prompt": "What is a map key, sometimes called a legend, for?",
+      "choices": [
+        "Unlocking the map",
+        "Showing the map's price",
+        "Listing the mapmaker's friends",
+        "Explaining what the symbols mean"
+      ],
+      "answer": 3,
+      "explanation": "The key shows what each colour, line and symbol stands for."
+    },
+    {
+      "prompt": "Lines of latitude on a globe run in which direction?",
+      "choices": ["North to south", "East to west", "Diagonally"],
+      "answer": 1,
+      "explanation": "Lines of latitude are circles that run east to west around the globe. Lines of longitude run from pole to pole."
+    },
+    {
+      "prompt": "The line of longitude marked as zero degrees is called what?",
+      "choices": ["The equator", "The date line", "The prime meridian", "The tropic"],
+      "answer": 2,
+      "explanation": "The prime meridian is zero degrees longitude. The equator is zero degrees latitude."
+    },
+    {
+      "prompt": "Why does every flat map of the whole Earth have to distort something?",
+      "choices": [
+        "A curved surface cannot be flattened without stretching or cutting",
+        "Mapmakers dislike straight lines",
+        "The Earth keeps changing size",
+        "Paper shrinks"
+      ],
+      "answer": 0,
+      "explanation": "Try flattening an orange peel and you will see the problem. Different maps choose which distortion to accept."
+    },
+    {
+      "prompt": "A compass needle points roughly towards which direction?",
+      "choices": ["East", "The nearest hill", "The Sun", "North"],
+      "answer": 3,
+      "explanation": "A compass needle lines up with the Earth's magnetic field, which points roughly north."
+    }
+  ]
+}
