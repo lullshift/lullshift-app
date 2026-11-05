@@ -211,4 +211,22 @@ describe("table snapshot and restore", () => {
     }
     expect(isCard({ ...card0, faceUp: "yes" })).toBe(false);
   });
+
+  it("restores a hostile oversized history fast", () => {
+    const deck = customDeck(Array.from({ length: 1000 }, (_, i) => ({ suit: "s", rank: i })));
+    const t = new Table(
+      [
+        { id: "a", name: "A", cards: deck },
+        { id: "b", name: "B" },
+      ],
+      { historyLimit: 10_000 },
+    );
+    const entry = [deck, []];
+    const undo = new Array<Card[][]>(10_000).fill(entry);
+    const state = { ...t.snapshot(), history: { undo, redo: undo } };
+    const t0 = performance.now();
+    expect(t.restore(state)).toBe(true);
+    expect(performance.now() - t0).toBeLessThan(100);
+    expect(t.canUndo()).toBe(true);
+  });
 });

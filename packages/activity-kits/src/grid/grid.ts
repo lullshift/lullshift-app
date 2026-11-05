@@ -256,7 +256,7 @@ export class Grid<C> {
   /**
    * Loads a snapshot. The size must match this grid, and every cell must be JSON and pass
    * `isCell` when given. Returns false and changes nothing when anything is off. A missing
-   * history or selection is treated as empty.
+   * history or selection is treated as empty; a long history is trimmed (see History.restore).
    */
   restore(state: unknown, isCell?: (value: unknown) => boolean): boolean {
     if (!isRecord(state) || state.width !== this.width || state.height !== this.height)
@@ -268,11 +268,19 @@ export class Grid<C> {
     const cursor = state.cursor;
     if (!isRecord(cursor) || !this.inBounds(cursor.x as number, cursor.y as number)) return false;
     const selected = state.selected === undefined ? [] : state.selected;
-    if (!Array.isArray(selected) || !selected.every((i) => isIntIn(i, 0, this.size - 1))) {
+    if (
+      !Array.isArray(selected) ||
+      selected.length > this.size ||
+      !selected.every((i) => isIntIn(i, 0, this.size - 1))
+    ) {
       return false;
     }
     const history = new History<C[]>(this.history.limit);
-    if (state.history !== undefined && !history.restore(state.history, okCells)) return false;
+    // Weight = cell count, so a hostile history can't make restore check millions of cells.
+    const weigh = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+    if (state.history !== undefined && !history.restore(state.history, okCells, weigh)) {
+      return false;
+    }
     this.data = cloneJson(state.cells as C[]);
     this.cursor = { x: cursor.x as number, y: cursor.y as number };
     this.chosen = new Set(selected as number[]);

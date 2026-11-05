@@ -2,6 +2,7 @@
 // interruption: when it pauses, the loop stops at once; play only starts again after a visible
 // countdown, or, in reduced-motion mode, after the player presses Enter or Space.
 
+import { finiteIn } from "../core/json.ts";
 import { Loop, type FrameScheduler, type LoopOptions, type VisibilitySource } from "./loop.ts";
 
 /** Shown instead of a countdown when reduced motion is on. */
@@ -28,7 +29,7 @@ export interface ResumeGateOptions {
   /** The countdown finished or the player confirmed: start play. */
   done(): void;
   reducedMotion?: boolean;
-  /** Countdown length in seconds (default 3, 0 to 10). */
+  /** Countdown length in whole seconds (default 3, 0 to 10; anything else is the default). */
   seconds?: number;
   timers?: Timers;
 }
@@ -60,7 +61,7 @@ export class ResumeGate {
       this.options.show(READY_PROMPT);
       return;
     }
-    const seconds = Math.max(0, Math.min(10, Math.floor(this.options.seconds ?? 3)));
+    const seconds = Math.floor(finiteIn(this.options.seconds, 0, 10, 3));
     this.tick(seconds);
   }
 
@@ -134,8 +135,9 @@ export interface ArcadeOptions {
   prompt(text: string): void;
   /** Play started (false) or stopped (true): update buttons and status. */
   onPausedChange?(paused: boolean): void;
-  /** Autosave after this many seconds of play (default 2; 0 turns it off). */
+  /** Autosave after this many seconds of play (default 2, up to 3600; 0 turns it off). */
   autosaveSeconds?: number;
+  /** Resume countdown in whole seconds (default 3, 0 to 10). */
   countdownSeconds?: number;
   stepMs?: number;
   maxStepsPerFrame?: number;
@@ -169,10 +171,12 @@ export function runArcade(options: ArcadeOptions): ArcadeSession {
   let reducedMotion = false;
   let ready = false;
   let hostPaused = false;
+  // The player paused (P, Escape, a button): a host resume must not start the countdown then.
+  let playerPaused = false;
   let sinceSave = 0;
   // Whether play is on, as the game sees it. The loop may already have paused itself (hidden page).
   let playing = false;
-  const autosaveMs = Math.max(0, (options.autosaveSeconds ?? 2) * 1000);
+  const autosaveMs = finiteIn(options.autosaveSeconds, 0, 3600, 2) * 1000;
 
   const saveNow = () => {
     const state = options.save();
@@ -197,6 +201,12 @@ export function runArcade(options: ArcadeOptions): ArcadeSession {
     onVisible: () => {
       if (ready && !hostPaused) options.prompt(PAUSED_PROMPT);
     },
+    onError: (error) => {
+      // The loop has paused itself. Stop like a pause, without saving state the failed step may
+      // have left half updated, so the player can resume; then let the error surface.
+      stopped(true, false);
+      throw error;
+    },
   });
 
   const gate = new ResumeGate({
@@ -208,20 +218,27 @@ export function runArcade(options: ArcadeOptions): ArcadeSession {
       if (!loop.paused) {
         playing = true;
         options.onPausedChange?.(false);
+      } else if (ready && !hostPaused) {
+        options.prompt(PAUSED_PROMPT); // hidden page: wait for the player
       }
     },
   });
 
-  function stopped(showPrompt = true): void {
+  function stopped(showPrompt = true, save = true): void {
     const wasPlaying = playing;
     playing = false;
     loop.pause();
     gate.cancel();
     if (showPrompt && ready) options.prompt(PAUSED_PROMPT);
     if (wasPlaying) {
-      saveNow();
+      if (save) saveNow();
       options.onPausedChange?.(true);
     }
+  }
+
+  function startGate(): void {
+    if (!ready || hostPaused || !loop.paused) return;
+    gate.start();
   }
 
   const session: ArcadeSession = {
@@ -233,10 +250,14 @@ export function runArcade(options: ArcadeOptions): ArcadeSession {
     get paused() {
       return loop.paused;
     },
-    pause: () => stopped(),
+    pause() {
+      if (ready) playerPaused = true;
+      stopped();
+    },
     resume() {
       if (!ready || hostPaused || !loop.paused) return;
-      gate.start();
+      playerPaused = false;
+      startGate();
     },
     confirm() {
       if (gate.active) return gate.confirm();
@@ -256,7 +277,8 @@ export function runArcade(options: ArcadeOptions): ArcadeSession {
       options.onInit(info);
       options.render?.(0);
       ready = true;
-      session.resume();
+      playerPaused = false;
+      startGate();
     },
     saveState: () => options.save(),
     onPause() {
@@ -265,7 +287,11 @@ export function runArcade(options: ArcadeOptions): ArcadeSession {
     },
     onResume() {
       hostPaused = false;
-      session.resume();
+      if (playerPaused) {
+        if (ready) options.prompt(PAUSED_PROMPT); // the player resumes with Enter or Space
+        return;
+      }
+      startGate();
     },
   });
   return session;

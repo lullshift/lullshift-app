@@ -1,5 +1,5 @@
 // `create --kit` and the kit copy check in `validate` (ADR-019).
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -71,6 +71,32 @@ describe("create --kit", () => {
       '<body>\n    <script src="lullshift-bridge-v1.js"></script>\n    <script src="lullshift-arcade-kit-v1.js"></script>\n</body>',
     );
     expect(() => addKitScript("<body></body>", "grid")).toThrow(/doesn't load/);
+  });
+
+  it("keeps CRLF line endings when the template uses them", () => {
+    const html = '<body>\r\n  <script src="lullshift-bridge-v1.js"></script>\r\n</body>\r\n';
+    const out = addKitScript(html, "grid");
+    expect(out).toBe(
+      '<body>\r\n  <script src="lullshift-bridge-v1.js"></script>\r\n  <script src="lullshift-grid-kit-v1.js"></script>\r\n</body>\r\n',
+    );
+    expect(out.replaceAll("\r\n", "")).not.toMatch(/\n/);
+  });
+
+  it("writes nothing when the kit file is missing", () => {
+    const dir = path.join(tempDir(), "game");
+    const options = {
+      dir,
+      kind: "app" as const,
+      name: "Kit Game",
+      id: "dev.test.kit-game",
+      author: "",
+      engine: "",
+      kit: "grid" as const,
+    };
+    expect(() => createActivity(options, { kitsDir: tempDir() })).toThrow(
+      /lullshift-grid-kit-v1\.js is missing/,
+    );
+    expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);
   });
 });
 

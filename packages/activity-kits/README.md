@@ -41,7 +41,9 @@ Never edit the copy. `lullshift validate` warns when it differs from the SDK's. 
 
 ## Rules every kit follows
 
-- No network, no storage, no clipboard, no Tauri, no `eval`, no HTML parsing. The build refuses source that mentions them.
+- No network, no storage, no clipboard, no Tauri, no `eval`, no HTML parsing. The build refuses source that mentions them. That word scan is a lint that keeps the kits easy to review, not a security boundary: the activity sandbox is the boundary, and it applies to kit code like any other activity code.
+- The build parses each source with the TypeScript parser: named imports only, between kit files (no side-effect imports), and only `export function`, `export const` and `export class` (no `export let`, `var`, `default` or re-exports).
+- Saved state is untrusted. `restore()` checks shapes and bounds its work: undo history beyond the limit, or beyond a total size budget (`HISTORY_RESTORE_BUDGET`, counted in cells or cards), is dropped oldest first, so a hostile save can't freeze the activity.
 - Kits never save. Your game saves through the bridge: put the kit's `snapshot()` into your state and call `LullshiftBridge.autosave(state)` after each change. On `onInit`, pass the saved part to `restore()`. It returns `false` for anything malformed; start fresh then.
 - Snapshots are plain JSON and include undo history, so undo survives an interruption.
 - Text reaches the page through `textContent` only.
@@ -57,9 +59,11 @@ randomSeed(): number
 hashString(text: string): number      // FNV-1a, 32-bit
 localDateKey(date: Date): string      // "2026-11-05"
 new History<T>(limit = 100)           // record(before), undo(current), redo(current),
-                                      // canUndo(), canRedo(), snapshot(), restore(state, isEntry)
+                                      // canUndo(), canRedo(), snapshot(),
+                                      // restore(state, isEntry, weigh?)
 keyAction(event, { wasd?: boolean }): KeyAction | null
-isJson(value), cloneJson(value), isRecord(value), isIntIn(value, min, max)
+isJson(value), cloneJson(value), isRecord(value), isIntIn(value, min, max),
+finiteIn(value, min, max, fallback)   // clamps finite numbers; NaN, Infinity, non-numbers → fallback
 ```
 
 The random generator is mulberry32: one 32-bit number of state, fast, fine for games, not for secrets. `dailySeed` gives everyone the same puzzle on the same local day; add a `salt` (your game's name) so two games don't share one.
@@ -136,7 +140,7 @@ Your rules go in `canMove`. The table already checks that the cards exist, are f
 
 ```ts
 new Loop({ update(dt), render?(alpha), stepMs?, maxStepsPerFrame?, frames?, visibility?,
-           onHidden?, onVisible? })
+           onHidden?, onVisible?, onError?(error) })
 loop.resume(), loop.pause(), loop.stop(), loop.paused, loop.elapsed, loop.steps,
 loop.snapshot(), loop.restore(state)
 new ResumeGate({ show(text), done(), reducedMotion?, seconds?, timers? })
@@ -148,13 +152,14 @@ session.paused, session.reducedMotion, session.loop, session.gate
 READY_PROMPT, PAUSED_PROMPT
 ```
 
-The loop calls `update` in fixed steps (default 1/60 s) on `requestAnimationFrame`. While paused or hidden, no frames run and game time does not move. Hiding the page pauses it, and it stays paused until resumed, so the player never comes back to a lost game.
+The loop calls `update` in fixed steps (default 1/60 s) on `requestAnimationFrame`. While paused or hidden, no frames run and game time does not move. Hiding the page pauses it (also before the first `resume`), and it stays paused until resumed, so the player never comes back to a lost game. If `update` or `render` throws, the loop pauses itself and rethrows (or calls `onError`), so `resume()` works again. Numeric options that are not finite fall back to their defaults: `stepMs` 1 to 1000, `maxStepsPerFrame` 1 to 60, `countdownSeconds` 0 to 10, `autosaveSeconds` 0 to 3600.
 
 `runArcade` does the wiring:
 
 - It calls `LullshiftBridge.start`. On init it passes you `restore` and `reducedMotion`, then starts the resume gate.
 - The gate counts 3, 2, 1 through `prompt(text)`. With reduced motion there is no countdown: it shows "Ready. Press Enter or Space to play." and waits.
-- When the host pauses, the loop stops at once. `saveState` returns `save()`. On resume the gate runs again.
+- When the host pauses, the loop stops at once. `saveState` returns `save()`. On resume the gate runs again, unless the player had paused: then the paused prompt stays until the player resumes.
+- If a step throws, play pauses without saving (the step may have left state half updated) and shows the paused prompt.
 - It autosaves every 2 seconds of play and on every pause.
 
 Send Enter and Space to `session.confirm()`, and your pause key to `session.pause()`. Show `prompt` text in an `aria-live` element. When `session.reducedMotion` is true, skip shakes, flashes and smooth scrolling; move things in steps.

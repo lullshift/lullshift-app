@@ -154,6 +154,22 @@ describe("grid snapshot and restore", () => {
     // Without a cell check, non-JSON values are still refused.
     expect(h.restore({ ...good, cells: [...good.cells.slice(1), () => 1] })).toBe(false);
   });
+
+  it("restores a hostile oversized history fast", () => {
+    const g = new Grid<number>(256, 256, 0, { historyLimit: 10_000 });
+    const cells = new Array<number>(g.size).fill(1);
+    // 10 000 full-size entries (one shared array, so building it is cheap): 655 million cells.
+    const undo = new Array<number[]>(10_000).fill(cells);
+    const state = { ...g.snapshot(), history: { undo, redo: undo } };
+    const t0 = performance.now();
+    expect(g.restore(state)).toBe(true);
+    expect(performance.now() - t0).toBeLessThan(100);
+    expect(g.canUndo()).toBe(true);
+    expect(g.canRedo()).toBe(false); // the budget went to the newest undo steps
+    // A selection longer than the grid is refused outright.
+    const many = new Array<number>(g.size + 1).fill(0);
+    expect(g.restore({ ...g.snapshot(), selected: many })).toBe(false);
+  });
 });
 
 describe("seeded generators", () => {

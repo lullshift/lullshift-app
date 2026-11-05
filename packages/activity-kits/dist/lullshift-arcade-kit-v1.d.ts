@@ -47,11 +47,15 @@ declare namespace LullshiftKits {
     export function isRecord(value: unknown): value is Record<string, unknown>;
     /** True for an integer in [min, max]. */
     export function isIntIn(value: unknown, min: number, max: number): value is number;
+    /** `value` clamped to [min, max] when it is a finite number, otherwise `fallback`. */
+    export function finiteIn(value: unknown, min: number, max: number, fallback: number): number;
 
     export interface HistoryState<T> {
       undo: T[];
       redo: T[];
     }
+    /** Most total weight (cells, cards) of history entries that `restore` will check and keep. */
+    export const HISTORY_RESTORE_BUDGET = 100000;
     export class History<T> {
       readonly limit: number;
       private past;
@@ -72,10 +76,18 @@ declare namespace LullshiftKits {
       /** Plain JSON for saved state. */
       snapshot(): HistoryState<T>;
       /**
-       * Loads a snapshot. Every entry must pass `isEntry`. Returns false, changing nothing, when the
-       * input is malformed. Entries over the limit are dropped, oldest first.
+       * Loads a snapshot. Saved state is untrusted, so the work is bounded before any entry is
+       * checked: only the newest `limit` entries of each list are kept, and, when `weigh` is given
+       * (a cheap size estimate such as a cell or card count), only the newest entries whose total
+       * weight fits in HISTORY_RESTORE_BUDGET. Dropped entries are the oldest undo steps and the
+       * furthest redo steps. Every kept entry must pass `isEntry`; returns false, changing nothing,
+       * when the input is malformed.
        */
-      restore(state: unknown, isEntry: (entry: unknown) => boolean): boolean;
+      restore(
+        state: unknown,
+        isEntry: (entry: unknown) => boolean,
+        weigh?: (entry: unknown) => number,
+      ): boolean;
     }
 
     export type KeyAction =
@@ -129,9 +141,12 @@ declare namespace LullshiftKits {
       update(dt: number): void;
       /** Draws; `alpha` in [0, 1) is how far the clock is into the next step, for smoothing. */
       render?(alpha: number): void;
-      /** Step length in milliseconds (default 1000 / 60). */
+      /** Step length in milliseconds (default 1000 / 60, 1 to 1000; anything else is the default). */
       stepMs?: number;
-      /** At most this many steps per frame; extra time is dropped, not caught up (default 5). */
+      /**
+       * At most this many steps per frame; extra time is dropped, not caught up (default 5, 1 to 60;
+       * anything else is the default).
+       */
       maxStepsPerFrame?: number;
       frames?: FrameScheduler;
       /** null: never pause for visibility. */
@@ -140,6 +155,11 @@ declare namespace LullshiftKits {
       onHidden?(): void;
       /** The page is visible again (the loop is still paused). */
       onVisible?(): void;
+      /**
+       * `update` or `render` threw. The loop has already paused itself, so `resume()` works again.
+       * Without this handler the error is rethrown (after pausing).
+       */
+      onError?(error: unknown): void;
     }
     export interface LoopState {
       /** Milliseconds of game time played. */
@@ -151,6 +171,7 @@ declare namespace LullshiftKits {
       elapsed: number;
       steps: number;
       readonly stepMs: number;
+      readonly maxStepsPerFrame: number;
       private options;
       private frames;
       private visibility;
@@ -173,6 +194,7 @@ declare namespace LullshiftKits {
       snapshot(): LoopState;
       /** Loads played time. Returns false and changes nothing for bad input. */
       restore(state: unknown): boolean;
+      private listen;
       private schedule;
       private frame;
     }
@@ -192,7 +214,7 @@ declare namespace LullshiftKits {
       /** The countdown finished or the player confirmed: start play. */
       done(): void;
       reducedMotion?: boolean;
-      /** Countdown length in seconds (default 3, 0 to 10). */
+      /** Countdown length in whole seconds (default 3, 0 to 10; anything else is the default). */
       seconds?: number;
       timers?: Timers;
     }
@@ -248,8 +270,9 @@ declare namespace LullshiftKits {
       prompt(text: string): void;
       /** Play started (false) or stopped (true): update buttons and status. */
       onPausedChange?(paused: boolean): void;
-      /** Autosave after this many seconds of play (default 2; 0 turns it off). */
+      /** Autosave after this many seconds of play (default 2, up to 3600; 0 turns it off). */
       autosaveSeconds?: number;
+      /** Resume countdown in whole seconds (default 3, 0 to 10). */
       countdownSeconds?: number;
       stepMs?: number;
       maxStepsPerFrame?: number;

@@ -136,10 +136,19 @@
     return Number.isInteger(value) && value >= min && value <= max;
   }
 
+  /** `value` clamped to [min, max] when it is a finite number, otherwise `fallback`. */
+  function finiteIn(value, min, max, fallback) {
+    if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+    return Math.max(min, Math.min(max, value));
+  }
+
   // src/core/history.ts
   // Undo and redo by snapshots (ADR-019). Before a change, record the state you are leaving; undo
   // hands it back and keeps the current state for redo. Entries are plain JSON so the whole history
   // can go into saved state. The oldest entries drop off past `limit`.
+
+  /** Most total weight (cells, cards) of history entries that `restore` will check and keep. */
+  const HISTORY_RESTORE_BUDGET = 100_000;
 
   class History {
     limit;
@@ -198,17 +207,37 @@
     }
 
     /**
-     * Loads a snapshot. Every entry must pass `isEntry`. Returns false, changing nothing, when the
-     * input is malformed. Entries over the limit are dropped, oldest first.
+     * Loads a snapshot. Saved state is untrusted, so the work is bounded before any entry is
+     * checked: only the newest `limit` entries of each list are kept, and, when `weigh` is given
+     * (a cheap size estimate such as a cell or card count), only the newest entries whose total
+     * weight fits in HISTORY_RESTORE_BUDGET. Dropped entries are the oldest undo steps and the
+     * furthest redo steps. Every kept entry must pass `isEntry`; returns false, changing nothing,
+     * when the input is malformed.
      */
-    restore(state, isEntry) {
+    restore(state, isEntry, weigh) {
       if (!isRecord(state) || !Array.isArray(state.undo) || !Array.isArray(state.redo))
         return false;
-      if (state.undo.length > 10000 || state.redo.length > 10000) return false;
-      for (const e of state.undo) if (e === undefined || !isEntry(e)) return false;
-      for (const e of state.redo) if (e === undefined || !isEntry(e)) return false;
-      this.past = cloneJson(state.undo.slice(-this.limit));
-      this.future = cloneJson(state.redo.slice(-this.limit));
+      let budget = HISTORY_RESTORE_BUDGET;
+      const newest = (list) => {
+        const kept = [];
+        for (let i = list.length - 1; i >= 0 && kept.length < this.limit; i--) {
+          const e = list[i];
+          if (weigh) {
+            const w = weigh(e);
+            if (!(w >= 0) || w > budget) break;
+            budget -= w;
+          }
+          kept.push(e);
+        }
+        return kept.reverse();
+      };
+      // Undo first: the steps right behind the current state matter most.
+      const undo = newest(state.undo);
+      const redo = newest(state.redo);
+      for (const e of undo) if (e === undefined || !isEntry(e)) return false;
+      for (const e of redo) if (e === undefined || !isEntry(e)) return false;
+      this.past = cloneJson(undo);
+      this.future = cloneJson(redo);
       return true;
     }
   }
@@ -293,6 +322,7 @@
     elapsed = 0;
     steps = 0;
     stepMs;
+    maxStepsPerFrame;
     options;
     frames;
     visibility;
@@ -313,10 +343,12 @@
 
     constructor(options) {
       this.options = options;
-      const step = options.stepMs ?? 1000 / 60;
-      this.stepMs = Number.isFinite(step) && step >= 1 ? step : 1000 / 60;
+      this.stepMs = finiteIn(options.stepMs, 1, 1000, 1000 / 60);
+      this.maxStepsPerFrame = Math.floor(finiteIn(options.maxStepsPerFrame, 1, 60, 5));
       this.frames = options.frames ?? defaultFrames();
       this.visibility = options.visibility === undefined ? defaultVisibility() : options.visibility;
+      // Listen from the start, so a page hidden before the first resume (during a countdown) is seen.
+      this.listen();
     }
 
     /** True while paused (also before the first `resume`). Time does not advance then. */
@@ -326,10 +358,7 @@
 
     /** Starts or continues the loop. Does nothing while the page is hidden. */
     resume() {
-      if (!this.listening && this.visibility) {
-        this.visibility.addEventListener("visibilitychange", this.onVisibility);
-        this.listening = true;
-      }
+      this.listen();
       if (this.visibility?.hidden) return;
       if (!this.isPaused) return;
       this.isPaused = false;
@@ -373,6 +402,13 @@
       return true;
     }
 
+    listen() {
+      if (!this.listening && this.visibility) {
+        this.visibility.addEventListener("visibilitychange", this.onVisibility);
+        this.listening = true;
+      }
+    }
+
     schedule() {
       this.frameId = this.frames.request((t) => this.frame(t));
     }
@@ -387,18 +423,26 @@
       if (this.last === null || time < this.last) this.last = time;
       this.acc += time - this.last;
       this.last = time;
-      const max = Math.max(1, Math.floor(this.options.maxStepsPerFrame ?? 5));
-      let n = 0;
-      while (this.acc >= this.stepMs && n < max) {
-        this.options.update(this.stepMs / 1000);
-        this.elapsed += this.stepMs;
-        this.steps += 1;
-        this.acc -= this.stepMs;
-        n += 1;
-        if (this.isPaused) break; // the game paused itself in update
+      try {
+        let n = 0;
+        while (this.acc >= this.stepMs && n < this.maxStepsPerFrame) {
+          this.options.update(this.stepMs / 1000);
+          this.elapsed += this.stepMs;
+          this.steps += 1;
+          this.acc -= this.stepMs;
+          n += 1;
+          if (this.isPaused) break; // the game paused itself in update
+        }
+        if (this.acc >= this.stepMs) this.acc %= this.stepMs;
+        this.options.render?.(this.acc / this.stepMs);
+      } catch (error) {
+        // Never leave the loop half alive: pause, so resume() schedules frames again.
+        this.acc = 0;
+        this.pause();
+        if (!this.options.onError) throw error;
+        this.options.onError(error);
+        return;
       }
-      if (this.acc >= this.stepMs) this.acc %= this.stepMs;
-      this.options.render?.(this.acc / this.stepMs);
       if (!this.isPaused) this.schedule();
     }
   }
@@ -447,7 +491,7 @@
         this.options.show(READY_PROMPT);
         return;
       }
-      const seconds = Math.max(0, Math.min(10, Math.floor(this.options.seconds ?? 3)));
+      const seconds = Math.floor(finiteIn(this.options.seconds, 0, 10, 3));
       this.tick(seconds);
     }
 
@@ -497,10 +541,12 @@
     let reducedMotion = false;
     let ready = false;
     let hostPaused = false;
+    // The player paused (P, Escape, a button): a host resume must not start the countdown then.
+    let playerPaused = false;
     let sinceSave = 0;
     // Whether play is on, as the game sees it. The loop may already have paused itself (hidden page).
     let playing = false;
-    const autosaveMs = Math.max(0, (options.autosaveSeconds ?? 2) * 1000);
+    const autosaveMs = finiteIn(options.autosaveSeconds, 0, 3600, 2) * 1000;
 
     const saveNow = () => {
       const state = options.save();
@@ -525,6 +571,12 @@
       onVisible: () => {
         if (ready && !hostPaused) options.prompt(PAUSED_PROMPT);
       },
+      onError: (error) => {
+        // The loop has paused itself. Stop like a pause, without saving state the failed step may
+        // have left half updated, so the player can resume; then let the error surface.
+        stopped(true, false);
+        throw error;
+      },
     });
 
     const gate = new ResumeGate({
@@ -536,20 +588,27 @@
         if (!loop.paused) {
           playing = true;
           options.onPausedChange?.(false);
+        } else if (ready && !hostPaused) {
+          options.prompt(PAUSED_PROMPT); // hidden page: wait for the player
         }
       },
     });
 
-    function stopped(showPrompt = true) {
+    function stopped(showPrompt = true, save = true) {
       const wasPlaying = playing;
       playing = false;
       loop.pause();
       gate.cancel();
       if (showPrompt && ready) options.prompt(PAUSED_PROMPT);
       if (wasPlaying) {
-        saveNow();
+        if (save) saveNow();
         options.onPausedChange?.(true);
       }
+    }
+
+    function startGate() {
+      if (!ready || hostPaused || !loop.paused) return;
+      gate.start();
     }
 
     const session = {
@@ -561,10 +620,14 @@
       get paused() {
         return loop.paused;
       },
-      pause: () => stopped(),
+      pause() {
+        if (ready) playerPaused = true;
+        stopped();
+      },
       resume() {
         if (!ready || hostPaused || !loop.paused) return;
-        gate.start();
+        playerPaused = false;
+        startGate();
       },
       confirm() {
         if (gate.active) return gate.confirm();
@@ -584,7 +647,8 @@
         options.onInit(info);
         options.render?.(0);
         ready = true;
-        session.resume();
+        playerPaused = false;
+        startGate();
       },
       saveState: () => options.save(),
       onPause() {
@@ -593,13 +657,18 @@
       },
       onResume() {
         hostPaused = false;
-        session.resume();
+        if (playerPaused) {
+          if (ready) options.prompt(PAUSED_PROMPT); // the player resumes with Enter or Space
+          return;
+        }
+        startGate();
       },
     });
     return session;
   }
 
-  var kits = (window.LullshiftKits = window.LullshiftKits || {});
+  var root = typeof window !== "undefined" ? window : globalThis;
+  var kits = (root.LullshiftKits = root.LullshiftKits || {});
   kits.arcade = Object.freeze({
     createRng,
     toUint32,
@@ -611,6 +680,8 @@
     cloneJson,
     isRecord,
     isIntIn,
+    finiteIn,
+    HISTORY_RESTORE_BUDGET,
     History,
     keyAction,
     Loop,

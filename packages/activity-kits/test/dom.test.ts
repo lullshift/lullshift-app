@@ -151,6 +151,35 @@ describe("bindGrid", () => {
     expect(changes()).toBe(1);
   });
 
+  it("moves DOM focus with the cursor when the game's onAction moves it", () => {
+    const doc = new FakeDocument();
+    const root = doc.createElement("div");
+    const grid = new Grid<number>(3, 3, 0);
+    bindGrid(asHtml(root), grid, {
+      name: "Board",
+      label: () => "cell",
+      onAction: (action) => {
+        if (action !== "cancel") return false;
+        grid.setCursor(2, 2);
+        return true;
+      },
+    });
+    root.buttons()[0]!.focus();
+    root.buttons()[0]!.dispatch("keydown", { key: "Escape" });
+    expect(root.buttons()[8]!.tabIndex).toBe(0);
+    expect(doc.activeElement).toBe(root.buttons()[8]);
+  });
+
+  it("leaves DOM focus alone on render when it is outside the grid", () => {
+    const { root, doc, grid, binding } = setup();
+    const outside = doc.createElement("button");
+    outside.focus();
+    grid.setCursor(2, 1);
+    binding.render();
+    expect(doc.activeElement).toBe(outside);
+    expect(root.buttons()[5]!.tabIndex).toBe(0);
+  });
+
   it("cleans up on destroy", () => {
     const { root, binding } = setup();
     const b = root.buttons()[0]!;
@@ -205,6 +234,20 @@ describe("bindTable", () => {
     root.buttons()[0]!.dispatch("keydown", { key: "z", metaKey: true });
     expect(table.pile("waste")!.cards).toHaveLength(0);
     expect(changes()).toBe(2);
+  });
+
+  it("keeps one tab stop when table.focus points at no rendered card", () => {
+    const doc = new FakeDocument();
+    const root = doc.createElement("div");
+    const table = new Table([{ id: "a", name: "A", cards: customDeck([{ suit: "x", rank: 1 }]) }]);
+    const binding = bindTable(asHtml(root), table, { name: "Table" });
+    table.focus = { pile: 0, card: 7 }; // a game set it by hand
+    binding.render();
+    const stops = root.buttons().filter((b) => b.tabIndex === 0);
+    expect(stops).toHaveLength(1);
+    expect(stops[0]).toBe(root.buttons()[0]);
+    binding.focus();
+    expect(doc.activeElement).toBe(root.buttons()[0]);
   });
 
   it("moves focus between piles by keyboard", () => {

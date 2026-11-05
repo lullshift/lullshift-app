@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  HISTORY_RESTORE_BUDGET,
   History,
   cloneJson,
+  finiteIn,
   createRng,
   dailySeed,
   hashString,
@@ -147,6 +149,41 @@ describe("history", () => {
       expect(h.restore(bad, isNum)).toBe(false);
     }
     expect(h.snapshot()).toEqual({ undo: [1, 2], redo: [3] });
+  });
+
+  it("trims an oversized saved history before checking any entry", () => {
+    const h = new History<number>(3);
+    let checked = 0;
+    const isNum = (e: unknown) => (checked++, typeof e === "number");
+    // Garbage older than the limit is never looked at.
+    const undo = [...Array.from({ length: 1_000_000 }, () => "junk"), 1, 2, 3, 4];
+    expect(h.restore({ undo, redo: [9] }, isNum)).toBe(true);
+    expect(h.snapshot()).toEqual({ undo: [2, 3, 4], redo: [9] });
+    expect(checked).toBe(4);
+  });
+
+  it("keeps only the newest entries that fit the restore budget", () => {
+    const h = new History<number[]>(10_000);
+    const big = Array.from({ length: HISTORY_RESTORE_BUDGET / 4 }, () => 0);
+    const undo = Array.from({ length: 10_000 }, () => big);
+    let checked = 0;
+    const ok = (e: unknown) => (checked++, Array.isArray(e));
+    const weigh = (e: unknown) => (Array.isArray(e) ? e.length : 0);
+    expect(h.restore({ undo, redo: [big] }, ok, weigh)).toBe(true);
+    expect(h.size()).toBe(4);
+    expect(h.canRedo()).toBe(false); // undo used the whole budget
+    expect(checked).toBe(4);
+  });
+});
+
+describe("finiteIn", () => {
+  it("clamps finite numbers and falls back for anything else", () => {
+    expect(finiteIn(5, 0, 10, 3)).toBe(5);
+    expect(finiteIn(-1, 0, 10, 3)).toBe(0);
+    expect(finiteIn(99, 0, 10, 3)).toBe(10);
+    for (const bad of [NaN, Infinity, -Infinity, "5", null, undefined]) {
+      expect(finiteIn(bad, 0, 10, 3)).toBe(3);
+    }
   });
 });
 

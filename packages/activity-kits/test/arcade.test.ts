@@ -359,4 +359,160 @@ describe("runArcade with the bridge", () => {
     expect(s.session.paused).toBe(true);
     expect(s.prompts.at(-1)).toBe(PAUSED_PROMPT);
   });
+
+  it("keeps a player pause through a host pause and resume", () => {
+    const s = setup(false);
+    s.init();
+    s.t.advance(3000);
+    expect(s.session.paused).toBe(false);
+    s.session.pause();
+    s.handlers().onPause?.();
+    s.handlers().onResume?.();
+    expect(s.session.gate.active).toBe(false); // no countdown the player didn't ask for
+    s.t.advance(10_000);
+    expect(s.session.paused).toBe(true);
+    expect(s.prompts.at(-1)).toBe(PAUSED_PROMPT);
+    expect(s.session.confirm()).toBe(true); // the player resumes
+    s.t.advance(3000);
+    expect(s.session.paused).toBe(false);
+    // A host pause alone still resumes through the countdown.
+    s.handlers().onPause?.();
+    s.handlers().onResume?.();
+    expect(s.session.gate.active).toBe(true);
+  });
+
+  it("sees the page hidden during the first countdown", () => {
+    const s = setup(false);
+    s.init();
+    s.t.advance(1000);
+    s.vis.set(true);
+    expect(s.session.gate.active).toBe(false);
+    s.t.advance(10_000);
+    expect(s.session.paused).toBe(true);
+    expect(s.prompts.at(-1)).toBe(PAUSED_PROMPT);
+  });
+
+  it("clamps big options and falls back to defaults for NaN and infinite ones", () => {
+    const f = fakeFrames();
+    const t = fakeTimers();
+    let handlers: Parameters<BridgeLike["start"]>[0] = {};
+    const shown: string[] = [];
+    let steps = 0;
+    const session = runArcade({
+      bridge: { start: (h) => (handlers = h), autosave: () => {} },
+      onInit: () => {},
+      update: () => steps++,
+      save: () => ({}),
+      prompt: (p) => shown.push(p),
+      countdownSeconds: NaN,
+      autosaveSeconds: NaN,
+      stepMs: NaN,
+      maxStepsPerFrame: 1e9,
+      frames: f.frames,
+      visibility: null,
+      timers: t.timers,
+    });
+    handlers.onInit?.({ restore: null, reducedMotion: false, theme: "light", content: null });
+    t.advance(3000);
+    expect(shown).toEqual(["3", "2", "1", ""]);
+    expect(t.pending()).toBe(0);
+    expect(session.loop.stepMs).toBeCloseTo(1000 / 60);
+    expect(session.loop.maxStepsPerFrame).toBe(60);
+    f.run(0);
+    f.run(1_000_000);
+    expect(steps).toBe(60);
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const loop = new Loop({
+        update: () => {},
+        maxStepsPerFrame: bad,
+        stepMs: bad,
+        visibility: null,
+      });
+      expect([loop.maxStepsPerFrame, loop.stepMs]).toEqual([5, 1000 / 60]);
+    }
+  });
+});
+
+describe("loop errors", () => {
+  it("pauses when update throws, rethrows, and resumes afterwards", () => {
+    const f = fakeFrames();
+    let fail = true;
+    let steps = 0;
+    const loop = new Loop({
+      update: () => {
+        if (fail) throw new Error("boom");
+        steps++;
+      },
+      stepMs: 10,
+      frames: f.frames,
+      visibility: null,
+    });
+    loop.resume();
+    f.run(0);
+    expect(() => f.run(20)).toThrow("boom");
+    expect(loop.paused).toBe(true);
+    expect(f.pending()).toBe(0);
+    fail = false;
+    loop.resume();
+    expect(loop.paused).toBe(false);
+    f.run(100);
+    f.run(120);
+    expect(steps).toBe(2);
+  });
+
+  it("reports to onError instead of throwing when given", () => {
+    const f = fakeFrames();
+    const errors: unknown[] = [];
+    const loop = new Loop({
+      update: () => {},
+      render: () => {
+        throw new Error("draw");
+      },
+      stepMs: 10,
+      frames: f.frames,
+      visibility: null,
+      onError: (e) => errors.push(e),
+    });
+    loop.resume();
+    f.run(0);
+    expect(errors).toHaveLength(1);
+    expect(loop.paused).toBe(true);
+  });
+
+  it("in a session, a throwing step pauses play without saving and shows the paused prompt", () => {
+    const f = fakeFrames();
+    const t = fakeTimers();
+    let handlers: Parameters<BridgeLike["start"]>[0] = {};
+    const saved: unknown[] = [];
+    const prompts: string[] = [];
+    const paused: boolean[] = [];
+    let fail = false;
+    const session = runArcade({
+      bridge: { start: (h) => (handlers = h), autosave: (s) => saved.push(s) },
+      onInit: () => {},
+      update: () => {
+        if (fail) throw new Error("boom");
+      },
+      save: () => ({ ok: true }),
+      prompt: (p) => prompts.push(p),
+      onPausedChange: (p) => paused.push(p),
+      stepMs: 10,
+      frames: f.frames,
+      visibility: null,
+      timers: t.timers,
+    });
+    handlers.onInit?.({ restore: null, reducedMotion: true, theme: "light", content: null });
+    session.confirm();
+    f.run(0);
+    fail = true;
+    expect(() => f.run(20)).toThrow("boom");
+    expect(session.paused).toBe(true);
+    expect(saved).toEqual([]);
+    expect(paused).toEqual([false, true]);
+    expect(prompts.at(-1)).toBe(PAUSED_PROMPT);
+    fail = false;
+    expect(session.confirm()).toBe(true);
+    expect(session.confirm()).toBe(true);
+    expect(session.paused).toBe(false);
+  });
 });

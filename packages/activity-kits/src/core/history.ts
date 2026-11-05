@@ -9,6 +9,9 @@ export interface HistoryState<T> {
   redo: T[];
 }
 
+/** Most total weight (cells, cards) of history entries that `restore` will check and keep. */
+export const HISTORY_RESTORE_BUDGET = 100_000;
+
 export class History<T> {
   readonly limit: number;
   private past: T[] = [];
@@ -66,16 +69,40 @@ export class History<T> {
   }
 
   /**
-   * Loads a snapshot. Every entry must pass `isEntry`. Returns false, changing nothing, when the
-   * input is malformed. Entries over the limit are dropped, oldest first.
+   * Loads a snapshot. Saved state is untrusted, so the work is bounded before any entry is
+   * checked: only the newest `limit` entries of each list are kept, and, when `weigh` is given
+   * (a cheap size estimate such as a cell or card count), only the newest entries whose total
+   * weight fits in HISTORY_RESTORE_BUDGET. Dropped entries are the oldest undo steps and the
+   * furthest redo steps. Every kept entry must pass `isEntry`; returns false, changing nothing,
+   * when the input is malformed.
    */
-  restore(state: unknown, isEntry: (entry: unknown) => boolean): boolean {
+  restore(
+    state: unknown,
+    isEntry: (entry: unknown) => boolean,
+    weigh?: (entry: unknown) => number,
+  ): boolean {
     if (!isRecord(state) || !Array.isArray(state.undo) || !Array.isArray(state.redo)) return false;
-    if (state.undo.length > 10000 || state.redo.length > 10000) return false;
-    for (const e of state.undo) if (e === undefined || !isEntry(e)) return false;
-    for (const e of state.redo) if (e === undefined || !isEntry(e)) return false;
-    this.past = cloneJson(state.undo.slice(-this.limit) as T[]);
-    this.future = cloneJson(state.redo.slice(-this.limit) as T[]);
+    let budget = HISTORY_RESTORE_BUDGET;
+    const newest = (list: unknown[]): unknown[] => {
+      const kept: unknown[] = [];
+      for (let i = list.length - 1; i >= 0 && kept.length < this.limit; i--) {
+        const e = list[i];
+        if (weigh) {
+          const w = weigh(e);
+          if (!(w >= 0) || w > budget) break;
+          budget -= w;
+        }
+        kept.push(e);
+      }
+      return kept.reverse();
+    };
+    // Undo first: the steps right behind the current state matter most.
+    const undo = newest(state.undo);
+    const redo = newest(state.redo);
+    for (const e of undo) if (e === undefined || !isEntry(e)) return false;
+    for (const e of redo) if (e === undefined || !isEntry(e)) return false;
+    this.past = cloneJson(undo as T[]);
+    this.future = cloneJson(redo as T[]);
     return true;
   }
 }

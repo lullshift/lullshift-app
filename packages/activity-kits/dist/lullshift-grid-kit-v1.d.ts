@@ -47,11 +47,15 @@ declare namespace LullshiftKits {
     export function isRecord(value: unknown): value is Record<string, unknown>;
     /** True for an integer in [min, max]. */
     export function isIntIn(value: unknown, min: number, max: number): value is number;
+    /** `value` clamped to [min, max] when it is a finite number, otherwise `fallback`. */
+    export function finiteIn(value: unknown, min: number, max: number, fallback: number): number;
 
     export interface HistoryState<T> {
       undo: T[];
       redo: T[];
     }
+    /** Most total weight (cells, cards) of history entries that `restore` will check and keep. */
+    export const HISTORY_RESTORE_BUDGET = 100000;
     export class History<T> {
       readonly limit: number;
       private past;
@@ -72,10 +76,18 @@ declare namespace LullshiftKits {
       /** Plain JSON for saved state. */
       snapshot(): HistoryState<T>;
       /**
-       * Loads a snapshot. Every entry must pass `isEntry`. Returns false, changing nothing, when the
-       * input is malformed. Entries over the limit are dropped, oldest first.
+       * Loads a snapshot. Saved state is untrusted, so the work is bounded before any entry is
+       * checked: only the newest `limit` entries of each list are kept, and, when `weigh` is given
+       * (a cheap size estimate such as a cell or card count), only the newest entries whose total
+       * weight fits in HISTORY_RESTORE_BUDGET. Dropped entries are the oldest undo steps and the
+       * furthest redo steps. Every kept entry must pass `isEntry`; returns false, changing nothing,
+       * when the input is malformed.
        */
-      restore(state: unknown, isEntry: (entry: unknown) => boolean): boolean;
+      restore(
+        state: unknown,
+        isEntry: (entry: unknown) => boolean,
+        weigh?: (entry: unknown) => number,
+      ): boolean;
     }
 
     export type KeyAction =
@@ -198,7 +210,7 @@ declare namespace LullshiftKits {
       /**
        * Loads a snapshot. The size must match this grid, and every cell must be JSON and pass
        * `isCell` when given. Returns false and changes nothing when anything is off. A missing
-       * history or selection is treated as empty.
+       * history or selection is treated as empty; a long history is trimmed (see History.restore).
        */
       restore(state: unknown, isCell?: (value: unknown) => boolean): boolean;
     }

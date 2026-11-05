@@ -5,10 +5,14 @@
 //   node scripts/build-kits.ts --check   exits 1 when dist/ is out of date
 //
 // Each kit's sources plus the shared core are type-stripped, their imports removed and their
-// exports gathered into one IIFE that sets window.LullshiftKits.<kit>. The sources must follow
-// simple rules, which this script enforces: imports only between the listed files, top-level
-// `export function|const|class` only, no duplicate top-level names, and none of the APIs the
-// sandbox blocks or that would parse HTML.
+// exports gathered into one IIFE that sets LullshiftKits.<kit> on window (or globalThis where
+// there is no window). The sources must follow simple rules, which this script enforces with the
+// TypeScript parser: named imports only, and only between the listed files (no side-effect
+// imports); top-level `export function|const|class` only; no duplicate top-level names; and none
+// of the APIs the sandbox blocks or that would parse HTML.
+//
+// The banned-word scan is a lint that keeps the kits honest and reviewable. It is not a security
+// boundary: the activity sandbox (CSP, iframe sandbox, no IPC) is, whatever a kit file contains.
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
@@ -27,7 +31,10 @@ export const KITS: Record<string, string[]> = {
   arcade: ["src/arcade/loop.ts", "src/arcade/session.ts"],
 };
 
-/** Text the kits must never contain, in code or comments (the copies are scanned by validate). */
+/**
+ * Text the kits must never contain, in code or comments (the copies are scanned by validate). A
+ * lint, not a boundary: the sandbox is what stops these APIs.
+ */
 const BANNED: [RegExp, string][] = [
   [/\beval\b/, "eval"],
   [/\bFunction\s*\(/, "Function()"],
@@ -45,8 +52,6 @@ const BANNED: [RegExp, string][] = [
   [/\bpostMessage\b/, "postMessage (only the bridge talks to the host)"],
 ];
 
-const IMPORT = /^import\s[\s\S]*?\sfrom\s+"([^"]+)";?[ \t]*$/gm;
-const EXPORT = /^export\s+(?:(function|const|let|class)\s+([A-Za-z_$][\w$]*))?/gm;
 const ORPHAN_DOC = /^[ \t]*\/\*\*(?:[^*]|\*(?!\/))*\*\/[ \t]*\r?\n(?=[ \t]*\r?\n)/gm;
 const TOP_NAME = /^(?:async\s+)?(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm;
 
@@ -68,6 +73,37 @@ function strip(source: string): string {
   }
 }
 
+/** `text` without the given [start, end) ranges. */
+function cut(text: string, ranges: [number, number][]): string {
+  let out = text;
+  for (const [start, end] of [...ranges].sort((a, b) => b[0] - a[0])) {
+    out = out.slice(0, start) + out.slice(end);
+  }
+  return out;
+}
+
+/**
+ * Finds every top-level import with the TypeScript parser (no regex, so nothing after an import
+ * can be swallowed) and returns the text without them. `check` may throw to refuse one.
+ */
+function removeImports(
+  name: string,
+  code: string,
+  kind: ts.ScriptKind,
+  check: (from: string, named: boolean) => void,
+): string {
+  const file = ts.createSourceFile(name, code, ts.ScriptTarget.Latest, true, kind);
+  const ranges: [number, number][] = [];
+  for (const st of file.statements) {
+    if (ts.isImportEqualsDeclaration(st)) throw new Error(`${name}: import = is not supported`);
+    if (!ts.isImportDeclaration(st)) continue;
+    if (!ts.isStringLiteral(st.moduleSpecifier)) throw new Error(`${name}: a malformed import`);
+    check(st.moduleSpecifier.text, st.importClause !== undefined);
+    ranges.push([st.getStart(file), st.end]);
+  }
+  return cut(code, ranges);
+}
+
 /** One source file as plain script text, and the names it exports. Throws on a broken rule. */
 export function convertSource(
   rel: string,
@@ -78,21 +114,51 @@ export function convertSource(
     if (re.test(source)) throw new Error(`${rel}: mentions ${what}, which kits must not use`);
   }
   // Doc comments of erased types are left behind followed by blank lines; drop them.
-  let code = strip(source).replace(ORPHAN_DOC, "");
-  code = code.replace(IMPORT, (_all, from: string) => {
+  const stripped = strip(source).replace(ORPHAN_DOC, "");
+  const jsName = rel.replace(/\.ts$/, ".js");
+  const noImports = removeImports(jsName, stripped, ts.ScriptKind.JS, (from, named) => {
+    if (!named) {
+      throw new Error(`${rel}: side-effect import of ${from}; kits import named bindings only`);
+    }
     const target = path.posix.join(path.posix.dirname(rel), from);
     if (!allowed.has(target)) throw new Error(`${rel}: imports ${from}, which isn't in this kit`);
-    return "";
   });
-  if (/^\s*import\b/m.test(code)) throw new Error(`${rel}: an import the build can't remove`);
+  if (/^\s*import\b/m.test(noImports)) throw new Error(`${rel}: an import the build can't remove`);
+
+  const file = ts.createSourceFile(
+    jsName,
+    noImports,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
   const exports: string[] = [];
-  code = code.replace(EXPORT, (all, kind: string | undefined, name: string | undefined) => {
-    if (!kind || !name)
-      throw new Error(`${rel}: only export function|const|let|class is supported`);
-    exports.push(name);
-    return all.replace(/^export\s+/, "");
-  });
-  return { code: `// ${rel}\n${code.trim()}\n`, exports };
+  const ranges: [number, number][] = [];
+  const only = `${rel}: only export function|const|class is supported`;
+  for (const st of file.statements) {
+    if (ts.isExportDeclaration(st) || ts.isExportAssignment(st)) throw new Error(only);
+    const mods = ts.canHaveModifiers(st) ? ts.getModifiers(st) : undefined;
+    const exp = mods?.find((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+    if (!exp) continue;
+    if (mods?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) throw new Error(only);
+    if ((ts.isFunctionDeclaration(st) || ts.isClassDeclaration(st)) && st.name) {
+      exports.push(st.name.text);
+    } else if (
+      ts.isVariableStatement(st) &&
+      (st.declarationList.flags & ts.NodeFlags.BlockScoped) === ts.NodeFlags.Const
+    ) {
+      // Not `export let` or `var`: the kit object holds each value once, frozen, so a later
+      // reassignment would silently not show.
+      for (const d of st.declarationList.declarations) {
+        if (!ts.isIdentifier(d.name)) throw new Error(`${rel}: export plain names, not patterns`);
+        exports.push(d.name.text);
+      }
+    } else {
+      throw new Error(only);
+    }
+    ranges.push([exp.getStart(file), exp.end]);
+  }
+  return { code: `// ${rel}\n${cut(noImports, ranges).trim()}\n`, exports };
 }
 
 function header(kit: string, version: string, ext: "js" | "d.ts"): string {
@@ -132,7 +198,7 @@ function buildScript(kit: string, version: string): string {
   const exports = parts.flatMap((p) => p.exports);
   const body = parts.map((p) => p.code).join("\n");
   const names = [...body.matchAll(TOP_NAME)].map((m) => m[1] as string);
-  const seen = new Set<string>();
+  const seen = new Set<string>(["root", "kits"]); // the wrapper's own names
   for (const n of names) {
     if (seen.has(n)) throw new Error(`${kit}: the name ${n} is declared twice across kit files`);
     seen.add(n);
@@ -142,7 +208,9 @@ function buildScript(kit: string, version: string): string {
     "(function () {",
     '"use strict";',
     body,
-    "var kits = (window.LullshiftKits = window.LullshiftKits || {});",
+    // A browser has window; Node (tests) has only globalThis.
+    'var root = typeof window !== "undefined" ? window : globalThis;',
+    "var kits = (root.LullshiftKits = root.LullshiftKits || {});",
     `kits.${kit} = Object.freeze({ ${exports.join(", ")} });`,
     "})();",
     "",
@@ -185,8 +253,7 @@ function buildTypes(kit: string, version: string, decls: Map<string, string>): s
     .map((rel) => {
       const d = decls.get(rel);
       if (d === undefined) throw new Error(`no declarations for ${rel}`);
-      return d
-        .replace(IMPORT, "")
+      return removeImports(`${rel}.d.ts`, d, ts.ScriptKind.TS, () => {})
         .replace(/^export \{\};?\s*$/gm, "")
         .replace(/^export declare /gm, "export ")
         .replace(/^declare /gm, "")

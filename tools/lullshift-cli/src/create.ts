@@ -84,13 +84,30 @@ export function checkCreateOptions(o: CreateOptions): string[] {
   return problems;
 }
 
-/** Writes a new activity folder. Refuses a folder that already has files. */
-export function createActivity(o: CreateOptions): string[] {
+/** Where `createActivity` copies the kits from; tests point it elsewhere. */
+export interface CreateSources {
+  kitsDir?: string;
+}
+
+/**
+ * Writes a new activity folder. Refuses a folder that already has files. Everything is read and
+ * checked first, so a missing kit or a broken template leaves nothing half written.
+ */
+export function createActivity(o: CreateOptions, sources: CreateSources = {}): string[] {
   const target = path.resolve(o.dir);
   if (existsSync(target) && readdirSync(target).length > 0) {
     throw new Error(`${o.dir} isn't empty; pick a new folder`);
   }
-  mkdirSync(target, { recursive: true });
+  const copies: [string, string][] = [];
+  if (o.kind === "app") {
+    copies.push([BRIDGE_PATH, BRIDGE_FILE]);
+    if (o.kit)
+      copies.push([path.join(sources.kitsDir ?? KITS_DIR, kitFile(o.kit)), kitFile(o.kit)]);
+  }
+  for (const [src, name] of copies) {
+    if (!existsSync(src))
+      throw new Error(`${name} is missing from the SDK (${src}); nothing written`);
+  }
   const values: Record<string, string> = {
     id: o.id,
     name: o.name,
@@ -104,33 +121,37 @@ export function createActivity(o: CreateOptions): string[] {
       // In JSON files the value lands inside a string: escape it as JSON.
       return json ? JSON.stringify(v).slice(1, -1) : v;
     });
-  const written: string[] = [];
   const from = path.join(TEMPLATES_DIR, o.kind);
-  for (const file of readdirSync(from).sort()) {
-    let text = fill(readFileSync(path.join(from, file), "utf8"), file.endsWith(".json"));
-    if (file === "index.html" && o.kind === "app" && o.kit) text = addKitScript(text, o.kit);
+  const files: [string, string][] = readdirSync(from)
+    .sort()
+    .map((file) => {
+      let text = fill(readFileSync(path.join(from, file), "utf8"), file.endsWith(".json"));
+      if (file === "index.html" && o.kind === "app" && o.kit) text = addKitScript(text, o.kit);
+      return [file, text];
+    });
+  mkdirSync(target, { recursive: true });
+  const written: string[] = [];
+  for (const [file, text] of files) {
     writeFileSync(path.join(target, file), text);
     written.push(file);
   }
-  if (o.kind === "app") {
-    copyFileSync(BRIDGE_PATH, path.join(target, BRIDGE_FILE));
-    written.push(BRIDGE_FILE);
-    if (o.kit) {
-      copyFileSync(path.join(KITS_DIR, kitFile(o.kit)), path.join(target, kitFile(o.kit)));
-      written.push(kitFile(o.kit));
-    }
+  for (const [src, name] of copies) {
+    copyFileSync(src, path.join(target, name));
+    written.push(name);
   }
   return written.sort();
 }
 
-/** Loads the kit right after the bridge script, keeping that line's indentation. */
+/** Loads the kit right after the bridge script, keeping that line's indentation and ending. */
 export function addKitScript(html: string, kit: KitName): string {
   const tag = `<script src="${BRIDGE_FILE}"></script>`;
   const lines = html.split("\n");
   const at = lines.findIndex((l) => l.trim() === tag);
   if (at < 0) throw new Error(`the template's index.html doesn't load ${BRIDGE_FILE}`);
-  const indent = (lines[at] ?? "").slice(0, (lines[at] ?? "").indexOf("<"));
-  lines.splice(at + 1, 0, `${indent}<script src="${kitFile(kit)}"></script>`);
+  const line = lines[at] ?? "";
+  const indent = line.slice(0, line.indexOf("<"));
+  const cr = line.endsWith("\r") ? "\r" : ""; // a CRLF template stays CRLF
+  lines.splice(at + 1, 0, `${indent}<script src="${kitFile(kit)}"></script>${cr}`);
   return lines.join("\n");
 }
 

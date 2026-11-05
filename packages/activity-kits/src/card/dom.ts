@@ -57,6 +57,7 @@ export function bindTable(
 ): TableBinding {
   const doc = container.ownerDocument;
   let current: HTMLButtonElement | null = null;
+  let first: HTMLButtonElement | null = null;
   const label = (card: Card, pile: Pile) =>
     options.label ? options.label(card, pile) : cardLabel(card);
 
@@ -84,6 +85,7 @@ export function bindTable(
     const focused = table.focus.pile === pile && table.focus.card === card;
     b.tabIndex = focused ? 0 : -1;
     if (focused) current = b;
+    first ??= b;
     b.addEventListener("click", () => activate(pile, card));
     return b;
   }
@@ -91,6 +93,7 @@ export function bindTable(
   function render(): void {
     const hadFocus = container.contains(doc.activeElement);
     current = null;
+    first = null;
     container.textContent = "";
     const sel = table.selection;
     table.piles.forEach((pile, p) => {
@@ -124,6 +127,14 @@ export function bindTable(
       });
       container.appendChild(group);
     });
+    // cardButton sets these; TypeScript can't see that and narrows them to null.
+    const rendered = current as HTMLButtonElement | null;
+    const fallback = first as HTMLButtonElement | null;
+    if (!rendered && fallback) {
+      // table.focus points at nothing rendered (e.g. changed by the game): keep one tab stop.
+      fallback.tabIndex = 0;
+      current = fallback;
+    }
     if (hadFocus) focus();
   }
 

@@ -352,7 +352,17 @@ export class Table {
     }
     if (!this.validCards(cards)) return false;
     const history = new History<Card[][]>(this.history.limit);
-    if (state.history !== undefined && !history.restore(state.history, (e) => this.validCards(e))) {
+    // Weight = 4 per card (a card is a small object, several JSON values), bounding the work on
+    // hostile saved state; 100 undo steps of a 52-card game fit. Malformed entries weigh 0 here
+    // and are then rejected by validCards.
+    const weigh = (e: unknown) => {
+      if (!Array.isArray(e) || e.length !== this.piles.length) return 0;
+      let n = 0;
+      for (const pile of e) if (Array.isArray(pile)) n += Math.min(pile.length, CARD_LIMITS.cards);
+      return n * 4;
+    };
+    const validEntry = (e: unknown) => this.validCards(e);
+    if (state.history !== undefined && !history.restore(state.history, validEntry, weigh)) {
       return false;
     }
     const spot = (v: unknown, c: Card[][]) =>

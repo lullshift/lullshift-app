@@ -136,10 +136,19 @@
     return Number.isInteger(value) && value >= min && value <= max;
   }
 
+  /** `value` clamped to [min, max] when it is a finite number, otherwise `fallback`. */
+  function finiteIn(value, min, max, fallback) {
+    if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+    return Math.max(min, Math.min(max, value));
+  }
+
   // src/core/history.ts
   // Undo and redo by snapshots (ADR-019). Before a change, record the state you are leaving; undo
   // hands it back and keeps the current state for redo. Entries are plain JSON so the whole history
   // can go into saved state. The oldest entries drop off past `limit`.
+
+  /** Most total weight (cells, cards) of history entries that `restore` will check and keep. */
+  const HISTORY_RESTORE_BUDGET = 100_000;
 
   class History {
     limit;
@@ -198,17 +207,37 @@
     }
 
     /**
-     * Loads a snapshot. Every entry must pass `isEntry`. Returns false, changing nothing, when the
-     * input is malformed. Entries over the limit are dropped, oldest first.
+     * Loads a snapshot. Saved state is untrusted, so the work is bounded before any entry is
+     * checked: only the newest `limit` entries of each list are kept, and, when `weigh` is given
+     * (a cheap size estimate such as a cell or card count), only the newest entries whose total
+     * weight fits in HISTORY_RESTORE_BUDGET. Dropped entries are the oldest undo steps and the
+     * furthest redo steps. Every kept entry must pass `isEntry`; returns false, changing nothing,
+     * when the input is malformed.
      */
-    restore(state, isEntry) {
+    restore(state, isEntry, weigh) {
       if (!isRecord(state) || !Array.isArray(state.undo) || !Array.isArray(state.redo))
         return false;
-      if (state.undo.length > 10000 || state.redo.length > 10000) return false;
-      for (const e of state.undo) if (e === undefined || !isEntry(e)) return false;
-      for (const e of state.redo) if (e === undefined || !isEntry(e)) return false;
-      this.past = cloneJson(state.undo.slice(-this.limit));
-      this.future = cloneJson(state.redo.slice(-this.limit));
+      let budget = HISTORY_RESTORE_BUDGET;
+      const newest = (list) => {
+        const kept = [];
+        for (let i = list.length - 1; i >= 0 && kept.length < this.limit; i--) {
+          const e = list[i];
+          if (weigh) {
+            const w = weigh(e);
+            if (!(w >= 0) || w > budget) break;
+            budget -= w;
+          }
+          kept.push(e);
+        }
+        return kept.reverse();
+      };
+      // Undo first: the steps right behind the current state matter most.
+      const undo = newest(state.undo);
+      const redo = newest(state.redo);
+      for (const e of undo) if (e === undefined || !isEntry(e)) return false;
+      for (const e of redo) if (e === undefined || !isEntry(e)) return false;
+      this.past = cloneJson(undo);
+      this.future = cloneJson(redo);
       return true;
     }
   }
@@ -498,7 +527,7 @@
     /**
      * Loads a snapshot. The size must match this grid, and every cell must be JSON and pass
      * `isCell` when given. Returns false and changes nothing when anything is off. A missing
-     * history or selection is treated as empty.
+     * history or selection is treated as empty; a long history is trimmed (see History.restore).
      */
     restore(state, isCell) {
       if (!isRecord(state) || state.width !== this.width || state.height !== this.height)
@@ -510,11 +539,19 @@
       const cursor = state.cursor;
       if (!isRecord(cursor) || !this.inBounds(cursor.x, cursor.y)) return false;
       const selected = state.selected === undefined ? [] : state.selected;
-      if (!Array.isArray(selected) || !selected.every((i) => isIntIn(i, 0, this.size - 1))) {
+      if (
+        !Array.isArray(selected) ||
+        selected.length > this.size ||
+        !selected.every((i) => isIntIn(i, 0, this.size - 1))
+      ) {
         return false;
       }
       const history = new History(this.history.limit);
-      if (state.history !== undefined && !history.restore(state.history, okCells)) return false;
+      // Weight = cell count, so a hostile history can't make restore check millions of cells.
+      const weigh = (v) => (Array.isArray(v) ? v.length : 0);
+      if (state.history !== undefined && !history.restore(state.history, okCells, weigh)) {
+        return false;
+      }
       this.data = cloneJson(state.cells);
       this.cursor = { x: cursor.x, y: cursor.y };
       this.chosen = new Set(selected);
@@ -602,7 +639,9 @@
       container.appendChild(row);
     }
 
+    /** Redraws from the model. If focus was in the grid, it follows the cursor. */
     function render() {
+      const hadFocus = container.contains(doc.activeElement);
       const cursor = grid.index(grid.cursor.x, grid.cursor.y);
       for (let i = 0; i < buttons.length; i++) {
         const button = buttons[i];
@@ -621,6 +660,8 @@
           gridcells[i].setAttribute("aria-selected", selected);
         }
       }
+      // A game's onAction, undo or redo may move the cursor; keep DOM focus on it.
+      if (hadFocus && doc.activeElement !== buttons[cursor]) focus();
     }
 
     function focus() {
@@ -666,7 +707,8 @@
     };
   }
 
-  var kits = (window.LullshiftKits = window.LullshiftKits || {});
+  var root = typeof window !== "undefined" ? window : globalThis;
+  var kits = (root.LullshiftKits = root.LullshiftKits || {});
   kits.grid = Object.freeze({
     createRng,
     toUint32,
@@ -678,6 +720,8 @@
     cloneJson,
     isRecord,
     isIntIn,
+    finiteIn,
+    HISTORY_RESTORE_BUDGET,
     History,
     keyAction,
     GRID_MAX_SIDE,

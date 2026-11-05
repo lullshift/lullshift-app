@@ -97,7 +97,9 @@ export function bindGrid<C>(
     container.appendChild(row);
   }
 
+  /** Redraws from the model. If focus was in the grid, it follows the cursor. */
   function render(): void {
+    const hadFocus = container.contains(doc.activeElement);
     const cursor = grid.index(grid.cursor.x, grid.cursor.y);
     for (let i = 0; i < buttons.length; i++) {
       const button = buttons[i] as HTMLButtonElement;
@@ -116,6 +118,8 @@ export function bindGrid<C>(
         (gridcells[i] as HTMLElement).setAttribute("aria-selected", selected);
       }
     }
+    // A game's onAction, undo or redo may move the cursor; keep DOM focus on it.
+    if (hadFocus && doc.activeElement !== buttons[cursor]) focus();
   }
 
   function focus(): void {

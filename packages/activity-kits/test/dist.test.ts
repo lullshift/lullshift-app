@@ -47,6 +47,13 @@ describe("generated kit files", () => {
     expect(Object.keys(w.LullshiftKits!).sort()).toEqual(["arcade", "card", "grid", "mine"]);
   });
 
+  it("attach to globalThis where there is no window", () => {
+    const context = vm.createContext({});
+    vm.runInContext(read("lullshift-grid-kit-v1.js"), context);
+    const kits = vm.runInContext("globalThis.LullshiftKits", context) as Record<string, unknown>;
+    expect(Object.keys(kits)).toEqual(["grid"]);
+  });
+
   it("work the same as the TypeScript sources", () => {
     const w = load(["grid", "card"]);
     const g = w.LullshiftKits!.grid as unknown as typeof grid;
@@ -92,6 +99,26 @@ describe("kit source rules", () => {
     );
     expect(out.exports).toEqual(["f", "N"]);
     expect(out.code).not.toMatch(/\bimport\b|\bexport\b/);
+  });
+
+  it("refuses side-effect imports and keeps code after imports", () => {
+    expect(() => convert('import "../core/json.ts";\nexport const A = 1;\n')).toThrow(
+      /side-effect import/,
+    );
+    // The old regex swallowed everything from a side-effect import to the next `from "..."`.
+    const out = convert(
+      'import { isRecord } from "../core/json.ts";\nexport const A = isRecord({});\nconst s = "x from \\"y\\"";\nexport function f() { return s; }\n',
+    );
+    expect(out.exports).toEqual(["A", "f"]);
+    expect(out.code).toContain("const A = isRecord({});");
+    expect(out.code).toContain('const s = "x from \\"y\\"";');
+    expect(out.code).toContain("function f() { return s; }");
+    expect(out.code).not.toMatch(/\bimport\b|\bexport\b/);
+  });
+
+  it("refuses export let and var", () => {
+    expect(() => convert("export let n = 1;\n")).toThrow(/only export/);
+    expect(() => convert("export var n = 1;\n")).toThrow(/only export/);
   });
 
   it("refuses foreign imports, other exports and blocked APIs", () => {
