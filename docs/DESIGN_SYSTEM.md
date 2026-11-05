@@ -81,7 +81,18 @@ Each colour family has exactly one job:
   - A running activity fills the content column. Its title bar has the name, **Pause** and **Close**. The activity's own page sits in a rounded frame.
   - The paused card shows the sleeping mascot, "<Name> is paused" and "Your progress is saved". When an agent caused the pause, the heading says which tool needs you ("Claude Code needs you"), with **Go to Sessions** and **Keep playing**. An activity that stopped answering says so and keeps its last save.
   - Activities follow the app theme and reduced-motion setting, which the host passes to them at start.
-- **Cards aren't clickable yet.** They don't look like buttons, so they don't promise an action that doesn't exist. A session detail panel opened from a card is planned for Sprint 04 (S04-T07).
+- **Session detail panel** (S04-T07, chosen by the product owner from mockups, 2026-11-05):
+  - Cards and History rows are buttons. A click, Enter or Space opens the panel; Esc closes it and returns focus to the card. The open card has a lavender outline.
+  - **Pinned** (the default) docks the panel on the right. In a window of 1,150 px or more, both Live columns stay. In a narrower one, Live becomes one grouped list: Needs you fixed at the top, Working scrolling below. Each row is two lines: tool and time, then the short ID. History becomes the same compact rows.
+  - **Floating** slides the panel over the board, with a soft shadow. Esc, a click outside or the close button closes it.
+  - Under 720 px the panel always floats. The pin choice is a saved preference that this doesn't change.
+  - A new "needs you" never takes over an open panel.
+  - **Content by state:**
+    - Needs you: what it's asking, the line "Answer in your Claude Code window", the intent, a "Before you answer" checklist and notes.
+    - Working: the intent, notes and Next Move.
+    - Ended: the timeline, export, delete and the retention rule.
+  - **Return card.** An ended session the user hasn't reviewed shows a lavender **Review** pill and a "Welcome back" card. The card never claims the task is done.
+  - **Captured text** carries a small source label ("captured with your OK") and a **Clear captured text** action.
 
 ## Review checklist for new UI
 

@@ -369,3 +369,57 @@ Once installers exist (Sprint 11), repeat the app checks with the installed buil
 Record any "ESCAPED" line in ADR-012.
 
 **Result:** macOS: \_\_\_ Linux: \_\_\_
+
+---
+
+## Sprint 04 – Context Keeper and Next Move
+
+### M04-1: Opt-in capture with a real Claude Code session (S04-A04)
+
+**Why manual:** it needs a real agent and your own prompts.
+
+1. In **Integrations**, leave **Task context** off. Start a Claude Code session and give it a task that will ask for permission.
+2. Open the session's detail panel.
+3. Turn **Task context** on, read the panel that explains what is kept, and choose **Turn on**. Start a new session with a prompt that includes a fake key, such as `sk-test1234567890abcdefghijklmnopqrstuv`, and trigger a permission prompt.
+4. Open the new session's panel, then choose **Clear captured text**.
+5. Turn **Task context** off and start another session.
+
+**Expected:**
+
+- Step 2: no intent and no "what it's asking" text; only what you type yourself.
+- Step 3: the intent shows your first prompt with the key replaced by `[hidden]`, labelled as captured with your OK. "What it's asking" shows the permission text.
+- Step 4: the captured text is gone; your own notes stay.
+- Step 5: nothing is captured again.
+
+**Result:** \_\_\_
+
+### M04-2: Export and delete (S04-A02)
+
+**Why manual:** the native save dialog is outside the page.
+
+1. Open an ended session in **History** and choose **Export Markdown**, then **Export JSON**. Save both, then open them.
+2. Choose **Delete session** and confirm.
+
+**Expected:**
+
+- Step 1: a native save dialog each time. The files contain the timeline, your notes and items, and any captured text, labelled as captured.
+- Step 2: the session disappears from History and doesn't come back after a restart.
+
+**Result:** \_\_\_
+
+### M04-3: Detail panel with a screen reader (S04-A05)
+
+**Why manual:** keyboard behaviour is tested automatically, but no real screen reader was used.
+
+1. With Narrator, VoiceOver or Orca on, Tab to a session card and press Enter.
+2. Move through the panel, add a Next Move item, copy it, then press Esc.
+3. Switch the panel between pinned and floating, and make the window narrow.
+
+**Expected:**
+
+- The panel announces its title, and the session's state is read out.
+- **Copy** announces "Copied".
+- Esc returns focus to the card you opened.
+- Pinned in a narrow window shows the grouped list, with Needs you at the top. Floating overlays the board.
+
+**Result:** \_\_\_
