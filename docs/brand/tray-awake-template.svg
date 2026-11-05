@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 36 184 184" width="64" height="64">
+  <title>Lullshift macOS template tray, awake</title>
+  <defs>
+    <mask id="face" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
+      <g transform="translate(-14 -6)">
+        <path d="M88 58 L168 50 L196 206 L60 214 Z" fill="#fff"/>
+        <path d="M176 76 L222 188 L202 198 Z" fill="#fff" fill-opacity=".55"/>
+        <circle cx="106" cy="138" r="21" fill="#000"/><circle cx="156" cy="136" r="21" fill="#000"/>
+      </g>
+    </mask>
+  </defs>
+  <rect width="256" height="256" fill="#000000" mask="url(#face)"/>
+</svg>

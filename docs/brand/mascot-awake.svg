@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="1024" height="1024">
+  <title>Lullshift mascot, awake (needs you)</title>
+  <defs>
+    <linearGradient id="front" gradientUnits="userSpaceOnUse" x1="0" y1="52" x2="0" y2="214"><stop offset="0" stop-color="#52E4CC"/><stop offset="1" stop-color="#0F7F93"/></linearGradient>
+    <linearGradient id="inside" gradientUnits="userSpaceOnUse" x1="168" y1="50" x2="214" y2="200"><stop offset="0" stop-color="#FFB547"/><stop offset="1" stop-color="#C9480F"/></linearGradient>
+  </defs>
+  <g transform="translate(-14 -6)">
+    <ellipse cx="140" cy="220" rx="84" ry="8" fill="#000" fill-opacity=".14"/>
+    <path d="M168 50 L226 190 L196 206 Z" fill="url(#inside)"/>
+    <path d="M168 50 L226 190" stroke="#FFD27A" stroke-opacity=".8" stroke-width="3" stroke-linecap="round"/>
+    <path d="M88 58 L168 50 L196 206 L60 214 Z" fill="url(#front)"/>
+    <path d="M88 58 L168 50" stroke="#FFFFFF" stroke-opacity=".7" stroke-width="4" stroke-linecap="round"/>
+    <ellipse cx="92" cy="160" rx="9" ry="5" fill="#FFB08A" fill-opacity=".8"/>
+    <ellipse cx="172" cy="156" rx="9" ry="5" fill="#FFB08A" fill-opacity=".8"/>
+    <circle cx="108" cy="141" r="10" fill="#0B2E36"/><circle cx="111" cy="138" r="3" fill="#FFFFFF"/> <circle cx="158" cy="138" r="10" fill="#0B2E36"/><circle cx="161" cy="135" r="3" fill="#FFFFFF"/> <ellipse cx="131" cy="168" rx="7" ry="8" fill="#0B2E36"/> <path d="M194 36 l8 -12 M206 48 l13 -5 M184 30 l-1 -13" fill="none" stroke="#FF9A2E" stroke-width="6" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 36 184 184" width="64" height="64">
+  <title>Lullshift tray, asleep</title>
+  <defs>
+    <mask id="face" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
+      <g transform="translate(-14 -6)">
+        <path d="M88 58 L168 50 L196 206 L60 214 Z" fill="#fff"/>
+        <path d="M176 76 L222 188 L202 198 Z" fill="#fff" fill-opacity=".55"/>
+        <path d="M84 136 Q104 160 124 136 M136 133 Q156 157 176 133" fill="none" stroke="#000" stroke-width="20" stroke-linecap="round"/>
+      </g>
+    </mask>
+  </defs>
+  <rect width="256" height="256" fill="#1497A5" mask="url(#face)"/>
+</svg>

@@ -188,3 +188,26 @@ Once installers exist (Sprint 11), repeat the app checks with the installed buil
 - Claude Code shows no hook errors.
 
 **Result:** \_\_\_
+
+---
+
+## Brand – App icon and tray mascot
+
+### MB-1: App icon and tray mascot on each OS
+
+**Why manual:** tray rendering, template images and taskbar colors differ by OS and theme. Only the image decoding and the face choice are unit-tested.
+
+1. Build and start the app (see "Before you start").
+2. Check the app icon in the taskbar or dock, the window title bar and Alt+Tab or the app switcher.
+3. Check the tray or menu-bar icon in both the light and the dark system theme.
+4. Start a Claude Code session and trigger a permission prompt, so the session needs you.
+5. Answer the prompt, so the session goes back to working.
+
+**Expected:**
+
+- The app icon is the folded-paper mascot with one eye open, not the Tauri logo.
+- The tray shows the mascot asleep (closed eyes). It is clearly visible on light and dark taskbars; on macOS it follows the menu-bar color.
+- At step 4 the tray switches to awake (two round eyes) and the tooltip reads "Lullshift: an agent needs you".
+- At step 5, or once that session goes stale and the window refreshes, the tray goes back to asleep.
+
+**Result:** \_\_\_

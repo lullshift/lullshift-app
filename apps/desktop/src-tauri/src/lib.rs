@@ -11,6 +11,7 @@ use agent_core::{AgentEvent, SessionState, SessionView, view};
 use agent_ipc::{Config, Running, ServeError, SinkError};
 use local_store::{IngestOutcome, Store, StoreError};
 use serde::Serialize;
+use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
@@ -21,6 +22,51 @@ use time::OffsetDateTime;
 const HIDDEN_ARG: &str = "--hidden";
 const DB_FILE: &str = "lullshift.db";
 const SESSIONS_CHANGED: &str = "sessions-changed";
+const TRAY_ID: &str = "main";
+
+/// The tray mascot's face. Asleep: nothing needs you. Awake: at least one session is in
+/// `needs_attention` and fresh. Stale or unconfirmed sessions show as unknown and never wake it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrayFace {
+    Asleep,
+    Awake,
+}
+
+impl TrayFace {
+    fn of(sessions: &[SessionView]) -> Self {
+        if sessions
+            .iter()
+            .any(|s| s.state == SessionState::NeedsAttention)
+        {
+            Self::Awake
+        } else {
+            Self::Asleep
+        }
+    }
+
+    /// macOS gets one-color template images that follow the menu bar's light/dark mode;
+    /// Windows and Linux get the teal version, which reads on both light and dark taskbars.
+    fn image(self) -> Option<Image<'static>> {
+        #[cfg(target_os = "macos")]
+        let bytes: &[u8] = match self {
+            Self::Asleep => include_bytes!("../icons/tray/tray-asleep-template.png"),
+            Self::Awake => include_bytes!("../icons/tray/tray-awake-template.png"),
+        };
+        #[cfg(not(target_os = "macos"))]
+        let bytes: &[u8] = match self {
+            Self::Asleep => include_bytes!("../icons/tray/tray-asleep.png"),
+            Self::Awake => include_bytes!("../icons/tray/tray-awake.png"),
+        };
+        Image::from_bytes(bytes).ok()
+    }
+
+    fn tooltip(self) -> &'static str {
+        match self {
+            Self::Asleep => "Lullshift",
+            Self::Awake => "Lullshift: an agent needs you",
+        }
+    }
+}
 
 /// Health of one subsystem as shown in the UI. Codes are fixed strings, never raw errors.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -36,6 +82,29 @@ struct Core {
     ipc_health: Mutex<Health>,
     ipc: Mutex<Option<Running>>,
     started_utc: OffsetDateTime,
+    tray_face: Mutex<Option<TrayFace>>,
+}
+
+/// Shows `face` in the tray unless it is already showing. Failures leave the previous icon.
+fn set_tray_face(app: &AppHandle, core: &Core, face: TrayFace) {
+    let Ok(mut current) = core.tray_face.lock() else {
+        return;
+    };
+    if *current == Some(face) {
+        return;
+    }
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+    if let Some(image) = face.image() {
+        if tray.set_icon(Some(image)).is_err() {
+            return;
+        }
+        #[cfg(target_os = "macos")]
+        let _ = tray.set_icon_as_template(true);
+    }
+    let _ = tray.set_tooltip(Some(face.tooltip()));
+    *current = Some(face);
 }
 
 #[derive(Serialize)]
@@ -52,11 +121,31 @@ struct Dashboard {
 /// Current sessions with their derived (possibly unknown/stale) display state. Runs on a
 /// blocking thread: it shares the store lock with event ingestion and must not stall the UI.
 #[tauri::command]
-async fn dashboard(core: tauri::State<'_, Arc<Core>>) -> Result<Dashboard, String> {
+async fn dashboard(app: AppHandle, core: tauri::State<'_, Arc<Core>>) -> Result<Dashboard, String> {
     let core = Arc::clone(&core);
-    tauri::async_runtime::spawn_blocking(move || build_dashboard(&core))
-        .await
-        .map_err(|_| "internal".to_owned())
+    tauri::async_runtime::spawn_blocking(move || {
+        let dashboard = build_dashboard(&core);
+        // Refreshing here also lets a needs-you session that has since gone stale put the
+        // mascot back to sleep without waiting for the next event.
+        if dashboard.store == Health::Ok {
+            set_tray_face(&app, &core, TrayFace::of(&dashboard.sessions));
+        }
+        dashboard
+    })
+    .await
+    .map_err(|_| "internal".to_owned())
+}
+
+/// Tray face for the stored sessions right now, or `None` if the store can't be read.
+fn current_face(core: &Core) -> Option<TrayFace> {
+    let now = OffsetDateTime::now_utc();
+    let guard = core.store.lock().ok()?;
+    let records = guard.as_ref()?.sessions().ok()?;
+    let views: Vec<SessionView> = records
+        .iter()
+        .map(|r| view(r, core.started_utc, now, DEFAULT_STALE_AFTER))
+        .collect();
+    Some(TrayFace::of(&views))
 }
 
 fn build_dashboard(core: &Core) -> Dashboard {
@@ -131,6 +220,9 @@ fn start_ipc(app: &AppHandle, core: &Arc<Core>) -> Health {
         let new = matches!(outcome, IngestOutcome::Stored { .. });
         if new {
             let _ = sink_app.emit(SESSIONS_CHANGED, ());
+            if let Some(face) = current_face(&sink_core) {
+                set_tray_face(&sink_app, &sink_core, face);
+            }
         }
         let notice = attention_notice(&outcome).filter(|_| match &outcome {
             IngestOutcome::Stored { record, .. } => gate.lock().is_ok_and(|mut g| {
@@ -214,8 +306,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Show Lullshift", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Lullshift", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
-    let mut tray = TrayIconBuilder::with_id("main")
-        .tooltip("Lullshift")
+    let mut tray = TrayIconBuilder::with_id(TRAY_ID)
+        .tooltip(TrayFace::Asleep.tooltip())
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -233,8 +325,15 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                 show_main(tray.app_handle());
             }
         });
-    if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone());
+    if let Some(icon) = TrayFace::Asleep
+        .image()
+        .or_else(|| app.default_window_icon().cloned())
+    {
+        tray = tray.icon(icon);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        tray = tray.icon_as_template(true);
     }
     tray.build(app)?;
     Ok(())
@@ -263,6 +362,7 @@ pub fn run() {
                 ipc_health: Mutex::new(Health::Error("starting")),
                 ipc: Mutex::new(None),
                 started_utc: OffsetDateTime::now_utc(),
+                tray_face: Mutex::new(None),
             });
             let ipc_health = if store_health == Health::Ok {
                 start_ipc(&handle, &core)
@@ -273,8 +373,11 @@ pub fn run() {
             if let Ok(mut h) = core.ipc_health.lock() {
                 *h = ipc_health;
             }
-            app.manage(core);
             build_tray(app)?;
+            if let Some(face) = current_face(&core) {
+                set_tray_face(&handle, &core, face);
+            }
+            app.manage(core);
             if !std::env::args().any(|a| a == HIDDEN_ARG) {
                 show_main(&handle);
             }
@@ -314,6 +417,48 @@ mod tests {
                 last_seen_utc: t,
                 last_received_utc: t,
             },
+        }
+    }
+
+    fn session(state: SessionState) -> SessionView {
+        let t = OffsetDateTime::UNIX_EPOCH;
+        SessionView {
+            provider: "claude-code".into(),
+            provider_session_id: "s".into(),
+            state,
+            reason: agent_core::ViewReason::Observed,
+            last_known_state: state,
+            last_seen_utc: t,
+            last_received_utc: t,
+        }
+    }
+
+    #[test]
+    fn tray_wakes_only_while_a_session_needs_you() {
+        assert_eq!(TrayFace::of(&[]), TrayFace::Asleep);
+        assert_eq!(
+            TrayFace::of(&[session(SessionState::Working), session(SessionState::Idle)]),
+            TrayFace::Asleep
+        );
+        assert_eq!(
+            TrayFace::of(&[
+                session(SessionState::Working),
+                session(SessionState::NeedsAttention)
+            ]),
+            TrayFace::Awake
+        );
+        // A stale needs-you session is shown as unknown and must not keep the mascot awake.
+        assert_eq!(
+            TrayFace::of(&[session(SessionState::Unknown)]),
+            TrayFace::Asleep
+        );
+    }
+
+    #[test]
+    fn bundled_tray_images_decode() {
+        for face in [TrayFace::Asleep, TrayFace::Awake] {
+            let image = face.image().expect("tray PNG decodes");
+            assert_eq!((image.width(), image.height()), (32, 32));
         }
     }
 
