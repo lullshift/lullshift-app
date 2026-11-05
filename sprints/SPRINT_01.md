@@ -1,6 +1,6 @@
 # Sprint 01 - Desktop Shell, State and Local IPC
 
-**Status:** Implemented and verified on Windows 11 (2026-11-05). One manual tray check is open (S01-A04), and macOS/Linux have only been compiled (see closeout).
+**Status:** Done on Windows 11 (2026-11-05). macOS and Linux have only been compiled (see closeout).
 
 **Goal:** The app runs from the tray, persists agent sessions locally and accepts events over authenticated local IPC.
 
@@ -20,7 +20,7 @@
 - [x] S01-A01: Closing the window does not stop monitoring
 - [x] S01-A02: Session state survives restart; invalid or unauthenticated IPC input is rejected
 - [x] S01-A03: Unknown and stale agent status shown truthfully
-- [ ] S01-A04: Tray and SQLite behavior tested on the primary dev OS
+- [x] S01-A04: Tray and SQLite behavior tested on the primary dev OS
 
 ## Guardrails
 
@@ -56,8 +56,7 @@ Commands run and results (Windows 11 Enterprise 10.0.26200, x64, Node 24.14.1, p
   - The pipe name carries a fresh random nonce each launch.
 
 Tests not run and why:
-- Tray icon clicks (left click to show, "Show Lullshift", "Quit Lullshift"): not automated, and
-  no manual check yet. S01-A04 stays open until someone clicks them on Windows.
+- Tray icon clicks are not automated. They were checked by hand instead (see S01-A04 below).
 - Turning start-at-sign-in on: not exercised (it writes a Windows startup entry). The off state
   and status read were checked in the UI.
 - Live 10-minute stale wait: covered by reducer and store tests, not by waiting in the app.
@@ -91,8 +90,9 @@ Acceptance checks passed/failed:
 - S01-A01 passed (window close keeps monitoring).
 - S01-A02 passed (state survives restart; unauthenticated and invalid IPC input rejected).
 - S01-A03 passed (unknown after restart verified live; stale verified by tests).
-- S01-A04 open: SQLite behavior tested; tray menu clicks need one manual check on Windows.
+- S01-A04 passed: SQLite behavior tested automatically; tray checked by hand by the product
+  owner on Windows 11 (2026-11-05): close hides to tray with the process still running, left
+  click shows the window, "Show Lullshift" shows it, "Quit Lullshift" exits the process.
 
-Recommended next action: click-check the tray on Windows, commit Sprint 01, then start Sprint 02
-(Claude Code adapter and forwarder).
+Recommended next action: start Sprint 02 (Claude Code adapter and hook forwarder).
 ```
