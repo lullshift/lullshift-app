@@ -17,9 +17,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+marketplace = { path = "../../../crates/marketplace" }
 agent-adapters.workspace = true
 agent-core.workspace = true
 agent-ipc.workspace = true
+getrandom.workspace = true
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 include_dir = "0.7"
 local-store.workspace = true
@@ -35,6 +37,8 @@ tauri-plugin-single-instance = "2"
 time.workspace = true
 
 [dev-dependencies]
+# `file://` marketplaces for the command tests. Debug builds of tests only (see the crate docs).
+marketplace = { path = "../../../crates/marketplace", features = ["unsafe-test-file-urls"] }
 rusqlite.workspace = true
 tempfile.workspace = true
 

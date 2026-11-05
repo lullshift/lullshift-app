@@ -1,0 +1,1229 @@
+//! Marketplace commands (Sprint 08, ADR-015). The contract with the UI is
+//! `docs/MARKETPLACE_COMMANDS.md`.
+//!
+//! Everything a marketplace repository, its index and its activities contain is untrusted. This
+//! module only orchestrates: the `marketplace` crate fetches, validates and writes, the store
+//! records, and `activities::installed` decides what may run. Rules kept here:
+//!
+//! - Git work runs on blocking threads, one operation per marketplace at a time (`busy`).
+//! - Nothing is installed or updated without a single-use, 10-minute token that a preview
+//!   produced; the token holds the already validated files in memory.
+//! - Errors reach the UI as `{ kind, message }` with fixed, friendly text. `git` stderr, URLs
+//!   with userinfo and raw parser messages never get that far (the crate does not keep them).
+//! - The app never logs URLs, credentials or task data.
+
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use local_store::{
+    ActivityKind, BUILTIN_MARKETPLACE_ID, InstalledActivity, MarketplaceRecord,
+    NewInstalledActivity, SavedState, StoreError,
+};
+use marketplace::manifest::{parse_manifest, plain};
+use marketplace::validate::{check_marketplace_name, windows_reserved};
+use marketplace::{
+    Commit, EntrySource, Error, Git, GitFailureKind, GitUrl, IndexError, InstalledSummary, Kind,
+    MarketplaceRef, PackError, PrepareRequest, PreparedPack, diff_update, install, remove_install,
+};
+use serde::Serialize;
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
+
+use crate::Core;
+use crate::activities::installed::{BUILTIN_ID, Problem, install_root, verify_for_enable};
+use crate::activities::{available_engines, bundled_listed};
+
+/// How long a preview's token stays valid.
+pub const TOKEN_TTL: Duration = Duration::from_secs(10 * 60);
+/// Most previews held at once; the oldest is dropped first.
+const MAX_PENDING: usize = 8;
+/// Longest plain-text description or owner kept from an index.
+const META_MAX: usize = 500;
+
+// ---- errors ------------------------------------------------------------------------------
+
+/// What every marketplace command returns on failure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CommandError {
+    pub kind: &'static str,
+    pub message: String,
+}
+
+impl CommandError {
+    fn new(kind: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+
+    fn internal() -> Self {
+        Self::new("internal", "Something went wrong inside Lullshift.")
+    }
+
+    fn busy() -> Self {
+        Self::new(
+            "busy",
+            "Another operation on this marketplace is still running. Try again in a moment.",
+        )
+    }
+}
+
+type Res<T> = Result<T, CommandError>;
+
+fn from_git_kind(kind: GitFailureKind) -> CommandError {
+    let (code, message) = match kind {
+        GitFailureKind::Offline => (
+            "offline",
+            "Can't reach the repository. Check your network connection.",
+        ),
+        GitFailureKind::AuthDenied => (
+            "authDenied",
+            "Access was denied. For a private repository, set up Git credentials on this computer first.",
+        ),
+        GitFailureKind::NotFound => ("notFound", "The repository, branch or tag wasn't found."),
+        GitFailureKind::Timeout => ("timeout", "Git took too long and was stopped."),
+        GitFailureKind::GitMissing => (
+            "gitMissing",
+            "Git isn't installed, or isn't on your PATH. Install Git to use marketplaces.",
+        ),
+        GitFailureKind::OutputTooLarge => (
+            "invalidPack",
+            "The repository returned more data than Lullshift allows.",
+        ),
+        GitFailureKind::Failed => ("internal", "Git couldn't complete the request."),
+    };
+    CommandError::new(code, message)
+}
+
+/// Maps a crate error to the contract. The crate's own messages are fixed text or sanitized
+/// names (never `git` stderr or URLs); index problems get a fixed sentence because an index
+/// entry can carry any text.
+impl From<Error> for CommandError {
+    fn from(e: Error) -> Self {
+        match e {
+            Error::Url(u) => Self::new("invalidUrl", u.to_string()),
+            Error::Ref(_) | Error::Path(_) | Error::Name(_) => Self::new(
+                "invalidIndex",
+                "The marketplace lists a branch, path or name that isn't allowed.",
+            ),
+            Error::Git(k) => from_git_kind(k),
+            Error::Index(IndexError::Missing) => Self::new(
+                "invalidIndex",
+                "This repository has no .lullshift/marketplace.json, so it isn't a Lullshift marketplace.",
+            ),
+            Error::Index(IndexError::Name(_)) => Self::new(
+                "invalidIndex",
+                "This marketplace uses the name 'lullshift', which is reserved for the built-in one.",
+            ),
+            Error::Index(_) => Self::new(
+                "invalidIndex",
+                "The marketplace index isn't valid, so nothing was added or changed.",
+            ),
+            Error::Pack(PackError::ThirdPartyCodeBlocked) => third_party_blocked(),
+            Error::Pack(PackError::NotFound) => Self::new(
+                "notFound",
+                "The activity's folder wasn't found in the repository.",
+            ),
+            Error::Pack(PackError::Unreadable | PackError::Inconsistent) => Self::internal(),
+            Error::Pack(p) => Self::new(
+                "invalidPack",
+                format!("This activity can't be installed: {p}."),
+            ),
+            Error::Io { .. } => Self::new(
+                "internal",
+                "Lullshift couldn't read or write files for this marketplace.",
+            ),
+            Error::NotACommit => Self::new("notFound", "The repository didn't return a commit."),
+        }
+    }
+}
+
+impl From<StoreError> for CommandError {
+    fn from(e: StoreError) -> Self {
+        match e {
+            StoreError::AlreadyExists => {
+                Self::new("alreadyExists", "That is already in your library.")
+            }
+            StoreError::NotFound => Self::new("notFound", "That wasn't found."),
+            StoreError::BuiltinProtected => Self::new(
+                "builtinProtected",
+                "Built-in items can't be removed. You can turn individual activities off instead.",
+            ),
+            _ => Self::new("internal", "Lullshift couldn't read or save its data."),
+        }
+    }
+}
+
+fn third_party_blocked() -> CommandError {
+    CommandError::new(
+        "thirdPartyCodeBlocked",
+        "Code activities from third-party marketplaces can't be installed on this system yet. Content packs can.",
+    )
+}
+
+fn already_in_library() -> CommandError {
+    CommandError::new(
+        "alreadyExists",
+        "An activity with this id is already in your library. Use update to change an installed one.",
+    )
+}
+
+fn with_store<T>(
+    core: &Core,
+    f: impl FnOnce(&mut local_store::Store) -> Result<T, StoreError>,
+) -> Res<T> {
+    let mut guard = core.store.lock().map_err(|_| CommandError::internal())?;
+    let store = guard.as_mut().ok_or_else(|| {
+        CommandError::new("internal", "Lullshift's local storage isn't available.")
+    })?;
+    f(store).map_err(CommandError::from)
+}
+
+// ---- state -------------------------------------------------------------------------------
+
+enum PendingKind {
+    Install,
+    Update { old_commit: String },
+}
+
+struct Pending {
+    kind: PendingKind,
+    marketplace_id: String,
+    source_path: String,
+    pack: PreparedPack,
+    created: Instant,
+}
+
+/// In-memory state of the marketplace manager.
+#[derive(Default)]
+pub struct MarketState {
+    git: Mutex<Option<Arc<Git>>>,
+    busy: Mutex<HashSet<String>>,
+    pending: Mutex<Vec<(String, Pending)>>,
+}
+
+/// Holds one marketplace's "operation running" slot; released on drop.
+struct BusyGuard<'a> {
+    state: &'a MarketState,
+    id: String,
+}
+
+impl Drop for BusyGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut busy) = self.state.busy.lock() {
+            busy.remove(&self.id);
+        }
+    }
+}
+
+/// The busy-set key for writes to one activity id, across marketplaces. Marketplace names can't
+/// contain `:`, so it can't collide with one.
+fn activity_key(activity_id: &str) -> String {
+    format!("activity:{activity_id}")
+}
+
+/// Starts an operation on a marketplace, or `busy` if one is already running.
+fn begin<'a>(core: &'a Core, id: &str) -> Res<BusyGuard<'a>> {
+    let mut busy = core
+        .market
+        .busy
+        .lock()
+        .map_err(|_| CommandError::internal())?;
+    if !busy.insert(id.to_owned()) {
+        return Err(CommandError::busy());
+    }
+    Ok(BusyGuard {
+        state: &core.market,
+        id: id.to_owned(),
+    })
+}
+
+fn make_git(app_dir: &Path) -> Result<Git, Error> {
+    #[cfg(test)]
+    return Git::for_tests(app_dir);
+    #[cfg(not(test))]
+    return Git::new(app_dir);
+}
+
+fn git(core: &Core) -> Res<Arc<Git>> {
+    let mut slot = core
+        .market
+        .git
+        .lock()
+        .map_err(|_| CommandError::internal())?;
+    if let Some(g) = slot.as_ref() {
+        return Ok(Arc::clone(g));
+    }
+    let g = Arc::new(make_git(&core.app_dir)?);
+    *slot = Some(Arc::clone(&g));
+    Ok(g)
+}
+
+fn random_hex(bytes: usize) -> Res<String> {
+    let mut buf = vec![0_u8; bytes];
+    getrandom::fill(&mut buf).map_err(|_| CommandError::internal())?;
+    Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+fn put_pending(core: &Core, pending: Pending) -> Res<String> {
+    let token = random_hex(16)?;
+    let mut list = core
+        .market
+        .pending
+        .lock()
+        .map_err(|_| CommandError::internal())?;
+    list.retain(|(_, p)| p.created.elapsed() <= TOKEN_TTL);
+    while list.len() >= MAX_PENDING {
+        list.remove(0);
+    }
+    list.push((token.clone(), pending));
+    Ok(token)
+}
+
+/// Removes and returns the preview for `token` if it is still valid at `now`. A token works
+/// once; an unknown, used or expired token is `notFound`.
+fn take_pending(core: &Core, token: &str, now: Instant) -> Res<Pending> {
+    let mut list = core
+        .market
+        .pending
+        .lock()
+        .map_err(|_| CommandError::internal())?;
+    let taken = list
+        .iter()
+        .position(|(t, _)| t == token)
+        .map(|i| list.remove(i).1);
+    match taken {
+        Some(p) if now.saturating_duration_since(p.created) <= TOKEN_TTL => Ok(p),
+        _ => Err(CommandError::new(
+            "notFound",
+            "This review has expired or was already used. Open the activity again.",
+        )),
+    }
+}
+
+// ---- paths and sidecar -------------------------------------------------------------------
+
+fn valid_market_id(id: &str) -> bool {
+    check_marketplace_name(id, true).is_ok() && !windows_reserved(id)
+}
+
+fn markets_dir(core: &Core) -> PathBuf {
+    core.app_dir.join("marketplaces")
+}
+
+fn cache_dir(core: &Core, id: &str) -> PathBuf {
+    markets_dir(core).join(id)
+}
+
+/// What is remembered beside a marketplace's cache: the address `git` is given (the store only
+/// keeps the display form, which drops an ssh user name), and the index's own description and
+/// owner so listing needs no `git`. Re-validated on every read.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Sidecar {
+    git_url: Option<String>,
+    description: Option<String>,
+    owner: Option<String>,
+}
+
+const SIDECAR: &str = "source.json";
+
+fn read_sidecar(core: &Core, id: &str) -> Sidecar {
+    let Ok(bytes) = std::fs::read(cache_dir(core, id).join(SIDECAR)) else {
+        return Sidecar::default();
+    };
+    if bytes.len() > 16 * 1024 {
+        return Sidecar::default();
+    }
+    let mut s: Sidecar = serde_json::from_slice(&bytes).unwrap_or_default();
+    let clean = |t: Option<String>| t.filter(|t| plain(t, META_MAX));
+    s.description = clean(s.description);
+    s.owner = clean(s.owner);
+    s
+}
+
+fn write_sidecar(dir: &Path, s: &Sidecar) -> Res<()> {
+    let text = serde_json::to_vec(s).map_err(|_| CommandError::internal())?;
+    std::fs::write(dir.join(SIDECAR), text).map_err(|_| {
+        CommandError::new(
+            "internal",
+            "Lullshift couldn't write the marketplace cache.",
+        )
+    })
+}
+
+#[cfg(test)]
+fn parse_git_url(text: &str) -> Result<GitUrl, marketplace::UrlError> {
+    // Tests build marketplaces from local repositories.
+    if let Some(rest) = text.strip_prefix("file://") {
+        let path = if cfg!(windows) {
+            rest.strip_prefix('/').unwrap_or(rest)
+        } else {
+            rest
+        };
+        return Ok(GitUrl::for_test_file(Path::new(path)));
+    }
+    GitUrl::parse(text)
+}
+
+#[cfg(not(test))]
+fn parse_git_url(text: &str) -> Result<GitUrl, marketplace::UrlError> {
+    GitUrl::parse(text)
+}
+
+/// The address `git` is given for a marketplace: the sidecar's, or else the stored display form
+/// (which works for https and for ssh without a user name). Always re-validated.
+fn git_url_of(core: &Core, rec: &MarketplaceRecord) -> Res<GitUrl> {
+    let from_sidecar = read_sidecar(core, &rec.id)
+        .git_url
+        .and_then(|u| parse_git_url(&u).ok());
+    if let Some(u) = from_sidecar {
+        return Ok(u);
+    }
+    parse_git_url(&rec.url).map_err(|_| {
+        CommandError::new(
+            "invalidUrl",
+            "Lullshift can't tell where this marketplace lives. Remove it and add it again.",
+        )
+    })
+}
+
+// ---- DTOs --------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketplaceDto {
+    id: String,
+    url: String,
+    builtin: bool,
+    description: Option<String>,
+    owner: Option<String>,
+    last_fetched_commit: Option<String>,
+    last_fetched_at: Option<String>,
+}
+
+fn rfc3339(t: OffsetDateTime) -> Option<String> {
+    t.format(&Rfc3339).ok()
+}
+
+fn market_dto(core: &Core, rec: &MarketplaceRecord) -> MarketplaceDto {
+    let (description, owner) = if rec.builtin {
+        (
+            Some("Activities that ship with Lullshift.".to_owned()),
+            Some("Lullshift".to_owned()),
+        )
+    } else {
+        let s = read_sidecar(core, &rec.id);
+        (s.description, s.owner)
+    };
+    MarketplaceDto {
+        id: rec.id.clone(),
+        url: rec.url.clone(),
+        builtin: rec.builtin,
+        description,
+        owner,
+        last_fetched_commit: rec.last_fetched_commit.clone(),
+        last_fetched_at: rec.last_fetched_at.and_then(rfc3339),
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledMark {
+    commit: String,
+    version: String,
+    enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryDto {
+    activity_id: String,
+    name: Option<String>,
+    description: Option<String>,
+    kind: Option<&'static str>,
+    external: bool,
+    featured: bool,
+    installed: Option<InstalledMark>,
+    blocked: Option<&'static str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallPreviewDto {
+    token: String,
+    marketplace_id: String,
+    activity_id: String,
+    name: String,
+    version: String,
+    description: String,
+    source_url: String,
+    source_path: Option<String>,
+    commit: String,
+    kind: &'static str,
+    engine: Option<String>,
+    permissions: Vec<String>,
+    size_bytes: u64,
+    file_count: usize,
+    third_party: bool,
+    /// Saved progress from an earlier install of this id exists and this install will use it.
+    has_saved_state: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FromDto {
+    commit: String,
+    version: String,
+    permissions: Vec<String>,
+}
+
+/// Where an update comes from, when that differs from where the install came from.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceChangedDto {
+    old: String,
+    new: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePreviewDto {
+    #[serde(flatten)]
+    preview: InstallPreviewDto,
+    from: FromDto,
+    added_permissions: Vec<String>,
+    removed_permissions: Vec<String>,
+    kind_changed: bool,
+    engine_changed: bool,
+    source_changed: Option<SourceChangedDto>,
+    unchanged: bool,
+}
+
+fn kind_str(k: Kind) -> &'static str {
+    match k {
+        Kind::App => "app",
+        Kind::Content => "content",
+    }
+}
+
+fn kind_of(k: ActivityKind) -> Kind {
+    match k {
+        ActivityKind::App => Kind::App,
+        ActivityKind::Content => Kind::Content,
+    }
+}
+
+fn preview_dto(
+    token: String,
+    marketplace_id: &str,
+    source_path: &str,
+    pack: &PreparedPack,
+    has_saved_state: bool,
+) -> InstallPreviewDto {
+    let p = &pack.preview;
+    // The pack was validated, so its manifest parses; the description is plain text.
+    let description = pack
+        .files
+        .iter()
+        .find(|f| f.path == "manifest.json")
+        .and_then(|f| std::str::from_utf8(&f.bytes).ok())
+        .and_then(parse_manifest)
+        .map(|m| m.description)
+        .unwrap_or_default();
+    InstallPreviewDto {
+        token,
+        marketplace_id: marketplace_id.to_owned(),
+        activity_id: p.activity_id.clone(),
+        name: p.name.clone(),
+        version: p.version.clone(),
+        description,
+        source_url: p.source_url.clone(),
+        source_path: (!source_path.is_empty()).then(|| source_path.to_owned()),
+        commit: p.commit.clone(),
+        kind: kind_str(p.kind),
+        engine: p.engine.clone(),
+        permissions: p.permissions.clone(),
+        size_bytes: p.size_bytes,
+        file_count: p.file_count,
+        third_party: p.third_party,
+        has_saved_state,
+    }
+}
+
+// ---- operations --------------------------------------------------------------------------
+
+/// All marketplaces, the built-in one first.
+pub fn list(core: &Core) -> Res<Vec<MarketplaceDto>> {
+    let records = with_store(core, |s| s.marketplaces())?;
+    Ok(records.iter().map(|r| market_dto(core, r)).collect())
+}
+
+/// Adds a marketplace: fetch, validate the index, use its `name` as the id.
+pub fn add(core: &Core, url: &GitUrl) -> Res<MarketplaceDto> {
+    let git = git(core)?;
+    let root = markets_dir(core);
+    std::fs::create_dir_all(&root).map_err(|_| {
+        CommandError::new(
+            "internal",
+            "Lullshift couldn't create its marketplace cache.",
+        )
+    })?;
+    let staging = root.join(format!(".adding-{}", random_hex(8)?));
+    let result = add_from(core, &git, url, &root, &staging);
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    result
+}
+
+fn add_from(
+    core: &Core,
+    git: &Git,
+    url: &GitUrl,
+    root: &Path,
+    staging: &Path,
+) -> Res<MarketplaceDto> {
+    let repo = staging.join("repo.git");
+    let commit = git.fetch(&repo, url, None)?;
+    // `lullshift` is refused here: only the built-in index may use it.
+    let index = git.read_index(&repo, &commit, false)?;
+    let id = index.name.clone();
+    if !valid_market_id(&id) {
+        return Err(CommandError::new(
+            "invalidIndex",
+            "The marketplace's name can't be used on this system.",
+        ));
+    }
+    let _guard = begin(core, &id)?;
+    write_sidecar(
+        staging,
+        &Sidecar {
+            git_url: Some(url.as_str().to_owned()),
+            description: index.description.clone(),
+            owner: index.owner.clone(),
+        },
+    )?;
+    let now = OffsetDateTime::now_utc();
+    let commit_text = commit.to_string();
+    // An id that already exists is left exactly as it was; anything this call created is undone
+    // if a later step fails.
+    if let Err(e) = with_store(core, |s| s.add_marketplace(&id, url.display(), now)) {
+        // AlreadyExists is either "already added" or, for a name that was removed while its
+        // installs stayed, "that name is tied to another address" (review M1).
+        let active = with_store(core, |s| s.marketplace(&id))
+            .ok()
+            .flatten()
+            .is_some();
+        return Err(if e.kind == "alreadyExists" && !active {
+            CommandError::new(
+                "alreadyExists",
+                "A marketplace with this name was removed earlier, and activities installed from it still come from a different address. Uninstall them first, or add it again from its original address.",
+            )
+        } else {
+            e
+        });
+    }
+    if let Err(e) = with_store(core, |s| s.record_fetch(&id, &commit_text, now)) {
+        let _ = with_store(core, |s| s.remove_marketplace(&id, now));
+        return Err(e);
+    }
+    let final_dir = root.join(&id);
+    // A cache left behind by a marketplace that is no longer in the store is stale.
+    let _ = std::fs::remove_dir_all(&final_dir);
+    if std::fs::rename(staging, &final_dir).is_err() {
+        let _ = with_store(core, |s| s.remove_marketplace(&id, now));
+        return Err(CommandError::new(
+            "internal",
+            "Lullshift couldn't save the marketplace cache.",
+        ));
+    }
+    let rec = with_store(core, |s| s.marketplace(&id))?.ok_or_else(CommandError::internal)?;
+    Ok(market_dto(core, &rec))
+}
+
+/// Removes a marketplace and its cache. Installed activities stay.
+pub fn remove(core: &Core, id: &str) -> Res<()> {
+    if id == BUILTIN_MARKETPLACE_ID {
+        return Err(StoreError::BuiltinProtected.into());
+    }
+    if !valid_market_id(id) {
+        return Err(StoreError::NotFound.into());
+    }
+    let _guard = begin(core, id)?;
+    with_store(core, |s| {
+        s.remove_marketplace(id, OffsetDateTime::now_utc())
+    })?;
+    let _ = std::fs::remove_dir_all(cache_dir(core, id));
+    Ok(())
+}
+
+fn active_market(core: &Core, id: &str) -> Res<MarketplaceRecord> {
+    if !valid_market_id(id) {
+        return Err(StoreError::NotFound.into());
+    }
+    with_store(core, |s| s.marketplace(id))?.ok_or_else(|| StoreError::NotFound.into())
+}
+
+/// Fetches the marketplace again. The built-in one has nothing to fetch.
+pub fn refresh(core: &Core, id: &str) -> Res<MarketplaceDto> {
+    let rec = active_market(core, id)?;
+    if rec.builtin {
+        return Ok(market_dto(core, &rec));
+    }
+    let _guard = begin(core, id)?;
+    let git = git(core)?;
+    let url = git_url_of(core, &rec)?;
+    let repo = cache_dir(core, id).join("repo.git");
+    let commit = git.fetch(&repo, &url, None)?;
+    let index = git.read_index(&repo, &commit, false)?;
+    if index.name != id {
+        return Err(CommandError::new(
+            "invalidIndex",
+            "This marketplace now has a different name. Remove it and add it again if you trust the change.",
+        ));
+    }
+    write_sidecar(
+        &cache_dir(core, id),
+        &Sidecar {
+            git_url: Some(url.as_str().to_owned()),
+            description: index.description,
+            owner: index.owner,
+        },
+    )?;
+    let now = OffsetDateTime::now_utc();
+    let commit_text = commit.to_string();
+    with_store(core, |s| s.record_fetch(id, &commit_text, now))?;
+    let rec = active_market(core, id)?;
+    Ok(market_dto(core, &rec))
+}
+
+/// The entries of a marketplace as of its last fetch. No network.
+pub fn entries(core: &Core, id: &str) -> Res<Vec<EntryDto>> {
+    let rec = active_market(core, id)?;
+    if rec.builtin {
+        return Ok(bundled_listed()
+            .into_iter()
+            .map(|(m, kind)| EntryDto {
+                activity_id: m.id,
+                name: Some(m.name),
+                description: (!m.description.is_empty()).then_some(m.description),
+                kind: Some(kind),
+                external: false,
+                featured: false,
+                installed: None,
+                blocked: None,
+            })
+            .collect());
+    }
+    let commit = rec
+        .last_fetched_commit
+        .as_deref()
+        .and_then(Commit::parse)
+        .ok_or_else(|| {
+            CommandError::new(
+                "notFound",
+                "This marketplace hasn't been fetched yet. Refresh it first.",
+            )
+        })?;
+    let git = git(core)?;
+    let repo = cache_dir(core, id).join("repo.git");
+    let index = git.read_index(&repo, &commit, false)?;
+    let local: Vec<&marketplace::RelPath> = index
+        .entries
+        .iter()
+        .filter_map(|e| match &e.source {
+            EntrySource::Local { path } => Some(path),
+            EntrySource::Git { .. } => None,
+        })
+        .collect();
+    let mut manifests = git.read_manifests(&repo, &commit, &local)?.into_iter();
+    let installs = with_store(core, |s| s.installed_activities())?;
+    Ok(index
+        .entries
+        .iter()
+        .map(|e| {
+            let manifest = match &e.source {
+                EntrySource::Local { .. } => manifests.next().flatten(),
+                EntrySource::Git { .. } => None,
+            };
+            let kind = manifest
+                .as_ref()
+                .map(|m| if m.kind == "app" { "app" } else { "content" });
+            let blocked = (kind == Some("app") && !marketplace::third_party_code_allowed())
+                .then_some("thirdPartyCode");
+            EntryDto {
+                activity_id: e.id.clone(),
+                name: manifest.as_ref().map(|m| m.name.clone()),
+                description: manifest
+                    .as_ref()
+                    .map(|m| m.description.clone())
+                    .filter(|d| !d.is_empty()),
+                kind,
+                external: matches!(e.source, EntrySource::Git { .. }),
+                featured: e.featured,
+                installed: installs
+                    .iter()
+                    .find(|i| i.activity_id == e.id && i.marketplace_id == id)
+                    .map(|i| InstalledMark {
+                        commit: i.commit_sha.clone(),
+                        version: i.manifest_version.clone(),
+                        enabled: i.enabled,
+                    }),
+                blocked,
+            }
+        })
+        .collect())
+}
+
+/// Resolves and validates one entry at the marketplace's last fetched commit. Fetches an
+/// external source if the entry has one; writes nothing into the install folder.
+fn prepare(
+    core: &Core,
+    git: &Git,
+    rec: &MarketplaceRecord,
+    activity_id: &str,
+) -> Res<(PreparedPack, String)> {
+    let commit = rec
+        .last_fetched_commit
+        .as_deref()
+        .and_then(Commit::parse)
+        .ok_or_else(|| {
+            CommandError::new(
+                "notFound",
+                "This marketplace hasn't been fetched yet. Refresh it first.",
+            )
+        })?;
+    let url = git_url_of(core, rec)?;
+    let cache = cache_dir(core, &rec.id);
+    let repo = cache.join("repo.git");
+    let index = git.read_index(&repo, &commit, false)?;
+    let entry = index.entry(activity_id).ok_or_else(|| {
+        CommandError::new("notFound", "This marketplace doesn't list that activity.")
+    })?;
+    let external_root = cache.join("external");
+    let resolved = git.resolve_entry(
+        &MarketplaceRef {
+            repo: &repo,
+            commit: &commit,
+            url: &url,
+            external_cache_root: &external_root,
+        },
+        entry,
+    )?;
+    let source_path = resolved
+        .path
+        .as_ref()
+        .map(|p| p.as_str().to_owned())
+        .unwrap_or_default();
+    let pack = git.prepare_pack(
+        &resolved,
+        &PrepareRequest {
+            marketplace: &rec.id,
+            builtin: false,
+            entry_id: activity_id,
+            engines: &available_engines(),
+        },
+    )?;
+    Ok((pack, source_path))
+}
+
+fn shadowed_by_bundled(id: &str) -> bool {
+    crate::activities::catalog().contains_key(id)
+}
+
+/// Reviews an install: fetches and validates, installs nothing, and returns a token.
+pub fn preview_install(
+    core: &Core,
+    marketplace_id: &str,
+    activity_id: &str,
+) -> Res<InstallPreviewDto> {
+    if marketplace_id == BUILTIN_ID {
+        // The built-in marketplace's activities are the bundled ones.
+        return Err(already_in_library());
+    }
+    let rec = active_market(core, marketplace_id)?;
+    if shadowed_by_bundled(activity_id) {
+        return Err(already_in_library());
+    }
+    let _guard = begin(core, marketplace_id)?;
+    if with_store(core, |s| s.installed_activity(activity_id))?.is_some() {
+        return Err(already_in_library());
+    }
+    let git = git(core)?;
+    let (pack, source_path) = prepare(core, &git, &rec, activity_id)?;
+    let has_saved_state = with_store(core, |s| {
+        s.saved_state_for(activity_id, &rec.id, &pack.preview.source_url)
+    })?;
+    // Foreign state is cleared at install, so only state this install will use is announced.
+    let has_saved_state = matches!(has_saved_state, SavedState::Own | SavedState::Unknown);
+    let token = put_pending(
+        core,
+        Pending {
+            kind: PendingKind::Install,
+            marketplace_id: rec.id.clone(),
+            source_path: source_path.clone(),
+            pack: pack.clone(),
+            created: Instant::now(),
+        },
+    )?;
+    Ok(preview_dto(
+        token,
+        &rec.id,
+        &source_path,
+        &pack,
+        has_saved_state,
+    ))
+}
+
+fn record_of(pending: &Pending) -> NewInstalledActivity {
+    let p = &pending.pack.preview;
+    NewInstalledActivity {
+        activity_id: p.activity_id.clone(),
+        marketplace_id: pending.marketplace_id.clone(),
+        source_url: p.source_url.clone(),
+        source_path: pending.source_path.clone(),
+        commit_sha: p.commit.clone(),
+        manifest_version: p.version.clone(),
+        kind: match p.kind {
+            Kind::App => ActivityKind::App,
+            Kind::Content => ActivityKind::Content,
+        },
+        engine: p.engine.clone(),
+        permissions: p.permissions.clone(),
+        digest: p.digest.clone(),
+        size_bytes: p.size_bytes,
+    }
+}
+
+/// Rebuilds what the library shows after an install, update, uninstall or switch.
+fn refresh_library(core: &Core, activity_id: &str, forget_checks: bool) {
+    core.library
+        .invalidate(forget_checks.then_some(activity_id));
+    let _ = core.library.snapshot(core);
+}
+
+/// Installs a previewed activity.
+pub fn install_pending(core: &Core, token: &str, now: Instant) -> Res<()> {
+    let pending = take_pending(core, token, now)?;
+    if !matches!(pending.kind, PendingKind::Install) {
+        return Err(CommandError::new(
+            "notFound",
+            "This review is for an update, not an install.",
+        ));
+    }
+    let _guard = begin(core, &pending.marketplace_id)?;
+    active_market(core, &pending.marketplace_id)?;
+    let p = &pending.pack.preview;
+    // One install or update of an id at a time, whichever marketplace it comes from.
+    let _activity_guard = begin(core, &activity_key(&p.activity_id))?;
+    if shadowed_by_bundled(&p.activity_id)
+        || with_store(core, |s| s.installed_activity(&p.activity_id))?.is_some()
+    {
+        return Err(already_in_library());
+    }
+    // Checked again here, not only at preview time.
+    if p.kind == Kind::App && p.third_party && !marketplace::third_party_code_allowed() {
+        return Err(third_party_blocked());
+    }
+    let root = install_root(core);
+    install(&root, &pending.pack)?;
+    // Saved state kept from a different marketplace or source is deleted here, not handed to
+    // this code (review L7).
+    let source_url = p.source_url.clone();
+    with_store(core, |s| {
+        s.claim_saved_state(&p.activity_id, &pending.marketplace_id, &source_url)
+    })
+    .inspect_err(|_| {
+        let _ = remove_install(&root, &p.activity_id, &p.commit);
+    })?;
+    let recorded = with_store(core, |s| {
+        s.put_installed_activity(&record_of(&pending), OffsetDateTime::now_utc())
+    });
+    if let Err(e) = recorded {
+        let _ = remove_install(&root, &p.activity_id, &p.commit);
+        return Err(e);
+    }
+    refresh_library(core, &p.activity_id, true);
+    Ok(())
+}
+
+fn summary_of(rec: &InstalledActivity) -> InstalledSummary {
+    InstalledSummary {
+        version: rec.manifest_version.clone(),
+        commit: rec.commit_sha.clone(),
+        source_url: rec.source_url.clone(),
+        kind: kind_of(rec.kind),
+        engine: rec.engine.clone(),
+        permissions: rec.permissions.clone(),
+    }
+}
+
+/// Reviews an update from the marketplace's last fetched index (the UI refreshes first).
+pub fn preview_update(core: &Core, activity_id: &str) -> Res<UpdatePreviewDto> {
+    let Some(rec) = with_store(core, |s| s.installed_activity(activity_id))? else {
+        return Err(if shadowed_by_bundled(activity_id) {
+            StoreError::BuiltinProtected.into()
+        } else {
+            StoreError::NotFound.into()
+        });
+    };
+    let market = active_market(core, &rec.marketplace_id).map_err(|e| {
+        if e.kind == "notFound" {
+            CommandError::new(
+                "notFound",
+                "The marketplace this came from has been removed, so it can't be updated.",
+            )
+        } else {
+            e
+        }
+    })?;
+    let _guard = begin(core, &market.id)?;
+    let git = git(core)?;
+    let (pack, source_path) = prepare(core, &git, &market, activity_id)?;
+    let diff = diff_update(&summary_of(&rec), &pack.preview);
+    let token = put_pending(
+        core,
+        Pending {
+            kind: PendingKind::Update {
+                old_commit: rec.commit_sha.clone(),
+            },
+            marketplace_id: market.id.clone(),
+            source_path: source_path.clone(),
+            pack: pack.clone(),
+            created: Instant::now(),
+        },
+    )?;
+    Ok(UpdatePreviewDto {
+        preview: preview_dto(token, &market.id, &source_path, &pack, false),
+        from: FromDto {
+            commit: rec.commit_sha.clone(),
+            version: rec.manifest_version.clone(),
+            permissions: rec.permissions.clone(),
+        },
+        added_permissions: diff.added_permissions,
+        removed_permissions: diff.removed_permissions,
+        kind_changed: diff.kind_change.is_some(),
+        engine_changed: diff.engine_change.is_some(),
+        source_changed: diff
+            .source_changed
+            .map(|(old, new)| SourceChangedDto { old, new }),
+        unchanged: diff.unchanged,
+    })
+}
+
+/// Applies a previewed update: new commit folder first, then the record, then the old folder.
+pub fn update_pending(core: &Core, token: &str, now: Instant) -> Res<()> {
+    let pending = take_pending(core, token, now)?;
+    let PendingKind::Update { old_commit } = &pending.kind else {
+        return Err(CommandError::new(
+            "notFound",
+            "This review is for an install, not an update.",
+        ));
+    };
+    let _guard = begin(core, &pending.marketplace_id)?;
+    active_market(core, &pending.marketplace_id)?;
+    let p = &pending.pack.preview;
+    let _activity_guard = begin(core, &activity_key(&p.activity_id))?;
+    let current = with_store(core, |s| s.installed_activity(&p.activity_id))?;
+    let Some(current) = current
+        .filter(|c| c.commit_sha == *old_commit && c.marketplace_id == pending.marketplace_id)
+    else {
+        return Err(CommandError::new(
+            "notFound",
+            "This activity changed since the review. Review the update again.",
+        ));
+    };
+    if p.commit == current.commit_sha {
+        return Ok(());
+    }
+    if p.kind == Kind::App && p.third_party && !marketplace::third_party_code_allowed() {
+        return Err(third_party_blocked());
+    }
+    let root = install_root(core);
+    install(&root, &pending.pack)?;
+    let recorded = with_store(core, |s| {
+        s.put_installed_activity(&record_of(&pending), OffsetDateTime::now_utc())
+    });
+    if let Err(e) = recorded {
+        let _ = remove_install(&root, &p.activity_id, &p.commit);
+        return Err(e);
+    }
+    // The old commit's folder goes only after the record points at the new one.
+    let _ = remove_install(&root, &p.activity_id, &current.commit_sha);
+    refresh_library(core, &p.activity_id, true);
+    Ok(())
+}
+
+/// Uninstalls an installed activity. Saved state goes only if asked.
+pub fn uninstall(core: &Core, activity_id: &str, delete_saved_state: bool) -> Res<()> {
+    let Some(rec) = with_store(core, |s| s.installed_activity(activity_id))? else {
+        return Err(if shadowed_by_bundled(activity_id) {
+            StoreError::BuiltinProtected.into()
+        } else {
+            StoreError::NotFound.into()
+        });
+    };
+    let _guard = begin(core, &rec.marketplace_id)?;
+    let _activity_guard = begin(core, &activity_key(activity_id))?;
+    with_store(core, |s| {
+        s.remove_installed_activity(activity_id, OffsetDateTime::now_utc())
+    })?;
+    if delete_saved_state {
+        with_store(core, |s| s.clear_activity_state(activity_id))?;
+    }
+    let root = install_root(core);
+    let removed = remove_install(&root, activity_id, &rec.commit_sha);
+    refresh_library(core, activity_id, true);
+    // Leftovers of an interrupted update, if any.
+    if let Ok(dir) = marketplace::install_dir(&root, activity_id, &rec.commit_sha)
+        && let Some(parent) = dir.parent()
+    {
+        let _ = std::fs::remove_dir_all(parent);
+    }
+    removed.map_err(|_| {
+        CommandError::new(
+            "internal",
+            "The activity was removed, but some of its files couldn't be deleted.",
+        )
+    })
+}
+
+/// Turns an activity on or off: per activity for bundled ones, in the store for installed ones.
+pub fn set_enabled(core: &Core, activity_id: &str, enabled: bool) -> Res<()> {
+    let now = OffsetDateTime::now_utc();
+    if bundled_listed().iter().any(|(m, _)| m.id == activity_id) {
+        with_store(core, |s| s.set_builtin_disabled(activity_id, !enabled, now))?;
+        refresh_library(core, activity_id, false);
+        return Ok(());
+    }
+    if shadowed_by_bundled(activity_id) {
+        // An engine: hidden, never an item of its own.
+        return Err(StoreError::NotFound.into());
+    }
+    let Some(rec) = with_store(core, |s| s.installed_activity(activity_id))? else {
+        return Err(StoreError::NotFound.into());
+    };
+    if enabled {
+        // Turning on re-checks the files; a copy that changed stays off.
+        match verify_for_enable(core, &rec) {
+            Ok(()) => {}
+            Err(Problem::Tampered) => {
+                return Err(CommandError::new(
+                    "tampered",
+                    "This activity's files have changed since it was installed, so it can't be turned on. Uninstall it and install it again.",
+                ));
+            }
+            Err(Problem::MissingEngine) => {
+                // Allowed: it stays listed as unusable until Lullshift provides the engine.
+            }
+        }
+    }
+    with_store(core, |s| s.set_installed_enabled(activity_id, enabled, now))?;
+    refresh_library(core, activity_id, false);
+    Ok(())
+}
+
+// ---- commands ----------------------------------------------------------------------------
+
+async fn run<T: Send + 'static>(
+    core: &Arc<Core>,
+    f: impl FnOnce(&Core) -> Res<T> + Send + 'static,
+) -> Res<T> {
+    let core = Arc::clone(core);
+    tauri::async_runtime::spawn_blocking(move || f(&core))
+        .await
+        .map_err(|_| CommandError::internal())?
+}
+
+#[tauri::command]
+pub async fn marketplace_list(core: tauri::State<'_, Arc<Core>>) -> Res<Vec<MarketplaceDto>> {
+    run(&core, list).await
+}
+
+#[tauri::command]
+pub async fn marketplace_add(
+    core: tauri::State<'_, Arc<Core>>,
+    url: String,
+) -> Res<MarketplaceDto> {
+    let url = parse_git_url(url.trim()).map_err(|e| CommandError::from(Error::Url(e)))?;
+    run(&core, move |c| add(c, &url)).await
+}
+
+#[tauri::command]
+pub async fn marketplace_remove(core: tauri::State<'_, Arc<Core>>, id: String) -> Res<()> {
+    run(&core, move |c| remove(c, &id)).await
+}
+
+#[tauri::command]
+pub async fn marketplace_refresh(
+    core: tauri::State<'_, Arc<Core>>,
+    id: String,
+) -> Res<MarketplaceDto> {
+    run(&core, move |c| refresh(c, &id)).await
+}
+
+#[tauri::command]
+pub async fn marketplace_entries(
+    core: tauri::State<'_, Arc<Core>>,
+    id: String,
+) -> Res<Vec<EntryDto>> {
+    run(&core, move |c| entries(c, &id)).await
+}
+
+#[tauri::command]
+pub async fn marketplace_preview_install(
+    core: tauri::State<'_, Arc<Core>>,
+    marketplace_id: String,
+    activity_id: String,
+) -> Res<InstallPreviewDto> {
+    run(&core, move |c| {
+        preview_install(c, &marketplace_id, &activity_id)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn marketplace_install(core: tauri::State<'_, Arc<Core>>, token: String) -> Res<()> {
+    run(&core, move |c| install_pending(c, &token, Instant::now())).await
+}
+
+#[tauri::command]
+pub async fn marketplace_preview_update(
+    core: tauri::State<'_, Arc<Core>>,
+    activity_id: String,
+) -> Res<UpdatePreviewDto> {
+    run(&core, move |c| preview_update(c, &activity_id)).await
+}
+
+#[tauri::command]
+pub async fn marketplace_update(core: tauri::State<'_, Arc<Core>>, token: String) -> Res<()> {
+    run(&core, move |c| update_pending(c, &token, Instant::now())).await
+}
+
+#[tauri::command]
+pub async fn activity_uninstall(
+    core: tauri::State<'_, Arc<Core>>,
+    activity_id: String,
+    delete_saved_state: bool,
+) -> Res<()> {
+    run(&core, move |c| {
+        uninstall(c, &activity_id, delete_saved_state)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn activity_set_enabled(
+    core: tauri::State<'_, Arc<Core>>,
+    activity_id: String,
+    enabled: bool,
+) -> Res<()> {
+    run(&core, move |c| set_enabled(c, &activity_id, enabled)).await
+}
+
+#[cfg(test)]
+mod tests;

@@ -3,12 +3,23 @@ import { useCallback, useEffect, useState, type RefObject } from "react";
 import { relativeTime } from "../format";
 import { Banner } from "../ui/Banner";
 import { Icon } from "../ui/Icon";
+import { truncate } from "../marketplace/logic";
+import { ManagePanel } from "../marketplace/ManagePanel";
+import { MarketplacesPanel } from "../marketplace/MarketplacesPanel";
 import { ActivityHost, type ActivityInfo, type PauseRequest } from "./ActivityHost";
 import { HelpDialog } from "./HelpDialog";
 import { formatPlayed } from "./playTime";
 import { usePreview } from "./usePreview";
 
 type Load = { status: "loading" } | { status: "ready"; list: ActivityInfo[] } | { status: "error" };
+
+type Tab = "library" | "manage" | "marketplaces";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "library", label: "Library" },
+  { id: "manage", label: "Manage" },
+  { id: "marketplaces", label: "Marketplaces" },
+];
 
 const CATEGORY: Record<string, string> = {
   break: "Break",
@@ -32,6 +43,7 @@ export default function ActivitiesView({ headingRef, active, pause, now, onGoToS
   const [running, setRunning] = useState<ActivityInfo | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [helpFor, setHelpFor] = useState<ActivityInfo | null>(null);
+  const [tab, setTab] = useState<Tab>("library");
 
   const refresh = useCallback(() => {
     invoke<ActivityInfo[]>("activities_list")
@@ -83,19 +95,46 @@ export default function ActivitiesView({ headingRef, active, pause, now, onGoToS
         </p>
       </header>
 
-      {message && <Banner tone="success">{message}</Banner>}
-      {load.status === "loading" && (
+      <nav aria-label="Activities sections">
+        <ul className="subtabs">
+          {TABS.map((t) => (
+            <li key={t.id}>
+              <button
+                type="button"
+                className="subtab"
+                aria-current={tab === t.id ? "page" : undefined}
+                onClick={() => {
+                  setTab(t.id);
+                  if (t.id === "library") refresh();
+                }}
+              >
+                {t.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      {tab === "manage" && <ManagePanel onChanged={refresh} />}
+      {tab === "marketplaces" && <MarketplacesPanel now={now} onChanged={refresh} />}
+      {tab === "library" && message && <Banner tone="success">{message}</Banner>}
+      {tab === "library" && load.status === "loading" && (
         <div className="skeletons" role="status">
           <span className="visually-hidden">Loading activities…</span>
           <div className="skeleton" />
         </div>
       )}
-      {load.status === "error" && (
+      {tab === "library" && load.status === "error" && (
         <Banner tone="danger">
           Activities couldn't be listed. Restart Lullshift to try again.
         </Banner>
       )}
-      {load.status === "ready" && (
+      {tab === "library" && load.status === "ready" && load.list.length === 0 && (
+        <Banner tone="info">
+          No activities are turned on. Turn some on under Manage, or add more under Marketplaces.
+        </Banner>
+      )}
+      {tab === "library" && load.status === "ready" && (
         <ul className="activity-grid">
           {load.list.map((a) => (
             <ActivityCard
@@ -145,6 +184,9 @@ function ActivityCard({
         </div>
       )}
       <span className="activity-kind">{CATEGORY[a.category] ?? a.category}</span>
+      {a.source && !a.source.builtin && (
+        <span className="activity-source">From {truncate(a.source.marketplaceId, 40)}</span>
+      )}
       <h2 className="activity-name">{a.name}</h2>
       <p className="activity-desc">{a.description}</p>
       {(a.savedUtc || a.playedSeconds >= 60) && (

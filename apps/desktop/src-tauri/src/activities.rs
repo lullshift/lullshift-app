@@ -13,9 +13,15 @@
 //! Content packs (ADR-016) are listed and run like apps, under their own id: the iframe loads
 //! `/<pack id>/index.html`, which serves the *engine's* files, so each pack has its own URL,
 //! snapshots, storage and play time. Engines themselves are never listed, served or launched.
-//! A pack's data is checked against its engine's data schema ([`crate::data_schema`]) before
+//! A pack's data is checked against its engine's data schema ([`marketplace::data_schema`]) before
 //! anything is served, and reaches the engine only as `init.content` (`activity_content`).
+//!
+//! Activities installed from a marketplace (Sprint 08, ADR-015) are served the same way, under
+//! the same CSP and path rules, from `<app data>/installed/<id>/<commit>/`, and only while they
+//! are enabled and still match their install digest (see [`installed`]). Bundled ids always win:
+//! an installed activity can never shadow a bundled one.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
@@ -25,8 +31,14 @@ use serde_json::Value;
 use tauri::http::{Response, StatusCode, header};
 use time::OffsetDateTime;
 
+pub(crate) mod installed;
+
 use crate::Core;
-use crate::data_schema;
+use installed::{Served, ServedRole};
+use marketplace::data_schema;
+#[cfg(test)]
+use marketplace::manifest::plain;
+use marketplace::manifest::{Help, Manifest, parse_manifest, valid_id, valid_rel_path};
 
 /// The URL scheme activities are served from.
 pub const SCHEME: &str = "lullact";
@@ -52,142 +64,19 @@ static BUNDLED: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../../activi
 #[cfg(debug_assertions)]
 static PROBE: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/sandbox-probe");
 
-/// The subset of `reference/ACTIVITY_MANIFEST_V1.schema.json` the host relies on. Unknown fields
-/// are accepted here (the schema is checked in `pnpm check`), but every field used is checked.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Manifest {
-    schema_version: u32,
-    kind: String,
-    id: String,
-    version: String,
-    name: String,
-    #[serde(default)]
-    description: String,
-    author: Option<String>,
-    category: String,
-    min_host_version: String,
-    sdk_version: String,
-    permissions: Vec<String>,
-    entrypoint: Option<String>,
-    runtime: Option<String>,
-    interruptibility: Option<Interruptibility>,
-    help: Option<Help>,
-    preview: Option<String>,
-    /// Content packs only: `id@major` of the engine that runs the pack.
-    engine: Option<String>,
-    /// Content packs only: the data file, relative to the pack folder.
-    data: Option<String>,
-}
-
-/// How-to-play help (S05-T07). Plain text only; the UI renders it as text.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Help {
-    summary: String,
-    goal: Option<String>,
-    how_to_play: Vec<String>,
-    #[serde(default)]
-    controls: Vec<HelpControl>,
-    #[serde(default)]
-    tips: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct HelpControl {
-    keys: String,
-    action: String,
-}
-
-impl Help {
-    /// The same limits as the manifest schema's `help`.
-    fn is_valid(&self) -> bool {
-        let list = |items: &[String], min: usize, max_items: usize, max: usize| {
-            items.len() >= min && items.len() <= max_items && items.iter().all(|t| plain(t, max))
-        };
-        plain(&self.summary, 200)
-            && self.goal.as_deref().is_none_or(|g| plain(g, 300))
-            && list(&self.how_to_play, 1, 8, 300)
-            && self.controls.len() <= 12
-            && self
-                .controls
-                .iter()
-                .all(|c| plain(&c.keys, 40) && plain(&c.action, 120))
-            && list(&self.tips, 0, 6, 200)
-    }
-}
-
-/// Plain text of 1 to `max` characters with no control, bidirectional-override or invisible
-/// formatting characters. Mirrors the manifest schema and `isPlainText` in the SDK.
-fn plain(text: &str, max: usize) -> bool {
-    !text.is_empty() && text.chars().count() <= max && !text.chars().any(hidden_char)
-}
-
-pub(crate) fn hidden_char(c: char) -> bool {
-    matches!(c,
-        '\u{0}'..='\u{1F}' | '\u{7F}'..='\u{9F}' | '\u{AD}' | '\u{61C}' | '\u{180E}'
-        | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
-        | '\u{2066}'..='\u{206F}' | '\u{FEFF}')
-}
-
-/// A relative file path whose segments start with a letter, digit or underscore (so no `.`,
-/// `..`, hidden names or leading `-`), at most 8 deep, ending in one of `exts`.
-fn valid_rel_path(path: &str, exts: &[&str]) -> bool {
-    let segments: Vec<&str> = path.split('/').collect();
-    let ext_ok = path
-        .rsplit_once('.')
-        .is_some_and(|(_, e)| exts.contains(&e));
-    path.len() <= 256
-        && segments.len() <= 8
-        && ext_ok
-        && segments.iter().all(|s| {
-            s.len() <= 64
-                && s.bytes()
-                    .next()
-                    .is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_')
-                && s.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
-        })
-}
-
-/// `MAJOR.MINOR.PATCH` with an optional pre-release, as in the manifest schema.
-fn valid_semver(v: &str) -> bool {
-    let (core, pre) = v.split_once('-').map_or((v, None), |(c, p)| (c, Some(p)));
-    let nums: Vec<&str> = core.split('.').collect();
-    v.len() <= 64
-        && nums.len() == 3
-        && nums
-            .iter()
-            .all(|n| (1..=5).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_digit()))
-        && pre.is_none_or(|p| {
-            (1..=40).contains(&p.len())
-                && p.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-'))
-        })
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Interruptibility {
-    pause: bool,
-    resume: bool,
-    persist_state: bool,
-}
-
 #[derive(Clone)]
-struct Activity {
-    manifest: Manifest,
-    dir: &'static Dir<'static>,
+pub(crate) struct Activity {
+    pub(crate) manifest: Manifest,
+    pub(crate) dir: &'static Dir<'static>,
     /// Shown in the Activities list. The sandbox probe is listed too, but exists only in
     /// debug builds.
-    listed: bool,
-    role: Role,
+    pub(crate) listed: bool,
+    pub(crate) role: Role,
 }
 
 /// What an activity folder is (ADR-016).
 #[derive(Clone)]
-enum Role {
+pub(crate) enum Role {
     /// A sandboxed web app with its own files.
     App,
     /// An app that runs content packs; hidden. None if its `engine.json` is invalid, so no
@@ -198,11 +87,11 @@ enum Role {
 }
 
 #[derive(Clone)]
-struct EngineDef {
+pub(crate) struct EngineDef {
     /// `id@major`, as packs name it.
-    reference: String,
+    pub(crate) reference: String,
     /// The checked data schema, or why it can't be used (packs naming it say so).
-    schema: Result<Value, String>,
+    pub(crate) schema: Result<Value, String>,
 }
 
 /// `engine.json` beside an engine's manifest.
@@ -226,6 +115,11 @@ pub struct ContentError {
 }
 
 impl ContentError {
+    #[cfg(test)]
+    pub(crate) fn code(&self) -> &'static str {
+        self.code
+    }
+
     fn new(code: &'static str, detail: impl Into<String>) -> Self {
         Self {
             code,
@@ -253,6 +147,35 @@ pub struct ActivityInfo {
     played_seconds: i64,
     /// Content packs: the engine reference (`id@major`); None for apps.
     engine: Option<String>,
+    /// Where the activity came from.
+    source: Source,
+}
+
+/// Which marketplace an activity came from.
+#[cfg(test)]
+impl ActivityInfo {
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Source {
+    marketplace_id: String,
+    builtin: bool,
+    /// The pinned commit of an installed activity; null for bundled ones.
+    commit: Option<String>,
+}
+
+impl Source {
+    fn bundled() -> Self {
+        Self {
+            marketplace_id: installed::BUILTIN_ID.to_owned(),
+            builtin: true,
+            commit: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -262,7 +185,7 @@ pub struct Snapshot {
     saved_utc: String,
 }
 
-fn catalog() -> &'static BTreeMap<String, Activity> {
+pub(crate) fn catalog() -> &'static BTreeMap<String, Activity> {
     static CATALOG: OnceLock<BTreeMap<String, Activity>> = OnceLock::new();
     CATALOG.get_or_init(|| {
         let mut map = BTreeMap::new();
@@ -346,80 +269,20 @@ fn parse_engine(dir: &Dir<'_>, json: &[u8]) -> Option<EngineDef> {
     })
 }
 
-/// `id@major` as in the manifest schema: a manifest id, `@`, and a positive major.
-fn valid_engine_ref(reference: &str) -> bool {
-    reference.split_once('@').is_some_and(|(id, major)| {
-        valid_id(id)
-            && (1..=4).contains(&major.len())
-            && major.bytes().all(|b| b.is_ascii_digit())
-            && !major.starts_with('0')
-    })
-}
-
-/// A manifest the host can run: a sandboxed web app that supports host-owned interruption, or
-/// a content pack that names an engine and a data file.
-fn parse_manifest(json: &str) -> Option<Manifest> {
-    let m: Manifest = serde_json::from_str(json).ok()?;
-    let interruptible = m
-        .interruptibility
-        .as_ref()
-        .is_some_and(|i| i.pause && i.resume && i.persist_state);
-    let shape = match m.kind.as_str() {
-        "app" => {
-            m.entrypoint.as_deref() == Some("index.html")
-                && m.runtime.as_deref() == Some("isolated-web-v1")
-                && interruptible
-                && m.engine.is_none()
-                && m.data.is_none()
-        }
-        "content" => {
-            m.entrypoint.is_none()
-                && m.runtime.is_none()
-                && m.interruptibility.is_none()
-                && m.engine.as_deref().is_some_and(valid_engine_ref)
-                && m.data
-                    .as_deref()
-                    .is_some_and(|d| valid_rel_path(d, &["json"]))
-        }
-        _ => false,
-    };
-    let ok = m.schema_version == 1
-        && shape
-        && valid_id(&m.id)
-        && plain(&m.name, 100)
-        && (m.description.is_empty() || plain(&m.description, 500))
-        && m.author
-            .as_deref()
-            .is_none_or(|a| a.is_empty() || plain(a, 100))
-        && valid_semver(&m.version)
-        && valid_semver(&m.min_host_version)
-        && valid_semver(&m.sdk_version)
-        && m.help.as_ref().is_none_or(Help::is_valid)
-        && m.preview
-            .as_deref()
-            .is_none_or(|p| valid_rel_path(p, &["png", "jpg", "jpeg", "webp", "svg"]))
-        && ["arcade", "break", "productivity", "interactive"].contains(&m.category.as_str())
-        && m.permissions.iter().all(|p| p == "activity.storage");
-    ok.then_some(m)
-}
-
-/// Manifest ID pattern `^[a-z0-9]+(\.[a-z0-9-]+)+$`, at most 160 characters.
-fn valid_id(id: &str) -> bool {
-    let mut parts = id.split('.');
-    let first_ok = parts.next().is_some_and(|p| {
-        !p.is_empty()
-            && p.bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
-    });
-    let rest: Vec<&str> = parts.collect();
-    id.len() <= 160
-        && first_ok
-        && !rest.is_empty()
-        && rest.iter().all(|p| {
-            !p.is_empty()
-                && p.bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+/// The bundled activities shown in the library (engines excluded), with their kind.
+pub(crate) fn bundled_listed() -> Vec<(Manifest, &'static str)> {
+    catalog()
+        .values()
+        .filter(|a| a.listed)
+        .map(|a| {
+            let kind = if matches!(a.role, Role::Pack) {
+                "content"
+            } else {
+                "app"
+            };
+            (a.manifest.clone(), kind)
         })
+        .collect()
 }
 
 /// An app or pack by id. Engines are not activities of their own.
@@ -429,13 +292,16 @@ fn runnable(id: &str) -> Option<&'static Activity> {
         .filter(|a| !matches!(a.role, Role::Engine(_)))
 }
 
+#[cfg(test)]
 fn activity(id: &str) -> Result<&'static Activity, String> {
     runnable(id).ok_or_else(|| "unknown_activity".to_owned())
 }
 
 /// The engine a pack names: exactly one bundled engine must claim `id@major`, and its data
 /// schema must be usable.
-fn find_engine(reference: &str) -> Result<(&'static Activity, &'static Value), ContentError> {
+pub(crate) fn find_engine(
+    reference: &str,
+) -> Result<(&'static Activity, &'static Value), ContentError> {
     let mut found = catalog().values().filter_map(|a| match &a.role {
         Role::Engine(Some(def)) if def.reference == reference => Some((a, def)),
         _ => None,
@@ -489,13 +355,24 @@ fn check_pack(p: &Activity) -> Checked {
         .dir
         .get_file(p.dir.path().join(data_path))
         .ok_or_else(|| ContentError::new("data_missing", format!("{data_path} is missing")))?;
-    if file.contents().len() > DATA_MAX {
+    let data = validate_data(schema, data_path, file.contents())?;
+    Ok((engine, data))
+}
+
+/// A pack's data file against its engine's schema: at most [`DATA_MAX`] bytes, JSON, and valid.
+/// Bundled and installed packs share this check.
+pub(crate) fn validate_data(
+    schema: &Value,
+    data_path: &str,
+    contents: &[u8],
+) -> Result<Value, ContentError> {
+    if contents.len() > DATA_MAX {
         return Err(ContentError::new(
             "data_too_large",
             format!("{data_path} is over 256 KiB"),
         ));
     }
-    let data: Value = serde_json::from_slice(file.contents())
+    let data: Value = serde_json::from_slice(contents)
         .map_err(|_| ContentError::new("data_not_json", format!("{data_path} isn't valid JSON")))?;
     let problems = data_schema::validate(schema, &data);
     if !problems.is_empty() {
@@ -515,7 +392,27 @@ fn check_pack(p: &Activity) -> Checked {
             format!("{}{tail}", shown.join("; ")),
         ));
     }
-    Ok((engine, data))
+    Ok(data)
+}
+
+/// The bundled engines this host provides, with usable data schemas, for checking packs read
+/// from a marketplace.
+pub(crate) fn available_engines() -> Vec<marketplace::AvailableEngine> {
+    catalog()
+        .values()
+        .filter_map(|a| match &a.role {
+            Role::Engine(Some(def)) => {
+                def.schema
+                    .as_ref()
+                    .ok()
+                    .map(|schema| marketplace::AvailableEngine {
+                        reference: def.reference.clone(),
+                        schema: schema.clone(),
+                    })
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// Whether the activity may use `activity.storage`. A pack needs it declared by both the pack
@@ -600,29 +497,42 @@ fn split_path(path: &str) -> Option<(&str, &str)> {
     ok.then_some((id, file))
 }
 
-/// The bytes and content type for a request path, if it names an allowed bundled file.
+/// The bytes and content type for a request path, if it names an allowed file of a bundled
+/// activity, or of an installed one in `snap`.
 ///
 /// A pack's path serves its engine's files, and only once the pack's data has passed the
 /// engine's schema; the pack's own files are never served. Engines have no path of their own.
-fn lookup(path: &str) -> Option<(&'static [u8], &'static str)> {
+/// Bundled ids win over installed ones; a disabled bundled activity is not served.
+fn lookup(
+    snap: Option<&installed::Snapshot>,
+    path: &str,
+) -> Option<(Cow<'static, [u8]>, &'static str)> {
     let (id, file) = split_path(path)?;
-    let activity = runnable(id)?;
     let content_type = mime(file)?;
-    let source = match activity.role {
-        Role::Pack => pack_content(activity).ok()?.0,
-        _ => activity,
-    };
-    let found = source.dir.get_file(source.dir.path().join(file))?;
-    Some((found.contents(), content_type))
+    if let Some(activity) = runnable(id) {
+        if snap.is_some_and(|s| s.disabled.contains(id)) {
+            return None;
+        }
+        let source = match activity.role {
+            Role::Pack => pack_content(activity).ok()?.0,
+            _ => activity,
+        };
+        let found = source.dir.get_file(source.dir.path().join(file))?;
+        return Some((Cow::Borrowed(found.contents()), content_type));
+    }
+    let served = snap?.served.get(id)?;
+    Some((served.file(file)?, content_type))
 }
 
 /// Serves one request on the `lullact` scheme. Only GET; everything carries the activity CSP.
-pub fn serve(request: &tauri::http::Request<Vec<u8>>) -> Response<Vec<u8>> {
+/// Without the app state (before setup finishes) only bundled activities can be served.
+pub fn serve(core: Option<&Core>, request: &tauri::http::Request<Vec<u8>>) -> Response<Vec<u8>> {
+    let snap = core.and_then(|c| c.library.snapshot(c).ok());
     let found = (request.method() == tauri::http::Method::GET)
-        .then(|| lookup(request.uri().path()))
+        .then(|| lookup(snap.as_deref(), request.uri().path()))
         .flatten();
     let (status, body, content_type) = match found {
-        Some((bytes, ct)) => (StatusCode::OK, bytes.to_vec(), ct),
+        Some((bytes, ct)) => (StatusCode::OK, bytes.into_owned(), ct),
         None => (
             StatusCode::NOT_FOUND,
             b"Not found".to_vec(),
@@ -655,10 +565,44 @@ fn valid_key(key: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
+/// An activity the host can act on: bundled, or installed and currently runnable.
+enum Found {
+    Bundled(&'static Activity),
+    Installed(Arc<Served>),
+}
+
+/// Finds an activity by id. With `launch`, a bundled activity the user disabled is refused (it
+/// is hidden from the library and must not start); without it (saved state, play time) the
+/// activity only has to exist. Installed activities must be enabled, verified and runnable.
+fn find(core: &Core, id: &str, launch: bool) -> Result<Found, String> {
+    if let Some(a) = runnable(id) {
+        if launch {
+            let snap = core.library.snapshot(core)?;
+            if snap.disabled.contains(id) {
+                return Err("unknown_activity".into());
+            }
+        }
+        return Ok(Found::Bundled(a));
+    }
+    let snap = core.library.snapshot(core)?;
+    snap.served
+        .get(id)
+        .map(|s| Found::Installed(Arc::clone(s)))
+        .ok_or_else(|| "unknown_activity".to_owned())
+}
+
+/// Whether the activity may use `activity.storage`.
+fn found_has_storage(f: &Found) -> bool {
+    match f {
+        Found::Bundled(a) => has_storage(a),
+        Found::Installed(s) => s.has_storage(),
+    }
+}
+
 /// An activity that declared `activity.storage`, and a valid key.
-fn storage_target(id: &str, key: &str) -> Result<(), String> {
-    let a = activity(id)?;
-    if !has_storage(a) {
+pub(crate) fn storage_target(core: &Core, id: &str, key: &str) -> Result<(), String> {
+    let f = find(core, id, false)?;
+    if !found_has_storage(&f) {
         return Err("not_permitted".into());
     }
     if !valid_key(key) {
@@ -692,29 +636,51 @@ pub async fn activities_list(
     core: tauri::State<'_, Arc<Core>>,
 ) -> Result<Vec<ActivityInfo>, String> {
     let core = Arc::clone(&core);
-    blocking(move || {
-        let saved: BTreeMap<String, String> = with_store(&core, |s| s.snapshots())
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        let played: BTreeMap<String, i64> = with_store(&core, |s| s.play_times())
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        Ok(catalog()
-            .values()
-            .filter(|a| a.listed)
-            .map(|a| {
-                let id = &a.manifest.id;
-                info(
-                    a,
-                    saved.get(id).cloned(),
-                    played.get(id).copied().unwrap_or(0),
-                )
-            })
-            .collect())
-    })
-    .await
+    blocking(move || list_activities(&core)).await
+}
+
+/// Enabled bundled activities, then installed ones that are enabled and verified. Engines,
+/// disabled bundled activities and tampered or broken installs are left out.
+pub(crate) fn list_activities(core: &Core) -> Result<Vec<ActivityInfo>, String> {
+    let snap = core.library.snapshot(core)?;
+    let saved: BTreeMap<String, String> = with_store(core, |s| s.snapshots())
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let played: BTreeMap<String, i64> = with_store(core, |s| s.play_times())
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let saved_of = |id: &String| saved.get(id).cloned();
+    let played_of = |id: &String| played.get(id).copied().unwrap_or(0);
+    let bundled = catalog()
+        .values()
+        .filter(|a| a.listed && !snap.disabled.contains(&a.manifest.id))
+        .map(|a| {
+            let id = &a.manifest.id;
+            info(a, saved_of(id), played_of(id))
+        });
+    let installed = snap
+        .served
+        .iter()
+        .map(|(id, s)| installed_info(s, saved_of(id), played_of(id)));
+    Ok(bundled.chain(installed).collect())
+}
+
+/// Ids of the listed activities. For tests.
+#[cfg(test)]
+pub(crate) fn list_ids(core: &Core) -> Result<Vec<String>, String> {
+    Ok(list_activities(core)?.into_iter().map(|i| i.id).collect())
+}
+
+/// Every bundled and installed activity, disabled and broken ones included, so the user can
+/// re-enable, update or remove them.
+#[tauri::command]
+pub async fn activities_manage_list(
+    core: tauri::State<'_, Arc<Core>>,
+) -> Result<Vec<installed::ManageItem>, String> {
+    let core = Arc::clone(&core);
+    blocking(move || Ok(core.library.snapshot(&core)?.manage.clone())).await
 }
 
 /// One activity, for the host to launch.
@@ -725,13 +691,16 @@ pub async fn activity_info(
 ) -> Result<ActivityInfo, String> {
     let core = Arc::clone(&core);
     blocking(move || {
-        let a = activity(&id)?;
+        let found = find(&core, &id, true)?;
         let saved = with_store(&core, |s| s.snapshot(&id))
             .ok()
             .flatten()
             .map(|(_, t)| t);
         let played = with_store(&core, |s| s.play_time(&id)).unwrap_or(0);
-        Ok(info(a, saved, played))
+        Ok(match found {
+            Found::Bundled(a) => info(a, saved, played),
+            Found::Installed(s) => installed_info(&s, saved, played),
+        })
     })
     .await
 }
@@ -751,18 +720,64 @@ fn info(a: &Activity, saved_utc: Option<String>, played_seconds: i64) -> Activit
         preview: m.preview.is_some(),
         played_seconds,
         engine: m.engine.clone(),
+        source: Source::bundled(),
+    }
+}
+
+fn installed_info(s: &Served, saved_utc: Option<String>, played_seconds: i64) -> ActivityInfo {
+    let m = &s.manifest;
+    ActivityInfo {
+        id: m.id.clone(),
+        name: m.name.clone(),
+        description: m.description.clone(),
+        category: m.category.clone(),
+        version: m.version.clone(),
+        url: entry_url(&m.id),
+        storage: s.has_storage(),
+        saved_utc,
+        help: m.help.clone(),
+        preview: m.preview.is_some(),
+        played_seconds,
+        engine: m.engine.clone(),
+        source: Source {
+            marketplace_id: s.marketplace_id.clone(),
+            builtin: false,
+            commit: Some(s.commit.clone()),
+        },
     }
 }
 
 /// What the host hands an activity as `init.content`: a pack's data, checked against its
 /// engine's data schema, or null for an app. The UI starts a pack only after this succeeds.
 #[tauri::command]
-pub async fn activity_content(id: String) -> Result<Value, ContentError> {
-    tauri::async_runtime::spawn_blocking(move || content_for(&id))
+pub async fn activity_content(
+    core: tauri::State<'_, Arc<Core>>,
+    id: String,
+) -> Result<Value, ContentError> {
+    let core = Arc::clone(&core);
+    tauri::async_runtime::spawn_blocking(move || content_for_core(&core, &id))
         .await
         .map_err(|_| ContentError::new("internal", "the check didn't finish"))?
 }
 
+/// A bundled pack's checked data, or an installed pack's data (checked when it was verified and
+/// kept in memory, so nothing changed on disk afterwards reaches the engine).
+pub(crate) fn content_for_core(core: &Core, id: &str) -> Result<Value, ContentError> {
+    match find(core, id, true) {
+        Ok(Found::Bundled(a)) => match a.role {
+            Role::Pack => pack_content(a).map(|(_, data)| data.clone()),
+            _ => Ok(Value::Null),
+        },
+        Ok(Found::Installed(s)) => Ok(match &s.role {
+            ServedRole::Pack { data, .. } => data.clone(),
+            ServedRole::App => Value::Null,
+        }),
+        Err(code) if code == "unknown_activity" => Err(ContentError::new("unknown_activity", "")),
+        Err(_) => Err(ContentError::new("internal", "the check didn't finish")),
+    }
+}
+
+#[cfg(test)]
 fn content_for(id: &str) -> Result<Value, ContentError> {
     let a = runnable(id).ok_or_else(|| ContentError::new("unknown_activity", ""))?;
     match a.role {
@@ -775,9 +790,28 @@ fn content_for(id: &str) -> Result<Value, ContentError> {
 /// too large or of the wrong type). The UI shows it only in an `<img>`, so the app's CSP stays
 /// unchanged and an SVG never runs script.
 #[tauri::command]
-pub fn activity_preview(id: String) -> Result<Option<String>, String> {
-    let a = activity(&id)?;
-    Ok(a.manifest.preview.as_deref().and_then(preview_data_url(a)))
+pub async fn activity_preview(
+    core: tauri::State<'_, Arc<Core>>,
+    id: String,
+) -> Result<Option<String>, String> {
+    let core = Arc::clone(&core);
+    blocking(move || {
+        Ok(match find(&core, &id, false)? {
+            Found::Bundled(a) => a.manifest.preview.as_deref().and_then(preview_data_url(a)),
+            Found::Installed(s) => {
+                let content_type = s
+                    .manifest
+                    .preview
+                    .as_deref()
+                    .and_then(mime)
+                    .filter(|t| t.starts_with("image/"));
+                content_type
+                    .zip(s.preview_bytes(PREVIEW_MAX))
+                    .map(|(t, bytes)| format!("data:{t};base64,{}", base64(&bytes)))
+            }
+        })
+    })
+    .await
 }
 
 fn preview_data_url(a: &Activity) -> impl Fn(&str) -> Option<String> + '_ {
@@ -799,9 +833,9 @@ pub async fn activity_add_play(
     seconds: i64,
     launch: bool,
 ) -> Result<(), String> {
-    activity(&id)?;
     let core = Arc::clone(&core);
     blocking(move || {
+        find(&core, &id, false)?;
         with_store(&core, |s| {
             s.add_play_time(
                 &id,
@@ -840,9 +874,12 @@ pub async fn activity_storage_get(
     id: String,
     key: String,
 ) -> Result<Option<String>, String> {
-    storage_target(&id, &key)?;
     let core = Arc::clone(&core);
-    blocking(move || with_store(&core, |s| s.activity_value(&id, &key))).await
+    blocking(move || {
+        storage_target(&core, &id, &key)?;
+        with_store(&core, |s| s.activity_value(&id, &key))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -852,12 +889,12 @@ pub async fn activity_storage_set(
     key: String,
     value: String,
 ) -> Result<(), String> {
-    storage_target(&id, &key)?;
-    if value.len() > VALUE_MAX {
-        return Err("value_too_large".into());
-    }
     let core = Arc::clone(&core);
     blocking(move || {
+        storage_target(&core, &id, &key)?;
+        if value.len() > VALUE_MAX {
+            return Err("value_too_large".into());
+        }
         with_store(&core, |s| {
             s.set_activity_value(&id, &key, &value, STORAGE_QUOTA)
         })
@@ -871,9 +908,12 @@ pub async fn activity_storage_remove(
     id: String,
     key: String,
 ) -> Result<(), String> {
-    storage_target(&id, &key)?;
     let core = Arc::clone(&core);
-    blocking(move || with_store(&core, |s| s.remove_activity_value(&id, &key))).await
+    blocking(move || {
+        storage_target(&core, &id, &key)?;
+        with_store(&core, |s| s.remove_activity_value(&id, &key))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -881,9 +921,9 @@ pub async fn activity_snapshot(
     core: tauri::State<'_, Arc<Core>>,
     id: String,
 ) -> Result<Option<Snapshot>, String> {
-    activity(&id)?;
     let core = Arc::clone(&core);
     blocking(move || {
+        find(&core, &id, false)?;
         Ok(
             with_store(&core, |s| s.snapshot(&id))?.map(|(snapshot, saved_utc)| Snapshot {
                 snapshot,
@@ -902,17 +942,17 @@ pub async fn activity_save_snapshot(
     id: String,
     snapshot: String,
 ) -> Result<(), String> {
-    activity(&id)?;
-    if snapshot.len() > SNAPSHOT_MAX {
-        return Err("quota_exceeded".into());
-    }
-    // A null state would replace good progress with nothing; the host never sends one.
-    match serde_json::from_str::<serde_json::Value>(&snapshot) {
-        Ok(serde_json::Value::Null) | Err(_) => return Err("invalid_snapshot".into()),
-        Ok(_) => {}
-    }
     let core = Arc::clone(&core);
     blocking(move || {
+        find(&core, &id, false)?;
+        if snapshot.len() > SNAPSHOT_MAX {
+            return Err("quota_exceeded".into());
+        }
+        // A null state would replace good progress with nothing; the host never sends one.
+        match serde_json::from_str::<serde_json::Value>(&snapshot) {
+            Ok(serde_json::Value::Null) | Err(_) => return Err("invalid_snapshot".into()),
+            Ok(_) => {}
+        }
         with_store(&core, |s| {
             s.save_snapshot(&id, &snapshot, OffsetDateTime::now_utc(), SNAPSHOT_MAX)
         })
@@ -925,9 +965,12 @@ pub async fn activity_clear_snapshot(
     core: tauri::State<'_, Arc<Core>>,
     id: String,
 ) -> Result<(), String> {
-    activity(&id)?;
     let core = Arc::clone(&core);
-    blocking(move || with_store(&core, |s| s.clear_snapshot(&id))).await
+    blocking(move || {
+        find(&core, &id, false)?;
+        with_store(&core, |s| s.clear_snapshot(&id))
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -1105,6 +1148,7 @@ mod tests {
         assert!(!listed.is_empty(), "at least one bundled activity");
         let id = listed[0];
         let ok = serve(
+            None,
             &tauri::http::Request::get(format!("{SCHEME}://localhost/{id}/index.html"))
                 .body(Vec::new())
                 .expect("request"),
@@ -1121,6 +1165,7 @@ mod tests {
             ("POST", format!("/{id}/index.html")),
         ] {
             let r = serve(
+                None,
                 &tauri::http::Request::builder()
                     .method(method)
                     .uri(format!("{SCHEME}://localhost{path}"))
@@ -1139,15 +1184,20 @@ mod tests {
             .find(|a| matches!(a.role, Role::App) && has_storage(a))
             .map(|a| a.manifest.id.clone())
             .expect("an activity with storage");
-        assert!(storage_target(&id, "best-score").is_ok());
-        assert_eq!(storage_target(&id, "").unwrap_err(), "invalid_key");
-        assert_eq!(storage_target(&id, "a/b").unwrap_err(), "invalid_key");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let core = Core::for_tests(dir.path());
+        assert!(storage_target(&core, &id, "best-score").is_ok());
+        assert_eq!(storage_target(&core, &id, "").unwrap_err(), "invalid_key");
         assert_eq!(
-            storage_target(&id, &"k".repeat(65)).unwrap_err(),
+            storage_target(&core, &id, "a/b").unwrap_err(),
             "invalid_key"
         );
         assert_eq!(
-            storage_target("app.unknown.activity", "k").unwrap_err(),
+            storage_target(&core, &id, &"k".repeat(65)).unwrap_err(),
+            "invalid_key"
+        );
+        assert_eq!(
+            storage_target(&core, "app.unknown.activity", "k").unwrap_err(),
             "unknown_activity"
         );
     }
@@ -1221,22 +1271,25 @@ mod tests {
             assert_eq!(content_for(id).as_ref(), Ok(data), "{id}");
             assert!(p.listed, "{id} is listed");
             // The pack's path serves its engine's files, never the pack's own.
-            let (index, _) = lookup(&format!("/{id}/index.html")).expect("engine index");
+            let (index, _) = lookup(None, &format!("/{id}/index.html")).expect("engine index");
             let engine_index = engine
                 .dir
                 .get_file(engine.dir.path().join("index.html"))
                 .expect("engine index.html");
-            assert_eq!(index, engine_index.contents(), "{id}");
+            assert_eq!(&*index, engine_index.contents(), "{id}");
             let data_file = p.manifest.data.as_deref().expect("data");
             if engine
                 .dir
                 .get_file(engine.dir.path().join(data_file))
                 .is_none()
             {
-                assert!(lookup(&format!("/{id}/{data_file}")).is_none(), "{id} data");
+                assert!(
+                    lookup(None, &format!("/{id}/{data_file}")).is_none(),
+                    "{id} data"
+                );
             }
             assert!(
-                lookup(&format!("/{id}/manifest.json")).is_some_and(|(b, _)| {
+                lookup(None, &format!("/{id}/manifest.json")).is_some_and(|(b, _)| {
                     b == engine
                         .dir
                         .get_file(engine.dir.path().join("manifest.json"))
@@ -1270,7 +1323,7 @@ mod tests {
             assert!(!e.listed, "{id} is not listed");
             assert!(activity(id).is_err(), "{id} can't be launched on its own");
             assert!(
-                lookup(&format!("/{id}/index.html")).is_none(),
+                lookup(None, &format!("/{id}/index.html")).is_none(),
                 "{id} isn't served"
             );
             assert_eq!(

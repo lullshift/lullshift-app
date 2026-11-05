@@ -41,6 +41,8 @@ export interface ActivityInfo {
   playedSeconds: number;
   /** Content packs: the engine that runs them (`id@major`); null for apps. */
   engine: string | null;
+  /** Where it came from. Absent in older builds. */
+  source?: { marketplaceId: string; builtin: boolean; commit: string | null };
 }
 
 /** A pause the host forced; `seq` changes for every new request. */

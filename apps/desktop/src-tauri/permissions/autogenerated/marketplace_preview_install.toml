@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-marketplace-preview-install"
+description = "Enables the marketplace_preview_install command without any pre-configured scope."
+commands.allow = ["marketplace_preview_install"]
+
+[[permission]]
+identifier = "deny-marketplace-preview-install"
+description = "Denies the marketplace_preview_install command without any pre-configured scope."
+commands.deny = ["marketplace_preview_install"]

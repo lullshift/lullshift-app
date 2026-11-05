@@ -1,0 +1,1133 @@
+//! Marketplace command tests (Sprint 08). Real `git`, real repositories in temp folders (through
+//! the crate's test-only `file://` support), a real store, the real bundled Calm Cards engine.
+//!
+//! Each test uses a fresh app folder (`Core::for_tests`), so nothing touches the user's data.
+
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::Arc;
+use std::time::Instant;
+
+use serde_json::json;
+use tauri::http::StatusCode;
+use tempfile::TempDir;
+
+use super::*;
+use crate::activities::{self, SCHEME};
+
+const MARKET: &str = "acme-tools";
+const FACTS: &str = "com.example.facts";
+const GAME: &str = "com.example.game";
+
+struct Env {
+    _tmp: TempDir,
+    root: PathBuf,
+    core: Arc<Core>,
+}
+
+impl Env {
+    fn new() -> Self {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path().to_path_buf();
+        std::fs::write(
+            root.join("gitconfig"),
+            "[user]\n\tname = Test\n\temail = test@example.com\n[commit]\n\tgpgsign = false\n[core]\n\tautocrlf = false\n",
+        )
+        .expect("gitconfig");
+        let core = Arc::new(Core::for_tests(&root.join("app")));
+        Self {
+            _tmp: tmp,
+            root,
+            core,
+        }
+    }
+
+    fn repo(&self, name: &str) -> Repo {
+        let dir = self.root.join(name);
+        std::fs::create_dir_all(&dir).expect("repo dir");
+        let repo = Repo {
+            dir,
+            config: self.root.join("gitconfig"),
+        };
+        repo.git(&["init", "--quiet", "--initial-branch=main"]);
+        repo
+    }
+
+    fn install_dir(&self, id: &str, commit: &str) -> PathBuf {
+        self.core.app_dir.join("installed").join(id).join(commit)
+    }
+}
+
+struct Repo {
+    dir: PathBuf,
+    config: PathBuf,
+}
+
+impl Repo {
+    fn git(&self, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(&self.dir)
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", &self.config)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .expect("run git");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    }
+
+    fn write(&self, rel: &str, text: &str) {
+        let path = self.dir.join(rel);
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+        std::fs::write(path, text).expect("write");
+    }
+
+    fn commit(&self) -> String {
+        self.git(&["add", "-A"]);
+        self.git(&["commit", "--quiet", "-m", "test", "--allow-empty"]);
+        self.git(&["rev-parse", "HEAD"])
+    }
+
+    fn url(&self) -> GitUrl {
+        GitUrl::for_test_file(&self.dir)
+    }
+}
+
+fn cards_manifest(id: &str, version: &str, permissions: &[&str]) -> String {
+    json!({
+        "schemaVersion": 1, "kind": "content", "id": id, "version": version, "name": "Facts",
+        "description": "A few facts.", "category": "break", "minHostVersion": "0.1.0",
+        "sdkVersion": "0.2.0", "permissions": permissions, "offline": true,
+        "engine": "lullshift.cards@1", "data": "deck.json"
+    })
+    .to_string()
+}
+
+fn game_manifest(id: &str) -> String {
+    json!({
+        "schemaVersion": 1, "kind": "app", "id": id, "version": "1.0.0", "name": "Game",
+        "category": "arcade", "minHostVersion": "0.1.0", "sdkVersion": "0.2.0",
+        "permissions": [], "offline": true, "entrypoint": "index.html",
+        "runtime": "isolated-web-v1",
+        "interruptibility": {"pause": true, "resume": true, "persistState": true}
+    })
+    .to_string()
+}
+
+const DECK: &str =
+    r#"{"title":"Facts","cards":[{"front":"Honey keeps","back":"It barely spoils."}]}"#;
+
+fn write_facts(repo: &Repo, version: &str, permissions: &[&str]) {
+    repo.write(
+        "packs/facts/manifest.json",
+        &cards_manifest(FACTS, version, permissions),
+    );
+    repo.write("packs/facts/deck.json", DECK);
+    repo.write("packs/facts/README.md", "# Facts\n");
+}
+
+/// The id of a bundled content pack, which an installed activity must never shadow.
+fn bundled_pack_id() -> String {
+    activities::bundled_listed()
+        .into_iter()
+        .find(|(_, kind)| *kind == "content")
+        .map(|(m, _)| m.id)
+        .expect("a bundled pack")
+}
+
+fn bundled_app_id() -> String {
+    activities::bundled_listed()
+        .into_iter()
+        .find(|(m, kind)| *kind == "app" && !m.id.contains(".test."))
+        .map(|(m, _)| m.id)
+        .expect("a bundled app")
+}
+
+/// A marketplace repository listing a facts pack, a game (code) and an id that collides with a
+/// bundled pack.
+fn standard_repo(env: &Env) -> (Repo, String) {
+    let repo = env.repo("market");
+    write_facts(&repo, "1.0.0", &[]);
+    repo.write("packs/game/manifest.json", &game_manifest(GAME));
+    repo.write("packs/game/index.html", "<!doctype html><title>g</title>");
+    let shadow = bundled_pack_id();
+    repo.write(
+        "packs/shadow/manifest.json",
+        &cards_manifest(&shadow, "1.0.0", &[]),
+    );
+    repo.write("packs/shadow/deck.json", DECK);
+    repo.write(
+        ".lullshift/marketplace.json",
+        &json!({
+            "schemaVersion": 1, "name": MARKET, "description": "Tools from Acme.", "owner": "Acme",
+            "activities": [
+                {"id": FACTS, "source": {"path": "packs/facts"}, "featured": true},
+                {"id": GAME, "source": {"path": "packs/game"}},
+                {"id": shadow, "source": {"path": "packs/shadow"}}
+            ]
+        })
+        .to_string(),
+    );
+    let commit = repo.commit();
+    (repo, commit)
+}
+
+fn added(env: &Env) -> (Repo, String) {
+    let (repo, commit) = standard_repo(env);
+    add(&env.core, &repo.url()).expect("add");
+    (repo, commit)
+}
+
+fn installed(env: &Env) -> (Repo, String) {
+    let (repo, commit) = added(env);
+    let preview = preview_install(&env.core, MARKET, FACTS).expect("preview");
+    install_pending(&env.core, &preview.token, Instant::now()).expect("install");
+    (repo, commit)
+}
+
+fn request(env: &Env, path: &str) -> tauri::http::Response<Vec<u8>> {
+    activities::serve(
+        Some(&env.core),
+        &tauri::http::Request::get(format!("{SCHEME}://localhost{path}"))
+            .body(Vec::new())
+            .expect("request"),
+    )
+}
+
+fn listed_ids(env: &Env) -> Vec<String> {
+    activities::list_ids(&env.core).expect("list")
+}
+
+fn manage_item(env: &Env, id: &str) -> activities::installed::ManageItem {
+    env.core
+        .library
+        .snapshot(&env.core)
+        .expect("snapshot")
+        .manage
+        .iter()
+        .find(|m| m.activity_id == id)
+        .cloned()
+        .unwrap_or_else(|| panic!("{id} is not in the manage list"))
+}
+
+fn err_kind<T: std::fmt::Debug>(r: Res<T>) -> &'static str {
+    r.expect_err("should fail").kind
+}
+
+// ---- add, entries, preview, install, list, serve -----------------------------------------
+
+#[test]
+fn add_entries_preview_install_then_listed_and_served() {
+    let env = Env::new();
+    let (repo, commit) = standard_repo(&env);
+
+    // Add: the index name becomes the id; the built-in marketplace stays first.
+    let m = add(&env.core, &repo.url()).expect("add");
+    assert_eq!(m.id, MARKET);
+    assert!(!m.builtin);
+    assert_eq!(m.description.as_deref(), Some("Tools from Acme."));
+    assert_eq!(m.owner.as_deref(), Some("Acme"));
+    assert_eq!(m.last_fetched_commit.as_deref(), Some(commit.as_str()));
+    assert!(m.last_fetched_at.is_some());
+    let all = list(&env.core).expect("list");
+    assert_eq!(all[0].id, "lullshift");
+    assert!(all[0].builtin);
+    assert_eq!(all[1].id, MARKET);
+    assert_eq!(err_kind(add(&env.core, &repo.url())), "alreadyExists");
+
+    // Entries come from the cache, with names read cheaply for same-repo sources.
+    let entries = entries(&env.core, MARKET).expect("entries");
+    let facts = entries
+        .iter()
+        .find(|e| e.activity_id == FACTS)
+        .expect("facts");
+    assert_eq!(facts.name.as_deref(), Some("Facts"));
+    assert_eq!(facts.kind, Some("content"));
+    assert!(facts.featured && !facts.external && facts.installed.is_none());
+    assert_eq!(facts.blocked, None);
+    let game = entries
+        .iter()
+        .find(|e| e.activity_id == GAME)
+        .expect("game");
+    assert_eq!(game.kind, Some("app"));
+    assert_eq!(game.blocked, Some("thirdPartyCode"));
+
+    // Preview installs nothing.
+    let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
+    assert_eq!(p.marketplace_id, MARKET);
+    assert_eq!(p.activity_id, FACTS);
+    assert_eq!(p.commit, commit);
+    assert_eq!(p.kind, "content");
+    assert_eq!(p.engine.as_deref(), Some("lullshift.cards@1"));
+    assert_eq!(p.description, "A few facts.");
+    assert_eq!(p.source_path.as_deref(), Some("packs/facts"));
+    assert_eq!(p.file_count, 3);
+    assert!(p.third_party && p.permissions.is_empty());
+    assert!(!listed_ids(&env).contains(&FACTS.to_owned()));
+    assert!(!env.core.app_dir.join("installed").exists());
+
+    // Install: listed (with its source) and served under the app CSP from the engine's files.
+    install_pending(&env.core, &p.token, Instant::now()).expect("install");
+    assert_eq!(
+        err_kind(install_pending(&env.core, &p.token, Instant::now())),
+        "notFound",
+        "a token works once"
+    );
+    assert!(env.install_dir(FACTS, &commit).join("deck.json").is_file());
+    let infos = activities::list_activities(&env.core).expect("list");
+    let info = infos.iter().find(|i| i.id() == FACTS).expect("listed");
+    let source = serde_json::to_value(info).expect("json")["source"].clone();
+    assert_eq!(
+        source,
+        json!({"marketplaceId": MARKET, "builtin": false, "commit": commit})
+    );
+    assert!(infos.iter().any(|i| i.id() == bundled_app_id()));
+    let ok = request(&env, &format!("/{FACTS}/index.html"));
+    assert_eq!(ok.status(), StatusCode::OK);
+    assert_eq!(
+        ok.headers()[tauri::http::header::CONTENT_SECURITY_POLICY],
+        activities::activity_csp().as_str()
+    );
+    assert!(!ok.body().is_empty());
+    assert_eq!(
+        request(&env, &format!("/{FACTS}/deck.json")).status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        request(&env, &format!("/{FACTS}/../x/index.html")).status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        activities::content_for_core(&env.core, FACTS).expect("content"),
+        serde_json::from_str::<serde_json::Value>(DECK).expect("deck")
+    );
+    assert_eq!(
+        activities::storage_target(&env.core, FACTS, "k").unwrap_err(),
+        "not_permitted"
+    );
+
+    // The entry now shows as installed, and the manage list has it.
+    let again = super::entries(&env.core, MARKET).expect("entries");
+    let mark = again
+        .iter()
+        .find(|e| e.activity_id == FACTS)
+        .and_then(|e| e.installed.clone())
+        .expect("installed mark");
+    assert_eq!(
+        (mark.commit.as_str(), mark.version.as_str(), mark.enabled),
+        (commit.as_str(), "1.0.0", true)
+    );
+    let item = manage_item(&env, FACTS);
+    assert_eq!(
+        (item.kind, item.builtin, item.enabled, item.problem),
+        ("content", false, true, None)
+    );
+    assert_eq!(item.commit.as_deref(), Some(commit.as_str()));
+
+    // Installing the same id again is refused: use update.
+    assert_eq!(
+        err_kind(preview_install(&env.core, MARKET, FACTS)),
+        "alreadyExists"
+    );
+}
+
+#[test]
+fn errors_carry_no_paths_urls_or_git_text() {
+    let env = Env::new();
+    let (repo, _) = standard_repo(&env);
+    let secret = env.root.to_string_lossy().replace('\\', "/");
+
+    // Not a marketplace.
+    let bare = env.repo("plain");
+    bare.write("README.md", "hi");
+    bare.commit();
+    let e = add(&env.core, &bare.url()).expect_err("no index");
+    assert_eq!(e.kind, "invalidIndex");
+    // A repository that doesn't exist.
+    let missing = GitUrl::for_test_file(&env.root.join("nowhere"));
+    let e2 = add(&env.core, &missing).expect_err("missing repo");
+    assert!(
+        ["notFound", "internal", "offline"].contains(&e2.kind),
+        "{}",
+        e2.kind
+    );
+    for e in [&e, &e2] {
+        let text = e.message.replace('\\', "/");
+        assert!(!text.contains(&secret), "{}", e.message);
+        assert!(!text.contains("fatal"), "{}", e.message);
+        assert!(!text.contains("file://"), "{}", e.message);
+    }
+    // The reserved name.
+    repo.write(
+        ".lullshift/marketplace.json",
+        &json!({"schemaVersion":1,"name":"lullshift","activities":[]}).to_string(),
+    );
+    repo.commit();
+    let reserved = add(&env.core, &repo.url()).expect_err("reserved");
+    assert_eq!(reserved.kind, "invalidIndex");
+    // Nothing half-added is left behind.
+    assert_eq!(list(&env.core).expect("list").len(), 1);
+    let staging: Vec<_> = std::fs::read_dir(markets_dir(&env.core))
+        .map(|d| d.flatten().collect())
+        .unwrap_or_default();
+    assert!(staging.is_empty(), "{staging:?}");
+}
+
+// ---- refresh and update ------------------------------------------------------------------
+
+#[test]
+fn refresh_then_update_shows_a_permission_diff_and_keeps_the_enabled_flag() {
+    let env = Env::new();
+    let (repo, v1) = installed(&env);
+    set_enabled(&env.core, FACTS, false).expect("disable");
+
+    // Nothing new yet.
+    let same = preview_update(&env.core, FACTS).expect("preview");
+    assert!(same.unchanged);
+    assert_eq!(same.from.commit, v1);
+    update_pending(&env.core, &same.preview.token, Instant::now()).expect("no-op");
+    assert_eq!(
+        with_store(&env.core, |s| s.installed_activity(FACTS))
+            .expect("store")
+            .expect("record")
+            .commit_sha,
+        v1
+    );
+
+    // A new commit that asks for a permission.
+    write_facts(&repo, "2.0.0", &["activity.storage"]);
+    let v2 = repo.commit();
+    let m = refresh(&env.core, MARKET).expect("refresh");
+    assert_eq!(m.last_fetched_commit.as_deref(), Some(v2.as_str()));
+
+    let up = preview_update(&env.core, FACTS).expect("update preview");
+    assert!(!up.unchanged);
+    assert_eq!(up.from.version, "1.0.0");
+    assert_eq!(up.preview.version, "2.0.0");
+    assert_eq!(up.preview.commit, v2);
+    assert_eq!(up.added_permissions, vec!["activity.storage".to_owned()]);
+    assert!(up.removed_permissions.is_empty());
+    assert!(!up.kind_changed && !up.engine_changed);
+    // The preview alone changed nothing.
+    assert!(env.install_dir(FACTS, &v1).is_dir() && !env.install_dir(FACTS, &v2).exists());
+
+    // An install token can't be used as an update token, and the reverse.
+    assert_eq!(
+        err_kind(install_pending(
+            &env.core,
+            &up.preview.token,
+            Instant::now()
+        )),
+        "notFound"
+    );
+    let up = preview_update(&env.core, FACTS).expect("again");
+    update_pending(&env.core, &up.preview.token, Instant::now()).expect("update");
+    assert!(env.install_dir(FACTS, &v2).is_dir(), "new commit folder");
+    assert!(
+        !env.install_dir(FACTS, &v1).exists(),
+        "old commit folder removed"
+    );
+    let rec = with_store(&env.core, |s| s.installed_activity(FACTS))
+        .expect("store")
+        .expect("record");
+    assert_eq!(
+        (rec.commit_sha.as_str(), rec.manifest_version.as_str()),
+        (v2.as_str(), "2.0.0")
+    );
+    assert_eq!(rec.permissions, vec!["activity.storage".to_owned()]);
+    assert!(!rec.enabled, "the enabled flag is kept");
+    // It is off, so it is not listed; turning it on serves the new version.
+    assert!(!listed_ids(&env).contains(&FACTS.to_owned()));
+    set_enabled(&env.core, FACTS, true).expect("enable");
+    assert!(listed_ids(&env).contains(&FACTS.to_owned()));
+    // Only the new commit is cached as verified.
+    assert_eq!(env.core.library.cached_checks(), 1);
+}
+
+#[test]
+fn refreshing_the_built_in_marketplace_needs_no_network_or_git() {
+    let env = Env::new();
+    let m = refresh(&env.core, "lullshift").expect("builtin");
+    assert!(m.builtin && m.last_fetched_at.is_none());
+    assert!(!env.core.app_dir.join("marketplaces").exists());
+    // Its entries are the bundled activities, without engines.
+    let e = entries(&env.core, "lullshift").expect("entries");
+    assert!(e.iter().any(|e| e.activity_id == bundled_app_id()));
+    assert!(e.iter().all(|e| e.installed.is_none() && !e.external));
+    assert_eq!(
+        err_kind(preview_install(&env.core, "lullshift", &bundled_app_id())),
+        "alreadyExists"
+    );
+    assert_eq!(err_kind(refresh(&env.core, "nope-market")), "notFound");
+    assert_eq!(err_kind(refresh(&env.core, "../x")), "notFound");
+}
+
+#[test]
+fn removing_a_marketplace_keeps_its_installs_and_stops_updates() {
+    let env = Env::new();
+    installed(&env);
+    let cache = cache_dir(&env.core, MARKET);
+    assert!(cache.is_dir());
+    remove(&env.core, MARKET).expect("remove");
+    assert!(!cache.exists());
+    assert_eq!(list(&env.core).expect("list").len(), 1);
+    assert!(
+        listed_ids(&env).contains(&FACTS.to_owned()),
+        "installs stay"
+    );
+    assert_eq!(err_kind(preview_update(&env.core, FACTS)), "notFound");
+    assert_eq!(err_kind(refresh(&env.core, MARKET)), "notFound");
+    assert_eq!(
+        err_kind(preview_install(&env.core, MARKET, GAME)),
+        "notFound"
+    );
+}
+
+// ---- enable and disable ------------------------------------------------------------------
+
+#[test]
+fn disabling_a_built_in_hides_it_but_keeps_its_saved_state() {
+    let env = Env::new();
+    let id = bundled_app_id();
+    with_store(&env.core, |s| {
+        s.save_snapshot(&id, "{\"n\":3}", OffsetDateTime::now_utc(), 4096)
+    })
+    .expect("save");
+    assert!(listed_ids(&env).contains(&id));
+    assert!(
+        request(&env, &format!("/{id}/index.html"))
+            .status()
+            .is_success()
+    );
+
+    set_enabled(&env.core, &id, false).expect("disable");
+    assert!(!listed_ids(&env).contains(&id));
+    assert!(manage_item(&env, &id).builtin);
+    assert!(!manage_item(&env, &id).enabled);
+    assert_eq!(
+        request(&env, &format!("/{id}/index.html")).status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        activities::content_for_core(&env.core, &id)
+            .unwrap_err()
+            .code(),
+        "unknown_activity"
+    );
+    assert!(
+        with_store(&env.core, |s| s.snapshot(&id))
+            .expect("get")
+            .is_some()
+    );
+    // Idempotent.
+    set_enabled(&env.core, &id, false).expect("again");
+
+    set_enabled(&env.core, &id, true).expect("enable");
+    assert!(listed_ids(&env).contains(&id));
+    assert!(manage_item(&env, &id).enabled);
+    assert!(
+        request(&env, &format!("/{id}/index.html"))
+            .status()
+            .is_success()
+    );
+    assert!(
+        with_store(&env.core, |s| s.snapshot(&id))
+            .expect("get")
+            .is_some()
+    );
+
+    // Unknown ids and engines (which are never items of their own).
+    assert_eq!(
+        err_kind(set_enabled(&env.core, "com.example.nothing", false)),
+        "notFound"
+    );
+    assert_eq!(
+        err_kind(set_enabled(&env.core, "lullshift.cards", false)),
+        "notFound"
+    );
+}
+
+#[test]
+fn disabling_an_installed_activity_stops_listing_and_serving_it() {
+    let env = Env::new();
+    installed(&env);
+    assert!(
+        request(&env, &format!("/{FACTS}/index.html"))
+            .status()
+            .is_success()
+    );
+    set_enabled(&env.core, FACTS, false).expect("disable");
+    assert!(!listed_ids(&env).contains(&FACTS.to_owned()));
+    assert_eq!(
+        request(&env, &format!("/{FACTS}/index.html")).status(),
+        StatusCode::NOT_FOUND
+    );
+    let item = manage_item(&env, FACTS);
+    assert!(
+        !item.enabled && item.problem.is_none(),
+        "disabled, not broken"
+    );
+    assert!(
+        env.install_dir(FACTS, &item.commit.expect("commit"))
+            .is_dir()
+    );
+    set_enabled(&env.core, FACTS, true).expect("enable");
+    assert!(listed_ids(&env).contains(&FACTS.to_owned()));
+    assert!(
+        request(&env, &format!("/{FACTS}/index.html"))
+            .status()
+            .is_success()
+    );
+}
+
+// ---- uninstall ---------------------------------------------------------------------------
+
+fn save_state(env: &Env, id: &str) {
+    with_store(&env.core, |s| {
+        s.save_snapshot(id, "{\"n\":1}", OffsetDateTime::now_utc(), 4096)?;
+        s.set_activity_value(id, "best", "9", 4096)?;
+        s.add_play_time(id, 30, true, 3600, OffsetDateTime::now_utc())
+    })
+    .expect("state");
+}
+
+#[test]
+fn uninstall_keeps_saved_state_unless_asked() {
+    let env = Env::new();
+    let (_, commit) = installed(&env);
+    save_state(&env, FACTS);
+    save_state(&env, "com.example.other");
+
+    uninstall(&env.core, FACTS, false).expect("uninstall");
+    assert!(!env.install_dir(FACTS, &commit).exists());
+    assert!(!env.core.app_dir.join("installed").join(FACTS).exists());
+    assert!(!listed_ids(&env).contains(&FACTS.to_owned()));
+    assert_eq!(
+        request(&env, &format!("/{FACTS}/index.html")).status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        env.core.library.cached_checks(),
+        0,
+        "its checks are forgotten"
+    );
+    assert!(
+        with_store(&env.core, |s| s.snapshot(FACTS))
+            .expect("get")
+            .is_some()
+    );
+    assert_eq!(err_kind(uninstall(&env.core, FACTS, false)), "notFound");
+
+    // Install again and uninstall with the saved state.
+    let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
+    install_pending(&env.core, &p.token, Instant::now()).expect("install");
+    uninstall(&env.core, FACTS, true).expect("uninstall");
+    assert!(
+        with_store(&env.core, |s| s.snapshot(FACTS))
+            .expect("get")
+            .is_none()
+    );
+    assert_eq!(
+        with_store(&env.core, |s| s.activity_value(FACTS, "best")).expect("get"),
+        None
+    );
+    assert_eq!(
+        with_store(&env.core, |s| s.play_time(FACTS)).expect("get"),
+        0
+    );
+    // Another activity's state is untouched.
+    assert!(
+        with_store(&env.core, |s| s.snapshot("com.example.other"))
+            .expect("get")
+            .is_some()
+    );
+}
+
+#[test]
+fn bundled_activities_cannot_be_uninstalled() {
+    let env = Env::new();
+    assert_eq!(
+        err_kind(uninstall(&env.core, &bundled_app_id(), true)),
+        "builtinProtected"
+    );
+    assert_eq!(
+        err_kind(uninstall(&env.core, "com.example.nothing", false)),
+        "notFound"
+    );
+    assert_eq!(err_kind(remove(&env.core, "lullshift")), "builtinProtected");
+    assert_eq!(
+        err_kind(preview_update(&env.core, &bundled_app_id())),
+        "builtinProtected"
+    );
+    assert!(list(&env.core).expect("list").iter().any(|m| m.builtin));
+}
+
+// ---- tampering ---------------------------------------------------------------------------
+
+#[test]
+fn a_tampered_install_is_excluded_disabled_and_reported() {
+    let env = Env::new();
+    let (_, commit) = installed(&env);
+    assert!(listed_ids(&env).contains(&FACTS.to_owned()));
+    assert_eq!(env.core.library.cached_checks(), 1);
+    // Listing again reuses the cached check.
+    assert!(listed_ids(&env).contains(&FACTS.to_owned()));
+    assert_eq!(env.core.library.cached_checks(), 1);
+
+    // Someone edits the installed data. A new session verifies it again.
+    let deck = env.install_dir(FACTS, &commit).join("deck.json");
+    std::fs::write(&deck, r#"{"title":"Evil","cards":[{"front":"x"}]}"#).expect("tamper");
+    env.core.library.restart();
+
+    assert!(!listed_ids(&env).contains(&FACTS.to_owned()));
+    assert_eq!(
+        request(&env, &format!("/{FACTS}/index.html")).status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        activities::content_for_core(&env.core, FACTS)
+            .unwrap_err()
+            .code(),
+        "unknown_activity"
+    );
+    let item = manage_item(&env, FACTS);
+    assert_eq!(item.problem, Some("tampered"));
+    assert!(!item.enabled);
+    let rec = with_store(&env.core, |s| s.installed_activity(FACTS))
+        .expect("store")
+        .expect("record");
+    assert!(!rec.enabled, "disabled in the store too");
+    assert_eq!(
+        env.core.library.cached_checks(),
+        0,
+        "a mismatch is never cached"
+    );
+    // It can't be turned back on while it differs, but it can be removed.
+    assert_eq!(err_kind(set_enabled(&env.core, FACTS, true)), "tampered");
+    assert!(!listed_ids(&env).contains(&FACTS.to_owned()));
+    uninstall(&env.core, FACTS, false).expect("uninstall");
+    assert!(!env.install_dir(FACTS, &commit).exists());
+}
+
+#[test]
+fn an_extra_or_missing_file_is_also_tampering() {
+    let env = Env::new();
+    let (_, commit) = installed(&env);
+    let dir = env.install_dir(FACTS, &commit);
+    std::fs::write(dir.join("extra.md"), "x").expect("extra");
+    env.core.library.restart();
+    assert_eq!(manage_item(&env, FACTS).problem, Some("tampered"));
+    std::fs::remove_file(dir.join("extra.md")).expect("rm");
+    std::fs::remove_file(dir.join("README.md")).expect("rm");
+    env.core.library.restart();
+    assert_eq!(manage_item(&env, FACTS).problem, Some("tampered"));
+}
+
+#[test]
+fn records_this_release_cannot_run_are_not_served() {
+    let env = Env::new();
+    added(&env);
+    let bundled = bundled_pack_id();
+    let digest = "0".repeat(64);
+    let sha = "1".repeat(40);
+    let record = |id: &str, kind| NewInstalledActivity {
+        activity_id: id.to_owned(),
+        marketplace_id: MARKET.to_owned(),
+        source_url: "example.org/x".to_owned(),
+        source_path: String::new(),
+        commit_sha: sha.clone(),
+        manifest_version: "1.0.0".to_owned(),
+        kind,
+        engine: None,
+        permissions: Vec::new(),
+        digest: digest.clone(),
+        size_bytes: 1,
+    };
+    // A hand-made third-party code record, and one that reuses a bundled id.
+    with_store(&env.core, |s| {
+        s.put_installed_activity(&record(GAME, ActivityKind::App), OffsetDateTime::now_utc())?;
+        s.put_installed_activity(
+            &record(&bundled, ActivityKind::Content),
+            OffsetDateTime::now_utc(),
+        )
+    })
+    .expect("records");
+    let ids = listed_ids(&env);
+    assert!(!ids.contains(&GAME.to_owned()));
+    assert_eq!(
+        ids.iter().filter(|i| **i == bundled).count(),
+        1,
+        "bundled wins, once"
+    );
+    assert_eq!(manage_item(&env, GAME).problem, Some("tampered"));
+    assert!(!manage_item(&env, GAME).enabled);
+    assert_eq!(
+        request(&env, &format!("/{GAME}/index.html")).status(),
+        StatusCode::NOT_FOUND
+    );
+}
+
+// ---- busy, blocked code, shadowing, tokens -----------------------------------------------
+
+#[test]
+fn a_second_operation_on_the_same_marketplace_is_busy() {
+    let env = Env::new();
+    installed(&env);
+    {
+        let _running = begin(&env.core, MARKET).expect("first");
+        assert_eq!(err_kind(refresh(&env.core, MARKET)), "busy");
+        assert_eq!(err_kind(preview_install(&env.core, MARKET, GAME)), "busy");
+        assert_eq!(err_kind(preview_update(&env.core, FACTS)), "busy");
+        assert_eq!(err_kind(uninstall(&env.core, FACTS, false)), "busy");
+        assert_eq!(err_kind(remove(&env.core, MARKET)), "busy");
+        assert_eq!(err_kind(begin(&env.core, MARKET).map(|_| ())), "busy");
+        // Another marketplace id is not blocked.
+        assert!(begin(&env.core, "other-market").is_ok());
+    }
+    // Released when the first finishes.
+    refresh(&env.core, MARKET).expect("free again");
+}
+
+#[test]
+fn code_activities_from_third_party_marketplaces_cannot_be_installed() {
+    let env = Env::new();
+    added(&env);
+    let e = preview_install(&env.core, MARKET, GAME).expect_err("blocked");
+    assert_eq!(e.kind, "thirdPartyCodeBlocked");
+    assert!(!e.message.is_empty());
+    assert!(!env.core.app_dir.join("installed").exists());
+    assert!(
+        env.core.market.pending.lock().expect("lock").is_empty(),
+        "no token was issued"
+    );
+}
+
+#[test]
+fn installs_cannot_shadow_bundled_ids() {
+    let env = Env::new();
+    added(&env);
+    let shadow = bundled_pack_id();
+    assert_eq!(
+        err_kind(preview_install(&env.core, MARKET, &shadow)),
+        "alreadyExists"
+    );
+    assert!(!env.core.app_dir.join("installed").exists());
+}
+
+#[test]
+fn tokens_expire_and_expired_reviews_install_nothing() {
+    let env = Env::new();
+    added(&env);
+    let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
+    let later = Instant::now() + TOKEN_TTL + Duration::from_secs(1);
+    assert_eq!(
+        err_kind(install_pending(&env.core, &p.token, later)),
+        "notFound"
+    );
+    assert!(!env.core.app_dir.join("installed").exists());
+    // The expired token is gone for good, and a made-up one never works.
+    assert_eq!(
+        err_kind(install_pending(&env.core, &p.token, Instant::now())),
+        "notFound"
+    );
+    assert_eq!(
+        err_kind(install_pending(&env.core, "00", Instant::now())),
+        "notFound"
+    );
+    // Only a few reviews are held at once.
+    for _ in 0..(MAX_PENDING + 3) {
+        preview_install(&env.core, MARKET, FACTS).expect("preview");
+    }
+    assert_eq!(
+        env.core.market.pending.lock().expect("lock").len(),
+        MAX_PENDING
+    );
+}
+
+#[test]
+fn the_pack_check_cache_is_keyed_by_commit_and_digest() {
+    // After an update the old commit's entry is gone and only the new one is kept (see
+    // `refresh_then_update_...`); here, other ids' entries are independent.
+    let env = Env::new();
+    installed(&env);
+    assert_eq!(env.core.library.cached_checks(), 1);
+    env.core.library.invalidate(Some("com.example.other"));
+    assert_eq!(env.core.library.cached_checks(), 1);
+    env.core.library.invalidate(Some(FACTS));
+    assert_eq!(env.core.library.cached_checks(), 0);
+    // Rebuilt on demand.
+    assert!(listed_ids(&env).contains(&FACTS.to_owned()));
+    assert_eq!(env.core.library.cached_checks(), 1);
+}
+
+#[test]
+fn the_new_commands_are_granted_only_to_the_main_window() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities/default.json");
+    let cap: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir).expect("read")).expect("json");
+    let perms: Vec<&str> = cap["permissions"]
+        .as_array()
+        .expect("array")
+        .iter()
+        .filter_map(|p| p.as_str())
+        .collect();
+    for p in [
+        "allow-marketplace-add",
+        "allow-marketplace-install",
+        "allow-marketplace-update",
+        "allow-activity-uninstall",
+        "allow-activity-set-enabled",
+        "allow-activities-manage-list",
+    ] {
+        assert!(perms.contains(&p), "{p}");
+    }
+    assert_eq!(cap["windows"], json!(["main"]));
+}
+
+// ---- security review fixes (M1, L4, L5, L7) -----------------------------------------------
+
+/// A second repository that claims a marketplace name and lists its own FACTS pack.
+fn lookalike_repo(env: &Env, name: &str, market_name: &str) -> Repo {
+    let repo = env.repo(name);
+    write_facts(&repo, "9.0.0", &["activity.storage"]);
+    repo.write(
+        ".lullshift/marketplace.json",
+        &json!({
+            "schemaVersion": 1, "name": market_name,
+            "activities": [{"id": FACTS, "source": {"path": "packs/facts"}}]
+        })
+        .to_string(),
+    );
+    repo.commit();
+    repo
+}
+
+#[test]
+fn re_adding_a_removed_name_from_another_address_is_refused() {
+    let env = Env::new();
+    let (original, v1) = installed(&env);
+    remove(&env.core, MARKET).expect("remove");
+
+    let other = lookalike_repo(&env, "lookalike", MARKET);
+    let e = add(&env.core, &other.url()).expect_err("refused");
+    assert_eq!(e.kind, "alreadyExists");
+    assert!(
+        e.message.contains("different address"),
+        "a clear message: {}",
+        e.message
+    );
+    // Nothing changed: still removed, install untouched, still no updates from anywhere.
+    assert_eq!(list(&env.core).expect("list").len(), 1);
+    assert_eq!(err_kind(preview_update(&env.core, FACTS)), "notFound");
+    let rec = with_store(&env.core, |s| s.installed_activity(FACTS))
+        .expect("store")
+        .expect("record");
+    assert_eq!(rec.commit_sha, v1);
+    assert!(
+        !markets_dir(&env.core).join(MARKET).exists(),
+        "no cache was kept for the refused source"
+    );
+
+    // The original address is still welcome, and updates then come from it.
+    add(&env.core, &original.url()).expect("same address");
+    assert!(preview_update(&env.core, FACTS).expect("update").unchanged);
+}
+
+#[test]
+fn an_update_from_another_source_is_flagged() {
+    let env = Env::new();
+    installed(&env);
+    let up = preview_update(&env.core, FACTS).expect("preview");
+    assert!(up.source_changed.is_none(), "same source: nothing to flag");
+
+    // The recorded source differs from where the index now points (as after a moved entry).
+    let rec = with_store(&env.core, |s| s.installed_activity(FACTS))
+        .expect("store")
+        .expect("record");
+    with_store(&env.core, |s| {
+        s.put_installed_activity(
+            &NewInstalledActivity {
+                activity_id: rec.activity_id.clone(),
+                marketplace_id: rec.marketplace_id.clone(),
+                source_url: "https://old.example/team/facts".into(),
+                source_path: rec.source_path.clone(),
+                commit_sha: rec.commit_sha.clone(),
+                manifest_version: rec.manifest_version.clone(),
+                kind: rec.kind,
+                engine: rec.engine.clone(),
+                permissions: rec.permissions.clone(),
+                digest: rec.digest.clone(),
+                size_bytes: rec.size_bytes,
+            },
+            OffsetDateTime::now_utc(),
+        )
+    })
+    .expect("rewrite record");
+    let up = preview_update(&env.core, FACTS).expect("preview");
+    let changed = up.source_changed.clone().expect("flagged");
+    assert_eq!(changed.old, "https://old.example/team/facts");
+    assert_ne!(changed.new, changed.old);
+    let json = serde_json::to_value(&up).expect("json");
+    assert_eq!(
+        json["sourceChanged"]["old"],
+        "https://old.example/team/facts"
+    );
+    assert!(json["sourceChanged"]["new"].is_string());
+}
+
+#[test]
+fn concurrent_installs_of_one_id_from_different_marketplaces_are_busy() {
+    let env = Env::new();
+    added(&env);
+    let other = lookalike_repo(&env, "other", "other-tools");
+    add(&env.core, &other.url()).expect("second marketplace");
+    let first = preview_install(&env.core, MARKET, FACTS).expect("preview one");
+    let second = preview_install(&env.core, "other-tools", FACTS).expect("preview two");
+    {
+        // The first install is running: the id is locked for every marketplace.
+        let _running = begin(&env.core, &activity_key(FACTS)).expect("lock");
+        assert_eq!(
+            err_kind(install_pending(&env.core, &second.token, Instant::now())),
+            "busy"
+        );
+    }
+    install_pending(&env.core, &first.token, Instant::now()).expect("first wins");
+    assert_eq!(
+        err_kind(preview_install(&env.core, "other-tools", FACTS)),
+        "alreadyExists"
+    );
+    let update = preview_update(&env.core, FACTS).expect("update preview");
+    {
+        let _running = begin(&env.core, &activity_key(FACTS)).expect("lock");
+        assert_eq!(
+            err_kind(update_pending(
+                &env.core,
+                &update.preview.token,
+                Instant::now()
+            )),
+            "busy"
+        );
+        assert_eq!(err_kind(uninstall(&env.core, FACTS, false)), "busy");
+    }
+    uninstall(&env.core, FACTS, false).expect("free again");
+}
+
+#[test]
+fn saved_state_is_announced_and_reused_only_by_the_same_source() {
+    let env = Env::new();
+    installed(&env);
+    save_state(&env, FACTS);
+    save_state(&env, "com.example.other");
+    uninstall(&env.core, FACTS, false).expect("uninstall, keep state");
+
+    // Same marketplace and source: the review says progress will be used, and it is.
+    let again = preview_install(&env.core, MARKET, FACTS).expect("preview");
+    assert!(again.has_saved_state);
+    assert_eq!(
+        serde_json::to_value(&again).expect("json")["hasSavedState"],
+        true
+    );
+    install_pending(&env.core, &again.token, Instant::now()).expect("install");
+    assert!(
+        with_store(&env.core, |s| s.snapshot(FACTS))
+            .expect("get")
+            .is_some()
+    );
+
+    // Uninstall again, then install the same id from a different marketplace: the old state is
+    // cleared (and the review does not promise it); other activities keep theirs.
+    uninstall(&env.core, FACTS, false).expect("uninstall, keep state");
+    let other = lookalike_repo(&env, "other", "other-tools");
+    add(&env.core, &other.url()).expect("second marketplace");
+    let foreign = preview_install(&env.core, "other-tools", FACTS).expect("preview");
+    assert!(!foreign.has_saved_state);
+    assert!(
+        with_store(&env.core, |s| s.snapshot(FACTS))
+            .expect("get")
+            .is_some(),
+        "a preview deletes nothing"
+    );
+    install_pending(&env.core, &foreign.token, Instant::now()).expect("install");
+    assert!(
+        with_store(&env.core, |s| s.snapshot(FACTS))
+            .expect("get")
+            .is_none()
+    );
+    assert_eq!(
+        with_store(&env.core, |s| s.activity_value(FACTS, "best")).expect("get"),
+        None
+    );
+    assert_eq!(
+        with_store(&env.core, |s| s.play_time(FACTS)).expect("get"),
+        0
+    );
+    assert!(
+        with_store(&env.core, |s| s.snapshot("com.example.other"))
+            .expect("get")
+            .is_some()
+    );
+}
+
+#[test]
+fn state_of_unknown_origin_is_announced_in_the_review() {
+    let env = Env::new();
+    added(&env);
+    let clean = preview_install(&env.core, MARKET, FACTS).expect("preview");
+    assert!(!clean.has_saved_state);
+    save_state(&env, FACTS);
+    let with_state = preview_install(&env.core, MARKET, FACTS).expect("preview");
+    assert!(with_state.has_saved_state);
+}
+
+#[test]
+fn a_preview_image_is_served_from_the_verified_bytes_not_the_disk() {
+    let env = Env::new();
+    let repo = env.repo("market");
+    write_facts(&repo, "1.0.0", &[]);
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&cards_manifest(FACTS, "1.0.0", &[])).expect("json");
+    manifest["preview"] = json!("preview.png");
+    repo.write("packs/facts/manifest.json", &manifest.to_string());
+    repo.write("packs/facts/preview.png", "ORIGINAL-IMAGE");
+    repo.write(
+        ".lullshift/marketplace.json",
+        &json!({
+            "schemaVersion": 1, "name": MARKET,
+            "activities": [{"id": FACTS, "source": {"path": "packs/facts"}}]
+        })
+        .to_string(),
+    );
+    let commit = repo.commit();
+    add(&env.core, &repo.url()).expect("add");
+    let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
+    install_pending(&env.core, &p.token, Instant::now()).expect("install");
+
+    let served = |env: &Env| {
+        env.core
+            .library
+            .snapshot(&env.core)
+            .expect("snapshot")
+            .served
+            .get(FACTS)
+            .and_then(|s| s.preview_bytes(activities::PREVIEW_MAX))
+    };
+    assert_eq!(served(&env).as_deref(), Some(b"ORIGINAL-IMAGE".as_slice()));
+
+    // The file is swapped after the check: the session keeps serving what was verified.
+    std::fs::write(
+        env.install_dir(FACTS, &commit).join("preview.png"),
+        "SWAPPED-IMAGE",
+    )
+    .expect("swap");
+    assert_eq!(served(&env).as_deref(), Some(b"ORIGINAL-IMAGE".as_slice()));
+
+    // A new session verifies again, finds the change, and serves nothing.
+    env.core.library.restart();
+    assert_eq!(served(&env), None);
+    assert_eq!(manage_item(&env, FACTS).problem, Some("tampered"));
+}

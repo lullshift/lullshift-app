@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-marketplace-entries"
+description = "Enables the marketplace_entries command without any pre-configured scope."
+commands.allow = ["marketplace_entries"]
+
+[[permission]]
+identifier = "deny-marketplace-entries"
+description = "Denies the marketplace_entries command without any pre-configured scope."
+commands.deny = ["marketplace_entries"]

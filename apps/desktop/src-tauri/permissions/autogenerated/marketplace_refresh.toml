@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-marketplace-refresh"
+description = "Enables the marketplace_refresh command without any pre-configured scope."
+commands.allow = ["marketplace_refresh"]
+
+[[permission]]
+identifier = "deny-marketplace-refresh"
+description = "Denies the marketplace_refresh command without any pre-configured scope."
+commands.deny = ["marketplace_refresh"]

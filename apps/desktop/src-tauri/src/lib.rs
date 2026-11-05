@@ -5,9 +5,10 @@
 mod activities;
 mod adapters;
 mod context;
-mod data_schema;
+mod market;
 mod notify;
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use agent_core::reducer::DEFAULT_STALE_AFTER;
@@ -90,6 +91,30 @@ struct Core {
     ipc: Mutex<Option<Running>>,
     started_utc: OffsetDateTime,
     tray_face: Mutex<Option<TrayFace>>,
+    /// `<app data>`: the marketplace cache (`marketplaces/`) and installs (`installed/`) live here.
+    app_dir: PathBuf,
+    /// What the activity library shows and serves, and the install-verification cache.
+    library: activities::installed::Library,
+    /// Marketplace operations in flight and pending install reviews.
+    market: market::MarketState,
+}
+
+#[cfg(test)]
+impl Core {
+    /// A core over an in-memory store and `app_dir`, for tests.
+    fn for_tests(app_dir: &std::path::Path) -> Self {
+        Self {
+            store: Mutex::new(Some(Store::open_in_memory().expect("store"))),
+            store_health: Health::Ok,
+            ipc_health: Mutex::new(Health::Error("starting")),
+            ipc: Mutex::new(None),
+            started_utc: OffsetDateTime::now_utc(),
+            tray_face: Mutex::new(None),
+            app_dir: app_dir.to_path_buf(),
+            library: activities::installed::Library::default(),
+            market: market::MarketState::default(),
+        }
+    }
 }
 
 /// Shows `face` in the tray unless it is already showing. Failures leave the previous icon.
@@ -445,8 +470,12 @@ pub fn run() {
         // Used from Rust only (install confirmation); no capability grants its JS commands.
         .plugin(tauri_plugin_dialog::init())
         // Bundled activities, framed by the UI in a sandboxed iframe (ADR-012).
-        .register_uri_scheme_protocol(activities::SCHEME, |_ctx, request| {
-            activities::serve(&request)
+        .register_uri_scheme_protocol(activities::SCHEME, |ctx, request| {
+            let core: Option<Arc<Core>> = ctx
+                .app_handle()
+                .try_state::<Arc<Core>>()
+                .map(|s| Arc::clone(&s));
+            activities::serve(core.as_deref(), &request)
         })
         .setup(|app| {
             let handle = app.handle().clone();
@@ -458,6 +487,9 @@ pub fn run() {
                 ipc: Mutex::new(None),
                 started_utc: OffsetDateTime::now_utc(),
                 tray_face: Mutex::new(None),
+                app_dir: handle.path().app_data_dir().unwrap_or_default(),
+                library: activities::installed::Library::default(),
+                market: market::MarketState::default(),
             });
             let ipc_health = if store_health == Health::Ok {
                 start_ipc(&handle, &core)
@@ -497,6 +529,7 @@ pub fn run() {
             notification_prefs,
             set_notification_prefs,
             activities::activities_list,
+            activities::activities_manage_list,
             activities::activity_info,
             activities::activity_storage_get,
             activities::activity_storage_set,
@@ -507,6 +540,17 @@ pub fn run() {
             activities::activity_preview,
             activities::activity_add_play,
             activities::activity_content,
+            market::marketplace_list,
+            market::marketplace_add,
+            market::marketplace_remove,
+            market::marketplace_refresh,
+            market::marketplace_entries,
+            market::marketplace_preview_install,
+            market::marketplace_install,
+            market::marketplace_preview_update,
+            market::marketplace_update,
+            market::activity_uninstall,
+            market::activity_set_enabled,
             context::session_detail,
             context::set_session_notes,
             context::set_session_intent,
@@ -554,7 +598,16 @@ mod tests {
 
     #[test]
     fn only_the_main_window_may_change_agent_settings() {
-        const SENSITIVE: [&str; 2] = ["allow-claude-code-install", "allow-claude-code-uninstall"];
+        const SENSITIVE: [&str; 8] = [
+            "allow-claude-code-install",
+            "allow-claude-code-uninstall",
+            "allow-marketplace-add",
+            "allow-marketplace-remove",
+            "allow-marketplace-install",
+            "allow-marketplace-update",
+            "allow-activity-uninstall",
+            "allow-activity-set-enabled",
+        ];
         let mut granted = 0;
         for (file, cap) in capabilities() {
             let perms = cap["permissions"].as_array().expect("permissions array");

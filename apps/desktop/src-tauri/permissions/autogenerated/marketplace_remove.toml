@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-marketplace-remove"
+description = "Enables the marketplace_remove command without any pre-configured scope."
+commands.allow = ["marketplace_remove"]
+
+[[permission]]
+identifier = "deny-marketplace-remove"
+description = "Denies the marketplace_remove command without any pre-configured scope."
+commands.deny = ["marketplace_remove"]
