@@ -10,7 +10,7 @@ description: Run the Lullshift quality gate and independently assess sprint read
 3. Include threat-case tests when touched: local IPC, hook install/uninstall, sandbox denial, marketplace Git handling and malicious-repo fixtures, BYOK key handling, migrations.
 4. For any activity, kit, engine or content change, check the activity and marketplace gates in `sprints/DEFINITION_OF_DONE.md`.
 5. Confirm no account, hosted-service or default-telemetry dependency was introduced (ADR-001).
-6. Report exact commands, exit codes and failures. Never invent successful CI or native OS tests. Mark a sprint done only if its acceptance checks pass.
+6. Report exact commands, exit codes and failures. Never invent successful checks or native OS tests; there is no hosted CI (ADR-004), so report which OS each check ran on. Mark a sprint done only if its acceptance checks pass.
 
 ## Handoff format
 

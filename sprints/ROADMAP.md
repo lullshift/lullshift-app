@@ -1,10 +1,10 @@
 # Lullshift - Sprint Roadmap (v2.0)
 
-**Cadence:** indicative 2-week sprints; ordering is by dependency and risk, not promised dates. Opus handles architecture/security and sprint review; Sonnet handles bounded implementation, games, engines, content and tests. Governing decisions: ADR-001 (open source, no accounts), ADR-002 (Git marketplaces), ADR-003 (activity model and 20/100 target).
+**Cadence:** indicative 2-week sprints; ordering is by dependency and risk, not promised dates. Opus handles architecture/security and sprint review; Sonnet handles bounded implementation, games, engines, content and tests. Governing decisions: ADR-001 (open source, no accounts), ADR-002 (Git marketplaces), ADR-003 (activity model and 20/100 target), ADR-004 (local checks, no hosted CI for now).
 
 | Sprint | Scope | Key deliverable |
 |---|---|---|
-| 00 | Foundation: monorepo, toolchains, schemas, CI, ADRs | Reproducible build and validated contracts |
+| 00 | Foundation: monorepo, toolchains, schemas, local checks, ADRs | Reproducible build and validated contracts |
 | 01 | Desktop shell: tray, Rust reducer, SQLite, local IPC, dashboard | App runs, persists and survives restart |
 | 02 | Claude Code adapter | Real hook observations with safe install/uninstall |
 | 03 | Notifications and activity host | Sandboxed, host-interruptible activities; Break; one reference game |

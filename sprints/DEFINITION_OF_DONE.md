@@ -4,7 +4,7 @@ A sprint is complete only when observed behavior meets the documented acceptance
 
 ## Mandatory gates
 
-- [ ] Unit, integration, type, lint and format checks pass where applicable.
+- [ ] The local check command (ADR-004) passes; unit, integration, type, lint, format and secret-scan results recorded with OS.
 - [ ] User stories tested on the development OS; release gates include Windows, macOS and Linux smoke results (or clearly flagged blocked platforms).
 - [ ] External APIs (Tauri, agent hooks, AI providers) validated against current official documentation.
 - [ ] State changes tested with duplicate, reordered, missing and malicious inputs.

@@ -62,7 +62,7 @@ There is no telemetry by default; any future diagnostics must be opt-in (ADR-001
 | Marketplaces | System `git` executable (hardened invocation) | uses the user's existing Git credentials; library alternative evaluated by ADR |
 | Creator tooling | TypeScript SDK, kits, CLI, simulator | CLI language/distribution chosen by ADR |
 | Tests | Vitest, Playwright, `cargo test` | plus fixture-driven adapter and malicious-repo tests |
-| CI | GitHub Actions | fmt/lint/typecheck/test/build on Windows, macOS, Linux |
+| Checks | Local check script + opt-in Git hooks (ADR-004) | fmt/lint/typecheck/test/build/schemas/secret scan; no hosted CI for now |
 
 Explicitly **not** in the v1 stack: .NET/ASP.NET Core, PostgreSQL, OIDC/OAuth brokers, Flutter, a React web console, push services, billing/payment providers, object storage/CDN, Docker deployment, cloud OpenTelemetry export.
 
@@ -310,7 +310,7 @@ Every invocation is hardened:
 - **Sandbox denial tests per OS:** network (fetch/WebSocket/WebRTC/img), Tauri IPC, filesystem, navigation/popups, cross-origin storage, bridge spoofing, message floods, quota overflow, freeze without cooperation, crash recovery. Must pass before third-party code is enabled on that OS.
 - **Malicious-repo fixtures:** path traversal, absolute paths, symlinks/hard links, case collisions, huge files/file counts, zip bombs (`.lullpack`), repo hooks, submodules, LFS pointers, config tricks, executables in content packs, malformed indexes, refs starting with `-`, force-pushed history.
 - **Engine schema compatibility:** every bundled pack validates against its engine major; every retained major still runs its fixture packs. Simulator lifecycle tests for every bundled code activity and engine.
-- **CI (GitHub Actions):** Rust fmt/clippy/test, TS lint/typecheck/test/build, schema validation of the built-in index and manifests, secret/dependency scans, SBOM, provenance.
+- **Local checks (ADR-004, no hosted CI for now):** one cross-platform entry point running Rust fmt/clippy/test, TS lint/typecheck/test/build, schema validation of the built-in index and manifests, secret/dependency scans, SBOM, provenance.
 - **Release:** code signing/notarization of the desktop app and signed updater artifacts; signing keys never enter the repository. Security review before enabling third-party code activities.
 
 ## 11. ADRs
@@ -320,20 +320,21 @@ Accepted:
 - [ADR-001](adr/ADR-001-open-source-v1-no-accounts.md): Fully open-source v1 with no accounts and no hosted services.
 - [ADR-002](adr/ADR-002-git-repo-marketplaces.md): Git repositories as activity marketplaces.
 - [ADR-003](adr/ADR-003-activity-model-kits-engines-content.md): Activity model: code activities, kits, engines and content packs; v1 content target.
+- [ADR-004](adr/ADR-004-local-quality-checks-no-hosted-ci.md): Local quality checks instead of hosted CI (for now).
 
 To be recorded from Sprint 00 onward (numbering indicative):
 
-- ADR-004: SQLite library (`rusqlite` vs `sqlx`), migrations and backup.
-- ADR-005: Agent event contract v1 and state-machine semantics.
-- ADR-006: Local IPC transport and authentication.
-- ADR-007: Activity sandbox strategy per OS and host bridge protocol.
-- ADR-008: Git integration (system `git` vs library), hardening, cache layout.
-- ADR-009: Marketplace index schema v1 and install/update/pin semantics.
-- ADR-010: Engine versioning, data schemas and retirement policy.
-- ADR-011: Creator CLI implementation language and distribution.
-- ADR-012: App update signing, release pipeline and key custody.
-- ADR-013: Bundling built-in activities into the installer.
-- ADR-014: BYOK Companion provider abstraction and context boundary.
+- ADR-005: SQLite library (`rusqlite` vs `sqlx`), migrations and backup.
+- ADR-006: Agent event contract v1 and state-machine semantics.
+- ADR-007: Local IPC transport and authentication.
+- ADR-008: Activity sandbox strategy per OS and host bridge protocol.
+- ADR-009: Git integration (system `git` vs library), hardening, cache layout.
+- ADR-010: Marketplace index schema v1 and install/update/pin semantics.
+- ADR-011: Engine versioning, data schemas and retirement policy.
+- ADR-012: Creator CLI implementation language and distribution.
+- ADR-013: App update signing, release pipeline and key custody.
+- ADR-014: Bundling built-in activities into the installer.
+- ADR-015: BYOK Companion provider abstraction and context boundary.
 
 Use the `architecture-decision` skill and link new ADRs here.
 

@@ -230,7 +230,7 @@ Milestones follow `sprints/ROADMAP.md`:
 
 | Sprint | Scope |
 |---|---|
-| 00 | Foundation: monorepo, schemas, CI, ADRs |
+| 00 | Foundation: monorepo, schemas, local checks, ADRs |
 | 01 | Desktop shell: tray, Rust reducer, SQLite, local IPC |
 | 02 | Claude Code adapter (consented, reversible hook install) |
 | 03 | Notifications, sandboxed activity host, Break, one reference game |
@@ -274,7 +274,7 @@ Deferred ideas: accounts/identity, sync and encrypted backup, mobile companion, 
 
 ## 14. References
 
-- ADRs: `docs/adr/ADR-001-open-source-v1-no-accounts.md`, `docs/adr/ADR-002-git-repo-marketplaces.md`, `docs/adr/ADR-003-activity-model-kits-engines-content.md`
+- ADRs: `docs/adr/ADR-001-open-source-v1-no-accounts.md`, `docs/adr/ADR-002-git-repo-marketplaces.md`, `docs/adr/ADR-003-activity-model-kits-engines-content.md`, `docs/adr/ADR-004-local-quality-checks-no-hosted-ci.md`
 - Claude Code skills/subagents: https://claude.com/blog/steering-claude-code-skills-hooks-rules-subagents-and-more
 - Tauri 2 documentation: https://v2.tauri.app/
 - Tauri signed updater: https://v2.tauri.app/plugin/updater/

@@ -2,7 +2,7 @@
 
 ## Start the project (Opus)
 
-Read `CLAUDE.md`, both docs, `docs/adr/`, `sprints/ROADMAP.md` and `sprints/SPRINT_00.md`. Implement Sprint 00 only. First list the critical open technical choices and record reversible defaults as ADR-004 onward. Then scaffold and actually run the required tests/build checks. Do not start Sprint 01 until Sprint 00 acceptance is verified.
+Read `CLAUDE.md`, both docs, `docs/adr/`, `sprints/ROADMAP.md` and `sprints/SPRINT_00.md`. Implement Sprint 00 only. First list the critical open technical choices and record reversible defaults as ADR-005 onward. Then scaffold and actually run the required tests/build checks. Do not start Sprint 01 until Sprint 00 acceptance is verified.
 
 ## Start a sprint (Opus)
 
@@ -14,7 +14,7 @@ Use `/agent-adapter` for PROVIDER. Read current provider documentation and write
 
 ## Build the activity host and sandbox (Opus architecture, Sonnet implementation)
 
-Start Sprint 03. Read ADR-003 and the sandbox section of the architecture doc. Write the sandbox strategy ADR and denial tests first (Tauri IPC, network, filesystem, clipboard, navigation, cross-activity storage), then the lifecycle bridge and host-enforced pause. Record per-OS results honestly.
+Start Sprint 03. Read ADR-003 and the sandbox section of the architecture doc. Write the sandbox strategy ADR (ADR-008) and denial tests first (Tauri IPC, network, filesystem, clipboard, navigation, cross-activity storage), then the lifecycle bridge and host-enforced pause. Record per-OS results honestly.
 
 ## Create an activity (Sonnet implementation; Opus security review)
 
