@@ -293,3 +293,54 @@ fn tampered_rows_are_reported_not_panicked() {
     let (s, _) = Store::open(&path).expect("open");
     assert!(matches!(s.sessions(), Err(StoreError::Corrupt(_))));
 }
+
+#[test]
+fn version_1_database_upgrades_with_backup_and_keeps_sessions() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("open raw");
+        migrate(&conn, &MIGRATIONS[..1], None).expect("v1");
+    }
+    {
+        // Write a session through the v1 schema.
+        let conn = Connection::open(&path).expect("open raw");
+        conn.execute(
+            "INSERT INTO sessions VALUES ('claude-code','s','working','2026-11-05T10:00:00Z','2026-11-05T10:00:00Z','2026-11-05T10:00:00Z')",
+            [],
+        )
+        .expect("insert");
+    }
+    let (s, report) = Store::open(&path).expect("upgrade");
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (1, latest_version())
+    );
+    let backup = report.backup.expect("backup before upgrade");
+    assert!(backup.exists());
+    assert_eq!(s.sessions().expect("sessions").len(), 1);
+
+    // The backup is the v1 database, still openable at v1.
+    let b = Connection::open(&backup).expect("open backup");
+    let v: i64 = b
+        .query_row("SELECT version FROM schema_version", [], |r| r.get(0))
+        .expect("v");
+    assert_eq!(v, 1);
+}
+
+#[test]
+fn adapter_install_records_round_trip() {
+    let s = Store::open_in_memory().expect("open");
+    assert_eq!(s.adapter_install("claude-code").expect("get"), None);
+    s.save_adapter_install("claude-code", r#"{"a":1}"#, T0)
+        .expect("save");
+    s.save_adapter_install("claude-code", r#"{"a":2}"#, T0)
+        .expect("replace");
+    assert_eq!(
+        s.adapter_install("claude-code").expect("get").as_deref(),
+        Some(r#"{"a":2}"#)
+    );
+    s.mark_adapter_uninstalled("claude-code")
+        .expect("uninstall");
+    assert_eq!(s.adapter_install("claude-code").expect("get"), None);
+}

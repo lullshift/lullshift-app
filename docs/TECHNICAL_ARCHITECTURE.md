@@ -326,17 +326,18 @@ Accepted:
 - [ADR-007](adr/ADR-007-sqlite-library.md): SQLite library (rusqlite).
 - [ADR-008](adr/ADR-008-session-state-machine.md): Agent event contract v1 and session state machine.
 - [ADR-009](adr/ADR-009-local-ipc-transport-and-auth.md): Local IPC transport and authentication.
+- [ADR-010](adr/ADR-010-agent-adapters-and-hook-installation.md): Agent adapters, hook forwarder and hook installation.
 
 To be recorded in later sprints (numbering indicative):
 
-- ADR-010: Activity sandbox strategy per OS and host bridge protocol.
-- ADR-011: Git integration (system `git` vs library), hardening, cache layout.
-- ADR-012: Marketplace index schema v1 and install/update/pin semantics.
-- ADR-013: Engine versioning, data schemas and retirement policy.
-- ADR-014: Creator CLI implementation language and distribution.
-- ADR-015: App update signing, release pipeline and key custody.
-- ADR-016: Bundling built-in activities into the installer.
-- ADR-017: BYOK Companion provider abstraction and context boundary.
+- ADR-011: Activity sandbox strategy per OS and host bridge protocol.
+- ADR-012: Git integration (system `git` vs library), hardening, cache layout.
+- ADR-013: Marketplace index schema v1 and install/update/pin semantics.
+- ADR-014: Engine versioning, data schemas and retirement policy.
+- ADR-015: Creator CLI implementation language and distribution.
+- ADR-016: App update signing, release pipeline and key custody.
+- ADR-017: Bundling built-in activities into the installer.
+- ADR-018: BYOK Companion provider abstraction and context boundary.
 
 Use the `architecture-decision` skill and link new ADRs here.
 

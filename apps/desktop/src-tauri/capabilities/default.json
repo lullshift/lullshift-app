@@ -5,6 +5,9 @@
   "windows": ["main"],
   "permissions": [
     "allow-dashboard",
+    "allow-claude-code-status",
+    "allow-claude-code-install",
+    "allow-claude-code-uninstall",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "autostart:allow-enable",

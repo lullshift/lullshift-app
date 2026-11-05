@@ -42,7 +42,7 @@ pnpm desktop:dev
 
 This opens Lullshift. Closing the window keeps it running in the tray; quit from the tray menu.
 
-Local data lives in the app data directory (`%APPDATA%pp.lullshift.desktop` on Windows,
+Local data lives in the app data directory (`%APPDATA%\app.lullshift.desktop` on Windows,
 `~/Library/Application Support/app.lullshift.desktop` on macOS, `~/.local/share/app.lullshift.desktop`
 on Linux): `lullshift.db` (SQLite, WAL), upgrade backups `lullshift.db.v<N>-<time>.bak`, and
 `ipc/` with `endpoint.json` and the per-install `token` (ADR-009). Delete `ipc/token` and restart
@@ -50,7 +50,11 @@ to rotate the token.
 
 ### Send a test agent event
 
-Agent adapters arrive in Sprint 02. Until then, send events by hand with the dev client:
+Real Claude Code sessions report through hooks once you choose **Connect Claude Code** in the app
+(ADR-010, `docs/adapters/CLAUDE_CODE.md`). To try the hooks without changing your own Claude Code
+settings, put the `hooks` block in a scratch file and run `claude --settings <file>`.
+
+To send events by hand, use the dev client:
 
 ```bash
 cargo run -p agent-ipc --example send_event -- "<app data dir>" tests/fixtures/agent-event/valid/working-minimal.json

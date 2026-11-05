@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { adapterErrorText, adapterStatusText } from "./adapters";
 import { createDashboardStore } from "./dashboardStore";
 import {
   healthProblems,
@@ -154,5 +155,28 @@ describe("dashboard store", () => {
     await first;
     const st = store.getState().state;
     expect(st.status === "ready" && st.dashboard.staleAfterSeconds).toBe(2);
+  });
+});
+
+describe("adapter labels", () => {
+  it("is honest about partial and broken setups", () => {
+    expect(adapterStatusText("partial")).toMatch(/missed/);
+    expect(adapterStatusText("settings_invalid")).toMatch(/won't change it/);
+  });
+
+  it("says nothing was changed on errors, including unknown codes", () => {
+    for (const code of [
+      "settings_invalid",
+      "changed_concurrently",
+      "store_unavailable",
+      "file_error",
+      "???",
+    ]) {
+      expect(adapterErrorText(code)).toMatch(/didn't change|Nothing was (written|changed)/);
+    }
+  });
+
+  it("labels ended sessions without claiming completion", () => {
+    expect(stateView("ended")).toEqual({ label: "Ended", tone: "neutral" });
   });
 });

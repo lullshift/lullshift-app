@@ -17,6 +17,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+agent-adapters.workspace = true
 agent-core.workspace = true
 agent-ipc.workspace = true
 local-store.workspace = true

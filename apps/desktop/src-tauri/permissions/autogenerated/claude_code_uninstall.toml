@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-claude-code-uninstall"
+description = "Enables the claude_code_uninstall command without any pre-configured scope."
+commands.allow = ["claude_code_uninstall"]
+
+[[permission]]
+identifier = "deny-claude-code-uninstall"
+description = "Denies the claude_code_uninstall command without any pre-configured scope."
+commands.deny = ["claude_code_uninstall"]

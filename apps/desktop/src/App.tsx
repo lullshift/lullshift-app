@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import { useStore } from "zustand";
 import { createDashboardStore } from "./dashboardStore";
 import { healthProblems, reasonText, sortSessions, stateView, type Dashboard } from "./sessions";
+import Integrations from "./Integrations";
 import Settings from "./Settings";
 
 /** Re-derive stale/unknown states even when no events arrive. */
@@ -69,7 +70,8 @@ export default function App() {
         {state.status === "loading" && <p role="status">Loading sessions…</p>}
         {dashboard && sessions.length === 0 && (
           <p className="empty">
-            No agent sessions yet. Sessions appear here once a connected agent reports activity.
+            No agent sessions yet. Connect Claude Code below; sessions appear here once it reports
+            activity.
           </p>
         )}
         {dashboard && sessions.length > 0 && (
@@ -95,6 +97,7 @@ export default function App() {
         )}
       </section>
 
+      <Integrations />
       <Settings />
     </main>
   );

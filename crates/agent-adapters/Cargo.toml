@@ -1,0 +1,24 @@
+[package]
+name = "agent-adapters"
+description = "Lullshift agent adapters: Claude Code hook mapping, hook forwarder and consent-based hook installer (ADR-010)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+agent-core.workspace = true
+agent-ipc.workspace = true
+getrandom.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+sha2.workspace = true
+tempfile.workspace = true
+time.workspace = true
+tokio = { workspace = true, features = ["rt", "time"] }
+uuid.workspace = true
+
+[lints]
+workspace = true

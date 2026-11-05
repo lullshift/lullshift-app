@@ -2,16 +2,19 @@
 //!
 //! Closing the window hides it; monitoring continues until "Quit" in the tray menu.
 
+mod adapters;
+
 use std::sync::{Arc, Mutex};
 
 use agent_core::reducer::DEFAULT_STALE_AFTER;
-use agent_core::{AgentEvent, SessionView, view};
+use agent_core::{AgentEvent, SessionState, SessionView, view};
 use agent_ipc::{Config, Running, ServeError, SinkError};
 use local_store::{IngestOutcome, Store, StoreError};
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+use tauri_plugin_notification::NotificationExt;
 use time::OffsetDateTime;
 
 /// Launch argument used by autostart: start in the tray without showing the window.
@@ -117,6 +120,7 @@ fn start_ipc(app: &AppHandle, core: &Arc<Core>) -> Health {
     };
     let sink_core = Arc::clone(core);
     let sink_app = app.clone();
+    let gate = std::sync::Mutex::new(AttentionGate::default());
     let sink = move |event: AgentEvent| -> Result<bool, SinkError> {
         let received = OffsetDateTime::now_utc();
         let outcome = {
@@ -127,6 +131,20 @@ fn start_ipc(app: &AppHandle, core: &Arc<Core>) -> Health {
         let new = matches!(outcome, IngestOutcome::Stored { .. });
         if new {
             let _ = sink_app.emit(SESSIONS_CHANGED, ());
+        }
+        let notice = attention_notice(&outcome).filter(|_| match &outcome {
+            IngestOutcome::Stored { record, .. } => gate.lock().is_ok_and(|mut g| {
+                g.allow(&record.provider, &record.provider_session_id, received)
+            }),
+            _ => false,
+        });
+        if let Some(body) = notice {
+            let _ = sink_app
+                .notification()
+                .builder()
+                .title("Lullshift")
+                .body(body)
+                .show();
         }
         Ok(new)
     };
@@ -142,6 +160,45 @@ fn start_ipc(app: &AppHandle, core: &Arc<Core>) -> Health {
         }
         Err(ServeError::AddressInUse) => Health::Error("address_in_use"),
         Err(ServeError::Io(_)) => Health::Error("unavailable"),
+    }
+}
+
+/// Notification text when a session has just moved into `needs_attention`, else `None`.
+/// Duplicates and repeats of the same state never notify again (S02-A02). The text names
+/// only the agent, never task content.
+fn attention_notice(outcome: &IngestOutcome) -> Option<&'static str> {
+    match outcome {
+        IngestOutcome::Stored {
+            state_changed: true,
+            record,
+        } if record.state == SessionState::NeedsAttention => Some(match record.provider.as_str() {
+            "claude-code" => "A Claude Code session needs you.",
+            _ => "An agent session needs you.",
+        }),
+        _ => None,
+    }
+}
+
+/// Hooks run as separate async processes, so a `working` event can land between a permission
+/// request and Claude Code's own permission notification a few seconds later. Both would move
+/// the session into `needs_attention`; this keeps that to one notification per session within
+/// [`AttentionGate::WINDOW`] (S02-A02). The dashboard still shows every state change.
+#[derive(Default)]
+struct AttentionGate {
+    last: std::collections::HashMap<(String, String), OffsetDateTime>,
+}
+
+impl AttentionGate {
+    const WINDOW: time::Duration = time::Duration::seconds(15);
+
+    fn allow(&mut self, provider: &str, session: &str, now: OffsetDateTime) -> bool {
+        self.last.retain(|_, t| now - *t < Self::WINDOW);
+        let key = (provider.to_owned(), session.to_owned());
+        if self.last.contains_key(&key) {
+            return false;
+        }
+        self.last.insert(key, now);
+        true
     }
 }
 
@@ -230,7 +287,61 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
-        .invoke_handler(tauri::generate_handler![dashboard])
+        .invoke_handler(tauri::generate_handler![
+            dashboard,
+            adapters::claude_code_status,
+            adapters::claude_code_install,
+            adapters::claude_code_uninstall
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Lullshift");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent_core::SessionRecord;
+
+    fn stored(changed: bool, state: SessionState) -> IngestOutcome {
+        let t = OffsetDateTime::UNIX_EPOCH;
+        IngestOutcome::Stored {
+            state_changed: changed,
+            record: SessionRecord {
+                provider: "claude-code".into(),
+                provider_session_id: "s".into(),
+                state,
+                state_timestamp_utc: Some(t),
+                last_seen_utc: t,
+                last_received_utc: t,
+            },
+        }
+    }
+
+    #[test]
+    fn notifies_only_on_change_into_attention() {
+        assert!(attention_notice(&stored(true, SessionState::NeedsAttention)).is_some());
+        assert!(
+            attention_notice(&stored(false, SessionState::NeedsAttention)).is_none(),
+            "repeat"
+        );
+        assert!(
+            attention_notice(&IngestOutcome::Duplicate).is_none(),
+            "replayed eventId"
+        );
+        assert!(attention_notice(&stored(true, SessionState::Idle)).is_none());
+    }
+
+    #[test]
+    fn one_notification_per_session_within_the_window() {
+        let t = time::macros::datetime!(2026-11-05 10:00:00 UTC);
+        let s = time::Duration::seconds;
+        let mut gate = AttentionGate::default();
+        assert!(gate.allow("claude-code", "a", t), "permission request");
+        assert!(
+            !gate.allow("claude-code", "a", t + s(6)),
+            "permission notification after a reordered working event"
+        );
+        assert!(gate.allow("claude-code", "b", t + s(6)), "other session");
+        assert!(gate.allow("claude-code", "a", t + s(30)), "a later prompt");
+    }
 }

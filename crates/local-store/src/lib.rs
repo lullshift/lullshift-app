@@ -22,10 +22,16 @@ pub struct Migration {
 }
 
 /// All migrations, in order. Append only; never edit a released step.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    sql: include_str!("../migrations/0001_init.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        sql: include_str!("../migrations/0001_init.sql"),
+    },
+    Migration {
+        version: 2,
+        sql: include_str!("../migrations/0002_adapter_installations.sql"),
+    },
+];
 
 pub fn latest_version() -> i64 {
     MIGRATIONS.last().map_or(0, |m| m.version)
@@ -191,6 +197,45 @@ impl Store {
         Ok(self
             .conn
             .query_row("SELECT count(*) FROM events", [], |r| r.get(0))?)
+    }
+
+    /// Saves (or replaces) an adapter's install record as `installed`.
+    pub fn save_adapter_install(
+        &self,
+        adapter_id: &str,
+        record_json: &str,
+        consent_utc: OffsetDateTime,
+    ) -> Result<()> {
+        let now = fmt_ts(OffsetDateTime::now_utc())?;
+        self.conn.execute(
+            "INSERT INTO adapter_installations (adapter_id, status, record_json, consent_utc, updated_utc)
+             VALUES (?1, 'installed', ?2, ?3, ?4)
+             ON CONFLICT (adapter_id) DO UPDATE SET status = 'installed', record_json = excluded.record_json,
+               consent_utc = excluded.consent_utc, updated_utc = excluded.updated_utc",
+            params![adapter_id, record_json, fmt_ts(consent_utc)?, now],
+        )?;
+        Ok(())
+    }
+
+    /// The record of an `installed` adapter, if any.
+    pub fn adapter_install(&self, adapter_id: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT record_json FROM adapter_installations WHERE adapter_id = ?1 AND status = 'installed'",
+                [adapter_id],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Marks an adapter uninstalled. The row (and its backup paths) is kept for reference.
+    pub fn mark_adapter_uninstalled(&self, adapter_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE adapter_installations SET status = 'uninstalled', updated_utc = ?2 WHERE adapter_id = ?1",
+            params![adapter_id, fmt_ts(OffsetDateTime::now_utc())?],
+        )?;
+        Ok(())
     }
 }
 
