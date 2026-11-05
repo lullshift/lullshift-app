@@ -70,6 +70,7 @@ Migration 0004 adds:
 ### UI preference
 
 - The session detail panel can be pinned (docked) or floating. The choice is stored as a preference (`ui`), default pinned. Under 720 px the panel always floats, without changing the stored choice.
+- The same preference holds the content width: full (default) or comfortable. Older stored preferences without it read as full width. Each change saves the whole set, so one setting never overwrites another.
 
 ## Consequences
 

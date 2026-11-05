@@ -9,6 +9,7 @@ import Integrations from "./Integrations";
 import SessionsView from "./SessionsView";
 import { healthProblems, sortSessions, type Dashboard } from "./sessions";
 import Settings from "./Settings";
+import { loadUiPrefs, useUiPrefs } from "./uiPrefsStore";
 import { Icon, type IconName } from "./ui/Icon";
 import { Mascot } from "./ui/Mascot";
 
@@ -31,6 +32,10 @@ export default function App() {
   const state = useStore(dashboardStore, (s) => s.state);
   const refresh = useStore(dashboardStore, (s) => s.refresh);
   const [view, setView] = useState<ViewId>("sessions");
+  const { contentWidth } = useUiPrefs();
+  useEffect(() => {
+    void loadUiPrefs();
+  }, []);
   const [now, setNow] = useState(() => Date.now());
   const [pause, setPause] = useState<PauseRequest | null>(null);
   // Bumps on each sessions-changed event so an open detail panel re-reads its session.
@@ -135,7 +140,7 @@ export default function App() {
         </p>
       </aside>
 
-      <main className="content">
+      <main className={`content width-${contentWidth}`}>
         {view === "sessions" && (
           <SessionsView
             headingRef={headingRef}

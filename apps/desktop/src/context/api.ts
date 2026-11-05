@@ -67,8 +67,12 @@ export interface ContextPrefs {
   capture: Record<string, boolean>;
 }
 
+export type ContentWidth = "full" | "comfortable";
+
 export interface UiPrefs {
   detailPanelPinned: boolean;
+  /** Full width is the default; comfortable keeps text columns narrower. */
+  contentWidth: ContentWidth;
 }
 
 const k = (s: SessionKey) => ({ provider: s.provider, sessionId: s.sessionId });

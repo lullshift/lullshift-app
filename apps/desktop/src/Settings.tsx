@@ -1,6 +1,7 @@
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { useEffect, useState, type RefObject } from "react";
+import { AppearanceSettings } from "./AppearanceSettings";
 import { ContextSettings } from "./context/ContextSettings";
 import { NotificationSettings } from "./NotificationSettings";
 import { Banner } from "./ui/Banner";
@@ -81,6 +82,8 @@ export default function Settings({
           <Banner tone="danger">The startup setting couldn't be read or changed.</Banner>
         )}
       </div>
+
+      <AppearanceSettings />
 
       <h2 className="section-title">Notifications</h2>
       <div className="card rows">

@@ -91,16 +91,29 @@ impl ContextPrefs {
     }
 }
 
+/// How wide the main content may grow. Full width is the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ContentWidth {
+    #[default]
+    Full,
+    Comfortable,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UiPrefs {
     pub detail_panel_pinned: bool,
+    /// Missing in preferences saved before it existed; those read as full width.
+    #[serde(default)]
+    pub content_width: ContentWidth,
 }
 
 impl Default for UiPrefs {
     fn default() -> Self {
         Self {
             detail_panel_pinned: true,
+            content_width: ContentWidth::Full,
         }
     }
 }
@@ -1213,6 +1226,23 @@ mod tests {
             "pinned by default"
         );
         assert!(!UiPrefs::from_stored(Some(r#"{"detailPanelPinned":false}"#)).detail_panel_pinned);
+        assert_eq!(
+            UiPrefs::from_stored(Some(r#"{"detailPanelPinned":false}"#)).content_width,
+            ContentWidth::Full,
+            "older saved prefs read as full width"
+        );
+        assert_eq!(
+            UiPrefs::from_stored(Some(
+                r#"{"detailPanelPinned":true,"contentWidth":"comfortable"}"#
+            ))
+            .content_width,
+            ContentWidth::Comfortable
+        );
+        assert_eq!(
+            UiPrefs::from_stored(Some(r#"{"detailPanelPinned":true,"contentWidth":"huge"}"#)),
+            UiPrefs::default(),
+            "unknown widths fall back to the defaults"
+        );
     }
 
     #[test]

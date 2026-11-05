@@ -1870,3 +1870,65 @@ button.session.tone-attention:hover {
     max-height: 80vh;
   }
 }
+
+/* ---------- Content width (Settings > Appearance) ---------- */
+
+/* Full width (the default) lets every view use the window; comfortable keeps the original
+   reading widths. */
+.content.width-full .view,
+.content.width-full .view-fill {
+  max-width: none;
+}
+
+.row-choice {
+  margin: 0;
+  border: 0;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.row-choice legend {
+  float: left;
+  padding: 0;
+}
+
+.choice-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choice input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.choice-text {
+  display: grid;
+}
+
+.choice-label {
+  font-weight: 600;
+}
+
+.choice-desc {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

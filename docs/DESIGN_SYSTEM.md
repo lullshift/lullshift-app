@@ -66,7 +66,7 @@ Each colour family has exactly one job:
 
 ## Layout
 
-- **Shell:** a sidebar holds the mark, the navigation with counts, and a "Local · Offline" note; the content column is up to 760 px wide.
+- **Shell:** a sidebar holds the mark, the navigation with counts, and a "Local · Offline" note; content uses the full window width by default. Settings → Appearance offers "Comfortable", which keeps text views to 760 px and wide views (Sessions) to 1,120 px. The choice is saved with the other interface preferences.
 - **Narrow windows:** below 720 px the sidebar becomes a top bar.
 - **Sessions view** (layout chosen by the product owner from mockups, 2026-11-05). It is built for several agent tools at once (Claude Code now, Cursor in v1):
   - A bar with **Live** and **History** tabs (with counts), a search box (session ID or tool name) and tool filter chips (All tools, then each tool). The search and chips apply to both tabs.

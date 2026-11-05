@@ -7,7 +7,8 @@ import {
   type KeyboardEvent,
   type RefObject,
 } from "react";
-import { setUiPrefs, uiPrefs, type SessionKey } from "./context/api";
+import { type SessionKey } from "./context/api";
+import { updateUiPrefs, useUiPrefs } from "./uiPrefsStore";
 import DetailPanel from "./context/DetailPanel";
 import {
   decideLayout,
@@ -74,21 +75,12 @@ export default function SessionsView({
   const [sort, setSort] = useState<HistorySort>({ key: "lastSeen", descending: true });
 
   const [selected, setSelected] = useState<SessionKey | null>(null);
-  const [pinned, setPinned] = useState(true);
+  const pinned = useUiPrefs().detailPanelPinned;
   const width = useWindowWidth();
   const returnTo = useRef<string | null>(null);
 
-  // The pin preference is read once; if it can't be read, the panel stays pinned.
-  useEffect(() => {
-    uiPrefs()
-      .then((p) => setPinned(p.detailPanelPinned))
-      .catch(() => undefined);
-  }, []);
-  const togglePin = () => {
-    const next = !pinned;
-    setPinned(next);
-    setUiPrefs({ detailPanelPinned: next }).catch(() => undefined);
-  };
+  // Saved with the other interface preferences; if they can't be read, the panel stays pinned.
+  const togglePin = () => void updateUiPrefs({ detailPanelPinned: !pinned });
 
   const selectedView = selected
     ? sessions.find((s) => sameSession(viewKey(s), selected))
