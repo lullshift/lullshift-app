@@ -1,0 +1,22 @@
+# Original handoff archive (contents unpacked at repo root)
+docs/cloudecode/
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build outputs
+node_modules/
+dist/
+target/
+bin/
+obj/

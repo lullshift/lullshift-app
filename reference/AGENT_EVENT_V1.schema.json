@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/lullshift/agent-event-v1.schema.json",
+  "title": "Lullshift Agent Event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "provider",
+    "providerSessionId",
+    "eventType",
+    "timestampUtc"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "eventId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "providerSessionId": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "eventType": {
+      "enum": [
+        "session_started",
+        "working",
+        "needs_attention",
+        "turn_ended",
+        "completed",
+        "failed",
+        "cancelled",
+        "heartbeat"
+      ]
+    },
+    "timestampUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlationId": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32
+    },
+    "metadata": {
+      "type": "object",
+      "maxProperties": 20
+    }
+  }
+}
