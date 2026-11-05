@@ -1,6 +1,6 @@
 # ADR-007: SQLite library
 
-- **Status:** Accepted, provisional (confirm during Sprint 01 implementation)
+- **Status:** Accepted (confirmed in Sprint 01: `crates/local-store`, rusqlite 0.41 with bundled SQLite, WAL)
 - **Date:** 2026-11-05
 - **Owner:** Implementation lead
 

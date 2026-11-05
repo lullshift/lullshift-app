@@ -323,12 +323,12 @@ Accepted:
 - [ADR-004](adr/ADR-004-local-quality-checks-no-hosted-ci.md): Local quality checks instead of hosted CI (for now).
 - [ADR-005](adr/ADR-005-toolchains-workspace-and-checks.md): Toolchains, workspace layout and local check tooling.
 - [ADR-006](adr/ADR-006-schema-first-contracts.md): Schema-first contracts and type generation.
-- [ADR-007](adr/ADR-007-sqlite-library.md): SQLite library (rusqlite, provisional).
+- [ADR-007](adr/ADR-007-sqlite-library.md): SQLite library (rusqlite).
+- [ADR-008](adr/ADR-008-session-state-machine.md): Agent event contract v1 and session state machine.
+- [ADR-009](adr/ADR-009-local-ipc-transport-and-auth.md): Local IPC transport and authentication.
 
-To be recorded from Sprint 00 onward (numbering indicative):
+To be recorded in later sprints (numbering indicative):
 
-- ADR-008: Agent event contract v1 and state-machine semantics.
-- ADR-009: Local IPC transport and authentication.
 - ADR-010: Activity sandbox strategy per OS and host bridge protocol.
 - ADR-011: Git integration (system `git` vs library), hardening, cache layout.
 - ADR-012: Marketplace index schema v1 and install/update/pin semantics.

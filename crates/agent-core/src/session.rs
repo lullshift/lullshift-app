@@ -1,7 +1,6 @@
-//! Session state as shown to the user. The state machine that derives it from events is Sprint 01.
+//! Session state. `reducer` derives it from events (ADR-008).
 
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
 
 /// `unknown -> idle -> working -> needs_attention | completed | failed | cancelled` (PRD section 3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,13 +15,31 @@ pub enum SessionState {
     Cancelled,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionSnapshot {
-    pub provider: String,
-    pub provider_session_id: String,
-    pub title: String,
-    pub state: SessionState,
-    #[serde(with = "time::serde::rfc3339::option")]
-    pub last_event_utc: Option<OffsetDateTime>,
+impl SessionState {
+    pub const ALL: [SessionState; 7] = [
+        Self::Unknown,
+        Self::Idle,
+        Self::Working,
+        Self::NeedsAttention,
+        Self::Completed,
+        Self::Failed,
+        Self::Cancelled,
+    ];
+
+    /// Stable storage name (same as the serde wire name).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Idle => "idle",
+            Self::Working => "working",
+            Self::NeedsAttention => "needs_attention",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|s| s.as_str() == name)
+    }
 }

@@ -11,6 +11,7 @@
 - [ ] S04-T03: Next Move queue for follow-up questions, acceptance criteria and test ideas with copy-to-clipboard (user-initiated)
 - [ ] S04-T04: JSON/Markdown export, per-session deletion, session linking
 - [ ] S04-T05: Tests proving no task content is captured without consent and nothing leaves the device
+- [ ] S04-T06 (Sprint 01 review follow-up): retention limit for the agent event log in `local-store` (it grows without bound today), with a migration test
 
 ## Acceptance criteria
 

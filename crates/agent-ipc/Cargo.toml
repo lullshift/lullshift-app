@@ -1,0 +1,23 @@
+[package]
+name = "agent-ipc"
+description = "Lullshift authenticated local IPC for agent hook events: named pipe / Unix socket (ADR-009)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+agent-core.workspace = true
+getrandom.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
+tokio = { workspace = true, features = ["net", "io-util", "time", "rt", "sync"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+
+[lints]
+workspace = true

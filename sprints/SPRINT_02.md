@@ -11,6 +11,7 @@
 - [ ] S02-T03: Map hook events to normalized session state, including ambiguous turn-stop vs task completion
 - [ ] S02-T04: Handle simultaneous sessions and missing/replayed events
 - [ ] S02-T05: Adapter fixtures plus install/upgrade/uninstall tests
+- [ ] S02-T06 (Sprint 01 review follow-up): decide on an owner-only DACL for the Windows pipe (ADR-009 residual risk); forwarder reads `endpoint.json` on every send since the pipe name changes per launch, and fails fast when the app isn't running
 
 ## Acceptance criteria
 
