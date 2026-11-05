@@ -17,6 +17,8 @@ use time::OffsetDateTime;
 
 use crate::Core;
 
+pub(crate) mod more;
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdapterView {
@@ -83,13 +85,18 @@ fn error_code(e: &InstallError) -> String {
     .to_owned()
 }
 
-fn stored_record(core: &Core) -> Result<Option<InstallRecord>, String> {
+fn stored_record_of<R: serde::de::DeserializeOwned>(
+    core: &Core,
+    id: &str,
+) -> Result<Option<R>, String> {
     let guard = core.store.lock().map_err(|_| "internal")?;
     let store = guard.as_ref().ok_or("store_unavailable")?;
-    let json = store
-        .adapter_install(ADAPTER_ID)
-        .map_err(|_| "store_unavailable")?;
+    let json = store.adapter_install(id).map_err(|_| "store_unavailable")?;
     Ok(json.and_then(|j| serde_json::from_str(&j).ok()))
+}
+
+fn stored_record(core: &Core) -> Result<Option<InstallRecord>, String> {
+    stored_record_of(core, ADAPTER_ID)
 }
 
 async fn blocking<T: Send + 'static>(
@@ -113,13 +120,17 @@ pub async fn claude_code_status(
     .await
 }
 
-fn save_record(core: &Core, record: &InstallRecord) -> Result<(), String> {
+fn save_record_of<R: Serialize>(core: &Core, id: &str, record: &R) -> Result<(), String> {
     let json = serde_json::to_string(record).map_err(|_| "internal")?;
     let guard = core.store.lock().map_err(|_| "internal")?;
     let store = guard.as_ref().ok_or("store_unavailable")?;
     store
-        .save_adapter_install(ADAPTER_ID, &json, OffsetDateTime::now_utc())
+        .save_adapter_install(id, &json, OffsetDateTime::now_utc())
         .map_err(|_| "store_unavailable".to_owned())
+}
+
+fn save_record(core: &Core, record: &InstallRecord) -> Result<(), String> {
+    save_record_of(core, ADAPTER_ID, record)
 }
 
 /// Installs or updates the hooks. Called only after the user confirmed the consent dialog.
@@ -182,16 +193,16 @@ fn install_prompt(settings: &std::path::Path) -> String {
 
 /// Marks the adapter uninstalled and ends tracking of its open sessions. A store problem is
 /// not an uninstall failure: the hooks are already gone. Returns the number of sessions.
-fn disconnect_sessions(core: &Core) -> usize {
+fn disconnect_sessions(core: &Core, id: &str) -> usize {
     let Ok(mut guard) = core.store.lock() else {
         return 0;
     };
     let Some(store) = guard.as_mut() else {
         return 0;
     };
-    let _ = store.mark_adapter_uninstalled(ADAPTER_ID);
+    let _ = store.mark_adapter_uninstalled(id);
     store
-        .disconnect_provider(ADAPTER_ID, OffsetDateTime::now_utc())
+        .disconnect_provider(id, OffsetDateTime::now_utc())
         .unwrap_or(0)
 }
 
@@ -216,7 +227,7 @@ pub async fn claude_code_uninstall(
         });
         let outcome = install::uninstall(&record).map_err(|e| error_code(&e))?;
         // Disconnecting ends tracking of the tool's open sessions at once, in one transaction.
-        let sessions_disconnected = disconnect_sessions(&core);
+        let sessions_disconnected = disconnect_sessions(&core, ADAPTER_ID);
         if sessions_disconnected > 0 {
             let _ = app.emit(crate::SESSIONS_CHANGED, ());
         }

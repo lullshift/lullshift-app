@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cursor-uninstall"
+description = "Enables the cursor_uninstall command without any pre-configured scope."
+commands.allow = ["cursor_uninstall"]
+
+[[permission]]
+identifier = "deny-cursor-uninstall"
+description = "Denies the cursor_uninstall command without any pre-configured scope."
+commands.deny = ["cursor_uninstall"]

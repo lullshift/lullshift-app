@@ -2,5 +2,8 @@
 //! hook forwarder that sends them to the app, and consent-based hook installation.
 
 pub mod claude_code;
+pub mod codex;
+pub mod cursor;
 pub mod forward;
+pub mod hookfile;
 pub mod redact;

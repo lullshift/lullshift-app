@@ -8,6 +8,7 @@ import {
   type AdapterView,
   type UninstallView,
 } from "./adapters";
+import AgentCard from "./AgentCard";
 import { TaskContextSwitch } from "./context/TaskContextSwitch";
 import { disconnectNotice } from "./format";
 import { Banner } from "./ui/Banner";
@@ -23,6 +24,7 @@ const PILL: Record<AdapterStatus, { label: string; tone: string }> = {
   needs_update: { label: "Needs repair", tone: "attention" },
   partial: { label: "Partly connected", tone: "attention" },
   settings_invalid: { label: "Can't connect", tone: "danger" },
+  hooks_disabled: { label: "Hooks turned off", tone: "attention" },
 };
 
 /** Claude Code hook setup. Nothing is written until the user confirms the consent dialog. */
@@ -170,6 +172,9 @@ export default function Integrations({
           </div>
         )}
       </article>
+
+      <AgentCard agent="codex" />
+      <AgentCard agent="cursor" />
 
       <Dialog
         open={dialog === "install"}

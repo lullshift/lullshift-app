@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cursor-install"
+description = "Enables the cursor_install command without any pre-configured scope."
+commands.allow = ["cursor_install"]
+
+[[permission]]
+identifier = "deny-cursor-install"
+description = "Denies the cursor_install command without any pre-configured scope."
+commands.deny = ["cursor_install"]

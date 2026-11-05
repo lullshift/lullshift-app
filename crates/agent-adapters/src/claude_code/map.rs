@@ -32,9 +32,18 @@ pub const HOOKS: &[(&str, Option<&str>)] = &[
     ("SessionEnd", None),
 ];
 
+/// True when the field is present at all, whatever its value.
+fn present<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    Value::deserialize(d).map(|_| true)
+}
+
 #[derive(Deserialize)]
 struct HookInput {
     session_id: String,
+    /// Cursor loads Claude Code hooks and marks its payloads with this field. Such a payload
+    /// is not a Claude Code session (ADR-021), so it is dropped, not mapped.
+    #[serde(default, deserialize_with = "present")]
+    cursor_version: bool,
     hook_event_name: String,
     #[serde(default)]
     source: Option<Value>,
@@ -57,6 +66,9 @@ pub struct Mapped {
 /// Maps one hook payload. `None` for malformed input and for hooks Lullshift ignores.
 pub fn map_hook(stdin: &[u8]) -> Option<Mapped> {
     let input: HookInput = serde_json::from_slice(stdin).ok()?;
+    if input.cursor_version {
+        return None;
+    }
     let mut metadata = Map::new();
     let mut hint = |key: &str, v: &Option<Value>| {
         if let Some(s) = v
@@ -122,6 +134,8 @@ pub fn map_hook(stdin: &[u8]) -> Option<Mapped> {
 #[derive(Deserialize)]
 struct ContextInput {
     hook_event_name: String,
+    #[serde(default, deserialize_with = "present")]
+    cursor_version: bool,
     #[serde(default)]
     prompt: Option<Value>,
     #[serde(default)]
@@ -137,6 +151,9 @@ struct ContextInput {
 /// `Notification.message` and `PermissionRequest.tool_name` are what the agent is asking.
 pub fn map_context(stdin: &[u8]) -> Option<EventContext> {
     let input: ContextInput = serde_json::from_slice(stdin).ok()?;
+    if input.cursor_version {
+        return None;
+    }
     let text = |v: &Option<Value>| v.as_ref().and_then(Value::as_str).map(str::to_owned);
     let ctx = match input.hook_event_name.as_str() {
         "UserPromptSubmit" => EventContext {
@@ -177,8 +194,13 @@ pub fn transcript_ref(stdin: &[u8]) -> Option<(std::path::PathBuf, String)> {
     struct Refs {
         session_id: String,
         transcript_path: Option<Value>,
+        #[serde(default, deserialize_with = "present")]
+        cursor_version: bool,
     }
     let refs: Refs = serde_json::from_slice(stdin).ok()?;
+    if refs.cursor_version {
+        return None;
+    }
     let path = refs.transcript_path?.as_str()?.to_owned();
     (!path.is_empty()).then(|| (std::path::PathBuf::from(path), refs.session_id))
 }
@@ -271,6 +293,26 @@ mod tests {
             let all = serde_json::to_string(&m.metadata).expect("json");
             assert!(!all.contains("SECRET") && !all.contains("/secret"), "{all}");
         }
+    }
+
+    #[test]
+    fn payloads_from_cursor_are_not_claude_code_sessions() {
+        for extra in [
+            r#""cursor_version":"1.7.0""#,
+            r#""cursor_version":null"#,
+            r#""cursor_version":"""#,
+        ] {
+            let json = format!(r#"{{{COMMON},"hook_event_name":"Stop",{extra}}}"#);
+            assert!(map(&json).is_none(), "{json}");
+            assert!(map_context(json.as_bytes()).is_none());
+            assert!(transcript_ref(json.as_bytes()).is_none());
+        }
+        let prompt = format!(
+            r#"{{{COMMON},"hook_event_name":"UserPromptSubmit","prompt":"x","cursor_version":"2"}}"#
+        );
+        assert!(map(&prompt).is_none() && map_context(prompt.as_bytes()).is_none());
+        // Without the marker the same payload is Claude Code's.
+        assert!(map(&format!(r#"{{{COMMON},"hook_event_name":"Stop"}}"#)).is_some());
     }
 
     #[test]

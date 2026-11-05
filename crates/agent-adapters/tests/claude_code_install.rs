@@ -177,6 +177,8 @@ fn invalid_settings_are_never_touched() {
         "[1,2]",
         r#"{"hooks": "nope"}"#,
         r#"{"hooks": {"Stop": {}}}"#,
+        r#"{"model": "a", "model": "b"}"#,
+        r#"{"n": 99999999999999999999999}"#,
     ] {
         let e = env(Some(bad));
         let r = install(&e.settings, &e.backups, &e.cmd, None);

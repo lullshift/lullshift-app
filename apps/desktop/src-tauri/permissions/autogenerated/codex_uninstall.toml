@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-codex-uninstall"
+description = "Enables the codex_uninstall command without any pre-configured scope."
+commands.allow = ["codex_uninstall"]
+
+[[permission]]
+identifier = "deny-codex-uninstall"
+description = "Denies the codex_uninstall command without any pre-configured scope."
+commands.deny = ["codex_uninstall"]

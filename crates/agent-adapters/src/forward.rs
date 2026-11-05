@@ -17,7 +17,7 @@ use time::format_description::well_known::Rfc3339;
 
 use agent_ipc::EventContext;
 
-use crate::claude_code;
+use crate::{claude_code, codex, cursor};
 
 /// Directory under the app data dir that holds one consent marker file per adapter. The app
 /// creates `<data-dir>/context-capture/<adapter>` when the user turns capture on and deletes it
@@ -109,6 +109,15 @@ fn run_inner(args: &HookArgs, mut stdin: impl Read, started: OffsetDateTime) -> 
             }
             None => return Outcome::Ignored,
         },
+        // Codex and Cursor: session id, event type and enum hints only; task text is never read.
+        codex::ADAPTER_ID => match build_codex_event(&buf, started) {
+            Some(e) => (e, None),
+            None => return Outcome::Ignored,
+        },
+        cursor::ADAPTER_ID => match build_cursor_event(&buf, started) {
+            Some(e) => (e, None),
+            None => return Outcome::Ignored,
+        },
         _ => return Outcome::BadArguments,
     };
     send(&args.data_dir, &event, context.as_ref())
@@ -142,6 +151,32 @@ pub fn build_claude_code_event(stdin: &[u8], now: OffsetDateTime) -> Option<Stri
         m.event_type.as_str(),
         now,
         &claude_code::CAPABILITIES,
+        m.metadata,
+    )
+}
+
+/// Builds and validates the agent event JSON for one Codex hook payload.
+pub fn build_codex_event(stdin: &[u8], now: OffsetDateTime) -> Option<String> {
+    let m = codex::map_hook(stdin)?;
+    build_event(
+        codex::PROVIDER,
+        &m.provider_session_id,
+        m.event_type.as_str(),
+        now,
+        &codex::CAPABILITIES,
+        m.metadata,
+    )
+}
+
+/// Builds and validates the agent event JSON for one Cursor hook payload.
+pub fn build_cursor_event(stdin: &[u8], now: OffsetDateTime) -> Option<String> {
+    let m = cursor::map_hook(stdin)?;
+    build_event(
+        cursor::PROVIDER,
+        &m.provider_session_id,
+        m.event_type.as_str(),
+        now,
+        &cursor::CAPABILITIES,
         m.metadata,
     )
 }
@@ -227,6 +262,84 @@ mod tests {
         assert_ne!(ea.event_id, eb.event_id, "each hook run is a new event");
         assert_eq!(ea.event_type, agent_core::EventType::NeedsAttention);
         assert_eq!(ea.provider, "claude-code");
+    }
+
+    #[test]
+    fn builds_codex_and_cursor_events_under_their_own_providers() {
+        let now = datetime!(2026-11-06 10:00:00 UTC);
+        let c = build_codex_event(
+            br#"{"session_id":"s-1","hook_event_name":"PermissionRequest"}"#,
+            now,
+        )
+        .expect("codex");
+        let e = parse_event(&c).expect("valid");
+        assert_eq!(
+            (e.provider.as_str(), e.event_type),
+            ("codex", agent_core::EventType::NeedsAttention)
+        );
+        let u = build_cursor_event(br#"{"conversation_id":"c-1","hook_event_name":"stop","status":"completed","user_email":"a@b.c"}"#, now).expect("cursor");
+        assert!(!u.contains("a@b.c"));
+        let e = parse_event(&u).expect("valid");
+        assert_eq!(
+            (
+                e.provider.as_str(),
+                e.event_type,
+                e.provider_session_id.as_str()
+            ),
+            ("cursor", agent_core::EventType::TurnEnded, "c-1")
+        );
+        // The Claude Code entry point drops Cursor's payloads instead of mislabelling them.
+        let from_cursor = br#"{"session_id":"s","hook_event_name":"Stop","cursor_version":"1.7"}"#;
+        assert!(build_claude_code_event(from_cursor, now).is_none());
+        // Each adapter reads only its own session key.
+        assert!(
+            build_cursor_event(br#"{"session_id":"s","hook_event_name":"stop"}"#, now).is_none()
+        );
+        assert!(
+            build_codex_event(br#"{"conversation_id":"s","hook_event_name":"Stop"}"#, now)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn forwarder_accepts_the_agent_argument_and_writes_nothing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        for (adapter, body) in [
+            (
+                "codex",
+                br#"{"session_id":"s","hook_event_name":"Stop"}"#.to_vec(),
+            ),
+            (
+                "cursor",
+                br#"{"conversation_id":"s","hook_event_name":"stop"}"#.to_vec(),
+            ),
+        ] {
+            let args = vec![
+                adapter.to_owned(),
+                "--data-dir".to_owned(),
+                dir.path().to_string_lossy().into_owned(),
+            ];
+            assert_eq!(
+                run(&args, std::io::Cursor::new(body), OffsetDateTime::now_utc()),
+                Outcome::AppNotRunning,
+                "{adapter}"
+            );
+            let big = vec![b' '; (MAX_STDIN_BYTES + 10) as usize];
+            assert_eq!(
+                run(&args, std::io::Cursor::new(big), OffsetDateTime::now_utc()),
+                Outcome::TooLarge,
+                "{adapter}"
+            );
+        }
+        let args = vec!["other".to_owned(), "--data-dir".to_owned(), "x".to_owned()];
+        assert_eq!(
+            run(
+                &args,
+                std::io::Cursor::new(b"{}".to_vec()),
+                OffsetDateTime::now_utc()
+            ),
+            Outcome::BadArguments
+        );
     }
 
     #[test]

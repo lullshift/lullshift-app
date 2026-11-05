@@ -535,6 +535,12 @@ pub fn run() {
             adapters::claude_code_status,
             adapters::claude_code_install,
             adapters::claude_code_uninstall,
+            adapters::more::codex_status,
+            adapters::more::codex_install,
+            adapters::more::codex_uninstall,
+            adapters::more::cursor_status,
+            adapters::more::cursor_install,
+            adapters::more::cursor_uninstall,
             notification_prefs,
             set_notification_prefs,
             activities::activities_list,
@@ -623,7 +629,7 @@ mod tests {
 
     #[test]
     fn only_the_main_window_may_change_agent_settings() {
-        const SENSITIVE: [&str; 13] = [
+        const SENSITIVE: [&str; 17] = [
             "allow-companion-set-key",
             "allow-companion-clear-key",
             "allow-companion-send",
@@ -631,6 +637,10 @@ mod tests {
             "allow-companion-delete-profile",
             "allow-claude-code-install",
             "allow-claude-code-uninstall",
+            "allow-codex-install",
+            "allow-codex-uninstall",
+            "allow-cursor-install",
+            "allow-cursor-uninstall",
             "allow-marketplace-add",
             "allow-marketplace-remove",
             "allow-marketplace-install",

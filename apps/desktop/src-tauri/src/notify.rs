@@ -86,6 +86,7 @@ impl Notice {
     pub fn text(self, provider: &str) -> String {
         let agent = match provider {
             "claude-code" => "A Claude Code session",
+            "codex" => "A Codex session",
             "cursor" => "A Cursor session",
             _ => "An agent session",
         };

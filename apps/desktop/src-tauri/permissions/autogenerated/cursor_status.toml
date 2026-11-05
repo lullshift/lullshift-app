@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cursor-status"
+description = "Enables the cursor_status command without any pre-configured scope."
+commands.allow = ["cursor_status"]
+
+[[permission]]
+identifier = "deny-cursor-status"
+description = "Denies the cursor_status command without any pre-configured scope."
+commands.deny = ["cursor_status"]

@@ -70,6 +70,8 @@ pub enum Status {
     Partial,
     /// The settings file isn't a JSON object; Lullshift won't touch it.
     SettingsInvalid,
+    /// Codex only: `[features] hooks = false` in its config, so no hook runs.
+    HooksDisabled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -97,9 +99,11 @@ pub enum InstallError {
 impl std::fmt::Display for InstallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::SettingsInvalid => f.write_str("the Claude Code settings file isn't valid JSON"),
+            Self::SettingsInvalid => f.write_str("the hooks or settings file isn't valid JSON"),
             Self::NotWritable => f.write_str("the settings file is a symlink or read-only"),
-            Self::UnsupportedPath => f.write_str("the app path isn't valid Unicode"),
+            Self::UnsupportedPath => {
+                f.write_str("the app path can't be written into a hook safely")
+            }
             Self::ChangedConcurrently => f.write_str("the settings file changed during the update"),
             Self::Io(e) => write!(f, "file error: {}", e.kind()),
         }
@@ -135,31 +139,121 @@ const BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
 
 /// A settings file as read: raw bytes (if it exists), the root object, and whether it started
 /// with a UTF-8 byte order mark (kept when writing).
-struct Settings {
-    original: Option<Vec<u8>>,
-    root: Map<String, Value>,
-    bom: bool,
+pub(crate) struct Settings {
+    pub(crate) original: Option<Vec<u8>>,
+    pub(crate) root: Map<String, Value>,
+    pub(crate) bom: bool,
 }
 
-fn read_settings(path: &Path) -> Result<Settings, InstallError> {
-    let bytes = match fs::read(path) {
-        Ok(b) => b,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            return Ok(Settings {
-                original: None,
-                root: Map::new(),
-                bom: false,
-            });
-        }
+/// Settings and hooks files larger than this aren't read: they aren't normal config files.
+pub(crate) const MAX_FILE_BYTES: u64 = 1024 * 1024;
+
+/// Reads a settings/hooks file without blocking or growing unbounded: a missing file is
+/// `None`; anything that isn't a regular file (FIFO, device, directory) or is over
+/// [`MAX_FILE_BYTES`] is `SettingsInvalid`. Symlinks are followed, as `fs::read` did.
+pub(crate) fn read_capped(path: &Path) -> Result<Option<Vec<u8>>, InstallError> {
+    use std::io::Read;
+    let meta = match fs::metadata(path) {
+        Ok(m) => m,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e.into()),
+    };
+    if !meta.is_file() || meta.len() > MAX_FILE_BYTES {
+        return Err(InstallError::SettingsInvalid);
+    }
+    let mut bytes = Vec::new();
+    match fs::File::open(path) {
+        Ok(f) => f.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes)?,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+    if bytes.len() as u64 > MAX_FILE_BYTES {
+        return Err(InstallError::SettingsInvalid);
+    }
+    Ok(Some(bytes))
+}
+
+/// A JSON value that refuses what a read-modify-write would silently change: duplicate object
+/// keys (one would be dropped) and integers too large for i64/u64 (they would become floats).
+struct Strict(Value);
+
+impl<'de> Deserialize<'de> for Strict {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::{Error, MapAccess, SeqAccess, Visitor};
+
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = Value;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a JSON value")
+            }
+            fn visit_bool<E: Error>(self, v: bool) -> Result<Value, E> {
+                Ok(Value::Bool(v))
+            }
+            fn visit_i64<E: Error>(self, v: i64) -> Result<Value, E> {
+                Ok(v.into())
+            }
+            fn visit_u64<E: Error>(self, v: u64) -> Result<Value, E> {
+                Ok(v.into())
+            }
+            fn visit_f64<E: Error>(self, v: f64) -> Result<Value, E> {
+                // Without arbitrary_precision an oversized integer literal arrives here as a
+                // whole-number float at or beyond the 64-bit range; refuse it.
+                if v.fract() == 0.0 && v.abs() >= 9.0e18 {
+                    return Err(E::custom("integer out of range"));
+                }
+                serde_json::Number::from_f64(v)
+                    .map(Value::Number)
+                    .ok_or_else(|| E::custom("invalid number"))
+            }
+            fn visit_str<E: Error>(self, v: &str) -> Result<Value, E> {
+                Ok(Value::String(v.to_owned()))
+            }
+            fn visit_string<E: Error>(self, v: String) -> Result<Value, E> {
+                Ok(Value::String(v))
+            }
+            fn visit_unit<E: Error>(self) -> Result<Value, E> {
+                Ok(Value::Null)
+            }
+            fn visit_none<E: Error>(self) -> Result<Value, E> {
+                Ok(Value::Null)
+            }
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
+                let mut out = Vec::new();
+                while let Some(Strict(v)) = seq.next_element()? {
+                    out.push(v);
+                }
+                Ok(Value::Array(out))
+            }
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
+                let mut out = Map::new();
+                while let Some((k, Strict(v))) = map.next_entry::<String, Strict>()? {
+                    if out.insert(k, v).is_some() {
+                        return Err(A::Error::custom("duplicate key"));
+                    }
+                }
+                Ok(Value::Object(out))
+            }
+        }
+        d.deserialize_any(V).map(Strict)
+    }
+}
+
+pub(crate) fn read_settings(path: &Path) -> Result<Settings, InstallError> {
+    let Some(bytes) = read_capped(path)? else {
+        return Ok(Settings {
+            original: None,
+            root: Map::new(),
+            bom: false,
+        });
     };
     let bom = bytes.starts_with(BOM);
     let body = if bom { &bytes[BOM.len()..] } else { &bytes[..] };
     let root = if body.iter().all(u8::is_ascii_whitespace) {
         Map::new()
     } else {
-        match serde_json::from_slice::<Value>(body) {
-            Ok(Value::Object(root)) => root,
+        match serde_json::from_slice::<Strict>(body) {
+            Ok(Strict(Value::Object(root))) => root,
             _ => return Err(InstallError::SettingsInvalid),
         }
     };
@@ -218,7 +312,7 @@ fn hooks_of(root: &Map<String, Value>) -> Result<Option<&Map<String, Value>>, In
 
 /// Refuses settings files Lullshift shouldn't replace: symlinks (dotfile managers), non-files
 /// and read-only files. Returns the current permissions to carry over; `None` if missing.
-fn check_writable(path: &Path) -> Result<Option<fs::Permissions>, InstallError> {
+pub(crate) fn check_writable(path: &Path) -> Result<Option<fs::Permissions>, InstallError> {
     match fs::symlink_metadata(path) {
         Ok(m) if m.file_type().is_symlink() || !m.is_file() => Err(InstallError::NotWritable),
         Ok(m) if m.permissions().readonly() => Err(InstallError::NotWritable),
@@ -228,7 +322,7 @@ fn check_writable(path: &Path) -> Result<Option<fs::Permissions>, InstallError> 
     }
 }
 
-fn serialize(root: &Map<String, Value>, bom: bool) -> Result<Vec<u8>, InstallError> {
+pub(crate) fn serialize(root: &Map<String, Value>, bom: bool) -> Result<Vec<u8>, InstallError> {
     let mut out = if bom { BOM.to_vec() } else { Vec::new() };
     serde_json::to_writer_pretty(&mut out, root).map_err(|_| InstallError::SettingsInvalid)?;
     out.push(b'\n');
@@ -236,16 +330,12 @@ fn serialize(root: &Map<String, Value>, bom: bool) -> Result<Vec<u8>, InstallErr
 }
 
 /// Writes `bytes` (or deletes the file for `None`) only if the file still holds `expected`.
-fn write_if_unchanged(
+pub(crate) fn write_if_unchanged(
     path: &Path,
     expected: Option<&[u8]>,
     bytes: Option<&[u8]>,
 ) -> Result<(), InstallError> {
-    let current = match fs::read(path) {
-        Ok(b) => Some(b),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-        Err(e) => return Err(e.into()),
-    };
+    let current = read_capped(path)?;
     if current.as_deref() != expected {
         return Err(InstallError::ChangedConcurrently);
     }
@@ -278,10 +368,14 @@ fn write_if_unchanged(
     Ok(())
 }
 
-fn write_backup(backup_dir: &Path, original: &[u8]) -> Result<PathBuf, InstallError> {
+pub(crate) fn write_backup(
+    backup_dir: &Path,
+    stem: &str,
+    original: &[u8],
+) -> Result<PathBuf, InstallError> {
     fs::create_dir_all(backup_dir)?;
     let stamp = time::OffsetDateTime::now_utc().unix_timestamp_nanos();
-    let path = backup_dir.join(format!("settings-{stamp}.json.bak"));
+    let path = backup_dir.join(format!("{stem}-{stamp}.json.bak"));
     let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -358,7 +452,7 @@ pub fn install(
                     == Some(p.written_sha256.as_str()),
         ),
         None => match &original {
-            Some(o) => (Some(write_backup(backup_dir, o)?), !had_ours),
+            Some(o) => (Some(write_backup(backup_dir, "settings", o)?), !had_ours),
             None => (None, true),
         },
     };
@@ -378,11 +472,7 @@ pub fn install(
 /// Removes Lullshift's hooks, restoring the original file exactly when possible.
 pub fn uninstall(record: &InstallRecord) -> Result<UninstallOutcome, InstallError> {
     let path = &record.settings_path;
-    let current = match fs::read(path) {
-        Ok(b) => Some(b),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-        Err(e) => return Err(e.into()),
-    };
+    let current = read_capped(path)?;
     let Some(current) = current else {
         return Ok(UninstallOutcome::NothingToRemove);
     };

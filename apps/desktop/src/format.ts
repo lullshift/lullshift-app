@@ -6,6 +6,7 @@ import type { IconName } from "./ui/Icon";
 /** Display name and generic glyph per agent tool (never the tool's own logo, ADR-011). */
 const PROVIDERS: Record<string, { name: string; icon: IconName }> = {
   "claude-code": { name: "Claude Code", icon: "terminal" },
+  codex: { name: "Codex", icon: "terminal" },
   cursor: { name: "Cursor", icon: "pointer" },
 };
 
