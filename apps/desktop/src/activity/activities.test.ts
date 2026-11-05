@@ -99,7 +99,19 @@ function activityDirs(): string[] {
   return dirs;
 }
 
-const ALLOWED_EXT = new Set(["html", "js", "css", "json", "svg", "png", "jpg", "webp"]);
+// Served types, plus the docs the CLI packs but never serves (DOC_TYPES in tools/lullshift-cli).
+const ALLOWED_EXT = new Set([
+  "html",
+  "js",
+  "css",
+  "json",
+  "svg",
+  "png",
+  "jpg",
+  "webp",
+  "md",
+  "txt",
+]);
 const FORBIDDEN = [
   'type="module"',
   "eval(",

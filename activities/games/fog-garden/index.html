@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fog Garden</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Fog Garden</h1>
+      <p class="lede">
+        Clear the mist tile by tile. Each number counts the brambles in the tiles around it.
+      </p>
+
+      <div class="status">
+        <p id="left" class="stat">Brambles left: 12</p>
+        <p id="shown" class="stat">Revealed 0 of 69</p>
+      </div>
+
+      <div id="grid" class="field"></div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="mark" type="button" aria-pressed="false">Mark mode</button>
+        <button id="again" type="button">Try again</button>
+        <button id="fresh" type="button">New field</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-grid-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

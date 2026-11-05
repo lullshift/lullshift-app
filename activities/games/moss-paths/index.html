@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Moss Paths</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Moss Paths</h1>
+      <p class="lede">Turn the stream tiles so water from the spring reaches every bed.</p>
+
+      <div class="status">
+        <p id="moves" class="stat">Moves: 0</p>
+        <p id="best" class="stat" hidden></p>
+        <p id="wet" class="stat">Watered 0 of 36</p>
+      </div>
+
+      <div id="grid" class="garden"></div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="undo" type="button">Undo</button>
+        <button id="restart" type="button">Restart</button>
+        <button id="daily" type="button">Today's garden</button>
+        <button id="fresh" type="button">New garden</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-grid-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

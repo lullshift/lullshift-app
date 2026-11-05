@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Glowing fireflies over a dusk meadow with a glass jar">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2140"/>
+      <stop offset="0.6" stop-color="#4a3a6b"/>
+      <stop offset="1" stop-color="#c07a6a"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#fff0a0" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#fff0a0" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="320" height="200" fill="url(#sky)"/>
+  <path d="M0 200 V150 Q80 125 160 155 Q240 180 320 145 V200 Z" fill="#2a2a4a"/>
+  <rect y="186" width="320" height="14" fill="#1a2b34"/>
+  <circle cx="70" cy="50" r="16" fill="url(#glow)"/><circle cx="70" cy="50" r="3" fill="#fff6b0"/>
+  <circle cx="150" cy="85" r="16" fill="url(#glow)"/><circle cx="150" cy="85" r="3" fill="#fff6b0"/>
+  <circle cx="235" cy="40" r="16" fill="url(#glow)"/><circle cx="235" cy="40" r="3" fill="#fff6b0"/>
+  <circle cx="200" cy="120" r="16" fill="url(#glow)"/><circle cx="200" cy="120" r="3" fill="#fff6b0"/>
+  <path d="M130 140 L134 172 Q136 178 144 178 L166 178 Q174 178 176 172 L180 140" fill="#c8e1f0" fill-opacity="0.25" stroke="#dcf0ff" stroke-width="2"/>
+  <circle cx="150" cy="162" r="2" fill="#fff6b0"/><circle cx="162" cy="155" r="2" fill="#fff6b0"/>
+</svg>

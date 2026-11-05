@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A garden of tiles with a stream winding from a spring">
+  <rect width="320" height="200" fill="#dfe7cf"/>
+  <g fill="#f7f4e6" stroke="#b9b394" stroke-width="2">
+    <rect x="40" y="20" width="60" height="60" rx="8"/>
+    <rect x="106" y="20" width="60" height="60" rx="8"/>
+    <rect x="172" y="20" width="60" height="60" rx="8"/>
+    <rect x="238" y="20" width="60" height="60" rx="8"/>
+    <rect x="40" y="86" width="60" height="60" rx="8"/>
+    <rect x="106" y="86" width="60" height="60" rx="8"/>
+    <rect x="172" y="86" width="60" height="60" rx="8"/>
+    <rect x="238" y="86" width="60" height="60" rx="8"/>
+    <rect x="40" y="152" width="60" height="40" rx="8"/>
+    <rect x="106" y="152" width="60" height="40" rx="8"/>
+    <rect x="172" y="152" width="60" height="40" rx="8"/>
+    <rect x="238" y="152" width="60" height="40" rx="8"/>
+  </g>
+  <g fill="#2a8fbd">
+    <rect x="62" y="44" width="16" height="48"/>
+    <rect x="62" y="44" width="80" height="16"/>
+    <rect x="126" y="44" width="16" height="80"/>
+    <rect x="126" y="108" width="80" height="16"/>
+    <rect x="190" y="108" width="16" height="48"/>
+    <rect x="190" y="44" width="16" height="64"/>
+    <rect x="190" y="44" width="80" height="16"/>
+    <rect x="254" y="44" width="16" height="80"/>
+  </g>
+  <circle cx="70" cy="116" r="14" fill="#f7f4e6" stroke="#2a8fbd" stroke-width="5"/>
+  <rect x="62" y="92" width="16" height="24" fill="#2a8fbd"/>
+  <g fill="#c8764e">
+    <circle cx="270" cy="124" r="8"/>
+    <circle cx="198" cy="172" r="8"/>
+    <circle cx="70" cy="44" r="8"/>
+  </g>
+  <g fill="#8b8a6a">
+    <rect x="62" y="172" width="16" height="20" opacity="0"/>
+    <rect x="258" y="164" width="24" height="12"/>
+    <rect x="114" y="168" width="44" height="12"/>
+  </g>
+</svg>

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.tide-pairs",
+  "version": "0.1.0",
+  "name": "Tide Pairs",
+  "description": "A gentle memory game of sea creatures and shells. Turn two cards at a time and find every matching pair. A new deal each day, or as many as you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm", "memory"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "Sixteen face-down cards hide eight pairs of sea creatures and shells. Turn two cards at a time; matching cards stay up.",
+    "goal": "Find all the pairs in as few turns as you like. There is no timer and no wrong answer.",
+    "howToPlay": [
+      "Turn a card, then turn a second card. That is one turn.",
+      "If the two match, they stay face up. If not, they turn back after a short pause. Pressing another card turns them back at once.",
+      "With reduced motion on, an unmatched pair stays showing until you press any card.",
+      "Daily deal is the same for everyone today. New deal gives a fresh one. Bigger switches to 12 pairs, and Smaller goes back to 8.",
+      "Your fewest turns is remembered for each board size."
+    ],
+    "controls": [
+      { "keys": "Arrow keys", "action": "Move between cards" },
+      { "keys": "Home / End", "action": "Jump to the start or end of the row" },
+      { "keys": "Enter / Space", "action": "Turn the card" },
+      { "keys": "Tab", "action": "Reach Daily deal, New deal and Bigger" }
+    ],
+    "tips": [
+      "Each card has a shape, a colour and a name, so you can tell them apart without colour.",
+      "Start in one corner and work across, so you remember where each card was.",
+      "You can stop at any time. Your game is saved. An unmatched pair turns back when you return."
+    ]
+  },
+  "preview": "preview.svg"
+}

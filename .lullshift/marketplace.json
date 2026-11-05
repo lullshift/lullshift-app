@@ -4,19 +4,78 @@
   "description": "Activities bundled with Lullshift: original games, breaks, engines and content packs. Open source under Apache-2.0.",
   "owner": "Lullshift contributors",
   "activities": [
-    { "id": "app.lullshift.break.step-away", "source": { "path": "activities/break/step-away" } },
+    {
+      "id": "app.lullshift.break.step-away",
+      "source": {
+        "path": "activities/break/step-away"
+      }
+    },
     {
       "id": "app.lullshift.content.desk-stretches",
-      "source": { "path": "activities/content/calm-cards/desk-stretches" }
+      "source": {
+        "path": "activities/content/calm-cards/desk-stretches"
+      }
     },
     {
       "id": "app.lullshift.engines.calm-cards",
-      "source": { "path": "activities/engines/calm-cards" }
+      "source": {
+        "path": "activities/engines/calm-cards"
+      }
+    },
+    {
+      "id": "app.lullshift.games.firefly-catch",
+      "source": {
+        "path": "activities/games/firefly-catch"
+      }
+    },
+    {
+      "id": "app.lullshift.games.fog-garden",
+      "source": {
+        "path": "activities/games/fog-garden"
+      }
+    },
+    {
+      "id": "app.lullshift.games.kite-drift",
+      "source": {
+        "path": "activities/games/kite-drift"
+      }
     },
     {
       "id": "app.lullshift.games.lantern-pond",
-      "source": { "path": "activities/games/lantern-pond" },
+      "source": {
+        "path": "activities/games/lantern-pond"
+      },
       "featured": true
+    },
+    {
+      "id": "app.lullshift.games.moss-paths",
+      "source": {
+        "path": "activities/games/moss-paths"
+      }
+    },
+    {
+      "id": "app.lullshift.games.petal-grid",
+      "source": {
+        "path": "activities/games/petal-grid"
+      }
+    },
+    {
+      "id": "app.lullshift.games.ridge-walk",
+      "source": {
+        "path": "activities/games/ridge-walk"
+      }
+    },
+    {
+      "id": "app.lullshift.games.stone-slide",
+      "source": {
+        "path": "activities/games/stone-slide"
+      }
+    },
+    {
+      "id": "app.lullshift.games.tide-pairs",
+      "source": {
+        "path": "activities/games/tide-pairs"
+      }
     }
   ]
 }

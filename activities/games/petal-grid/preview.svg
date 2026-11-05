@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Petal Grid: a four by four flower bed with coloured petals">
+  <rect width="320" height="200" fill="#e3ebdc"/>
+  <rect x="70" y="10" width="180" height="180" rx="16" fill="#cfdcc4"/>
+  <g fill="#fffdf9" stroke="#8a9a80" stroke-width="1.5">
+    <rect x="80" y="20" width="38" height="38" rx="9"/><rect x="124" y="20" width="38" height="38" rx="9"/>
+    <rect x="168" y="20" width="38" height="38" rx="9"/><rect x="212" y="20" width="28" height="38" rx="9"/>
+    <rect x="80" y="64" width="38" height="38" rx="9"/><rect x="124" y="64" width="38" height="38" rx="9"/>
+    <rect x="168" y="64" width="38" height="38" rx="9"/><rect x="212" y="64" width="28" height="38" rx="9"/>
+    <rect x="80" y="108" width="38" height="38" rx="9"/><rect x="124" y="108" width="38" height="38" rx="9"/>
+    <rect x="168" y="108" width="38" height="38" rx="9"/><rect x="212" y="108" width="28" height="38" rx="9"/>
+    <rect x="80" y="152" width="38" height="28" rx="9"/><rect x="124" y="152" width="38" height="28" rx="9"/>
+    <rect x="168" y="152" width="38" height="28" rx="9"/><rect x="212" y="152" width="28" height="28" rx="9"/>
+  </g>
+  <g>
+    <circle cx="99" cy="39" r="11" fill="#d0426b"/>
+    <rect x="144" y="30" width="20" height="20" rx="4" fill="#5b5fd6"/>
+    <path d="M178 30h20v10a10 10 0 0 1-10 10h-10z" fill="#d98a12"/>
+    <path d="M226 29h13v13a13 13 0 0 1-13 0z" fill="#2f9a8a"/>
+    <path d="M89 84a10 10 0 0 1 20 0z" fill="#8f47b8"/>
+    <circle cx="143" cy="83" r="11" fill="#d0426b"/>
+    <rect x="188" y="74" width="20" height="20" rx="4" fill="#5b5fd6"/>
+    <path d="M89 118h20v10a10 10 0 0 1-10 10h-10z" fill="#d98a12"/>
+    <path d="M124 127h20v20h-10a10 10 0 0 1-10-10z" fill="#2f9a8a"/>
+    <circle cx="187" cy="127" r="11" fill="#d0426b"/>
+    <path d="M89 156h20v10a10 10 0 0 1-20 0z" fill="#3f7ed8"/>
+  </g>
+</svg>

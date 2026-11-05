@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Firefly Catch</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Firefly Catch</h1>
+      <p class="lede">Slide the jar under the drifting fireflies. A calm 90 seconds.</p>
+      <p id="status" class="status">Caught 0. Best 0. Time left 90.</p>
+      <canvas
+        id="field"
+        class="field"
+        width="400"
+        height="300"
+        tabindex="0"
+        role="application"
+        aria-label="Firefly meadow. Move the glass jar with the Left and Right arrow keys or A and D to catch drifting fireflies."
+      ></canvas>
+      <p id="prompt" class="prompt" role="status" aria-live="polite"></p>
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+      <div class="controls">
+        <button id="left" type="button" aria-label="Move jar left (hold)">Left</button>
+        <button id="right" type="button" aria-label="Move jar right (hold)">Right</button>
+        <button id="again" type="button">New round</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-arcade-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.fog-garden",
+  "version": "0.1.0",
+  "name": "Fog Garden",
+  "description": "A quiet garden under mist. Clear the fog tile by tile and use the numbers to work out where the brambles hide. No timer, and a fresh start is always one press away.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm", "deduction"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "A 9 by 9 garden covered in fog. Twelve tiles hide thorny brambles. Clearing a tile shows how many of the up to eight tiles around it hide brambles.",
+    "goal": "Clear every tile that does not hide a bramble. Mark the tiles you think hide brambles to keep track. There is no timer.",
+    "howToPlay": [
+      "Reveal any tile to begin. The first tile is always safe, and so are the tiles around it.",
+      "A number tells you how many brambles are in the tiles around it. A blank tile has none, so its neighbours clear on their own.",
+      "Use the numbers to work out which tiles are safe and which hide brambles. Mark the ones you are sure of so you do not reveal them by accident.",
+      "If you reveal a bramble the fog simply closes in. Try again keeps the same field, and New field gives a different one."
+    ],
+    "controls": [
+      { "keys": "Arrow keys", "action": "Move between tiles" },
+      { "keys": "Enter / Space", "action": "Reveal the tile (or mark it in Mark mode)" },
+      { "keys": "F or M", "action": "Mark or unmark the tile as a bramble" },
+      { "keys": "Tab", "action": "Reach Mark mode, Try again and New field" }
+    ],
+    "tips": [
+      "A 1 with only one hidden tile left beside it means that tile hides a bramble.",
+      "When a number matches the brambles you have already marked around it, the other tiles around it are safe.",
+      "Brambles left is the total minus your marks, so it can help you check your guesses.",
+      "You can stop at any time. Your field is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

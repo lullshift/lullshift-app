@@ -1,0 +1,217 @@
+:root {
+  --bg: #f1f4ea;
+  --surface: #fbfcf6;
+  --surface-2: #e8eedc;
+  --border: #d3dcc2;
+  --text: #25301f;
+  --muted: #55634b;
+  --accent: #2f6f4a;
+  --accent-soft: #dcebd9;
+  --soil: #ddd5bd;
+  --tile: #f7f4e6;
+  --tile-edge: #b9b394;
+  --pipe: #8b8a6a;
+  --pipe-wet: #2a8fbd;
+  --bud: #c8764e;
+  --shadow: 0 2px 10px rgba(37, 48, 31, 0.1);
+}
+:root[data-theme="dark"] {
+  --bg: #141a14;
+  --surface: #1c241c;
+  --surface-2: #243024;
+  --border: #324032;
+  --text: #e5eede;
+  --muted: #a9b9a0;
+  --accent: #8fd1a0;
+  --accent-soft: #223a2a;
+  --soil: #1b2418;
+  --tile: #26311f;
+  --tile-edge: #5a6b4d;
+  --pipe: #8c9a7a;
+  --pipe-wet: #5cc0ee;
+  --bud: #e09a74;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  line-height: 1.5;
+}
+.wrap {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px 20px 36px;
+  display: grid;
+  gap: 14px;
+}
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.lede,
+.stat {
+  margin: 0;
+  color: var(--muted);
+}
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.stat[hidden] {
+  display: none;
+}
+.garden {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: var(--soil);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+.kit-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+.kit-gridcell {
+  display: block;
+}
+/* A tile draws its arms with up to four background strips: --n, --e, --s, --w. */
+.kit-cell {
+  --n: linear-gradient(transparent, transparent);
+  --e: linear-gradient(transparent, transparent);
+  --s: linear-gradient(transparent, transparent);
+  --w: linear-gradient(transparent, transparent);
+  --stream: var(--pipe);
+  --hub: radial-gradient(circle, var(--bud) 0 24%, transparent 26%);
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 10px;
+  border: 2px solid var(--tile-edge);
+  background-color: var(--tile);
+  background-image: var(--hub), var(--n), var(--e), var(--s), var(--w);
+  background-repeat: no-repeat;
+  background-size:
+    100% 100%,
+    24% 56%,
+    56% 24%,
+    24% 56%,
+    56% 24%;
+  background-position:
+    center,
+    50% 0,
+    100% 50%,
+    50% 100%,
+    0 50%;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+.kit-cell.n {
+  --n: linear-gradient(var(--stream), var(--stream));
+}
+.kit-cell.e {
+  --e: linear-gradient(var(--stream), var(--stream));
+}
+.kit-cell.s {
+  --s: linear-gradient(var(--stream), var(--stream));
+}
+.kit-cell.w {
+  --w: linear-gradient(var(--stream), var(--stream));
+}
+.kit-cell.wet {
+  --stream: var(--pipe-wet);
+  --hub: radial-gradient(circle, var(--pipe-wet) 0 28%, transparent 30%);
+  border-color: var(--pipe-wet);
+}
+.kit-cell.spring::after {
+  content: "";
+  position: absolute;
+  inset: 22%;
+  border-radius: 50%;
+  border: 3px solid var(--pipe-wet);
+  background: var(--tile);
+  box-shadow: 0 0 0 2px var(--tile);
+}
+.kit-cell.spring::before {
+  content: "";
+  position: absolute;
+  inset: 40%;
+  z-index: 1;
+  border-radius: 50%;
+  background: var(--pipe-wet);
+}
+.kit-cell:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  z-index: 2;
+}
+.message {
+  margin: 0;
+  min-height: 1.5em;
+  color: var(--text);
+}
+/* One row of controls. Buttons share the width and never break mid-label; only a very narrow
+   window lets them wrap. */
+.controls {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.controls button {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+@media (max-width: 340px) {
+  .controls {
+    flex-wrap: wrap;
+  }
+}
+.controls button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.controls button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.controls button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.reduced *,
+.reduced *::before,
+.reduced *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* Keep the whole board, the message and the controls in view on short windows: the board's
+   width (and so its square cells) is capped by the window height. */
+.garden {
+  width: min(100%, max(260px, calc(100vh - 390px)));
+  box-sizing: border-box;
+  justify-self: center;
+  margin-inline: auto;
+}

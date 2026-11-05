@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ridge Walk</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Ridge Walk</h1>
+      <p class="lede">Walk the path: play a ridge card one higher or one lower.</p>
+
+      <div class="status">
+        <p id="left" class="stat">Left: 35</p>
+        <p id="stock" class="stat">Stock: 16</p>
+      </div>
+
+      <div class="path-row">
+        <div id="path" class="path" role="img" aria-label="Path"></div>
+      </div>
+
+      <div id="ridges" class="ridges" role="group" aria-label="Seven ridges"></div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="undo" type="button">Undo</button>
+        <button id="flip" type="button">Flip card</button>
+        <button id="retry" type="button">Try again</button>
+        <button id="fresh" type="button">New deal</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-card-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

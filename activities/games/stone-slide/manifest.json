@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.stone-slide",
+  "version": "0.1.0",
+  "name": "Stone Slide",
+  "description": "Smooth river stones sit in a frame with one gap. Slide them, one at a time, until the numbers run in order. A fresh scramble each day, or as many new ones as you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "A frame of numbered river stones with one empty space. A stone beside the space can slide into it.",
+    "goal": "Put the stones in order, 1 first, reading left to right and top to bottom, with the space in the last corner. There is no timer; fewer moves is nicer.",
+    "howToPlay": [
+      "Press a stone that touches the empty space (not diagonally). It slides into the space.",
+      "Keep sliding until the numbers run in order and the space is in the bottom right corner.",
+      "Every scramble is made by sliding stones from the solved frame, so it can always be solved.",
+      "Today's stones is the same scramble for everyone today. New stones deals a fresh one. Size switches between 4 by 4 and a smaller 3 by 3.",
+      "Undo takes back your last slide. Restart puts the stones back to how they began."
+    ],
+    "controls": [
+      { "keys": "Arrow keys", "action": "Move between the stones" },
+      { "keys": "Enter / Space", "action": "Slide the focused stone into the space" },
+      { "keys": "Home / End", "action": "Jump to the start or end of the row" },
+      { "keys": "Ctrl+Z", "action": "Undo the last slide" },
+      { "keys": "Tab", "action": "Reach Undo, Restart and the other buttons" }
+    ],
+    "tips": [
+      "Solve the top row first, then the next, and leave the last two rows for the end.",
+      "Each stone has its own pattern and shade as well as a number, so you can match them by look.",
+      "You can stop at any time. Your stones are saved and wait for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

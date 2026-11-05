@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A misty garden with a few cleared leaf tiles and a bramble">
+  <rect width="320" height="200" fill="#d5dfdb"/>
+  <g fill="#c3d0cb" stroke="#8fa39b" stroke-width="2">
+    <ellipse cx="60" cy="40" rx="24" ry="22"/>
+    <ellipse cx="116" cy="40" rx="24" ry="22"/>
+    <ellipse cx="172" cy="40" rx="24" ry="22"/>
+    <ellipse cx="228" cy="40" rx="24" ry="22"/>
+    <ellipse cx="284" cy="40" rx="24" ry="22"/>
+    <ellipse cx="60" cy="96" rx="24" ry="22"/>
+    <ellipse cx="284" cy="96" rx="24" ry="22"/>
+    <ellipse cx="60" cy="152" rx="24" ry="22"/>
+    <ellipse cx="284" cy="152" rx="24" ry="22"/>
+  </g>
+  <g fill="#f5f8ee" stroke="#b8c8a8" stroke-width="2">
+    <rect x="92" y="74" width="48" height="44" rx="12"/>
+    <rect x="148" y="74" width="48" height="44" rx="12"/>
+    <rect x="204" y="74" width="48" height="44" rx="12"/>
+    <rect x="92" y="130" width="48" height="44" rx="12"/>
+    <rect x="148" y="130" width="48" height="44" rx="12"/>
+    <rect x="204" y="130" width="48" height="44" rx="12"/>
+  </g>
+  <g fill="#2a6fa8">
+    <circle cx="116" cy="96" r="6"/>
+    <circle cx="228" cy="96" r="6"/>
+    <circle cx="116" cy="152" r="6"/>
+  </g>
+  <g fill="#2f7d4f">
+    <circle cx="172" cy="96" r="6"/>
+    <circle cx="172" cy="152" r="6"/>
+    <circle cx="224" cy="152" r="6"/>
+    <circle cx="234" cy="152" r="6"/>
+  </g>
+  <path d="M60 140 l6 12 12 -6 -8 12 12 8 -14 0 -6 12 -4 -12 -14 -4 14 -6z" fill="#a2456a"/>
+  <path d="M284 84 q12 10 0 24 q-12 -14 0 -24z" fill="#2c6e63"/>
+  <g fill="#ffffff" opacity="0.35">
+    <ellipse cx="80" cy="190" rx="90" ry="16"/>
+    <ellipse cx="250" cy="14" rx="100" ry="14"/>
+  </g>
+</svg>

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.ridge-walk",
+  "version": "0.1.0",
+  "name": "Ridge Walk",
+  "description": "A quiet patience game. Seven ridges of cards and a path that climbs and falls one step at a time. Walk the path to clear every ridge.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm", "cards"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "Seven ridges of five face-up cards, one path card and a stock. Play the top card of a ridge onto the path when it is exactly one higher or one lower.",
+    "goal": "Clear all 35 ridge cards. Every deal can be cleared. There is no timer.",
+    "howToPlay": [
+      "Only the top card of each ridge can be played. The cards under it are waiting.",
+      "Play a top card if its rank is exactly one above or one below the card on the path. Ace and King do not connect.",
+      "Stuck? Flip card turns the next stock card onto the path. You may flip whenever you like.",
+      "If the stock runs out and nothing fits, the path ends there. Try again replays the same deal, New deal gives a fresh one.",
+      "Undo takes back your last play or flip, as many times as you like."
+    ],
+    "controls": [
+      { "keys": "Left / Right arrow keys", "action": "Move between ridges" },
+      { "keys": "Home / End", "action": "Jump to the first or last ridge" },
+      { "keys": "Enter / Space", "action": "Play the focused ridge card" },
+      { "keys": "F", "action": "Flip the next stock card" },
+      { "keys": "Ctrl+Z", "action": "Undo" },
+      { "keys": "Tab", "action": "Reach Undo, Flip card, Try again and New deal" }
+    ],
+    "tips": [
+      "Ridge cards that fit the path card have a coloured outline.",
+      "Before you play, look for a card in the other direction too: a 6 can follow a 5 or go before a 7.",
+      "Flipping is free, but each flip changes the path card, so look at the ridges first.",
+      "You can stop at any time. Your game is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

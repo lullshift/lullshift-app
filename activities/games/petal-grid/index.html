@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Petal Grid</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Petal Grid</h1>
+      <p class="lede">Plant each petal once in every row and column. Type a number to plant it.</p>
+
+      <div class="status">
+        <p id="filled" class="stat">Filled 0 of 0</p>
+        <p id="conflicts" class="stat">Conflicts: 0</p>
+      </div>
+
+      <div id="board" class="board" role="grid" aria-label="Flower bed"></div>
+
+      <ul id="legend" class="legend" aria-label="Petal kinds"></ul>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="undo" type="button">Undo</button>
+        <button id="clear" type="button">Clear</button>
+        <button id="daily" type="button">Today's bed</button>
+        <button id="fresh" type="button">New bed</button>
+        <button id="size" type="button">Size: 4 x 4</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-grid-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

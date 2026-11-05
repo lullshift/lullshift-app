@@ -1,0 +1,272 @@
+:root {
+  --bg: #f6f2ec;
+  --surface-2: #f1ebe3;
+  --border: #e6ded3;
+  --text: #2a2633;
+  --muted: #625b6c;
+  --accent: #6b4fd8;
+  --accent-soft: #ece6ff;
+  --frame: #d9d3c6;
+  --stone-text: #26222e;
+  --mark: rgba(38, 34, 46, 0.45);
+  --h0: #cfd8dc;
+  --h1: #d7ccc8;
+  --h2: #c5d6c2;
+  --h3: #d8c7d9;
+  --h4: #c7d3e6;
+  --h5: #e3d4b0;
+  --h6: #bfd9d6;
+  --h7: #dcc3bd;
+  --shadow: 0 2px 10px rgba(42, 38, 51, 0.08);
+}
+:root[data-theme="dark"] {
+  --bg: #17151c;
+  --surface-2: #2a2632;
+  --border: #35303f;
+  --text: #ece8f2;
+  --muted: #b0a9bb;
+  --accent: #b9a6ff;
+  --accent-soft: #2a2148;
+  --frame: #25222d;
+  --stone-text: #f2eef8;
+  --mark: rgba(242, 238, 248, 0.5);
+  --h0: #4b5a61;
+  --h1: #5a4b46;
+  --h2: #46604a;
+  --h3: #5b4a5d;
+  --h4: #475a78;
+  --h5: #6b5a35;
+  --h6: #3f6360;
+  --h7: #6a4a43;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  line-height: 1.5;
+}
+.wrap {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 24px 20px 36px;
+  display: grid;
+  gap: 14px;
+}
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.lede,
+.stat {
+  margin: 0;
+  color: var(--muted);
+}
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.stat[hidden] {
+  display: none;
+}
+.board {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--frame);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+.row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.size3 .row {
+  grid-template-columns: repeat(3, 1fr);
+}
+.cell {
+  display: block;
+}
+.cell button {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 38% 62% 55% 45% / 52% 42% 58% 48%;
+  border: 2px solid transparent;
+  color: var(--stone-text);
+  font: inherit;
+  font-size: 1.4rem;
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.15s ease;
+}
+.size3 .cell button {
+  font-size: 1.8rem;
+}
+.cell button.gap {
+  background: transparent;
+  border: 2px dashed var(--mark);
+  cursor: default;
+}
+.cell button.stone {
+  border-color: var(--mark);
+}
+.cell button.movable {
+  border-color: var(--accent);
+}
+.cell button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.num {
+  position: relative;
+  z-index: 1;
+}
+.h0 {
+  background: var(--h0);
+}
+.h1 {
+  background: var(--h1);
+}
+.h2 {
+  background: var(--h2);
+}
+.h3 {
+  background: var(--h3);
+}
+.h4 {
+  background: var(--h4);
+}
+.h5 {
+  background: var(--h5);
+}
+.h6 {
+  background: var(--h6);
+}
+.h7 {
+  background: var(--h7);
+}
+/* Faint patterns drawn from simple shapes, so stones can be told apart by look. */
+.stone::before,
+.stone::after {
+  content: "";
+  position: absolute;
+  background: var(--mark);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.p0::before {
+  width: 14%;
+  height: 14%;
+  border-radius: 50%;
+  top: 14%;
+  left: 18%;
+}
+.p0::after {
+  width: 9%;
+  height: 9%;
+  border-radius: 50%;
+  bottom: 16%;
+  right: 20%;
+}
+.p1::before {
+  width: 70%;
+  height: 4%;
+  top: 22%;
+  left: 15%;
+  border-radius: 4px;
+}
+.p1::after {
+  width: 70%;
+  height: 4%;
+  bottom: 22%;
+  left: 15%;
+  border-radius: 4px;
+}
+.p2::before {
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid var(--mark);
+  top: 6%;
+  right: 8%;
+}
+.p2::after {
+  display: none;
+}
+.p3::before {
+  width: 16%;
+  height: 16%;
+  transform: rotate(45deg);
+  top: 12%;
+  left: 14%;
+}
+.p3::after {
+  width: 16%;
+  height: 16%;
+  transform: rotate(45deg);
+  bottom: 12%;
+  right: 14%;
+}
+.message {
+  margin: 0;
+  min-height: 1.5em;
+}
+/* One row of controls. Buttons share the width and never break mid-label; only a very narrow
+   window lets them wrap. */
+.controls {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.controls button {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 8px;
+  min-height: 44px;
+  cursor: pointer;
+}
+@media (max-width: 400px) {
+  .controls {
+    flex-wrap: wrap;
+  }
+}
+.controls button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.controls button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.controls button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.reduced *,
+.reduced *::before,
+.reduced *::after {
+  transition: none !important;
+  animation: none !important;
+}

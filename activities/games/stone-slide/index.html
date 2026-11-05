@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stone Slide</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Stone Slide</h1>
+      <p class="lede">Slide the stones into order. Only a stone beside the space can move.</p>
+
+      <div class="status">
+        <p id="moves" class="stat">Moves: 0</p>
+        <p id="best" class="stat" hidden></p>
+      </div>
+
+      <div id="board" class="board" role="grid" aria-label="Stones"></div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="undo" type="button">Undo</button>
+        <button id="restart" type="button">Restart</button>
+        <button id="daily" type="button">Today's stones</button>
+        <button id="fresh" type="button">New stones</button>
+        <button id="size" type="button">Size: 4 x 4</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="lullshift-grid-kit-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

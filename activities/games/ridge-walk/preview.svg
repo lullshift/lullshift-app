@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Ridge Walk: seven ridges of cards above a path">
+  <!-- Original art for Lullshift. -->
+  <rect width="320" height="200" fill="#dfe9e0"/>
+  <path d="M0 70 L50 40 L100 62 L160 28 L220 60 L270 36 L320 58 L320 0 L0 0 Z" fill="#c4d6c8"/>
+  <g stroke="#8c8497" stroke-width="2">
+    <g fill="#fffdf9">
+      <rect x="18" y="80" width="34" height="44" rx="5"/><rect x="18" y="92" width="34" height="44" rx="5"/><rect x="18" y="104" width="34" height="44" rx="5"/>
+      <rect x="62" y="80" width="34" height="44" rx="5"/><rect x="62" y="92" width="34" height="44" rx="5"/>
+      <rect x="106" y="80" width="34" height="44" rx="5"/><rect x="106" y="92" width="34" height="44" rx="5"/><rect x="106" y="104" width="34" height="44" rx="5"/><rect x="106" y="116" width="34" height="44" rx="5"/>
+      <rect x="150" y="80" width="34" height="44" rx="5"/><rect x="150" y="92" width="34" height="44" rx="5"/><rect x="150" y="104" width="34" height="44" rx="5"/>
+      <rect x="194" y="80" width="34" height="44" rx="5"/><rect x="194" y="92" width="34" height="44" rx="5"/>
+      <rect x="238" y="80" width="34" height="44" rx="5"/><rect x="238" y="92" width="34" height="44" rx="5"/><rect x="238" y="104" width="34" height="44" rx="5"/><rect x="238" y="116" width="34" height="44" rx="5"/><rect x="238" y="128" width="34" height="44" rx="5"/>
+      <rect x="282" y="80" width="26" height="44" rx="5"/><rect x="282" y="92" width="26" height="44" rx="5"/>
+    </g>
+  </g>
+  <g fill="#a8323e">
+    <circle cx="35" cy="132" r="6"/><circle cx="123" cy="146" r="6"/><circle cx="255" cy="158" r="6"/><circle cx="79" cy="110" r="6"/>
+  </g>
+  <g fill="#2a2633">
+    <circle cx="167" cy="118" r="6"/><circle cx="211" cy="98" r="6"/><circle cx="295" cy="98" r="5"/>
+  </g>
+  <rect x="112" y="14" width="34" height="44" rx="5" fill="#6b4fd8" stroke="#8c8497" stroke-width="2"/>
+  <rect x="160" y="14" width="34" height="44" rx="5" fill="#fffdf9" stroke="#6b4fd8" stroke-width="3"/>
+  <circle cx="177" cy="36" r="7" fill="#a8323e"/>
+</svg>

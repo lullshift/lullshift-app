@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.moss-paths",
+  "version": "0.1.0",
+  "name": "Moss Paths",
+  "description": "A quiet garden of stream tiles. Turn each tile until water from the spring reaches every bed. A garden each day that remembers your best, or a new one whenever you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "A 6 by 6 garden where every tile holds a piece of stream: an end, a straight, a bend, a tee or a crossing. Turning tiles joins the streams into one network.",
+    "goal": "Water every bed. Tiles joined to the spring turn blue, and you win when all 36 are blue. There is no timer, and fewer moves is only a bonus.",
+    "howToPlay": [
+      "Find the spring, the tile with the ring in the middle.",
+      "Turn a tile a quarter turn so its stream lines up with its neighbours. Water only passes where two tiles open toward each other.",
+      "Watch the Watered count grow until every tile is blue.",
+      "Today's garden is the same for everyone today and remembers your best. New garden deals a fresh one. Restart tangles the same garden again, and Undo takes back your last turn."
+    ],
+    "controls": [
+      { "keys": "Arrow keys", "action": "Move between tiles" },
+      { "keys": "Enter / Space", "action": "Turn the tile clockwise" },
+      { "keys": "Shift+Enter or R", "action": "Turn the tile counter-clockwise" },
+      { "keys": "Ctrl+Z", "action": "Undo the last turn" },
+      { "keys": "Tab", "action": "Reach Undo, Restart and the garden buttons" }
+    ],
+    "tips": [
+      "Start from the spring and work outward, one tile at a time.",
+      "Ends and bends in the corners and along the edges can only point inward, so fix those first.",
+      "A crossing already fits every way and never needs turning.",
+      "You can stop at any time. Your garden is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

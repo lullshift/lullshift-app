@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.games.petal-grid",
+  "version": "0.1.0",
+  "name": "Petal Grid",
+  "description": "A quiet flower-bed logic puzzle. Plant each kind of petal exactly once in every row and every column. Some petals are already in place. A new bed each day, or as many as you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "calm", "logic"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "A square flower bed with a few petals already planted. Each petal kind has a number and a colour: 1 rose, 2 iris, 3 tulip, 4 daisy, and on the larger bed 5 lily and 6 violet.",
+    "goal": "Fill the bed so every row and every column holds each petal kind exactly once. There is always exactly one answer, and no timer.",
+    "howToPlay": [
+      "Move to an empty square and type a number to plant that petal. Planted petals that came with the puzzle are fixed.",
+      "If a petal repeats in its row or column, both squares are softly marked and the game says so. Nothing is lost; change either one.",
+      "Type 0, Backspace or Delete to clear a square you planted.",
+      "Today's bed is the same for everyone today. New bed deals a fresh one. Size switches between 4 by 4 and the larger 6 by 6.",
+      "Undo takes back your last change. Clear removes everything you planted."
+    ],
+    "controls": [
+      { "keys": "Arrow keys", "action": "Move between squares" },
+      { "keys": "1 to 6", "action": "Plant that petal in the focused square" },
+      { "keys": "0 / Backspace / Delete", "action": "Clear the focused square" },
+      { "keys": "Home / End", "action": "Jump to the start or end of the row" },
+      { "keys": "Ctrl+Z", "action": "Undo the last change" },
+      { "keys": "Tab", "action": "Reach Undo, Clear and the other buttons" }
+    ],
+    "tips": [
+      "Start with a row or column that already has several petals; the missing ones are easy to name.",
+      "Look for a square where only one petal kind fits.",
+      "You can stop at any time. Your bed is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
+}

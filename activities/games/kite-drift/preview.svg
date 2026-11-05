@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A red kite gliding between two soft cloud banks">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9cc9f0"/>
+      <stop offset="1" stop-color="#f6e4d0"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="200" fill="url(#sky)"/>
+  <g fill="#ffffff">
+    <circle cx="220" cy="0" r="26"/><circle cx="220" cy="22" r="26"/><circle cx="220" cy="44" r="24"/>
+    <circle cx="220" cy="160" r="26"/><circle cx="220" cy="184" r="26"/><circle cx="220" cy="206" r="26"/>
+  </g>
+  <g fill="#ffffff" fill-opacity="0.5">
+    <ellipse cx="60" cy="40" rx="36" ry="10"/><ellipse cx="270" cy="120" rx="30" ry="8"/>
+  </g>
+  <g transform="translate(110 100) rotate(-8)">
+    <path d="M0 -22 L17 0 L0 22 L-17 0 Z" fill="#e8604c" stroke="#7a2c20" stroke-width="2"/>
+    <path d="M0 -22 V22 M-17 0 H17" stroke="#7a2c20" stroke-width="2" fill="none"/>
+    <path d="M0 22 Q-14 36 -28 32 Q-42 28 -56 40" stroke="#7a2c20" stroke-width="2" fill="none"/>
+  </g>
+</svg>
