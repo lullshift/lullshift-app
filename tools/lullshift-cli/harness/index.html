@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lullshift activity harness</title>
+    <link rel="stylesheet" href="/harness.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <h1 id="title">Activity</h1>
+      <p class="phase">Host: <strong id="phase">idle</strong></p>
+    </header>
+    <div class="layout">
+      <section id="stage" class="stage" aria-label="Activity"></section>
+      <aside class="side" aria-label="Host controls">
+        <div class="controls">
+          <button type="button" data-action="start" data-when="idle paused failed">
+            Start or resume
+          </button>
+          <button type="button" data-action="pause" data-when="running">Pause</button>
+          <button type="button" data-action="attention" data-when="loading running">
+            Agent needs you
+          </button>
+          <button type="button" data-action="working" data-when="loading running paused">
+            Agent working
+          </button>
+          <button type="button" data-action="save" data-when="running">Ask for state</button>
+          <button type="button" data-action="crash" data-when="loading running">
+            Crash (no save)
+          </button>
+          <button type="button" data-action="forget" data-when="idle paused failed">
+            Forget saved state
+          </button>
+        </div>
+        <div class="options">
+          <label><input id="dark" type="checkbox" /> Dark theme</label>
+          <label><input id="reduced" type="checkbox" /> Reduced motion</label>
+        </div>
+        <h2>Paused view stats</h2>
+        <p id="summary" class="summary">none yet</p>
+        <h2>Saved state</h2>
+        <pre id="snapshot" class="pre">none</pre>
+        <h2>Bridge messages</h2>
+        <pre id="log" class="pre log"></pre>
+      </aside>
+    </div>
+    <script type="module" src="/host.js"></script>
+  </body>
+</html>

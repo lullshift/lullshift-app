@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Calm Cards</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1 id="title">Calm Cards</h1>
+      <p id="intro" class="lede" hidden></p>
+
+      <div id="card" class="card" tabindex="0" role="group" aria-label="Card">
+        <p id="front" class="front"></p>
+        <p id="back" class="back" hidden></p>
+      </div>
+
+      <p id="progress" class="progress" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="prev" type="button">Previous</button>
+        <button id="more" type="button">Show more</button>
+        <button id="next" type="button">Next</button>
+        <button id="again" type="button" hidden>Start again</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

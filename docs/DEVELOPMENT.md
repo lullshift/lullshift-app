@@ -91,6 +91,24 @@ Undo with `git config --unset core.hooksPath`.
 - pnpm's minimum release age policy is left on; don't add `minimumReleaseAgeExclude` entries to install brand-new releases.
 - TypeScript is pinned to 6.0.x until typescript-eslint supports TypeScript 7.
 
+## Creating activities
+
+The SDK guide is `packages/activity-sdk/README.md`. It covers the bridge, sandbox rules, the required `help` section, paused-view stats and previews. The creator CLI runs from the repo root:
+
+```bash
+pnpm lullshift create my-activity --name "My Activity"
+```
+
+```bash
+pnpm lullshift validate my-activity
+```
+
+```bash
+pnpm lullshift simulate my-activity
+```
+
+`simulate` needs Edge, Chrome or Chromium on your computer. Run `pnpm lullshift --help` for `dev`, `pack` and the rest.
+
 ## Environment variables
 
 None are required. `.env.example` lists optional development variables; never commit a real `.env`.

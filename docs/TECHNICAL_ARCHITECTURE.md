@@ -330,13 +330,13 @@ Accepted:
 - [ADR-011](adr/ADR-011-ui-design-system.md): UI design system.
 - [ADR-012](adr/ADR-012-activity-sandbox-and-bridge.md): Activity sandbox strategy and host bridge protocol.
 - [ADR-013](adr/ADR-013-context-keeper-and-opt-in-capture.md): Context Keeper data and opt-in task-context capture.
+- [ADR-016](adr/ADR-016-engines-and-content-packs.md): Engine versioning, data schemas and retirement policy (provisional until Sprint 07).
+- [ADR-017](adr/ADR-017-creator-cli-and-simulator.md): Creator CLI implementation language and distribution.
 
 To be recorded in later sprints (numbering indicative):
 
 - ADR-014: Git integration (system `git` vs library), hardening, cache layout.
 - ADR-015: Marketplace index schema v1 and install/update/pin semantics.
-- ADR-016: Engine versioning, data schemas and retirement policy.
-- ADR-017: Creator CLI implementation language and distribution.
 - ADR-018: App update signing, release pipeline and key custody.
 - ADR-019: Bundling built-in activities into the installer.
 - ADR-020: BYOK Companion provider abstraction and context boundary.

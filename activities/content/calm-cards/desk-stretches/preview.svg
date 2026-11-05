@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Desk Stretches: a calm figure at a desk with arms raised">
+  <rect width="320" height="200" fill="#f1ebe3"/>
+  <rect x="60" y="136" width="200" height="10" rx="5" fill="#625b6c"/>
+  <rect x="84" y="146" width="8" height="38" fill="#625b6c"/>
+  <rect x="228" y="146" width="8" height="38" fill="#625b6c"/>
+  <circle cx="160" cy="62" r="16" fill="#6b4fd8"/>
+  <path d="M160 80 L160 120" stroke="#6b4fd8" stroke-width="10" stroke-linecap="round" fill="none"/>
+  <path d="M160 90 L128 50 M160 90 L192 50" stroke="#6b4fd8" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <path d="M160 120 L140 134 M160 120 L180 134" stroke="#6b4fd8" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <circle cx="60" cy="40" r="6" fill="#b9a6ff"/>
+  <circle cx="264" cy="56" r="8" fill="#ece6ff"/>
+</svg>

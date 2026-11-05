@@ -1,0 +1,307 @@
+// `lullshift validate` (ADR-017): the schema plus the folder rules the host and the install flow
+// apply (TECHNICAL_ARCHITECTURE §7.3, §7.5). Errors block packing; warnings don't.
+
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
+import { BRIDGE_FILE, SDK_VERSION } from "@lullshift/activity-sdk";
+import {
+  createAjv,
+  validateActivityManifest,
+  type ActivityManifestV1,
+} from "@lullshift/agent-protocol";
+import { CODE_TYPES, LIMITS, listFiles, type FileEntry } from "./files.ts";
+import { BRIDGE_PATH, ENGINES_DIR } from "./paths.ts";
+
+export interface Engine {
+  id: string;
+  major: number;
+  dir: string;
+  manifest: ActivityManifestV1;
+  dataSchema: object;
+}
+
+export interface Report {
+  dir: string;
+  manifest: ActivityManifestV1 | null;
+  files: FileEntry[];
+  errors: string[];
+  warnings: string[];
+  /** For content packs: the engine and the parsed data. */
+  engine?: Engine;
+  data?: unknown;
+}
+
+// Source text that names things the sandbox blocks. The sandbox is the boundary; this is a
+// warning so creators learn early, and a hint for reviewers.
+const RISKY: [RegExp, string][] = [
+  [/\bfetch\s*\(/, "fetch()"],
+  [/\bXMLHttpRequest\b/, "XMLHttpRequest"],
+  [/\bWebSocket\b/, "WebSocket"],
+  [/\bEventSource\b/, "EventSource"],
+  [/\bsendBeacon\b/, "sendBeacon"],
+  [/\bRTCPeerConnection\b/, "RTCPeerConnection"],
+  [/__TAURI/, "Tauri internals"],
+  [/\beval\s*\(/, "eval()"],
+  [/\bnew\s+Function\s*\(/, "new Function()"],
+  [
+    /\blocalStorage\b|\bsessionStorage\b|\bindexedDB\b/,
+    "browser storage (use LullshiftBridge.storage)",
+  ],
+  [/\bnavigator\.clipboard\b/, "the clipboard"],
+];
+
+const ENGINE_REF = /^([a-z0-9]+(?:\.[a-z0-9-]+)+)@([0-9]+)$/;
+
+const readJson = (file: string): unknown => JSON.parse(readFileSync(file, "utf8"));
+
+/** Engines in `activities/engines` plus any extra folders, keyed by `id@major`. */
+export function findEngines(extra: string[] = []): Map<string, Engine> {
+  const found = new Map<string, Engine>();
+  const roots = [ENGINES_DIR, ...extra];
+  for (const root of roots) {
+    if (!existsSync(root)) continue;
+    const dirs = existsSync(path.join(root, "engine.json"))
+      ? [root]
+      : readdirSync(root)
+          .map((n) => path.join(root, n))
+          .filter((d) => statSync(d).isDirectory());
+    for (const dir of dirs) {
+      const enginePath = path.join(dir, "engine.json");
+      if (!existsSync(enginePath)) continue;
+      try {
+        const e = readJson(enginePath) as {
+          schemaVersion: number;
+          id: string;
+          major: number;
+          dataSchema: string;
+        };
+        const manifest = readJson(path.join(dir, "manifest.json")) as ActivityManifestV1;
+        const schemaFile = path.resolve(dir, e.dataSchema);
+        if (path.dirname(schemaFile) !== path.resolve(dir)) continue;
+        const key = `${e.id}@${e.major}`;
+        if (!found.has(key)) {
+          found.set(key, {
+            id: e.id,
+            major: e.major,
+            dir,
+            manifest,
+            dataSchema: readJson(schemaFile) as object,
+          });
+        }
+      } catch {
+        // A broken engine folder is that engine's problem; packs naming it report "not found".
+      }
+    }
+  }
+  return found;
+}
+
+export function validateFolder(dir: string, opts: { engines?: string[] } = {}): Report {
+  const report: Report = { dir, manifest: null, files: [], errors: [], warnings: [] };
+  const { errors, warnings } = report;
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+    errors.push(`${dir} isn't a folder`);
+    return report;
+  }
+
+  const listing = listFiles(dir);
+  report.files = listing.files;
+  errors.push(...listing.errors);
+  for (const s of listing.skipped) warnings.push(`${s}: hidden, so it is never served or packed`);
+  const has = (rel: string) => listing.files.find((f) => f.rel === rel);
+
+  if (!has("manifest.json")) {
+    errors.push("manifest.json is missing");
+    return report;
+  }
+  let raw: unknown;
+  try {
+    raw = readJson(path.join(dir, "manifest.json"));
+  } catch (e) {
+    errors.push(`manifest.json isn't valid JSON: ${(e as Error).message}`);
+    return report;
+  }
+  const checked = validateManifestAll(raw);
+  if (!checked.ok) {
+    errors.push(...checked.errors.map((e) => `manifest.json ${e}`));
+    return report;
+  }
+  const m = checked.value;
+  report.manifest = m;
+
+  // Declared files exist.
+  if (m.kind === "app") {
+    if (!has("index.html")) errors.push("index.html (the entry point) is missing");
+  }
+  if (m.preview) {
+    const p = has(m.preview);
+    if (!p) errors.push(`preview ${m.preview} is missing`);
+    else if (p.bytes > LIMITS.previewBytes) errors.push(`preview ${m.preview} is over 256 KiB`);
+  } else {
+    warnings.push('no preview image: cards and the paused view will show none (add "preview")');
+  }
+  if (!m.help) {
+    warnings.push('no help: players won\'t see how to play (add "help" to manifest.json)');
+  }
+  if (m.sdkVersion !== SDK_VERSION && compareSemver(m.sdkVersion, SDK_VERSION) > 0) {
+    errors.push(`sdkVersion ${m.sdkVersion} is newer than this SDK (${SDK_VERSION})`);
+  }
+
+  if (m.kind === "app") checkApp(report, has);
+  else checkContent(report, has, opts.engines ?? []);
+  return report;
+}
+
+/** Like `validateActivityManifest`, but reporting every problem (tools want them all). */
+const allErrors = (() => {
+  const ajv = createAjv({ allErrors: true });
+  const schemaPath = new URL(
+    "../../../reference/ACTIVITY_MANIFEST_V1.schema.json",
+    import.meta.url,
+  );
+  const validate = ajv.compile(JSON.parse(readFileSync(schemaPath, "utf8")) as object);
+  return (input: unknown): string[] =>
+    validate(input)
+      ? []
+      : (validate.errors ?? []).map((e) => {
+          const allowed = (e.params as { allowedValues?: unknown[] }).allowedValues;
+          const more = allowed ? `: ${allowed.map(String).join(", ")}` : "";
+          return `${e.instancePath || "/"} ${e.message ?? "is invalid"}${more}`;
+        });
+})();
+
+function validateManifestAll(
+  raw: unknown,
+): { ok: true; value: ActivityManifestV1 } | { ok: false; errors: string[] } {
+  const quick = validateActivityManifest(raw);
+  if (quick.ok) return quick;
+  return { ok: false, errors: allErrors(raw) };
+}
+
+function checkApp(report: Report, has: (rel: string) => FileEntry | undefined) {
+  const bridge = has(BRIDGE_FILE);
+  if (!bridge) {
+    report.warnings.push(
+      `${BRIDGE_FILE} is missing: copy it from the SDK (lullshift create does this) and load it before your own scripts`,
+    );
+  } else if (!readFileSync(bridge.abs).equals(readFileSync(BRIDGE_PATH))) {
+    report.warnings.push(`${BRIDGE_FILE} differs from the SDK's copy (${SDK_VERSION}); replace it`);
+  }
+  for (const f of report.files) {
+    if (f.rel === BRIDGE_FILE) continue;
+    if (f.ext === "html") checkHtml(f, readFileSync(f.abs, "utf8"), report);
+    if (f.ext === "js" || f.ext === "mjs" || f.ext === "html") {
+      const text = readFileSync(f.abs, "utf8");
+      for (const [re, what] of RISKY) {
+        if (re.test(text))
+          report.warnings.push(`${f.rel} mentions ${what}, which the sandbox blocks`);
+      }
+    }
+  }
+}
+
+function checkHtml(f: FileEntry, html: string, report: Report) {
+  // The activity CSP forbids inline script and module scripts (ADR-012): say so before the
+  // creator finds a blank page.
+  for (const tag of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    const attrs = tag[1] ?? "";
+    if (/type\s*=\s*["']?module/i.test(attrs)) {
+      report.errors.push(`${f.rel}: module scripts can't load in the sandbox; use classic scripts`);
+    }
+    if (!/\bsrc\s*=/.test(attrs) && (tag[2] ?? "").trim() !== "") {
+      report.errors.push(`${f.rel}: inline <script> is blocked by the sandbox; move it to a file`);
+    }
+  }
+  if (/\son[a-z]+\s*=\s*["']/i.test(html)) {
+    report.errors.push(
+      `${f.rel}: inline event handlers (onclick=…) are blocked; use addEventListener`,
+    );
+  }
+  if (/<style\b/i.test(html) || /\sstyle\s*=\s*["']/i.test(html)) {
+    report.warnings.push(`${f.rel}: inline styles are blocked by the sandbox; use a stylesheet`);
+  }
+  if (/\b(?:src|href)\s*=\s*["']?(?:https?:)?\/\//i.test(html)) {
+    report.errors.push(`${f.rel}: loads something from the network, which the sandbox blocks`);
+  }
+}
+
+function checkContent(
+  report: Report,
+  has: (rel: string) => FileEntry | undefined,
+  extraEngines: string[],
+) {
+  const m = report.manifest!;
+  for (const f of report.files) {
+    if (CODE_TYPES.has(f.ext)) report.errors.push(`${f.rel}: content packs can't contain code`);
+  }
+  const ref = ENGINE_REF.exec(m.engine ?? "");
+  const dataFile = m.data ? has(m.data) : undefined;
+  if (!dataFile) {
+    report.errors.push(`data ${m.data ?? ""} is missing`);
+    return;
+  }
+  if (dataFile.bytes > LIMITS.dataBytes) {
+    report.errors.push(`data ${m.data} is over 256 KiB`);
+    return;
+  }
+  let data: unknown;
+  try {
+    data = readJson(dataFile.abs);
+  } catch (e) {
+    report.errors.push(`${m.data} isn't valid JSON: ${(e as Error).message}`);
+    return;
+  }
+  report.data = data;
+  const engine = ref ? findEngines(extraEngines).get(`${ref[1]}@${ref[2]}`) : undefined;
+  if (!engine) {
+    report.errors.push(
+      `engine ${m.engine} wasn't found (looked in activities/engines${extraEngines.length ? " and --engines" : ""})`,
+    );
+    return;
+  }
+  report.engine = engine;
+  const ajv = createAjv({ allErrors: true });
+  let validate;
+  try {
+    validate = ajv.compile(engine.dataSchema);
+  } catch (e) {
+    report.errors.push(`engine ${m.engine} has a broken data schema: ${(e as Error).message}`);
+    return;
+  }
+  if (!validate(data)) {
+    for (const e of validate.errors ?? []) {
+      report.errors.push(`${m.data} ${e.instancePath || "/"} ${e.message ?? "is invalid"}`);
+    }
+  }
+}
+
+/** -1, 0 or 1, comparing MAJOR.MINOR.PATCH; pre-releases sort before their release. */
+export function compareSemver(a: string, b: string): number {
+  const parse = (v: string) => {
+    const [core = "", pre] = v.split("-", 2);
+    return { nums: core.split(".").map(Number), pre };
+  };
+  const x = parse(a);
+  const y = parse(b);
+  for (let i = 0; i < 3; i++) {
+    const d = (x.nums[i] ?? 0) - (y.nums[i] ?? 0);
+    if (d !== 0) return Math.sign(d);
+  }
+  if (x.pre === y.pre) return 0;
+  if (x.pre === undefined) return 1;
+  if (y.pre === undefined) return -1;
+  return x.pre < y.pre ? -1 : 1;
+}
+
+/** Prints a report; returns the exit code. */
+export function printReport(r: Report, out: (line: string) => void = console.log): number {
+  const name = r.manifest ? `${r.manifest.name} (${r.manifest.id}@${r.manifest.version})` : r.dir;
+  for (const e of r.errors) out(`  error   ${e}`);
+  for (const w of r.warnings) out(`  warning ${w}`);
+  if (r.errors.length) {
+    out(`✗ ${name}: ${r.errors.length} error(s), ${r.warnings.length} warning(s)`);
+    return 1;
+  }
+  out(`✓ ${name}: valid${r.warnings.length ? `, ${r.warnings.length} warning(s)` : ""}`);
+  return 0;
+}

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "{{id}}",
+  "version": "0.1.0",
+  "name": "{{name}}",
+  "description": "Stack calm pebbles one at a time. A small starting point for your own activity.",
+  "author": "{{author}}",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["starter"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "{{sdkVersion}}",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "Stack pebbles until the cairn is ten high.",
+    "goal": "Ten pebbles on the cairn.",
+    "howToPlay": [
+      "Press Add a pebble to place one on top.",
+      "Press Take one off if you change your mind.",
+      "At ten, the cairn is done. Start again whenever you like."
+    ],
+    "controls": [
+      { "keys": "Tab", "action": "Move between the buttons" },
+      { "keys": "Enter / Space", "action": "Press the focused button" },
+      { "keys": "+ / -", "action": "Add or take off a pebble" }
+    ],
+    "tips": ["You can stop at any time. Your cairn is saved."]
+  },
+  "preview": "preview.svg"
+}

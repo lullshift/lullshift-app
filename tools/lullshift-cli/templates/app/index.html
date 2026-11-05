@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{name}}</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- No inline script, no inline styles, no modules, no network: the sandbox blocks them. -->
+    <main class="wrap">
+      <h1>{{name}}</h1>
+      <p id="count" class="count" role="status" aria-live="polite">No pebbles yet.</p>
+      <div id="cairn" class="cairn" aria-hidden="true"></div>
+      <!-- Controls sit on one row when they fit. -->
+      <div class="controls">
+        <button id="add" type="button">Add a pebble</button>
+        <button id="remove" type="button">Take one off</button>
+        <button id="restart" type="button">Start again</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

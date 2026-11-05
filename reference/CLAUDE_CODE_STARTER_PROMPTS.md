@@ -18,7 +18,7 @@ Start Sprint 03. Read ADR-003 and the sandbox section of the architecture doc. W
 
 ## Create an activity (Sonnet implementation; Opus security review)
 
-Use `/activity-creator` and `creator/ACTIVITY_CREATOR_PROMPT.md`. Prefer a content pack if an engine fits; otherwise build on a kit. Verify manifest, all simulator states, restrictive permissions, keyboard accessibility, persistence and license inventory. Do not claim passing checks unless the tools exist and ran.
+Use `/activity-creator`, `creator/ACTIVITY_CREATOR_PROMPT.md` and `packages/activity-sdk/README.md`. Prefer a content pack if an engine fits; otherwise build on a kit or custom code. Every activity needs `help` in its manifest (a missing-help warning is a failure), a `LullshiftBridge.summary` call after meaningful changes, a `preview` image and a one-row controls layout. Run `pnpm lullshift validate <dir>` and `pnpm lullshift simulate <dir>` and report the real output. Do not claim passing checks unless they ran.
 
 ## Build Git marketplaces (Opus review, Sonnet implementation)
 

@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createAjv } from "@lullshift/agent-protocol";
 import { describe, expect, it } from "vitest";
 import "../../../../activities/games/lantern-pond/logic.js";
 
@@ -81,11 +82,13 @@ describe("LanternLogic", () => {
 
 const root = new URL("../../../../activities/", import.meta.url);
 const rootPath = (p: string) => join(fileURLToPath(root), p);
-const bridgePath = rootPath("lib/lullshift-bridge-v1.js");
+const bridgePath = fileURLToPath(
+  new URL("../../../../packages/activity-sdk/bridge/lullshift-bridge-v1.js", import.meta.url),
+);
 
 function activityDirs(): string[] {
   const dirs: string[] = [];
-  for (const group of ["break", "games"]) {
+  for (const group of ["break", "games", "engines"]) {
     const g = rootPath(group);
     if (!existsSync(g)) continue;
     for (const name of readdirSync(g)) {
@@ -160,6 +163,92 @@ describe("bundled activities", () => {
           }
           for (const bad of FORBIDDEN) expect(text, `${f} contains ${bad}`).not.toContain(bad);
         }
+      });
+    });
+  }
+});
+
+// Content packs (ADR-016): code-free data for a named engine.
+function readJson(path: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+}
+
+function packDirs(): string[] {
+  const dirs: string[] = [];
+  const base = rootPath("content");
+  if (!existsSync(base)) return dirs;
+  const walk = (dir: string) => {
+    if (existsSync(join(dir, "manifest.json"))) return void dirs.push(dir);
+    for (const name of readdirSync(dir)) {
+      const sub = join(dir, name);
+      if (statSync(sub).isDirectory()) walk(sub);
+    }
+  };
+  walk(base);
+  return dirs;
+}
+
+describe("content packs", () => {
+  const ajv = createAjv({ allErrors: true });
+  const validateManifest = ajv.compile(
+    readJson(
+      fileURLToPath(
+        new URL("../../../../reference/ACTIVITY_MANIFEST_V1.schema.json", import.meta.url),
+      ),
+    ),
+  );
+  const engines = new Map<string, { dir: string; major: number; schema: string }>();
+  const engineRoot = rootPath("engines");
+  for (const name of existsSync(engineRoot) ? readdirSync(engineRoot) : []) {
+    const dir = join(engineRoot, name);
+    if (!existsSync(join(dir, "engine.json"))) continue;
+    const e = readJson(join(dir, "engine.json")) as {
+      id: string;
+      major: number;
+      dataSchema: string;
+    };
+    engines.set(`${e.id}@${e.major}`, { dir, major: e.major, schema: e.dataSchema });
+  }
+  const dirs = packDirs();
+
+  it("finds the sample pack", () => {
+    expect(dirs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("validates engine manifests against the schema", () => {
+    for (const { dir } of engines.values()) {
+      const m = readJson(join(dir, "manifest.json"));
+      expect(validateManifest(m), JSON.stringify(validateManifest.errors)).toBe(true);
+    }
+  });
+
+  for (const dir of dirs) {
+    describe(dir.split(/[\\/]/).slice(-3).join("/"), () => {
+      const manifest = readJson(join(dir, "manifest.json")) as {
+        kind: string;
+        engine: string;
+        data: string;
+      };
+
+      it("has a valid content manifest", () => {
+        expect(validateManifest(manifest), JSON.stringify(validateManifest.errors)).toBe(true);
+        expect(manifest.kind).toBe("content");
+      });
+
+      it("names an existing engine and its data matches the engine schema", () => {
+        const engine = engines.get(manifest.engine);
+        expect(engine, `engine ${manifest.engine}`).toBeDefined();
+        if (!engine) return;
+        const validateData = createAjv({ allErrors: true }).compile(
+          readJson(join(engine.dir, engine.schema)),
+        );
+        const data = readJson(join(dir, manifest.data));
+        expect(validateData(data), JSON.stringify(validateData.errors)).toBe(true);
+        expect(statSync(join(dir, manifest.data)).size).toBeLessThanOrEqual(256 * 1024);
+      });
+
+      it("holds no code", () => {
+        for (const f of readdirSync(dir)) expect(f).not.toMatch(/\.(html|js|mjs|css)$/i);
       });
     });
   }

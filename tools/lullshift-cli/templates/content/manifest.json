@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "{{id}}",
+  "version": "0.1.0",
+  "name": "{{name}}",
+  "description": "A short card deck. Replace the cards in deck.json with your own.",
+  "author": "{{author}}",
+  "license": "CC-BY-4.0",
+  "category": "break",
+  "tags": ["starter"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "{{sdkVersion}}",
+  "permissions": [],
+  "offline": true,
+  "engine": "{{engine}}",
+  "data": "deck.json",
+  "help": {
+    "summary": "A few short cards to read at your own pace.",
+    "howToPlay": ["Read the card.", "Press Show more for the details, then Next."],
+    "controls": [
+      { "keys": "Left / Right", "action": "Previous or next card" },
+      { "keys": "Enter / Space", "action": "Press the focused button" }
+    ]
+  }
+}

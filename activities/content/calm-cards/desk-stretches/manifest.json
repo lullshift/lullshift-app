@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.desk-stretches",
+  "version": "0.1.0",
+  "name": "Desk Stretches",
+  "description": "Eight gentle stretches to try at your desk, one card at a time.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["stretch", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.cards@1",
+  "data": "deck.json",
+  "help": {
+    "summary": "A short deck of gentle stretches for a desk break, shown on Calm Cards.",
+    "goal": "There is nothing to finish. Try one stretch or all eight.",
+    "howToPlay": [
+      "Read the stretch on the card.",
+      "Press Show more for a few words on how to do it.",
+      "Move gently and stop if anything feels uncomfortable.",
+      "Press Next for another stretch."
+    ],
+    "tips": ["These are general ideas for a break, not advice. Skip any that do not suit you."]
+  },
+  "preview": "preview.svg"
+}

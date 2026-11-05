@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.engines.calm-cards",
+  "version": "0.1.0",
+  "name": "Calm Cards",
+  "description": "A quiet deck of short cards, read one at a time. Install a card pack to fill it. Your place is saved, so you can stop whenever you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["cards", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "help": {
+    "summary": "A deck of short cards shown one at a time. The cards come from a card pack.",
+    "goal": "There is nothing to win. Read at your own pace and stop whenever you like.",
+    "howToPlay": [
+      "Read the card in front of you.",
+      "Press Show more to see the rest of the card, if it has more.",
+      "Press Next for the following card, or Previous to go back.",
+      "At the end of the deck you can start again."
+    ],
+    "controls": [
+      { "keys": "Left / Right arrow", "action": "Previous or next card, when the card is focused" },
+      { "keys": "Tab", "action": "Reach Show more, Previous and Next" },
+      { "keys": "Enter / Space", "action": "Press the focused button" }
+    ],
+    "tips": ["Your place is saved, so a break can be as short as one card."]
+  },
+  "preview": "preview.svg"
+}

@@ -23,6 +23,12 @@ const steps = [
   { name: "lint", cmd: "pnpm", args: ["lint"] },
   { name: "format", cmd: "pnpm", args: ["format:check"] },
   { name: "unit tests (ts)", cmd: "pnpm", args: ["test"] },
+  {
+    name: "bundled activities (validate, simulate)",
+    cmd: "node",
+    args: ["tests/activities/check-bundled.mjs"],
+    slow: true,
+  },
   { name: "cargo fmt", cmd: "cargo", args: ["fmt", "--all", "--check"], slow: false },
   {
     name: "cargo clippy",

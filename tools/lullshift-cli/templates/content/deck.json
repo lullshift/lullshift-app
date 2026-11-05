@@ -1,0 +1,12 @@
+{
+  "title": "{{name}}",
+  "intro": "Three short cards to start from.",
+  "cards": [
+    { "front": "Unclench your jaw.", "back": "Let your tongue rest and your teeth part a little." },
+    { "front": "Drop your shoulders.", "back": "Breathe out slowly as they settle." },
+    {
+      "front": "Look far away.",
+      "back": "Find the farthest thing you can see and rest your eyes on it."
+    }
+  ]
+}

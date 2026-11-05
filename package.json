@@ -20,7 +20,8 @@
     "secrets": "secretlint \"**/*\"",
     "hooks:install": "git config core.hooksPath .githooks && node -e \"console.log('Git hooks enabled for this clone (.githooks). Undo with: git config --unset core.hooksPath')\"",
     "desktop:dev": "pnpm --filter @lullshift/desktop tauri dev",
-    "desktop:build": "pnpm --filter @lullshift/desktop build"
+    "desktop:build": "pnpm --filter @lullshift/desktop build",
+    "lullshift": "node tools/lullshift-cli/src/main.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

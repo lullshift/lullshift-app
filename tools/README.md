@@ -1,3 +1,7 @@
 # Tools
 
-Planned: `lullshift-cli`, the creator CLI (`create`, `dev`, `simulate`, `validate`, `pack`, `marketplace init`), arriving in Sprint 05. Its language and distribution get their own ADR.
+| Tool | Purpose | Run |
+|---|---|---|
+| `lullshift-cli` | Creator CLI: `create`, `validate`, `simulate`, `dev`, `pack`, `marketplace init` (ADR-017) | `pnpm lullshift --help` |
+
+Run it from the repo root. Start with the [SDK guide](../packages/activity-sdk/README.md).
