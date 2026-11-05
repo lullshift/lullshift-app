@@ -423,3 +423,60 @@ Record any "ESCAPED" line in ADR-012.
 - Pinned in a narrow window shows the grouped list, with Needs you at the top. Floating overlays the board.
 
 **Result:** \_\_\_
+
+## Sprint 05 – Activity SDK and creator CLI
+
+### M05-1: How to play, paused view and previews (S05-A05)
+
+**Why manual:** the help dialog and paused view are checked by unit tests and the simulator, but not by a person in the real app or with a screen reader.
+
+1. Open **Activities**. Each card shows a preview image and a **How to play** button. Open it with the keyboard (Tab, Enter) for Lantern Pond and Step Away, then close it with Esc.
+2. Start Lantern Pond, press a few lanterns, then press **How to play** in the title bar.
+3. Close the dialog. Then press **Pause**, and also try leaving the Activities view.
+4. With a screen reader on, read the paused card.
+
+**Expected:**
+
+- Step 1: help shows a summary, goal, numbered steps, a controls table and tips. Esc returns focus to the button you used.
+- Step 2: the game pauses before the dialog opens.
+- Step 3: the paused card shows "Played this time", the game's stats (lanterns lit, moves) and a **How to play** button. It is never an empty card. Step Away shows its time away. An activity that reports no stats shows its preview image.
+- Lantern Pond's four buttons sit on one row.
+- Step 4: the stats are read as label and value pairs.
+
+**Result:** \_\_\_
+
+### M05-2: Disconnect and session titles (S05-A06)
+
+**Why manual:** this needs the real Claude Code hooks and a real `/rename`.
+
+1. With capture on and a Claude Code session working, run `/rename My test task` in that session, then let it reach a turn end or a question.
+2. Rename another session yourself from its detail panel.
+3. In **Integrations**, disconnect Claude Code while a session is working.
+4. Reconnect, and send a new prompt in that session.
+
+**Expected:**
+
+- Step 1: the card shows "My test task", with the tool name and short id as secondary text.
+- Step 2: your own name wins over the agent's title.
+- Step 3: a status line says how many sessions are no longer tracked. No Claude Code session stays in Needs you or Working, and History labels them "Not tracked: disconnected".
+- Step 4: the session comes back as tracked.
+
+**Result:** \_\_\_
+
+### M05-3: Creator CLI on macOS and Linux
+
+**Why manual:** the simulator was run on Windows with Microsoft Edge only.
+
+1. On macOS and on Linux, with Chrome or Chromium installed, run `pnpm lullshift create /tmp/pebbles`, then `pnpm lullshift simulate /tmp/pebbles`.
+2. Run `pnpm lullshift dev /tmp/pebbles`. Play, press **Agent needs you**, then **Start or resume**.
+3. Run `pnpm lullshift pack /tmp/pebbles` twice and compare the printed SHA-256.
+4. Run the Rust checks for the title reader (see the expected result).
+
+**Expected:**
+
+- Step 1: all scenarios pass, and no `lullshift-sim-*` folder is left in the temp folder.
+- Step 2: the activity pauses and resumes where it was.
+- Step 3: the same hash both times. Across machines the hash matches only when the files are byte-identical; Git may change line endings on checkout.
+- Step 4: `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test -p agent-adapters` pass on macOS and Linux. The title reader's Unix branch (`O_NOFOLLOW | O_NONBLOCK`, the FIFO test) was only compiled on Windows so far.
+
+**Result:** \_\_\_
