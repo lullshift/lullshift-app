@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+mod companion;
 mod context;
 mod marketplaces;
 
@@ -17,6 +18,12 @@ pub use marketplaces::{
     ActivityKind, BUILTIN_MARKETPLACE_ID, InstalledActivity, MAX_ACTIVITY_ID_CHARS,
     MAX_MARKETPLACE_ID_CHARS, MAX_PATH_CHARS, MAX_URL_CHARS, MarketplaceRecord,
     NewInstalledActivity, SavedState,
+};
+
+pub use companion::{
+    CompanionMessage, CompanionProfile, CompanionThread, CompanionUsage, DEFAULT_THREAD_TITLE,
+    MAX_ATTACHED_CHARS, MAX_MESSAGE_CHARS, MAX_PROFILES, MAX_THREAD_TITLE_CHARS, MAX_THREADS,
+    NewUserMessage, month_of,
 };
 
 pub use context::{
@@ -65,6 +72,14 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 7,
         sql: include_str!("../migrations/0007_saved_state_owner.sql"),
+    },
+    Migration {
+        version: 8,
+        sql: include_str!("../migrations/0008_companion.sql"),
+    },
+    Migration {
+        version: 9,
+        sql: include_str!("../migrations/0009_companion_message_host.sql"),
     },
 ];
 
