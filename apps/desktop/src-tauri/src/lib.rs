@@ -2,14 +2,17 @@
 //!
 //! Closing the window hides it; monitoring continues until "Quit" in the tray menu.
 
+mod activities;
 mod adapters;
+mod notify;
 
 use std::sync::{Arc, Mutex};
 
 use agent_core::reducer::DEFAULT_STALE_AFTER;
-use agent_core::{AgentEvent, SessionState, SessionView, view};
+use agent_core::{AgentEvent, SessionRecord, SessionState, SessionView, view};
 use agent_ipc::{Config, Running, ServeError, SinkError};
 use local_store::{IngestOutcome, Store, StoreError};
+use notify::{Notice, NotificationPrefs};
 use serde::Serialize;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
@@ -22,6 +25,8 @@ use time::OffsetDateTime;
 const HIDDEN_ARG: &str = "--hidden";
 const DB_FILE: &str = "lullshift.db";
 const SESSIONS_CHANGED: &str = "sessions-changed";
+/// Emitted when a session changes into `needs_attention`; payload is the provider ID.
+const ATTENTION: &str = "agent-attention";
 const TRAY_ID: &str = "main";
 
 /// The tray mascot's face. Asleep: nothing needs you. Awake: at least one session is in
@@ -224,19 +229,24 @@ fn start_ipc(app: &AppHandle, core: &Arc<Core>) -> Health {
                 set_tray_face(&sink_app, &sink_core, face);
             }
         }
-        let notice = attention_notice(&outcome).filter(|_| match &outcome {
-            IngestOutcome::Stored { record, .. } => gate.lock().is_ok_and(|mut g| {
-                g.allow(&record.provider, &record.provider_session_id, received)
-            }),
-            _ => false,
-        });
-        if let Some(body) = notice {
-            let _ = sink_app
-                .notification()
-                .builder()
-                .title("Lullshift")
-                .body(body)
-                .show();
+        if let Some((notice, record)) = change_notice(&outcome) {
+            if notice == Notice::NeedsYou {
+                // The activity host pauses on this whatever the notification settings say.
+                let _ = sink_app.emit(ATTENTION, &record.provider);
+            }
+            let first = notice != Notice::NeedsYou
+                || gate.lock().is_ok_and(|mut g| {
+                    g.allow(&record.provider, &record.provider_session_id, received)
+                });
+            let prefs = load_prefs(&sink_core);
+            if first && notify::should_notify(&prefs, notice, local_minutes()) {
+                let _ = sink_app
+                    .notification()
+                    .builder()
+                    .title("Lullshift")
+                    .body(notice.text(&record.provider))
+                    .show();
+            }
         }
         Ok(new)
     };
@@ -255,20 +265,62 @@ fn start_ipc(app: &AppHandle, core: &Arc<Core>) -> Health {
     }
 }
 
-/// Notification text when a session has just moved into `needs_attention`, else `None`.
-/// Duplicates and repeats of the same state never notify again (S02-A02). The text names
-/// only the agent, never task content.
-fn attention_notice(outcome: &IngestOutcome) -> Option<&'static str> {
+/// The notice for a session that has just changed state, if that change is one worth telling
+/// the user about. Duplicates and repeats of the same state never notify again (S02-A02).
+fn change_notice(outcome: &IngestOutcome) -> Option<(Notice, &SessionRecord)> {
     match outcome {
         IngestOutcome::Stored {
             state_changed: true,
             record,
-        } if record.state == SessionState::NeedsAttention => Some(match record.provider.as_str() {
-            "claude-code" => "A Claude Code session needs you.",
-            _ => "An agent session needs you.",
-        }),
+        } => Notice::for_change(record.state).map(|n| (n, record)),
         _ => None,
     }
+}
+
+/// Saved notification preferences; defaults if none are saved or the store is unavailable.
+fn load_prefs(core: &Core) -> NotificationPrefs {
+    let json = core.store.lock().ok().and_then(|g| {
+        g.as_ref()
+            .and_then(|s| s.preference(notify::PREFS_KEY).ok().flatten())
+    });
+    NotificationPrefs::from_stored(json.as_deref())
+}
+
+/// Local wall-clock minute of the day, for quiet hours.
+fn local_minutes() -> u16 {
+    use chrono::Timelike;
+    let now = chrono::Local::now();
+    u16::try_from(now.hour() * 60 + now.minute()).unwrap_or(0)
+}
+
+#[tauri::command]
+async fn notification_prefs(
+    core: tauri::State<'_, Arc<Core>>,
+) -> Result<NotificationPrefs, String> {
+    let core = Arc::clone(&core);
+    tauri::async_runtime::spawn_blocking(move || load_prefs(&core))
+        .await
+        .map_err(|_| "internal".to_owned())
+}
+
+#[tauri::command]
+async fn set_notification_prefs(
+    core: tauri::State<'_, Arc<Core>>,
+    prefs: NotificationPrefs,
+) -> Result<NotificationPrefs, String> {
+    prefs.validate()?;
+    let core = Arc::clone(&core);
+    tauri::async_runtime::spawn_blocking(move || {
+        let json = serde_json::to_string(&prefs).map_err(|_| "internal")?;
+        let guard = core.store.lock().map_err(|_| "internal")?;
+        let store = guard.as_ref().ok_or("store_unavailable")?;
+        store
+            .set_preference(notify::PREFS_KEY, &json)
+            .map_err(|_| "store_unavailable")?;
+        Ok(prefs)
+    })
+    .await
+    .map_err(|_| "internal".to_owned())?
 }
 
 /// Hooks run as separate async processes, so a `working` event can land between a permission
@@ -353,6 +405,12 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_notification::init())
+        // Used from Rust only (install confirmation); no capability grants its JS commands.
+        .plugin(tauri_plugin_dialog::init())
+        // Bundled activities, framed by the UI in a sandboxed iframe (ADR-012).
+        .register_uri_scheme_protocol(activities::SCHEME, |_ctx, request| {
+            activities::serve(&request)
+        })
         .setup(|app| {
             let handle = app.handle().clone();
             let (store, store_health) = open_store(&handle);
@@ -394,7 +452,17 @@ pub fn run() {
             dashboard,
             adapters::claude_code_status,
             adapters::claude_code_install,
-            adapters::claude_code_uninstall
+            adapters::claude_code_uninstall,
+            notification_prefs,
+            set_notification_prefs,
+            activities::activities_list,
+            activities::activity_info,
+            activities::activity_storage_get,
+            activities::activity_storage_set,
+            activities::activity_storage_remove,
+            activities::activity_snapshot,
+            activities::activity_save_snapshot,
+            activities::activity_clear_snapshot
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lullshift");
@@ -403,7 +471,62 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_core::SessionRecord;
+
+    /// Every capability file shipped with the app (S03-T07, ADR-010).
+    fn capabilities() -> Vec<(String, serde_json::Value)> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
+        std::fs::read_dir(dir)
+            .expect("capabilities dir")
+            .map(|e| e.expect("entry").path())
+            .filter(|p| p.extension().is_some_and(|x| x == "json"))
+            .map(|p| {
+                let text = std::fs::read_to_string(&p).expect("read capability");
+                (
+                    p.display().to_string(),
+                    serde_json::from_str(&text).expect("capability JSON"),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn only_the_main_window_may_change_agent_settings() {
+        const SENSITIVE: [&str; 2] = ["allow-claude-code-install", "allow-claude-code-uninstall"];
+        let mut granted = 0;
+        for (file, cap) in capabilities() {
+            let perms = cap["permissions"].as_array().expect("permissions array");
+            let has = perms
+                .iter()
+                .filter_map(|p| p.as_str().or_else(|| p["identifier"].as_str()))
+                .any(|p| SENSITIVE.contains(&p));
+            if !has {
+                continue;
+            }
+            granted += 1;
+            assert_eq!(
+                cap["windows"],
+                serde_json::json!(["main"]),
+                "{file}: windows"
+            );
+            assert!(
+                cap.get("webviews").is_none(),
+                "{file}: must not target webviews"
+            );
+            assert!(
+                cap.get("remote").is_none(),
+                "{file}: must not allow remote origins"
+            );
+        }
+        assert!(granted > 0, "the main window still needs these permissions");
+    }
+
+    #[test]
+    fn no_capability_exposes_dialogs_to_scripts() {
+        for (file, cap) in capabilities() {
+            let text = cap["permissions"].to_string();
+            assert!(!text.contains("dialog:"), "{file}: dialogs are Rust-only");
+        }
+    }
 
     fn stored(changed: bool, state: SessionState) -> IngestOutcome {
         let t = OffsetDateTime::UNIX_EPOCH;
@@ -463,17 +586,24 @@ mod tests {
     }
 
     #[test]
-    fn notifies_only_on_change_into_attention() {
-        assert!(attention_notice(&stored(true, SessionState::NeedsAttention)).is_some());
-        assert!(
-            attention_notice(&stored(false, SessionState::NeedsAttention)).is_none(),
+    fn notifies_only_on_change_into_a_notable_state() {
+        let kind = |o: &IngestOutcome| change_notice(o).map(|(n, _)| n);
+        assert_eq!(
+            kind(&stored(true, SessionState::NeedsAttention)),
+            Some(Notice::NeedsYou)
+        );
+        assert_eq!(
+            kind(&stored(true, SessionState::Failed)),
+            Some(Notice::Failed)
+        );
+        assert_eq!(
+            kind(&stored(false, SessionState::NeedsAttention)),
+            None,
             "repeat"
         );
-        assert!(
-            attention_notice(&IngestOutcome::Duplicate).is_none(),
-            "replayed eventId"
-        );
-        assert!(attention_notice(&stored(true, SessionState::Idle)).is_none());
+        assert_eq!(kind(&IngestOutcome::Duplicate), None, "replayed eventId");
+        // A turn ending leaves the session idle: never shown as completion (S03-A02).
+        assert_eq!(kind(&stored(true, SessionState::Idle)), None);
     }
 
     #[test]

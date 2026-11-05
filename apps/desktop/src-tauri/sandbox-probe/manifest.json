@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.test.sandbox-probe",
+  "version": "0.1.0",
+  "name": "Sandbox probe (debug builds only)",
+  "description": "Tries to break out of the activity sandbox and lists what was blocked. Used by the sandbox denial tests; never shipped in release builds.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.1.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true }
+}

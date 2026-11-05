@@ -344,3 +344,133 @@ fn adapter_install_records_round_trip() {
         .expect("uninstall");
     assert_eq!(s.adapter_install("claude-code").expect("get"), None);
 }
+
+#[test]
+fn version_2_database_upgrades_and_keeps_adapter_records() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("open raw");
+        migrate(&conn, &MIGRATIONS[..2], None).expect("v2");
+        conn.execute(
+            "INSERT INTO adapter_installations VALUES ('claude-code','installed','{}','2026-11-05T10:00:00Z','2026-11-05T10:00:00Z')",
+            [],
+        )
+        .expect("insert");
+    }
+    let (s, report) = Store::open(&path).expect("upgrade");
+    assert_eq!((report.from_version, report.to_version), (2, 3));
+    assert!(report.backup.expect("backup").exists());
+    assert_eq!(
+        s.adapter_install("claude-code").expect("get").as_deref(),
+        Some("{}")
+    );
+    assert_eq!(s.preference("notifications").expect("pref"), None);
+    assert!(s.snapshots().expect("snapshots").is_empty());
+}
+
+#[test]
+fn failed_version_3_migration_rolls_back_to_version_2() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("open raw");
+        migrate(&conn, &MIGRATIONS[..2], None).expect("v2");
+        // A clashing table makes step 3 fail half-way.
+        conn.execute("CREATE TABLE activity_snapshots (x INTEGER)", [])
+            .expect("clash");
+    }
+    assert!(matches!(
+        Store::open(&path),
+        Err(StoreError::Migration { version: 3, .. })
+    ));
+    let conn = Connection::open(&path).expect("open raw");
+    let v: i64 = conn
+        .query_row("SELECT max(version) FROM schema_version", [], |r| r.get(0))
+        .expect("v");
+    assert_eq!(v, 2, "left at the last good version");
+    let prefs: bool = conn
+        .query_row(
+            "SELECT EXISTS (SELECT 1 FROM sqlite_schema WHERE name = 'preferences')",
+            [],
+            |r| r.get(0),
+        )
+        .expect("q");
+    assert!(!prefs, "the partial step was rolled back");
+}
+
+#[test]
+fn preferences_round_trip_and_replace() {
+    let s = Store::open_in_memory().expect("open");
+    assert_eq!(s.preference("notifications").expect("get"), None);
+    s.set_preference("notifications", r#"{"a":1}"#)
+        .expect("set");
+    s.set_preference("notifications", r#"{"a":2}"#)
+        .expect("replace");
+    assert_eq!(
+        s.preference("notifications").expect("get").as_deref(),
+        Some(r#"{"a":2}"#)
+    );
+}
+
+#[test]
+fn activity_storage_is_namespaced_and_bounded() {
+    let mut s = Store::open_in_memory().expect("open");
+    s.set_activity_value("a", "best", "12", 16).expect("fits");
+    s.set_activity_value("b", "best", "99", 16)
+        .expect("other namespace");
+    assert_eq!(
+        s.activity_value("a", "best").expect("get").as_deref(),
+        Some("12")
+    );
+    assert_eq!(
+        s.activity_value("b", "best").expect("get").as_deref(),
+        Some("99")
+    );
+    assert_eq!(s.activity_usage("a").expect("usage"), 6);
+
+    // Replacing a value counts only the new size.
+    s.set_activity_value("a", "best", "0123456789ab", 16)
+        .expect("exactly at limit");
+    assert!(matches!(
+        s.set_activity_value("a", "more", "x", 16),
+        Err(StoreError::QuotaExceeded { limit: 16 })
+    ));
+    assert_eq!(
+        s.activity_value("a", "more").expect("get"),
+        None,
+        "nothing written"
+    );
+    // Multi-byte characters count as bytes.
+    assert!(s.set_activity_value("c", "k", "ééééééééé", 16).is_err());
+
+    s.remove_activity_value("a", "best").expect("remove");
+    assert_eq!(s.activity_usage("a").expect("usage"), 0);
+}
+
+#[test]
+fn snapshots_replace_refuse_oversize_and_clear() {
+    let s = Store::open_in_memory().expect("open");
+    s.save_snapshot("game", r#"{"moves":1}"#, T0, 64)
+        .expect("save");
+    s.save_snapshot("game", r#"{"moves":2}"#, T0 + Duration::seconds(5), 64)
+        .expect("replace");
+    s.save_snapshot("break", "{}", T0, 64).expect("save other");
+    let big = "x".repeat(65);
+    assert!(matches!(
+        s.save_snapshot("game", &big, T0, 64),
+        Err(StoreError::QuotaExceeded { limit: 64 })
+    ));
+    let (snap, saved) = s.snapshot("game").expect("get").expect("some");
+    assert_eq!(snap, r#"{"moves":2}"#, "oversize write kept the old one");
+    assert_eq!(saved, "2026-11-05T10:00:05Z");
+    let ids: Vec<String> = s
+        .snapshots()
+        .expect("list")
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    assert_eq!(ids, ["game", "break"]);
+    s.clear_snapshot("game").expect("clear");
+    assert_eq!(s.snapshot("game").expect("get"), None);
+}

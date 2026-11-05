@@ -1,6 +1,7 @@
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { useEffect, useState, type RefObject } from "react";
+import { NotificationSettings } from "./NotificationSettings";
 import { Banner } from "./ui/Banner";
 import { Icon } from "./ui/Icon";
 import { Switch } from "./ui/Switch";
@@ -55,7 +56,7 @@ export default function Settings({
       : notify.status === "error"
         ? "Status unknown."
         : notify.value
-          ? "Allowed. You'll hear from Lullshift only when a session needs you."
+          ? "Allowed. Choose below what Lullshift tells you about."
           : "Not allowed yet. Lullshift can't tell you when a session needs you.";
 
   return (
@@ -78,10 +79,13 @@ export default function Settings({
         {autostart.status === "error" && (
           <Banner tone="danger">The startup setting couldn't be read or changed.</Banner>
         )}
+      </div>
 
+      <h2 className="section-title">Notifications</h2>
+      <div className="card rows">
         <div className="row">
           <div className="row-text">
-            <span className="row-label">Notifications</span>
+            <span className="row-label">System notifications</span>
             <span className="row-desc">{notifyText}</span>
           </div>
           {notify.status === "ready" && !notify.value && (
@@ -101,6 +105,7 @@ export default function Settings({
             </span>
           )}
         </div>
+        <NotificationSettings />
       </div>
 
       <div className="card quiet-card">

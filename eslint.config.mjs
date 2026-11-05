@@ -21,6 +21,16 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // Activities are classic browser scripts in a sandboxed frame (ADR-012); the bridge client
+    // and shared logic files are loaded first and become page globals.
+    files: ["activities/**/*.js"],
+    languageOptions: {
+      sourceType: "script",
+      globals: { ...globals.browser, LullshiftBridge: "readonly", LanternLogic: "readonly" },
+    },
+    rules: { "@typescript-eslint/no-unused-vars": ["error", { caughtErrors: "none" }] },
+  },
+  {
     files: ["apps/desktop/src/**/*.{ts,tsx}"],
     languageOptions: { globals: globals.browser },
     plugins: { "react-hooks": reactHooks },

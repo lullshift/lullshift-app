@@ -68,7 +68,10 @@ export default function Integrations({
         });
       }
     } catch (err: unknown) {
-      setMessage({ tone: "danger", text: adapterErrorText(String(err)) });
+      // "cancelled": the user said no in the system dialog; nothing changed and nothing to say.
+      if (String(err) !== "cancelled") {
+        setMessage({ tone: "danger", text: adapterErrorText(String(err)) });
+      }
       void refresh();
     } finally {
       setBusy(false);
@@ -180,7 +183,7 @@ export default function Integrations({
               disabled={busy}
               onClick={() => void act("install")}
             >
-              {busy ? "Connecting…" : "Add hooks"}
+              {busy ? "Waiting for you…" : "Continue"}
             </button>
           </>
         }
@@ -230,6 +233,10 @@ export default function Integrations({
             </span>
           </li>
         </ul>
+        <p className="dialog-note">
+          Next, your system asks you to confirm once more. Lullshift changes the file only after you
+          say yes there.
+        </p>
       </Dialog>
 
       <Dialog

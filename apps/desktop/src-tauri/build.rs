@@ -6,6 +6,16 @@ fn main() {
             "claude_code_status",
             "claude_code_install",
             "claude_code_uninstall",
+            "notification_prefs",
+            "set_notification_prefs",
+            "activities_list",
+            "activity_info",
+            "activity_storage_get",
+            "activity_storage_set",
+            "activity_storage_remove",
+            "activity_snapshot",
+            "activity_save_snapshot",
+            "activity_clear_snapshot",
         ]),
     ))
     .expect("failed to run tauri-build");

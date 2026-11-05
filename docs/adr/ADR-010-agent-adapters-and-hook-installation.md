@@ -22,7 +22,7 @@ Lullshift observes agents through the hooks they offer. Hooks run inside the age
 
 ### Installer
 
-- **Consent first:** install runs only from an explicit action in the app, after a panel that names the exact file, the events and what is and isn't sent. The install commands are granted to the `main` window only; activity webviews must never receive that capability. Today the consent panel is in the webview; a native confirmation is tracked for Sprint 03, when activity content first runs (S03-T07).
+- **Consent first:** install runs only from an explicit action in the app, after a panel that names the exact file, the events and what is and isn't sent. The install commands are granted to the `main` window only; activity webviews must never receive that capability. After the panel, Rust shows a native confirmation dialog that names the settings file, and installs only if the user chooses **Connect** (S03-T07, Sprint 03). A script in a webview therefore can't install hooks on its own.
 - **Scope:** Claude Code user settings (`~/.claude/settings.json`, or `$CLAUDE_CONFIG_DIR/settings.json`), so all projects are covered. Project and managed settings are never touched.
 - **Safety:**
   - A settings file that isn't a JSON object, or whose `hooks` value isn't an object of arrays, is refused and left untouched.

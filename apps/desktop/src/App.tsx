@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
+import ActivitiesView from "./activity/ActivitiesView";
+import type { PauseRequest } from "./activity/ActivityHost";
 import { createDashboardStore } from "./dashboardStore";
 import Integrations from "./Integrations";
 import SessionsView from "./SessionsView";
@@ -16,10 +18,11 @@ const CHANGE_DEBOUNCE_MS = 250;
 
 const dashboardStore = createDashboardStore(() => invoke<Dashboard>("dashboard"));
 
-type ViewId = "sessions" | "integrations" | "settings";
+type ViewId = "sessions" | "activities" | "integrations" | "settings";
 
 const NAV: { id: ViewId; label: string; icon: IconName }[] = [
   { id: "sessions", label: "Sessions", icon: "sessions" },
+  { id: "activities", label: "Activities", icon: "activities" },
   { id: "integrations", label: "Integrations", icon: "plug" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];
@@ -29,8 +32,26 @@ export default function App() {
   const refresh = useStore(dashboardStore, (s) => s.refresh);
   const [view, setView] = useState<ViewId>("sessions");
   const [now, setNow] = useState(() => Date.now());
+  const [pause, setPause] = useState<PauseRequest | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // The Activities heading while that view is hidden (only the visible view gets focus).
+  const unusedHeading = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
+
+  // An agent needs the user: a running activity pauses whatever the notification settings say.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    listen<string>("agent-attention", (event) =>
+      setPause((p) => ({ seq: (p?.seq ?? 0) + 1, reason: "attention", provider: event.payload })),
+    )
+      .then((fn) => (disposed ? fn() : (unlisten = fn)))
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -125,6 +146,16 @@ export default function App() {
             onConnect={() => setView("integrations")}
           />
         )}
+        {/* Stays mounted while hidden so a running activity can save before it pauses. */}
+        <div hidden={view !== "activities"} className="view-slot">
+          <ActivitiesView
+            headingRef={view === "activities" ? headingRef : unusedHeading}
+            active={view === "activities"}
+            pause={pause}
+            now={now}
+            onGoToSessions={() => setView("sessions")}
+          />
+        </div>
         {view === "integrations" && <Integrations headingRef={headingRef} />}
         {view === "settings" && <Settings headingRef={headingRef} />}
       </main>

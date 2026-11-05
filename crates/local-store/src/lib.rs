@@ -31,6 +31,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 2,
         sql: include_str!("../migrations/0002_adapter_installations.sql"),
     },
+    Migration {
+        version: 3,
+        sql: include_str!("../migrations/0003_preferences_and_activities.sql"),
+    },
 ];
 
 pub fn latest_version() -> i64 {
@@ -51,6 +55,10 @@ pub enum StoreError {
     },
     /// Stored data does not match the expected shape (e.g. edited by hand).
     Corrupt(&'static str),
+    /// An activity write would go past `limit` bytes. Nothing was written.
+    QuotaExceeded {
+        limit: usize,
+    },
     Sqlite(rusqlite::Error),
 }
 
@@ -68,6 +76,9 @@ impl fmt::Display for StoreError {
                 )
             }
             Self::Corrupt(what) => write!(f, "stored data is invalid: {what}"),
+            Self::QuotaExceeded { limit } => {
+                write!(f, "activity storage limit of {limit} bytes reached")
+            }
             Self::Sqlite(e) => write!(f, "database error: {e}"),
         }
     }
@@ -227,6 +238,138 @@ impl Store {
                 |r| r.get(0),
             )
             .optional()?)
+    }
+
+    /// A stored preference (JSON text), if set.
+    pub fn preference(&self, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT value_json FROM preferences WHERE key = ?1",
+                [key],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Saves (or replaces) a preference. The caller validates `value_json` first.
+    pub fn set_preference(&self, key: &str, value_json: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO preferences (key, value_json, updated_utc) VALUES (?1, ?2, ?3)
+             ON CONFLICT (key) DO UPDATE SET value_json = excluded.value_json, updated_utc = excluded.updated_utc",
+            params![key, value_json, fmt_ts(OffsetDateTime::now_utc())?],
+        )?;
+        Ok(())
+    }
+
+    /// One value from an activity's namespace.
+    pub fn activity_value(&self, activity_id: &str, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT value FROM activity_storage WHERE activity_id = ?1 AND key = ?2",
+                [activity_id, key],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Bytes an activity's namespace uses (keys plus values, UTF-8).
+    pub fn activity_usage(&self, activity_id: &str) -> Result<usize> {
+        let used: i64 = self.conn.query_row(
+            "SELECT coalesce(sum(length(CAST(key AS BLOB)) + length(CAST(value AS BLOB))), 0)
+             FROM activity_storage WHERE activity_id = ?1",
+            [activity_id],
+            |r| r.get(0),
+        )?;
+        usize::try_from(used).map_err(|_| StoreError::Corrupt("negative storage size"))
+    }
+
+    /// Writes one value, refusing the write (and changing nothing) if the namespace would then
+    /// go past `limit` bytes. The check and the write share one transaction.
+    pub fn set_activity_value(
+        &mut self,
+        activity_id: &str,
+        key: &str,
+        value: &str,
+        limit: usize,
+    ) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        let others: i64 = tx.query_row(
+            "SELECT coalesce(sum(length(CAST(key AS BLOB)) + length(CAST(value AS BLOB))), 0)
+             FROM activity_storage WHERE activity_id = ?1 AND key <> ?2",
+            [activity_id, key],
+            |r| r.get(0),
+        )?;
+        let others =
+            usize::try_from(others).map_err(|_| StoreError::Corrupt("negative storage size"))?;
+        if others.saturating_add(key.len()).saturating_add(value.len()) > limit {
+            return Err(StoreError::QuotaExceeded { limit });
+        }
+        tx.execute(
+            "INSERT INTO activity_storage (activity_id, key, value, updated_utc) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (activity_id, key) DO UPDATE SET value = excluded.value, updated_utc = excluded.updated_utc",
+            params![activity_id, key, value, fmt_ts(OffsetDateTime::now_utc())?],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn remove_activity_value(&self, activity_id: &str, key: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM activity_storage WHERE activity_id = ?1 AND key = ?2",
+            [activity_id, key],
+        )?;
+        Ok(())
+    }
+
+    /// Saves an activity's latest state, replacing the previous one. More than `limit` bytes is
+    /// refused and the previous snapshot is kept.
+    pub fn save_snapshot(
+        &self,
+        activity_id: &str,
+        snapshot: &str,
+        saved: OffsetDateTime,
+        limit: usize,
+    ) -> Result<()> {
+        if snapshot.len() > limit {
+            return Err(StoreError::QuotaExceeded { limit });
+        }
+        self.conn.execute(
+            "INSERT INTO activity_snapshots (activity_id, snapshot, saved_utc) VALUES (?1, ?2, ?3)
+             ON CONFLICT (activity_id) DO UPDATE SET snapshot = excluded.snapshot, saved_utc = excluded.saved_utc",
+            params![activity_id, snapshot, fmt_ts(saved)?],
+        )?;
+        Ok(())
+    }
+
+    /// The last saved state of an activity and when it was saved (RFC 3339).
+    pub fn snapshot(&self, activity_id: &str) -> Result<Option<(String, String)>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT snapshot, saved_utc FROM activity_snapshots WHERE activity_id = ?1",
+                [activity_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?)
+    }
+
+    /// Activities with a saved state, most recent first, as `(activity_id, saved_utc)`.
+    pub fn snapshots(&self) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT activity_id, saved_utc FROM activity_snapshots ORDER BY saved_utc DESC",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn clear_snapshot(&self, activity_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM activity_snapshots WHERE activity_id = ?1",
+            [activity_id],
+        )?;
+        Ok(())
     }
 
     /// Marks an adapter uninstalled. The row (and its backup paths) is kept for reference.

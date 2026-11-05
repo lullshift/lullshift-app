@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-activity-save-snapshot"
+description = "Enables the activity_save_snapshot command without any pre-configured scope."
+commands.allow = ["activity_save_snapshot"]
+
+[[permission]]
+identifier = "deny-activity-save-snapshot"
+description = "Denies the activity_save_snapshot command without any pre-configured scope."
+commands.deny = ["activity_save_snapshot"]

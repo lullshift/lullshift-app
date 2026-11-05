@@ -1,5 +1,7 @@
 //! Claude Code hook integration commands (ADR-010). Install and uninstall run only from an
-//! explicit user action in the UI, which shows the exact file and events first.
+//! explicit user action in the UI, which shows the exact file and events first. Install is then
+//! confirmed again in a native dialog owned by Rust, so a script running in a webview can't
+//! change the user's agent settings on its own (S03-T07).
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -10,6 +12,7 @@ use agent_adapters::claude_code::install::{
 use agent_adapters::claude_code::{ADAPTER_ID, HOOKS};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use time::OffsetDateTime;
 
 use crate::Core;
@@ -128,6 +131,9 @@ pub async fn claude_code_install(
         // The store must be readable before anything is changed.
         let previous = stored_record(&core)?;
         let c = ctx(&app, previous.as_ref())?;
+        if !confirm_install(&app, &c) {
+            return Err("cancelled".to_owned());
+        }
         let record = install::install(&c.settings, &c.backups, &c.cmd, previous.as_ref())
             .map_err(|e| error_code(&e))?;
         if let Err(code) = save_record(&core, &record) {
@@ -140,6 +146,35 @@ pub async fn claude_code_install(
         Ok(view(Some(&c)))
     })
     .await
+}
+
+/// Native confirmation naming the exact file. Blocks this worker thread until the user answers;
+/// closing the dialog counts as "no".
+fn confirm_install(app: &AppHandle, c: &Ctx) -> bool {
+    let mut dialog = app
+        .dialog()
+        .message(install_prompt(&c.settings))
+        .title("Connect Claude Code?")
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Connect".to_owned(),
+            "Cancel".to_owned(),
+        ));
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.parent(&window);
+    }
+    dialog.blocking_show()
+}
+
+fn install_prompt(settings: &std::path::Path) -> String {
+    format!(
+        "Lullshift will add its hooks to this Claude Code settings file:
+
+{}
+
+         A backup is saved first, and disconnecting removes the hooks again.",
+        settings.display()
+    )
 }
 
 #[tauri::command]
@@ -173,4 +208,17 @@ pub async fn claude_code_uninstall(
         })
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::install_prompt;
+
+    #[test]
+    fn install_prompt_names_the_exact_file() {
+        let path = std::path::Path::new("C:/Users/me/.claude/settings.json");
+        let text = install_prompt(path);
+        assert!(text.contains("C:/Users/me/.claude/settings.json"));
+        assert!(text.contains("backup"));
+    }
 }
