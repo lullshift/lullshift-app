@@ -12,6 +12,7 @@
 - [ ] S04-T04: JSON/Markdown export, per-session deletion, session linking
 - [ ] S04-T05: Tests proving no task content is captured without consent and nothing leaves the device
 - [ ] S04-T06 (Sprint 01 review follow-up): retention limit for the agent event log in `local-store` (it grows without bound today), with a migration test
+- [ ] S04-T07 (product owner, 2026-11-05): session detail panel. Clicking a session card or History row opens a side panel for that session, with the card focusable and opened by Enter, the panel closed by Esc and focus returned to the card. Content by state: Needs you shows what is being asked (if the adapter reports it) and the return card; Working shows notes and Next Move items for the session; History shows a timeline of the session's events, export and delete. No "go to the agent window" action (PRD 4.1: don't claim unsupported control)
 
 ## Acceptance criteria
 
@@ -19,6 +20,7 @@
 - [ ] S04-A02: Export and delete work; retention rules visible
 - [ ] S04-A03: Nothing is ever injected into an active agent
 - [ ] S04-A04: With context off, no content is captured
+- [ ] S04-A05: Every session card and History row opens its detail panel by mouse and by keyboard; the panel shows only data the user consented to
 
 ## Guardrails
 
