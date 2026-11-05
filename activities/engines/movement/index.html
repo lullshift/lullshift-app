@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Movement Routine</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1 id="title">Movement Routine</h1>
+      <p id="intro" class="lede" hidden></p>
+
+      <section id="card" class="card" tabindex="0" aria-labelledby="move-name meta steps">
+        <div class="head">
+          <svg id="art" class="art" viewBox="0 0 80 80" aria-hidden="true" focusable="false">
+            <rect class="soft" x="4" y="4" width="72" height="72" rx="16" />
+            <g id="art-seated" hidden>
+              <circle class="ink" cx="36" cy="26" r="9" />
+              <rect class="ink" x="27" y="38" width="18" height="18" rx="9" />
+              <rect class="line" x="22" y="56" width="34" height="5" rx="2.5" />
+              <rect class="line" x="26" y="61" width="5" height="9" rx="2" />
+              <rect class="line" x="47" y="61" width="5" height="9" rx="2" />
+            </g>
+            <g id="art-standing" hidden>
+              <circle class="ink" cx="40" cy="16" r="9" />
+              <rect class="ink" x="31" y="28" width="18" height="34" rx="9" />
+              <rect class="line" x="18" y="66" width="44" height="4" rx="2" />
+            </g>
+            <g id="art-either" hidden>
+              <circle class="ink" cx="26" cy="22" r="7" />
+              <rect class="ink" x="19" y="31" width="14" height="22" rx="7" />
+              <rect class="line" x="12" y="57" width="28" height="4" rx="2" />
+              <circle class="ink" cx="56" cy="22" r="7" />
+              <rect class="ink" x="49" y="31" width="14" height="22" rx="7" />
+              <rect class="line" x="44" y="57" width="24" height="4" rx="2" />
+            </g>
+            <g id="art-rest" hidden>
+              <circle class="ink" cx="40" cy="40" r="14" />
+              <circle class="line" cx="40" cy="40" r="22" />
+            </g>
+          </svg>
+          <div class="headtext">
+            <h2 id="move-name" class="move-name"></h2>
+            <p id="meta" class="meta"></p>
+          </div>
+        </div>
+        <ol id="steps" class="steps"></ol>
+        <p id="timer" class="timer" role="timer" aria-live="off" hidden></p>
+      </section>
+
+      <p id="progress" class="progress"></p>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="back" type="button">Back</button>
+        <button id="toggle" type="button">Start timer</button>
+        <button id="next" type="button">Next</button>
+        <button id="skip" type="button">Skip</button>
+        <button id="again" type="button" hidden>Start again</button>
+      </div>
+
+      <p id="wayout" class="wayout"></p>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A simple pattern of shapes">
+  <rect width="320" height="200" fill="#e6f4f1"/>
+  <circle cx="250" cy="50" r="20" fill="#9bd3cc"/>
+  <polygon points="20,170 110,60 200,170" fill="#9bd3cc"/>
+  <polygon points="120,170 210,80 300,170" fill="#2a7f78"/>
+  <polygon points="110,60 90,86 110,80 128,90" fill="#e6f4f1"/>
+  <rect x="0" y="168" width="320" height="32" rx="0" fill="#9bd3cc" opacity="0.6"/>
+</svg>

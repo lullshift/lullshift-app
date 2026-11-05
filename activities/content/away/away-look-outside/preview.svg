@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Look Outside: simple shapes in soft colours">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <rect x="90" y="40" width="140" height="120" rx="10" fill="#fffdf9" stroke="#625b6c" stroke-width="5"/><path d="M160 40 L160 160 M90 100 L230 100" stroke="#625b6c" stroke-width="4"/><circle cx="196" cy="68" r="14" fill="#b9a6ff"/><path d="M100 160 L100 130 Q126 112 152 130 L152 160" fill="#6b4fd8" opacity="0.7"/>
+</svg>

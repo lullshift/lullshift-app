@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.typing-punctuation",
+  "version": "0.1.0",
+  "name": "Punctuation Practice",
+  "description": "Eight short lines with commas, quotes, colons and other punctuation to get comfortable with.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["typing", "punctuation"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.typing@1",
+  "data": "lines.json",
+  "help": {
+    "summary": "Eight lines of everyday punctuation to practise, shown on Typing Drills.",
+    "goal": "Just practice. Take your time with each mark.",
+    "howToPlay": [
+      "Type the line shown, including the punctuation.",
+      "Correct characters are underlined and mistakes are struck through.",
+      "At the end of a line the next one appears."
+    ],
+    "tips": ["Use Start line over if a line gets tangled. What you type never leaves this page."]
+  },
+  "preview": "preview.svg"
+}

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.wonder-facts",
+  "version": "0.1.0",
+  "name": "Wonder Facts",
+  "description": "Twelve small, steady facts about the world to wonder at.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["facts", "curious", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.cards@1",
+  "data": "deck.json",
+  "help": {
+    "summary": "A deck of small, lasting facts to wonder at, shown on Calm Cards.",
+    "goal": "No quiz and no score. Read for the fun of it.",
+    "howToPlay": [
+      "Read the fact on the card.",
+      "Press Show more for a little more detail.",
+      "Press Next for another."
+    ],
+    "tips": [
+      "These facts are written for curiosity, so check a trusted source if you want to rely on one."
+    ]
+  },
+  "preview": "preview.svg"
+}

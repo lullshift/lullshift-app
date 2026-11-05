@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.pause-unclench",
+  "version": "0.1.0",
+  "name": "Unclench",
+  "description": "A quick check-in for jaw, shoulders, hands and forehead, with room to skip any step.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["pause", "relax"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.pause@1",
+  "data": "steps.json",
+  "help": {
+    "summary": "A five-step check-in for jaw, shoulders, hands and forehead, on Guided Pause.",
+    "goal": "There is nothing to finish. Soften what feels easy and skip the rest.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Follow each step. It moves on by itself after a few seconds.",
+      "Press Next to skip a step, or Back to try it again."
+    ],
+    "tips": [
+      "This is a break, not advice. Stop if anything feels uncomfortable, and skip any step."
+    ]
+  },
+  "preview": "preview.svg"
+}

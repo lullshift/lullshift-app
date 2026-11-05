@@ -1,0 +1,15 @@
+{
+  "title": "Punctuation Practice",
+  "intro": "Commas, quotes, colons and friends. Take it one mark at a time.",
+  "mode": "accuracy",
+  "lines": [
+    "Hello, world. Here we are, together.",
+    "Wait: is it two, or three? Maybe both.",
+    "She said, \"It's fine,\" and smiled.",
+    "Apples, pears, and plums; bread, butter, and jam.",
+    "It's a long road - or is it? (Not really.)",
+    "Numbers like 3/4, 5-6 and 7.8 are just text here.",
+    "Use a colon: like this; or a semicolon, like that.",
+    "Does it rain? Yes. Does it matter? Not today."
+  ]
+}

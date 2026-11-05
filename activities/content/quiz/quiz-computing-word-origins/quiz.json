@@ -1,0 +1,107 @@
+{
+  "title": "Where Computing Words Come From",
+  "intro": "Everyday tech words often have older, quirkier stories. Here are some well-known ones.",
+  "shuffle": true,
+  "questions": [
+    {
+      "prompt": "What is true of the word bug used for a fault?",
+      "choices": [
+        "It was invented in the year 2000",
+        "Engineers used it for faults long before computers existed",
+        "It was first used by a computer company",
+        "It comes from a Greek word"
+      ],
+      "answer": 1,
+      "explanation": "Engineers were talking about bugs in machines in the 1800s. The word later carried over naturally to software."
+    },
+    {
+      "prompt": "The word pixel is a short form of which two words?",
+      "choices": ["Picture element", "Pixie cell", "Print excel", "Paper exit"],
+      "answer": 0,
+      "explanation": "A pixel is the smallest element of a picture on a screen, so the name is picture plus element."
+    },
+    {
+      "prompt": "The word bit is a short form of which two words?",
+      "choices": ["Basic item", "Binary digit", "Bytes in", "Big integer"],
+      "answer": 1,
+      "explanation": "A bit is a binary digit, a 0 or a 1."
+    },
+    {
+      "prompt": "The word modem comes from joining which two ideas?",
+      "choices": [
+        "Modulate and demodulate",
+        "Mobile and demand",
+        "Model and memory",
+        "Mode and emit"
+      ],
+      "answer": 0,
+      "explanation": "A modem modulates data into a signal that travels along a line and demodulates the signal back into data at the other end."
+    },
+    {
+      "prompt": "Before it meant computer parts, what did the word hardware mostly mean?",
+      "choices": [
+        "Heavy furniture",
+        "Tools and metal goods, such as nails and pots",
+        "Computer games",
+        "Wooden tools only"
+      ],
+      "answer": 1,
+      "explanation": "Hardware shops sold metal goods and tools long before computers. The word was borrowed to mean the physical parts of a machine."
+    },
+    {
+      "prompt": "In the early 1900s, what was a computer?",
+      "choices": [
+        "A mechanical clock",
+        "A person who did calculations",
+        "A kind of typewriter",
+        "A telephone exchange"
+      ],
+      "answer": 1,
+      "explanation": "For a long time the word meant someone who computed, which is to say, who worked out sums. Machines took over the name later."
+    },
+    {
+      "prompt": "The word cache is borrowed from a French word meaning what?",
+      "choices": [
+        "To hide, or a hiding place for supplies",
+        "To cash a cheque",
+        "To shine",
+        "To count"
+      ],
+      "answer": 0,
+      "explanation": "A cache originally meant a hidden store of supplies. In computing it is a hidden, quick store of data kept close at hand."
+    },
+    {
+      "prompt": "The word robot comes from a Czech word that means what?",
+      "choices": [
+        "Metal friend",
+        "Forced labour or hard work",
+        "Clever machine",
+        "Little servant bell"
+      ],
+      "answer": 1,
+      "explanation": "It comes from the Czech word robota, meaning hard or forced work, and was popularised by a 1920 play."
+    },
+    {
+      "prompt": "The word algorithm is linked to the name of whom?",
+      "choices": [
+        "A Persian mathematician called al-Khwarizmi",
+        "A Roman engineer",
+        "A Greek poet",
+        "A French clockmaker"
+      ],
+      "answer": 0,
+      "explanation": "Al-Khwarizmi wrote about step-by-step methods for arithmetic in the 800s. His name, in Latin form, became the word algorithm."
+    },
+    {
+      "prompt": "Why is byte spelled with a y rather than an i?",
+      "choices": [
+        "To honour a bird",
+        "To stop people mistaking it for bit by accident",
+        "Because bite was already trademarked",
+        "It was a typing error that nobody fixed"
+      ],
+      "answer": 1,
+      "explanation": "A computer scientist chose the spelling in the 1950s so that byte and bit would not be confused by a slip of the pen."
+    }
+  ]
+}

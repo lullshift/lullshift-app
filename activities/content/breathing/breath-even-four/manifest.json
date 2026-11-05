@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.breath-even-four",
+  "version": "0.1.0",
+  "name": "Even Breathing",
+  "description": "Six slow, even breaths: four seconds in, four seconds out.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["breathing", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.breathing@1",
+  "data": "breathing.json",
+  "help": {
+    "summary": "Six even breaths: four seconds in, four seconds out, on Breathing Space.",
+    "goal": "There is nothing to finish. Follow the shape for as many rounds as you like.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Breathe in while the shape grows and out while it shrinks.",
+      "Press Pause or Restart whenever you want."
+    ],
+    "tips": [
+      "Breathe in a way that feels easy. If anything feels uncomfortable, stop and breathe normally."
+    ]
+  },
+  "preview": "preview.svg"
+}

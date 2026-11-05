@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Curiosity: a simple abstract picture">
+  <rect width="320" height="200" fill="#e5eefb"/>
+  <rect x="60" y="34" width="200" height="104" rx="18" fill="#fffdf9" stroke="#2c64b3" stroke-width="2"/>
+  <path d="M110 138 L100 168 L140 138 Z" fill="#fffdf9" stroke="#2c64b3" stroke-width="2" stroke-linejoin="round"/>
+  <rect x="104" y="136" width="40" height="4" fill="#fffdf9"/>
+  <rect x="88" y="58" width="144" height="8" rx="4" fill="#2a2633"/>
+  <rect x="88" y="80" width="108" height="8" rx="4" fill="#625b6c"/>
+  <circle cx="200" cy="160" r="7" fill="#9bbdea"/>
+  <circle cx="222" cy="152" r="8" fill="#2c64b3"/>
+  <circle cx="244" cy="160" r="9" fill="#9bbdea"/>
+  <circle cx="266" cy="152" r="7" fill="#2c64b3"/>
+  <circle cx="288" cy="160" r="8" fill="#9bbdea"/>
+  <circle cx="310" cy="152" r="9" fill="#2c64b3"/>
+</svg>

@@ -1,0 +1,31 @@
+{
+  "title": "After a Tricky Bug",
+  "intro": "For after a stubborn problem. Nothing here is a test. It is just a moment to look back.",
+  "allowNotes": true,
+  "prompts": [
+    {
+      "text": "What was the first clue that something was off?"
+    },
+    {
+      "text": "What did you try that did not work, and what did it rule out?"
+    },
+    {
+      "text": "What finally changed how you saw the problem?"
+    },
+    {
+      "text": "What would have helped you find it sooner?"
+    },
+    {
+      "text": "Is there a note, a test or a check you could leave behind for next time?"
+    },
+    {
+      "text": "What did the problem teach you about the code, the tools or your own habits?"
+    },
+    {
+      "text": "How did you keep going when it felt stuck?"
+    },
+    {
+      "text": "What would you tell a friend who is facing the same sort of problem?"
+    }
+  ]
+}

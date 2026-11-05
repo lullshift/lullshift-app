@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Kitchen Break: simple shapes in soft colours">
+  <rect width="320" height="200" fill="#f1ebe3"/>
+  <path d="M118 90 L202 90 L194 150 Q192 160 182 160 L138 160 Q128 160 126 150 Z" fill="#6b4fd8"/><path d="M202 100 Q230 100 228 124 Q226 140 198 140" stroke="#6b4fd8" stroke-width="7" fill="none"/><path d="M140 70 Q132 58 142 48 M164 70 Q156 58 166 48 M188 70 Q180 58 190 48" stroke="#b9a6ff" stroke-width="5" fill="none" stroke-linecap="round"/>
+</svg>

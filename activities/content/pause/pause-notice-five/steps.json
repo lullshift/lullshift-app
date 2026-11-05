@@ -1,0 +1,32 @@
+{
+  "title": "Notice Five Things",
+  "intro": "A small game of noticing. There are no right answers, just look and listen around you.",
+  "steps": [
+    {
+      "text": "Quietly name five things you can see from where you sit.",
+      "seconds": 30,
+      "look": "eyes"
+    },
+    {
+      "text": "Listen for four sounds, near or far. Even the quiet hum counts.",
+      "seconds": 25,
+      "look": "window"
+    },
+    {
+      "text": "Notice three things you can feel, such as your chair, your clothes, or the air.",
+      "seconds": 25,
+      "look": "hands"
+    },
+    {
+      "text": "Find two colours near you that you like.",
+      "seconds": 15,
+      "look": "eyes"
+    },
+    {
+      "text": "Take one slow breath, in and out.",
+      "seconds": 10,
+      "look": "breath"
+    }
+  ],
+  "closing": "Five rounds of noticing done. Carry on whenever you are ready."
+}

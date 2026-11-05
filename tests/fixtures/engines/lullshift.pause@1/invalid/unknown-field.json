@@ -1,0 +1,10 @@
+{
+  "title": "Short",
+  "steps": [
+    {
+      "text": "Rest your eyes.",
+      "seconds": 10
+    }
+  ],
+  "loop": true
+}

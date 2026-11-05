@@ -1,0 +1,14 @@
+{
+  "title": "Bad\u0007title",
+  "palette": [
+    {
+      "name": "Violet",
+      "color": "#6b4fd8"
+    },
+    {
+      "name": "Coral",
+      "color": "#e07a5f"
+    }
+  ],
+  "mode": "ripples"
+}

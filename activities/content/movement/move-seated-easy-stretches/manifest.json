@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.move-seated-easy-stretches",
+  "version": "0.1.0",
+  "name": "Seated Easy Stretches",
+  "description": "Six easy seated stretches with no twisting and no forward folds.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["movement", "seated", "stretch", "no-twist"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.movement@1",
+  "data": "routine.json",
+  "help": {
+    "summary": "Easy seated stretches that avoid twisting, shown on Movement Routine.",
+    "goal": "There is nothing to finish. Do as many or as few as you like.",
+    "howToPlay": [
+      "Sit with your feet on the floor and read the move.",
+      "Press Start timer for timed moves, or work through the counted ones at your own pace.",
+      "Press Next for the following move, or Skip to leave one out."
+    ],
+    "tips": [
+      "General ideas for a break, not advice. Move only as far as feels easy, and stop if anything feels uncomfortable."
+    ]
+  },
+  "preview": "preview.svg"
+}

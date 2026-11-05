@@ -1,0 +1,54 @@
+{
+  "title": "Wonder Facts",
+  "intro": "A few quiet facts, just for wonder. They are the kind that stay true.",
+  "cards": [
+    {
+      "front": "Honey does not spoil easily",
+      "back": "Honey is very low in water and slightly acidic, so sealed honey can stay good for a very long time."
+    },
+    {
+      "front": "Octopuses have three hearts",
+      "back": "Two hearts pump blood through the gills, and one sends it around the rest of the body."
+    },
+    {
+      "front": "A day on Venus is long",
+      "back": "Venus spins so slowly that one full turn takes about 243 Earth days, longer than its 225-day trip around the Sun."
+    },
+    {
+      "front": "Bananas are berries, strawberries are not",
+      "back": "Botanists call a fruit a berry by how it grows. By that rule, bananas count and strawberries do not."
+    },
+    {
+      "front": "Trees team up with fungi",
+      "back": "Fungal threads wrap around many tree roots and help them take up water and nutrients. In return the tree feeds the fungi sugars."
+    },
+    {
+      "front": "Light takes a while to reach us",
+      "back": "Sunlight takes about eight minutes to travel from the Sun to the Earth."
+    },
+    {
+      "front": "Sound needs something to travel through",
+      "back": "In space there is almost no air, so sound has nothing to carry it."
+    },
+    {
+      "front": "Wombat droppings are cube shaped",
+      "back": "Wombats make small cubes, which stay put on rocks and logs instead of rolling away."
+    },
+    {
+      "front": "The Moon is slowly drifting away",
+      "back": "It moves away from Earth by a few centimetres every year."
+    },
+    {
+      "front": "Rainbows are full circles",
+      "back": "From the ground we usually see an arc, but from high up, such as an aircraft, a full circle can appear."
+    },
+    {
+      "front": "Your bones are alive",
+      "back": "Bone is living tissue. It is slowly rebuilt over the years, and it can mend itself."
+    },
+    {
+      "front": "Honeybees dance to give directions",
+      "back": "A returning bee can wiggle in a pattern that tells nestmates which way, and roughly how far, to find flowers."
+    }
+  ]
+}

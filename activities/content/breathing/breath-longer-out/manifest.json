@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.breath-longer-out",
+  "version": "0.1.0",
+  "name": "Longer Out-Breath",
+  "description": "Breathe in for four seconds and out for six, for six unhurried rounds.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["breathing", "slow"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.breathing@1",
+  "data": "breathing.json",
+  "help": {
+    "summary": "Four seconds in, six seconds out, on Breathing Space.",
+    "goal": "There is nothing to finish. Use as many rounds as feel good.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Breathe in as the shape grows, then let the breath out slowly while it shrinks.",
+      "If six seconds out is too long, breathe out a little faster. The shape is only a guide."
+    ],
+    "tips": [
+      "Breathe in a way that feels easy. If anything feels uncomfortable, stop and breathe normally."
+    ]
+  },
+  "preview": "preview.svg"
+}

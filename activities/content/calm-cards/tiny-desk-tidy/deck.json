@@ -1,0 +1,46 @@
+{
+  "title": "Tiny Desk Tidy",
+  "intro": "Small jobs that take about two minutes each. Pick one that suits the moment and ignore the rest.",
+  "cards": [
+    {
+      "front": "Clear one surface",
+      "back": "Pick a single patch of desk, about the size of a book, and put everything on it where it belongs."
+    },
+    {
+      "front": "Gather the cups",
+      "back": "Take any cups, glasses or plates to the kitchen. Fill your water glass on the way back."
+    },
+    {
+      "front": "Straighten your cables",
+      "back": "Untangle one cable, or tuck loose ones out of the way. Small changes show."
+    },
+    {
+      "front": "Close a few tabs",
+      "back": "Pick three browser tabs you are finished with and close them."
+    },
+    {
+      "front": "Wipe the screen",
+      "back": "A soft dry cloth is usually enough. Check what your screen maker recommends first."
+    },
+    {
+      "front": "Sort the sticky notes",
+      "back": "Keep the ones you still need, and recycle the ones that have done their job."
+    },
+    {
+      "front": "Tidy the desktop",
+      "back": "Move a few loose files on your desktop into folders, or into the bin."
+    },
+    {
+      "front": "Sharpen your list",
+      "back": "Look at your to-do list for the day and cross off anything that is no longer true."
+    },
+    {
+      "front": "Reset your chair",
+      "back": "Adjust your seat so your feet rest on the floor and your arms feel relaxed."
+    },
+    {
+      "front": "Put one thing back",
+      "back": "Find an item that lives somewhere else and return it home."
+    }
+  ]
+}

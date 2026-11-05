@@ -1,0 +1,28 @@
+{
+  "title": "Gentle box",
+  "intro": "Breathe along each side of a box.",
+  "phases": [
+    {
+      "kind": "inhale",
+      "seconds": 4,
+      "cue": "In"
+    },
+    {
+      "kind": "hold",
+      "seconds": 2,
+      "cue": "Pause"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 4,
+      "cue": "Out"
+    },
+    {
+      "kind": "hold",
+      "seconds": 2,
+      "cue": "Pause"
+    }
+  ],
+  "rounds": 4,
+  "closing": "Done. Carry on when you are ready."
+}

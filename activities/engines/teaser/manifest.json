@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.engines.teaser",
+  "version": "0.1.0",
+  "name": "Brain Teasers",
+  "description": "Short puzzles to think about at your own pace, with an optional hint and a revealed answer. Install a teaser pack to fill it.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["puzzle", "teaser"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "help": {
+    "summary": "Short brain teasers, one at a time, with an optional hint. The teasers come from a teaser pack.",
+    "goal": "Nothing to win. Think it over, peek at the hint if you like, then reveal the answer.",
+    "howToPlay": [
+      "Read the teaser and think about it for as long as you like.",
+      "Press Hint for a nudge, if the teaser has one.",
+      "Press Reveal answer to see the answer and why.",
+      "Optionally mark I got it or Not this time; this stays private.",
+      "Press Next for another teaser."
+    ],
+    "controls": [
+      {
+        "keys": "Left / Right arrow",
+        "action": "Previous or next teaser, when the card is focused"
+      },
+      {
+        "keys": "Tab",
+        "action": "Reach Hint, Reveal answer and Next"
+      },
+      {
+        "keys": "Enter / Space",
+        "action": "Press the focused button"
+      }
+    ],
+    "tips": [
+      "You never need to type an answer.",
+      "Your place is saved, so a break can be as short as one teaser."
+    ]
+  },
+  "preview": "preview.svg"
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.away-look-outside",
+  "version": "0.1.0",
+  "name": "Look Outside",
+  "description": "Ideas for resting your eyes and looking at the world beyond the screen.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["away", "window", "eyes", "outside"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.away@1",
+  "data": "prompts.json",
+  "help": {
+    "summary": "Ideas for looking up and out, one at a time, shown on Away Prompts.",
+    "goal": "There is nothing to finish. Look for as long as you like.",
+    "howToPlay": [
+      "Find a window, a door or a view and read the idea.",
+      "Press Another idea for a different one.",
+      "Press Back at desk when you return."
+    ],
+    "tips": ["Ideas are only suggestions. If there is no view, any far corner of the room will do."]
+  },
+  "preview": "preview.svg"
+}

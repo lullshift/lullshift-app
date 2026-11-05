@@ -1,0 +1,17 @@
+{
+  "title": "Edges",
+  "wayOut": "Skip any that do not suit you.",
+  "moves": [
+    {
+      "name": "Shoulder roll",
+      "steps": ["Lift your shoulders gently.", "Roll them back and down."],
+      "seconds": 10
+    },
+    {
+      "name": "Shoulder roll",
+      "steps": ["Lift your shoulders gently.", "Roll them back and down."],
+      "reps": 1
+    }
+  ],
+  "restSeconds": 0
+}

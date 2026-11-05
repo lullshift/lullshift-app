@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A simple pattern of shapes">
+  <rect width="320" height="200" fill="#fff1e0"/>
+  <circle cx="80" cy="140" r="28" fill="#f6c98b"/>
+  <circle cx="130" cy="100" r="18" fill="#d98324"/>
+  <circle cx="180" cy="150" r="22" fill="#d98324"/>
+  <circle cx="220" cy="90" r="30" fill="#f6c98b"/>
+  <circle cx="260" cy="140" r="14" fill="#d98324"/>
+  <circle cx="60" cy="70" r="12" fill="#d98324"/>
+  <circle cx="160" cy="50" r="10" fill="#f6c98b"/>
+</svg>

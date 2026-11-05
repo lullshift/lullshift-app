@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Brain Teasers</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1 id="title">Brain Teasers</h1>
+      <p id="intro" class="lede" hidden></p>
+      <p id="progress" class="progress"></p>
+
+      <div id="card" class="card" tabindex="0" role="group" aria-labelledby="kind question">
+        <p id="kind" class="kind" hidden></p>
+        <p id="question" class="question"></p>
+        <p id="hint" class="hint" hidden></p>
+        <div id="answerBox" class="answer-box" hidden>
+          <p id="answer" class="answer"></p>
+          <p id="explanation" class="explanation"></p>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="controls">
+        <button id="hintBtn" type="button">Hint</button>
+        <button id="reveal" type="button">Reveal answer</button>
+        <button id="got" type="button" aria-pressed="false" hidden>I got it</button>
+        <button id="missed" type="button" aria-pressed="false" hidden>Not this time</button>
+        <button id="next" type="button">Next</button>
+        <button id="again" type="button" hidden>Start again</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

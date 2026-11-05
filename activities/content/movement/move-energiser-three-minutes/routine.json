@@ -1,0 +1,73 @@
+{
+  "title": "Three-minute energiser",
+  "intro": "A bit more get-up-and-go, all low impact. Keep it comfortable, not hard.",
+  "moves": [
+    {
+      "name": "Warm up the shoulders",
+      "steps": ["Roll your shoulders back in big, easy circles.", "Let your arms swing loosely."],
+      "seconds": 20,
+      "position": "either"
+    },
+    {
+      "name": "Big arm circles",
+      "steps": [
+        "Hold your arms out to the sides.",
+        "Draw wide, slow circles, forward and then backward."
+      ],
+      "seconds": 25,
+      "position": "standing"
+    },
+    {
+      "name": "March in place",
+      "steps": [
+        "Lift your knees at an easy height.",
+        "Swing your arms in rhythm.",
+        "Keep your steps soft."
+      ],
+      "seconds": 30,
+      "position": "standing"
+    },
+    {
+      "name": "Reach and sweep",
+      "steps": [
+        "Reach one arm across your body, then sweep it out wide.",
+        "Alternate arms in an easy rhythm.",
+        "Let your hips follow a little."
+      ],
+      "seconds": 25,
+      "position": "either"
+    },
+    {
+      "name": "Gentle squats",
+      "steps": [
+        "Hold the desk or a chair back if you like.",
+        "Bend your knees as if about to sit, only partway.",
+        "Stand back up with a steady breath."
+      ],
+      "reps": 8,
+      "position": "standing"
+    },
+    {
+      "name": "Shake it all out",
+      "steps": [
+        "Shake your hands, then your arms, then your shoulders.",
+        "Let your head and neck stay loose.",
+        "Bounce gently through your knees if you like, keeping both feet on the floor."
+      ],
+      "seconds": 20,
+      "position": "standing"
+    },
+    {
+      "name": "Slow finish",
+      "steps": [
+        "Stand or sit tall.",
+        "Take three slow breaths, in through the nose and out through the mouth."
+      ],
+      "seconds": 20,
+      "position": "either"
+    }
+  ],
+  "restSeconds": 3,
+  "closing": "That is the energiser. Take a drink of water if you fancy one.",
+  "wayOut": "Stop if anything feels uncomfortable, and skip any move that does not suit you."
+}

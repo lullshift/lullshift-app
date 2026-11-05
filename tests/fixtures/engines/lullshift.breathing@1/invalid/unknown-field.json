@@ -1,0 +1,15 @@
+{
+  "title": "Even",
+  "phases": [
+    {
+      "kind": "inhale",
+      "seconds": 4
+    },
+    {
+      "kind": "exhale",
+      "seconds": 4
+    }
+  ],
+  "rounds": 3,
+  "speed": "fast"
+}

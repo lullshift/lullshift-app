@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.pause-one-minute-arrive",
+  "version": "0.1.0",
+  "name": "One-Minute Arrive",
+  "description": "A single minute to arrive in the moment: feet, seat, hands, breath, and what is next.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["pause", "minute"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.pause@1",
+  "data": "steps.json",
+  "help": {
+    "summary": "A one-minute, six-step arrival, on Guided Pause.",
+    "goal": "There is nothing to finish. A few steps is as good as all six.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Each step lasts ten seconds and then moves on by itself.",
+      "Press Next to skip a step, or Back to repeat one."
+    ],
+    "tips": ["This is a break, not advice. Skip any step that does not suit you."]
+  },
+  "preview": "preview.svg"
+}

@@ -1,0 +1,31 @@
+{
+  "title": "Light Gratitude",
+  "intro": "Work-friendly prompts for noticing what is going well. Keep it light.",
+  "allowNotes": true,
+  "prompts": [
+    {
+      "text": "What is one thing about your workspace that you appreciate?"
+    },
+    {
+      "text": "What tool, shortcut or setting made something easier today?"
+    },
+    {
+      "text": "What is a small comfort nearby, like good light or a favourite mug?"
+    },
+    {
+      "text": "What is something that worked on the first try?"
+    },
+    {
+      "text": "What is a moment of quiet you enjoyed lately?"
+    },
+    {
+      "text": "What is something that just worked today, so you did not have to think about it?"
+    },
+    {
+      "text": "What is one thing you are glad is finished?"
+    },
+    {
+      "text": "What is something to look forward to, however small?"
+    }
+  ]
+}

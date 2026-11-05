@@ -1,0 +1,10 @@
+{
+  "title": "x",
+  "moves": [
+    {
+      "name": "Shoulder roll",
+      "steps": ["Lift your shoulders gently.", "Roll them back and down."],
+      "seconds": 30
+    }
+  ]
+}

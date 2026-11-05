@@ -1,0 +1,30 @@
+{
+  "title": "Neck and shoulders",
+  "intro": "A short, easy routine.",
+  "moves": [
+    {
+      "name": "Shoulder roll",
+      "steps": ["Lift your shoulders gently.", "Roll them back and down."],
+      "seconds": 30,
+      "side": "left-right",
+      "position": "seated"
+    },
+    {
+      "name": "Reach up",
+      "steps": ["Lift your shoulders gently.", "Roll them back and down."],
+      "reps": 5,
+      "position": "standing",
+      "side": "both"
+    },
+    {
+      "name": "Look away",
+      "steps": ["Lift your shoulders gently.", "Roll them back and down."],
+      "seconds": 20,
+      "side": "none",
+      "position": "either"
+    }
+  ],
+  "restSeconds": 5,
+  "closing": "Nicely done.",
+  "wayOut": "Stop if anything feels uncomfortable."
+}

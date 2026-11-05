@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.quiz-how-computers-count",
+  "version": "0.1.0",
+  "name": "How Computers Count Quiz",
+  "description": "Eleven questions about bits, bytes and binary, for curious people.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["quiz", "computing"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.quiz@1",
+  "data": "quiz.json",
+  "help": {
+    "summary": "Eleven multiple-choice questions about bits, bytes and binary, shown on Quick Quiz.",
+    "goal": "Just for fun. Answer what you like; your score is shown only to you.",
+    "howToPlay": [
+      "Read the question and choose an answer.",
+      "A short explanation follows each answer.",
+      "Press Next question to carry on.",
+      "At the end, Play again gives a fresh shuffle."
+    ],
+    "tips": ["No need to know any of this beforehand. The explanations teach as you go."]
+  },
+  "preview": "preview.svg"
+}

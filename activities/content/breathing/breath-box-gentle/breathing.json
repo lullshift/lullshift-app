@@ -1,0 +1,28 @@
+{
+  "title": "Gentle Box Breathing",
+  "intro": "Think of the four sides of a box. Breathe along each side, with only a short pause at the corners.",
+  "phases": [
+    {
+      "kind": "inhale",
+      "seconds": 4,
+      "cue": "In"
+    },
+    {
+      "kind": "hold",
+      "seconds": 2,
+      "cue": "Pause"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 4,
+      "cue": "Out"
+    },
+    {
+      "kind": "hold",
+      "seconds": 2,
+      "cue": "Pause"
+    }
+  ],
+  "rounds": 4,
+  "closing": "Four trips round the box. Carry on whenever you are ready."
+}

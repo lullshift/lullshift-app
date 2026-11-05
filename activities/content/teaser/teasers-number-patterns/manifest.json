@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.teasers-number-patterns",
+  "version": "0.1.0",
+  "name": "Number Patterns",
+  "description": "Nine short number sequences and sums to puzzle over.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["puzzle", "numbers"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.teaser@1",
+  "data": "teasers.json",
+  "help": {
+    "summary": "Nine number puzzles to think about, shown on Brain Teasers.",
+    "goal": "Nothing to win. Think it over, then reveal the answer when you are ready.",
+    "howToPlay": [
+      "Read the teaser and take your time.",
+      "Press Hint for a nudge, if there is one.",
+      "Press Reveal answer to see the answer and why.",
+      "Optionally mark I got it or Not this time. This stays private.",
+      "Press Next for another teaser."
+    ],
+    "tips": ["Take any teaser at your own speed. Skipping one is perfectly fine."]
+  },
+  "preview": "preview.svg"
+}

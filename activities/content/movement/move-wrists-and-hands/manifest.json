@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.move-wrists-and-hands",
+  "version": "0.1.0",
+  "name": "Wrists and Hands",
+  "description": "Six small moves for the wrists and hands, easy to do at the keyboard.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["movement", "wrists", "hands", "typing"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.movement@1",
+  "data": "routine.json",
+  "help": {
+    "summary": "Small, easy moves for your wrists and hands, shown on Movement Routine.",
+    "goal": "There is nothing to finish. Do a move or two, or the whole set.",
+    "howToPlay": [
+      "Rest your hands off the keyboard and read the move.",
+      "Press Start timer for timed moves, or work through the counted ones at your own pace.",
+      "Press Next for the following move, or Skip to leave one out."
+    ],
+    "tips": [
+      "General ideas for a break, not advice. Keep every move small and gentle, and stop if anything feels uncomfortable."
+    ]
+  },
+  "preview": "preview.svg"
+}

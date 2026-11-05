@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.reflect-gratitude-light",
+  "version": "0.1.0",
+  "name": "Light Gratitude",
+  "description": "Eight work-friendly prompts for noticing what is going well, with optional notes that stay on this device.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["reflection", "gratitude"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.reflection@1",
+  "data": "prompts.json",
+  "help": {
+    "summary": "Eight light, work-friendly gratitude prompts, shown on Reflection Prompts.",
+    "goal": "There is nothing to finish. Notice what you notice.",
+    "howToPlay": [
+      "Read the prompt and let a small answer come to mind.",
+      "If you like, type a few words in the notes box. They stay on this device.",
+      "Press Next for another prompt, or Back to return."
+    ],
+    "tips": ["It is fine to pass on a prompt. Clear your notes any time."]
+  },
+  "preview": "preview.svg"
+}

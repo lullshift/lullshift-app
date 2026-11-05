@@ -1,0 +1,52 @@
+{
+  "title": "Kitchen break",
+  "intro": "A few small things to do while you are up and about.",
+  "prompts": [
+    {
+      "text": "Fill a glass with water and drink it slowly.",
+      "category": "water"
+    },
+    {
+      "text": "Put the kettle on and watch it, just for the pleasure of waiting.",
+      "category": "rest"
+    },
+    {
+      "text": "Rinse a cup or two while you are there.",
+      "category": "tidy"
+    },
+    {
+      "text": "Choose a snack you will enjoy rather than eat in a hurry.",
+      "category": "rest"
+    },
+    {
+      "text": "Stand by the sink and stretch your arms overhead.",
+      "category": "rest"
+    },
+    {
+      "text": "Open the window or door for a moment of fresh air.",
+      "category": "window"
+    },
+    {
+      "text": "Wipe one worktop clean and see how it looks.",
+      "category": "tidy"
+    },
+    {
+      "text": "Hold a warm mug in both hands and just notice the warmth.",
+      "category": "rest"
+    },
+    {
+      "text": "Walk a slow loop around the kitchen before you head back.",
+      "category": "walk"
+    },
+    {
+      "text": "Refill a water bottle for your desk.",
+      "category": "water"
+    },
+    {
+      "text": "Look at what is outside the kitchen window for a minute.",
+      "category": "window"
+    }
+  ],
+  "shuffle": true,
+  "backAtDesk": "Welcome back. Your drink will keep you company."
+}

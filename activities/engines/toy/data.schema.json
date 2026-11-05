@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lullshift:engine:toy:v1:data",
+  "title": "Creative Toy pack (lullshift.toy@1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "palette", "mode"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+    },
+    "intro": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+    },
+    "palette": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "color"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+          },
+          "color": {
+            "type": "string",
+            "minLength": 7,
+            "maxLength": 7,
+            "pattern": "^#[0-9a-f]{6}$"
+          }
+        }
+      }
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["ripples", "mosaic", "stars", "threads"]
+    },
+    "symmetry": {
+      "type": "string",
+      "enum": ["none", "mirror", "quad", "radial6"]
+    },
+    "brushSize": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 40
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 40
+        }
+      }
+    },
+    "background": {
+      "type": "string",
+      "minLength": 7,
+      "maxLength": 7,
+      "pattern": "^#[0-9a-f]{6}$"
+    }
+  }
+}

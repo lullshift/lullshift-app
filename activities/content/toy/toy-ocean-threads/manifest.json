@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.toy-ocean-threads",
+  "version": "0.1.0",
+  "name": "Ocean Threads",
+  "description": "Draw looping lines that join each mark to the one before it.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["threads", "sea", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.toy@1",
+  "data": "toy.json",
+  "help": {
+    "summary": "Draw looping lines that join each mark to the one before it. Shown on Creative Toy.",
+    "goal": "There is nothing to finish. Make a picture, or just play with the colours.",
+    "howToPlay": [
+      "Click the canvas, or move with the arrow keys and press Space, to leave a mark.",
+      "Pick a colour with the number keys or the round swatches.",
+      "Press Undo to take the last mark back, or Clear to start over."
+    ],
+    "tips": [
+      "Press Clear and start again any time; Undo brings a cleared canvas back.",
+      "Your picture stays on this device and cannot be exported."
+    ]
+  },
+  "preview": "preview.svg"
+}

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.engines.quiz",
+  "version": "0.1.0",
+  "name": "Quick Quiz",
+  "description": "Multiple-choice questions, one at a time, with a kind explanation after each answer. Install a quiz pack to fill it.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["quiz", "trivia"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "help": {
+    "summary": "A short multiple-choice quiz, one question at a time. The questions come from a quiz pack.",
+    "goal": "Just for fun. Answer what you like; your score is shown privately at the end and is not kept.",
+    "howToPlay": [
+      "Read the question and choose an answer.",
+      "You will see the right answer and a short explanation.",
+      "Press Next question to carry on.",
+      "At the end you see your score. Press Play again for a fresh shuffle."
+    ],
+    "controls": [
+      {
+        "keys": "1 to 5",
+        "action": "Choose that answer"
+      },
+      {
+        "keys": "Up / Down arrow",
+        "action": "Move between the answers"
+      },
+      {
+        "keys": "Enter / Space",
+        "action": "Choose the focused answer or press the focused button"
+      },
+      {
+        "keys": "Tab",
+        "action": "Reach Next question or Play again"
+      }
+    ],
+    "tips": [
+      "Your place is saved, so you can stop after any question.",
+      "A wrong answer is just a chance to learn something."
+    ]
+  },
+  "preview": "preview.svg"
+}

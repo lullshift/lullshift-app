@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.away-kitchen-break",
+  "version": "0.1.0",
+  "name": "Kitchen Break",
+  "description": "Small ideas for a few minutes in the kitchen while your agents work.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["away", "kitchen", "water"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.away@1",
+  "data": "prompts.json",
+  "help": {
+    "summary": "Gentle kitchen-break ideas, one at a time, shown on Away Prompts.",
+    "goal": "There is nothing to finish. Take an idea or leave it.",
+    "howToPlay": [
+      "Step away from your desk and read the idea.",
+      "Press Another idea if you want a different one.",
+      "Press Back at desk when you return."
+    ],
+    "tips": ["Ideas are only suggestions. Skip any that do not suit you."]
+  },
+  "preview": "preview.svg"
+}

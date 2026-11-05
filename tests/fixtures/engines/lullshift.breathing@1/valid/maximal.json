@@ -1,0 +1,68 @@
+{
+  "title": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+  "intro": "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII",
+  "phases": [
+    {
+      "kind": "inhale",
+      "seconds": 8,
+      "cue": "cccccccccccccccccccccccc"
+    },
+    {
+      "kind": "hold",
+      "seconds": 4,
+      "cue": "cccccccccccccccccccccccc"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 8,
+      "cue": "cccccccccccccccccccccccc"
+    },
+    {
+      "kind": "rest",
+      "seconds": 8,
+      "cue": "cccccccccccccccccccccccc"
+    },
+    {
+      "kind": "inhale",
+      "seconds": 8,
+      "cue": "cccccccccccccccccccccccc"
+    },
+    {
+      "kind": "hold",
+      "seconds": 4,
+      "cue": "cccccccccccccccccccccccc"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 8,
+      "cue": "cccccccccccccccccccccccc"
+    },
+    {
+      "kind": "rest",
+      "seconds": 8,
+      "cue": "cccccccccccccccccccccccc"
+    },
+    {
+      "kind": "inhale",
+      "seconds": 8,
+      "cue": "cccccccccccccccccccccccc"
+    },
+    {
+      "kind": "hold",
+      "seconds": 4,
+      "cue": "cccccccccccccccccccccccc"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 8,
+      "cue": "cccccccccccccccccccccccc"
+    },
+    {
+      "kind": "rest",
+      "seconds": 8,
+      "cue": "cccccccccccccccccccccccc"
+    }
+  ],
+  "rounds": 20,
+  "closing": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+}

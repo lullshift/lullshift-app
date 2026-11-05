@@ -1,0 +1,118 @@
+{
+  "title": "Kitchen Science",
+  "intro": "Boiling, rising and fizzing: the science you can find on any counter. Have a guess.",
+  "shuffle": true,
+  "questions": [
+    {
+      "prompt": "At sea level, at what temperature does water boil?",
+      "choices": [
+        "50 degrees Celsius",
+        "75 degrees Celsius",
+        "100 degrees Celsius",
+        "150 degrees Celsius"
+      ],
+      "answer": 2,
+      "explanation": "Pure water boils at 100 degrees Celsius at sea level. Higher up, where the air pressure is lower, it boils at a slightly lower temperature."
+    },
+    {
+      "prompt": "Why does bread dough rise?",
+      "choices": [
+        "Salt swells inside it",
+        "Yeast makes tiny bubbles of gas",
+        "Air is pumped in by kneading alone",
+        "The flour melts"
+      ],
+      "answer": 1,
+      "explanation": "Yeast feeds on sugars in the dough and releases carbon dioxide gas. The gas is trapped in the dough and puffs it up."
+    },
+    {
+      "prompt": "Why is salt spread on icy paths?",
+      "choices": [
+        "It lowers the temperature at which water freezes",
+        "It makes the ice thicker",
+        "It paints the ice grey",
+        "It heats the ground"
+      ],
+      "answer": 0,
+      "explanation": "Salty water freezes at a lower temperature than fresh water, so salt helps ice melt when it is only a little below zero."
+    },
+    {
+      "prompt": "Why does oil float on water?",
+      "choices": [
+        "Oil is lighter for its size, which means less dense",
+        "Oil is colder",
+        "Oil is attracted to air",
+        "Water pushes it up with bubbles"
+      ],
+      "answer": 0,
+      "explanation": "Oil is less dense than water, so a given amount of oil weighs less and floats on top."
+    },
+    {
+      "prompt": "What makes the fizz when you mix baking soda with vinegar?",
+      "choices": ["Heat", "Carbon dioxide gas", "Steam", "Salt crystals"],
+      "answer": 1,
+      "explanation": "The baking soda and the acid in vinegar react to make carbon dioxide, and the gas forms the bubbles."
+    },
+    {
+      "prompt": "Why do chopped onions make some people's eyes water?",
+      "choices": [
+        "They give off a gas that irritates the eyes",
+        "Their juice is very hot",
+        "They are full of salt",
+        "Their smell is too strong"
+      ],
+      "answer": 0,
+      "explanation": "Cutting an onion breaks its cells and releases a sulphur-containing gas. Your eyes make tears to wash it away."
+    },
+    {
+      "prompt": "Why does an ice cube float in a glass of water?",
+      "choices": [
+        "Ice is less dense than liquid water",
+        "Ice is full of air holes only",
+        "The glass pushes it up",
+        "Cold water is lighter than warm water"
+      ],
+      "answer": 0,
+      "explanation": "Water expands a little as it freezes, so ice is less dense than liquid water and floats with part of it above the surface."
+    },
+    {
+      "prompt": "What is the browning on toast and on seared food mostly due to?",
+      "choices": [
+        "Fermentation",
+        "A reaction between sugars and proteins when heated",
+        "Evaporation",
+        "Smoke settling on the surface"
+      ],
+      "answer": 1,
+      "explanation": "It is called the Maillard reaction. Heat makes sugars and amino acids react, creating new colours and flavours."
+    },
+    {
+      "prompt": "Why does a lid help a pot of water boil sooner?",
+      "choices": [
+        "It lets steam escape faster",
+        "It traps heat so less of it is lost",
+        "It adds pressure to the stove",
+        "It cools the water down first"
+      ],
+      "answer": 1,
+      "explanation": "The lid holds in heat and steam, so the water warms faster and less energy is wasted."
+    },
+    {
+      "prompt": "Why does a metal spoon in hot soup get hot faster than a wooden one?",
+      "choices": [
+        "Metal is heavier",
+        "Metal carries heat along it better",
+        "Wood cannot get hot",
+        "The soup avoids wood"
+      ],
+      "answer": 1,
+      "explanation": "Metals are good conductors of heat, so warmth travels quickly along the handle. Wood is a poor conductor."
+    },
+    {
+      "prompt": "What gets trapped in egg whites when you whisk them?",
+      "choices": ["Water", "Air bubbles", "Salt", "Oil"],
+      "answer": 1,
+      "explanation": "Whisking folds air into the egg white proteins, which hold the bubbles and turn the liquid into foam."
+    }
+  ]
+}

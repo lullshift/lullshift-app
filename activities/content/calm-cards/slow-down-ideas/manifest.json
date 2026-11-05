@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.slow-down-ideas",
+  "version": "0.1.0",
+  "name": "Slow Down Ideas",
+  "description": "Ten ideas for easing the pace of a short break.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["slow", "pause", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.cards@1",
+  "data": "deck.json",
+  "help": {
+    "summary": "A deck of ideas for slowing down during a short break, shown on Calm Cards.",
+    "goal": "There is nothing to finish. Try one idea, or none.",
+    "howToPlay": [
+      "Read the idea on the card.",
+      "Press Show more for a gentle suggestion.",
+      "Press Next when you want another."
+    ],
+    "tips": [
+      "These are general ideas for a break, not advice. Stop if anything does not feel good."
+    ]
+  },
+  "preview": "preview.svg"
+}

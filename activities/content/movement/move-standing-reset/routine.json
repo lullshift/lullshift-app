@@ -1,0 +1,80 @@
+{
+  "title": "Standing reset",
+  "intro": "Stand up, take a little space and move. A hand on the desk is always fine if you want some support.",
+  "moves": [
+    {
+      "name": "Stand tall",
+      "steps": [
+        "Stand with your feet about hip width apart.",
+        "Let your arms hang loose and your shoulders drop.",
+        "Take a few slow, easy breaths."
+      ],
+      "seconds": 20,
+      "position": "standing"
+    },
+    {
+      "name": "Reach up",
+      "steps": [
+        "Breathe in and sweep your arms up and out to the sides.",
+        "Reach toward the ceiling, only as far as is comfortable.",
+        "Breathe out and lower them slowly."
+      ],
+      "reps": 5,
+      "position": "standing"
+    },
+    {
+      "name": "Side lean",
+      "steps": [
+        "Reach one arm up and over, leaning gently to the other side.",
+        "Keep both feet planted.",
+        "Come back to upright, then switch sides."
+      ],
+      "reps": 3,
+      "side": "left-right",
+      "position": "standing"
+    },
+    {
+      "name": "Hip circles",
+      "steps": [
+        "Place your hands on your hips.",
+        "Draw slow, wide circles with your hips.",
+        "Switch direction halfway through."
+      ],
+      "seconds": 30,
+      "position": "standing"
+    },
+    {
+      "name": "Heel raises",
+      "steps": [
+        "Hold the desk or a chair back if you like.",
+        "Rise slowly onto your toes, then lower your heels back down.",
+        "Keep the pace calm."
+      ],
+      "reps": 8,
+      "position": "standing"
+    },
+    {
+      "name": "Shoulder rolls",
+      "steps": [
+        "Let your arms hang loose.",
+        "Roll your shoulders back and down in slow circles.",
+        "Switch to rolling forward halfway through."
+      ],
+      "seconds": 20,
+      "position": "standing"
+    },
+    {
+      "name": "Slow walk on the spot",
+      "steps": [
+        "Lift each foot a little and set it down softly.",
+        "Swing your arms loosely.",
+        "Keep it relaxed rather than quick."
+      ],
+      "seconds": 30,
+      "position": "standing"
+    }
+  ],
+  "restSeconds": 5,
+  "closing": "That is the reset. Notice how you feel standing there, then carry on when you are ready.",
+  "wayOut": "Stop if anything feels uncomfortable, and skip any move that does not suit you."
+}

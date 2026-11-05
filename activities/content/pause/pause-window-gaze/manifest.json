@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.pause-window-gaze",
+  "version": "0.1.0",
+  "name": "Window Gaze",
+  "description": "Look outward for a minute and a half: the far view, the light, the movement, then back.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["pause", "window"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.pause@1",
+  "data": "steps.json",
+  "help": {
+    "summary": "A five-step look outward, on Guided Pause.",
+    "goal": "There is nothing to finish. Look for as long as you like.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Follow each step with your eyes. It moves on by itself.",
+      "Press Next to skip ahead, or Pause if you want longer on one view."
+    ],
+    "tips": ["No window? A far wall or a plant works too. This is a break, not advice."]
+  },
+  "preview": "preview.svg"
+}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Gentle Box Breathing: a rounded square with a dot at each corner">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <rect x="100" y="52" width="120" height="96" rx="14" fill="#fffdf9" stroke="#6b4fd8" stroke-width="4"/>
+  <circle cx="100" cy="52" r="7" fill="#6b4fd8"/>
+  <circle cx="220" cy="52" r="7" fill="#b9a6ff"/>
+  <circle cx="220" cy="148" r="7" fill="#6b4fd8"/>
+  <circle cx="100" cy="148" r="7" fill="#b9a6ff"/>
+</svg>

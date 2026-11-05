@@ -1,0 +1,56 @@
+{
+  "title": "Tidy a little",
+  "intro": "Just one small corner. Anything counts, and stopping early is fine.",
+  "prompts": [
+    {
+      "text": "Clear one cup, plate or bottle from your desk area.",
+      "category": "tidy"
+    },
+    {
+      "text": "Straighten a single pile of papers or cables.",
+      "category": "tidy"
+    },
+    {
+      "text": "Wipe your desk surface, just the part near your keyboard.",
+      "category": "tidy"
+    },
+    {
+      "text": "Water a plant, or just check on it.",
+      "category": "tidy"
+    },
+    {
+      "text": "Fold one thing and put it away.",
+      "category": "tidy"
+    },
+    {
+      "text": "Open one drawer and remove just one item that you no longer need.",
+      "category": "tidy"
+    },
+    {
+      "text": "Put one thing back where it belongs.",
+      "category": "tidy"
+    },
+    {
+      "text": "Plump up a cushion or tuck in a chair.",
+      "category": "tidy"
+    },
+    {
+      "text": "Take one bag of rubbish or recycling out.",
+      "category": "tidy"
+    },
+    {
+      "text": "Tidy one shelf, or even just one shelf edge.",
+      "category": "tidy"
+    },
+    {
+      "text": "Pick something you like and give it a better spot.",
+      "category": "tidy"
+    },
+    {
+      "text": "Stop. You have done enough, so sit for a moment.",
+      "category": "rest"
+    }
+  ],
+  "shuffle": true,
+  "backAtDesk": "Welcome back. Your space looks a little kinder already."
+}

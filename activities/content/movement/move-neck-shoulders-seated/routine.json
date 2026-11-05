@@ -1,0 +1,71 @@
+{
+  "title": "Neck and shoulders, seated",
+  "intro": "Six slow moves you can do without leaving your chair. Go gently and keep your breathing easy.",
+  "moves": [
+    {
+      "name": "Shoulder lift and drop",
+      "steps": [
+        "Sit tall with your hands resting in your lap.",
+        "Lift both shoulders toward your ears, then let them drop.",
+        "Make it slow and easy."
+      ],
+      "reps": 6,
+      "position": "seated"
+    },
+    {
+      "name": "Shoulder rolls",
+      "steps": [
+        "Let your arms hang loose.",
+        "Roll both shoulders up, back and down in a smooth circle.",
+        "Switch to rolling forward halfway through."
+      ],
+      "seconds": 30,
+      "position": "seated"
+    },
+    {
+      "name": "Gentle neck turn",
+      "steps": [
+        "Look straight ahead with your chin level.",
+        "Turn your head toward one shoulder as far as feels easy.",
+        "Pause, come back, and then try the other direction."
+      ],
+      "reps": 4,
+      "side": "left-right",
+      "position": "seated"
+    },
+    {
+      "name": "Ear toward shoulder",
+      "steps": [
+        "Keep both shoulders relaxed.",
+        "Tip one ear gently toward the same shoulder, without lifting the shoulder.",
+        "Rest there for a few easy breaths."
+      ],
+      "seconds": 20,
+      "side": "left-right",
+      "position": "seated"
+    },
+    {
+      "name": "Chin nod",
+      "steps": [
+        "Look straight ahead.",
+        "Nod your chin slightly toward your chest, as if saying a small yes.",
+        "Lift back to level and repeat slowly."
+      ],
+      "reps": 5,
+      "position": "seated"
+    },
+    {
+      "name": "Arm hug",
+      "steps": [
+        "Cross your arms in front, like giving yourself a hug.",
+        "Let your shoulders round a little and breathe out.",
+        "Open your arms wide and breathe in."
+      ],
+      "seconds": 30,
+      "position": "seated"
+    }
+  ],
+  "restSeconds": 5,
+  "closing": "That is the routine. Notice how your shoulders sit now, if you like.",
+  "wayOut": "Stop if anything feels uncomfortable, and skip any move that does not suit you."
+}

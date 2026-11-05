@@ -1,0 +1,48 @@
+{
+  "title": "Lateral Thinking",
+  "intro": "These puzzles reward a sideways look. If the obvious answer does not fit, try a different angle.",
+  "teasers": [
+    {
+      "question": "A cafe sign says Free coffee tomorrow. You visit every day but never get one. Why?",
+      "hint": "Think about what day it is whenever you walk in.",
+      "answer": "When you arrive it is always today.",
+      "explanation": "Tomorrow never arrives while you are standing there, because every visit happens on a day that is today.",
+      "kind": "logic"
+    },
+    {
+      "question": "Nobody in the quiet reading room says a word, yet two people have a long, detailed conversation there. How?",
+      "hint": "Speaking is only one way to talk.",
+      "answer": "They write notes or use sign language",
+      "explanation": "A conversation needs two people sharing ideas, not voices. Writing, signing or typing all count.",
+      "kind": "logic"
+    },
+    {
+      "question": "A painter finishes a whole house in an afternoon without leaving her chair or touching a wall. How?",
+      "hint": "Does the house have to be a real one?",
+      "answer": "She paints a picture of a house.",
+      "explanation": "She is an artist working on a canvas, so the house is a painting rather than a building.",
+      "kind": "logic"
+    },
+    {
+      "question": "A shelf holds 12 jars. All but 5 of them are empty. How many jars have something in them?",
+      "hint": "Read the phrase all but 5 slowly.",
+      "answer": "Five",
+      "explanation": "All but 5 are empty means that 5 are not empty, so 5 jars have something in them.",
+      "kind": "logic"
+    },
+    {
+      "question": "In winter a woman crosses a wide river on foot with no bridge, boat or ford, and her shoes stay dry. How?",
+      "hint": "Think about what water can turn into.",
+      "answer": "The river is frozen over",
+      "explanation": "In a hard freeze the surface of a river becomes ice thick enough to walk on.",
+      "kind": "logic"
+    },
+    {
+      "question": "A train leaves at nine in the morning and arrives at nine in the morning after a long trip. It ran exactly on time. How?",
+      "hint": "Clocks do not show the same time everywhere.",
+      "answer": "It travelled into a time zone that is behind, or it arrived the next day.",
+      "explanation": "Clocks change from one time zone to another, so a trip can take hours and still end at the same clock time. Arriving a day later works too.",
+      "kind": "logic"
+    }
+  ]
+}

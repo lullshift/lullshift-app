@@ -11,15 +11,363 @@
       }
     },
     {
+      "id": "app.lullshift.content.away-kitchen-break",
+      "source": {
+        "path": "activities/content/away/away-kitchen-break"
+      }
+    },
+    {
+      "id": "app.lullshift.content.away-look-outside",
+      "source": {
+        "path": "activities/content/away/away-look-outside"
+      }
+    },
+    {
+      "id": "app.lullshift.content.away-short-walk-ideas",
+      "source": {
+        "path": "activities/content/away/away-short-walk-ideas"
+      }
+    },
+    {
+      "id": "app.lullshift.content.away-social-micro-breaks",
+      "source": {
+        "path": "activities/content/away/away-social-micro-breaks"
+      }
+    },
+    {
+      "id": "app.lullshift.content.away-tidy-a-little",
+      "source": {
+        "path": "activities/content/away/away-tidy-a-little"
+      }
+    },
+    {
+      "id": "app.lullshift.content.breath-box-gentle",
+      "source": {
+        "path": "activities/content/breathing/breath-box-gentle"
+      }
+    },
+    {
+      "id": "app.lullshift.content.breath-counting",
+      "source": {
+        "path": "activities/content/breathing/breath-counting"
+      }
+    },
+    {
+      "id": "app.lullshift.content.breath-even-four",
+      "source": {
+        "path": "activities/content/breathing/breath-even-four"
+      }
+    },
+    {
+      "id": "app.lullshift.content.breath-longer-out",
+      "source": {
+        "path": "activities/content/breathing/breath-longer-out"
+      }
+    },
+    {
+      "id": "app.lullshift.content.breath-two-minute-settle",
+      "source": {
+        "path": "activities/content/breathing/breath-two-minute-settle"
+      }
+    },
+    {
       "id": "app.lullshift.content.desk-stretches",
       "source": {
         "path": "activities/content/calm-cards/desk-stretches"
       }
     },
     {
+      "id": "app.lullshift.content.kind-thoughts-for-a-busy-day",
+      "source": {
+        "path": "activities/content/calm-cards/kind-thoughts-for-a-busy-day"
+      }
+    },
+    {
+      "id": "app.lullshift.content.slow-down-ideas",
+      "source": {
+        "path": "activities/content/calm-cards/slow-down-ideas"
+      }
+    },
+    {
+      "id": "app.lullshift.content.tiny-desk-tidy",
+      "source": {
+        "path": "activities/content/calm-cards/tiny-desk-tidy"
+      }
+    },
+    {
+      "id": "app.lullshift.content.wonder-facts",
+      "source": {
+        "path": "activities/content/calm-cards/wonder-facts"
+      }
+    },
+    {
+      "id": "app.lullshift.content.move-energiser-three-minutes",
+      "source": {
+        "path": "activities/content/movement/move-energiser-three-minutes"
+      }
+    },
+    {
+      "id": "app.lullshift.content.move-neck-shoulders-seated",
+      "source": {
+        "path": "activities/content/movement/move-neck-shoulders-seated"
+      }
+    },
+    {
+      "id": "app.lullshift.content.move-seated-easy-stretches",
+      "source": {
+        "path": "activities/content/movement/move-seated-easy-stretches"
+      }
+    },
+    {
+      "id": "app.lullshift.content.move-standing-reset",
+      "source": {
+        "path": "activities/content/movement/move-standing-reset"
+      }
+    },
+    {
+      "id": "app.lullshift.content.move-wrists-and-hands",
+      "source": {
+        "path": "activities/content/movement/move-wrists-and-hands"
+      }
+    },
+    {
+      "id": "app.lullshift.content.pause-eye-rest",
+      "source": {
+        "path": "activities/content/pause/pause-eye-rest"
+      }
+    },
+    {
+      "id": "app.lullshift.content.pause-notice-five",
+      "source": {
+        "path": "activities/content/pause/pause-notice-five"
+      }
+    },
+    {
+      "id": "app.lullshift.content.pause-one-minute-arrive",
+      "source": {
+        "path": "activities/content/pause/pause-one-minute-arrive"
+      }
+    },
+    {
+      "id": "app.lullshift.content.pause-unclench",
+      "source": {
+        "path": "activities/content/pause/pause-unclench"
+      }
+    },
+    {
+      "id": "app.lullshift.content.pause-window-gaze",
+      "source": {
+        "path": "activities/content/pause/pause-window-gaze"
+      }
+    },
+    {
+      "id": "app.lullshift.content.quiz-computing-word-origins",
+      "source": {
+        "path": "activities/content/quiz/quiz-computing-word-origins"
+      }
+    },
+    {
+      "id": "app.lullshift.content.quiz-how-computers-count",
+      "source": {
+        "path": "activities/content/quiz/quiz-how-computers-count"
+      }
+    },
+    {
+      "id": "app.lullshift.content.quiz-kitchen-science",
+      "source": {
+        "path": "activities/content/quiz/quiz-kitchen-science"
+      }
+    },
+    {
+      "id": "app.lullshift.content.quiz-night-sky",
+      "source": {
+        "path": "activities/content/quiz/quiz-night-sky"
+      }
+    },
+    {
+      "id": "app.lullshift.content.quiz-rivers-and-mountains",
+      "source": {
+        "path": "activities/content/quiz/quiz-rivers-and-mountains"
+      }
+    },
+    {
+      "id": "app.lullshift.content.reflect-curiosity",
+      "source": {
+        "path": "activities/content/reflection/reflect-curiosity"
+      }
+    },
+    {
+      "id": "app.lullshift.content.reflect-end-of-day",
+      "source": {
+        "path": "activities/content/reflection/reflect-end-of-day"
+      }
+    },
+    {
+      "id": "app.lullshift.content.reflect-gratitude-light",
+      "source": {
+        "path": "activities/content/reflection/reflect-gratitude-light"
+      }
+    },
+    {
+      "id": "app.lullshift.content.reflect-small-wins",
+      "source": {
+        "path": "activities/content/reflection/reflect-small-wins"
+      }
+    },
+    {
+      "id": "app.lullshift.content.reflect-tricky-bug",
+      "source": {
+        "path": "activities/content/reflection/reflect-tricky-bug"
+      }
+    },
+    {
+      "id": "app.lullshift.content.teasers-coding-flavoured",
+      "source": {
+        "path": "activities/content/teaser/teasers-coding-flavoured"
+      }
+    },
+    {
+      "id": "app.lullshift.content.teasers-gentle-logic",
+      "source": {
+        "path": "activities/content/teaser/teasers-gentle-logic"
+      }
+    },
+    {
+      "id": "app.lullshift.content.teasers-lateral-thinking",
+      "source": {
+        "path": "activities/content/teaser/teasers-lateral-thinking"
+      }
+    },
+    {
+      "id": "app.lullshift.content.teasers-number-patterns",
+      "source": {
+        "path": "activities/content/teaser/teasers-number-patterns"
+      }
+    },
+    {
+      "id": "app.lullshift.content.teasers-word-play",
+      "source": {
+        "path": "activities/content/teaser/teasers-word-play"
+      }
+    },
+    {
+      "id": "app.lullshift.content.toy-dusk-ripples",
+      "source": {
+        "path": "activities/content/toy/toy-dusk-ripples"
+      }
+    },
+    {
+      "id": "app.lullshift.content.toy-garden-mosaic",
+      "source": {
+        "path": "activities/content/toy/toy-garden-mosaic"
+      }
+    },
+    {
+      "id": "app.lullshift.content.toy-night-stars",
+      "source": {
+        "path": "activities/content/toy/toy-night-stars"
+      }
+    },
+    {
+      "id": "app.lullshift.content.toy-ocean-threads",
+      "source": {
+        "path": "activities/content/toy/toy-ocean-threads"
+      }
+    },
+    {
+      "id": "app.lullshift.content.toy-warm-sand-mandala",
+      "source": {
+        "path": "activities/content/toy/toy-warm-sand-mandala"
+      }
+    },
+    {
+      "id": "app.lullshift.content.typing-calm-sentences",
+      "source": {
+        "path": "activities/content/typing/typing-calm-sentences"
+      }
+    },
+    {
+      "id": "app.lullshift.content.typing-code-symbols",
+      "source": {
+        "path": "activities/content/typing/typing-code-symbols"
+      }
+    },
+    {
+      "id": "app.lullshift.content.typing-common-words",
+      "source": {
+        "path": "activities/content/typing/typing-common-words"
+      }
+    },
+    {
+      "id": "app.lullshift.content.typing-home-row",
+      "source": {
+        "path": "activities/content/typing/typing-home-row"
+      }
+    },
+    {
+      "id": "app.lullshift.content.typing-punctuation",
+      "source": {
+        "path": "activities/content/typing/typing-punctuation"
+      }
+    },
+    {
+      "id": "app.lullshift.engines.away",
+      "source": {
+        "path": "activities/engines/away"
+      }
+    },
+    {
+      "id": "app.lullshift.engines.breathing",
+      "source": {
+        "path": "activities/engines/breathing"
+      }
+    },
+    {
       "id": "app.lullshift.engines.calm-cards",
       "source": {
         "path": "activities/engines/calm-cards"
+      }
+    },
+    {
+      "id": "app.lullshift.engines.movement",
+      "source": {
+        "path": "activities/engines/movement"
+      }
+    },
+    {
+      "id": "app.lullshift.engines.pause",
+      "source": {
+        "path": "activities/engines/pause"
+      }
+    },
+    {
+      "id": "app.lullshift.engines.quiz",
+      "source": {
+        "path": "activities/engines/quiz"
+      }
+    },
+    {
+      "id": "app.lullshift.engines.reflection",
+      "source": {
+        "path": "activities/engines/reflection"
+      }
+    },
+    {
+      "id": "app.lullshift.engines.teaser",
+      "source": {
+        "path": "activities/engines/teaser"
+      }
+    },
+    {
+      "id": "app.lullshift.engines.toy",
+      "source": {
+        "path": "activities/engines/toy"
+      }
+    },
+    {
+      "id": "app.lullshift.engines.typing",
+      "source": {
+        "path": "activities/engines/typing"
       }
     },
     {

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.breath-counting",
+  "version": "0.1.0",
+  "name": "Counting Breaths",
+  "description": "Count five breaths, one at a time, then count them once more.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["breathing", "counting"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.breathing@1",
+  "data": "breathing.json",
+  "help": {
+    "summary": "Count five breaths, twice, on Breathing Space.",
+    "goal": "There is nothing to finish. Losing count is fine; just start again.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Breathe in as the shape grows and say the number in your head.",
+      "Breathe out as it shrinks. The words on screen tell you which count you are on."
+    ],
+    "tips": [
+      "Breathe in a way that feels easy. If anything feels uncomfortable, stop and breathe normally."
+    ]
+  },
+  "preview": "preview.svg"
+}

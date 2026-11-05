@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Window Gaze: a window with four panes and a small sun">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <rect x="104" y="30" width="112" height="132" rx="8" fill="#fffdf9" stroke="#6b4fd8" stroke-width="5"/>
+  <line x1="160" y1="30" x2="160" y2="162" stroke="#6b4fd8" stroke-width="4"/>
+  <line x1="104" y1="96" x2="216" y2="96" stroke="#6b4fd8" stroke-width="4"/>
+  <circle cx="190" cy="62" r="14" fill="#b9a6ff"/>
+</svg>

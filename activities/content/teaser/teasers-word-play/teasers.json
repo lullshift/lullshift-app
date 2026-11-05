@@ -1,0 +1,69 @@
+{
+  "title": "Word Play",
+  "intro": "Letters can be shuffled, hidden, dropped and swapped. See what you can spot.",
+  "teasers": [
+    {
+      "question": "Rearrange the letters of the word listen to make a word that means making no sound.",
+      "hint": "It also starts with an s.",
+      "answer": "Silent",
+      "explanation": "Listen and silent use exactly the same six letters in a different order.",
+      "kind": "wordplay"
+    },
+    {
+      "question": "A word for a home for horses becomes a piece of furniture if you drop its first letter. Which word is it?",
+      "hint": "The furniture has a flat top and legs.",
+      "answer": "Stable, which becomes table",
+      "explanation": "Taking the s from stable leaves table.",
+      "kind": "wordplay"
+    },
+    {
+      "question": "A fish is hiding at the start of the word carpet. Which fish?",
+      "hint": "Cover the last two letters.",
+      "answer": "Carp",
+      "explanation": "The first four letters of carpet spell carp, a freshwater fish.",
+      "kind": "wordplay"
+    },
+    {
+      "question": "Which four-letter word for midday reads the same backwards as forwards?",
+      "hint": "It has two pairs of letters that mirror each other.",
+      "answer": "Noon",
+      "explanation": "Noon is a palindrome: n, o, o, n reads the same in both directions.",
+      "kind": "wordplay"
+    },
+    {
+      "question": "Change one letter at a time to turn dark into dawn, making a real word at every step. What is the fewest number of steps?",
+      "hint": "The middle word is something you might do to a sock.",
+      "answer": "Two: dark, darn, dawn",
+      "explanation": "Dark becomes darn by changing k to n, and darn becomes dawn by changing r to w. Every word along the way is real.",
+      "kind": "wordplay"
+    },
+    {
+      "question": "Which job title for someone who keeps the accounts has three pairs of double letters in a row?",
+      "hint": "The words book and keeper are joined together.",
+      "answer": "Bookkeeper",
+      "explanation": "Bookkeeper has oo, kk and ee one after another.",
+      "kind": "wordplay"
+    },
+    {
+      "question": "Take the first letter off stone and you get a sound quality. Take the first letter off that and you get a number. Which number?",
+      "hint": "Say the shorter words out loud.",
+      "answer": "One",
+      "explanation": "Stone loses its s to become tone, and tone loses its t to become one.",
+      "kind": "wordplay"
+    },
+    {
+      "question": "Which word can follow sun, moon and star to name what each one gives out?",
+      "hint": "Think of what all three give out.",
+      "answer": "Light",
+      "explanation": "Sunlight, moonlight and starlight all work, and light is what each one gives out.",
+      "kind": "wordplay"
+    },
+    {
+      "question": "Which word for feeling under pressure becomes a sweet end to a meal when you read it backwards?",
+      "hint": "The backwards word is plural.",
+      "answer": "Stressed, which becomes desserts",
+      "explanation": "Reading the letters of stressed from the end gives desserts.",
+      "kind": "wordplay"
+    }
+  ]
+}

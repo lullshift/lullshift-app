@@ -1,0 +1,33 @@
+{
+  "title": "Ocean Threads",
+  "intro": "Each mark is joined to the last one by a thin thread. Wander and see what loops appear.",
+  "palette": [
+    {
+      "name": "Deep sea",
+      "color": "#1f5f7a"
+    },
+    {
+      "name": "Shallow water",
+      "color": "#4fb3bf"
+    },
+    {
+      "name": "Seafoam",
+      "color": "#9fdcc9"
+    },
+    {
+      "name": "Shell pink",
+      "color": "#f0b7a4"
+    },
+    {
+      "name": "Pale foam",
+      "color": "#c7dede"
+    }
+  ],
+  "mode": "threads",
+  "symmetry": "none",
+  "brushSize": {
+    "min": 2,
+    "max": 10
+  },
+  "background": "#eaf4f4"
+}

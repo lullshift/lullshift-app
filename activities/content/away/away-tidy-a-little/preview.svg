@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Tidy a Little: simple shapes in soft colours">
+  <rect width="320" height="200" fill="#f1ebe3"/>
+  <rect x="110" y="104" width="100" height="50" rx="8" fill="#6b4fd8"/><rect x="124" y="82" width="72" height="22" rx="6" fill="#b9a6ff"/><rect x="136" y="64" width="48" height="18" rx="5" fill="#d7ccf7"/><circle cx="240" cy="60" r="8" fill="#625b6c"/><circle cx="76" cy="70" r="6" fill="#b9a6ff"/>
+</svg>

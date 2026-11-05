@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Quick Quiz: a question card with four answer choices, one highlighted">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <rect x="60" y="22" width="200" height="156" rx="14" fill="#fffdf9" stroke="#6b4fd8" stroke-width="2"/>
+  <rect x="80" y="40" width="150" height="8" rx="4" fill="#2a2633"/>
+  <rect x="80" y="60" width="110" height="8" rx="4" fill="#625b6c"/>
+  <rect x="80" y="84" width="160" height="18" rx="9" fill="#f1ebe3"/>
+  <rect x="80" y="108" width="160" height="18" rx="9" fill="#e1f2e8" stroke="#1f6b47" stroke-width="2"/>
+  <rect x="80" y="132" width="160" height="18" rx="9" fill="#f1ebe3"/>
+  <circle cx="160" cy="166" r="3" fill="#6b4fd8"/>
+</svg>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Longer Out-Breath: a large circle, a smaller circle and a long line">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <circle cx="110" cy="100" r="40" fill="#b9a6ff" stroke="#6b4fd8" stroke-width="4"/>
+  <circle cx="200" cy="100" r="22" fill="#fffdf9" stroke="#6b4fd8" stroke-width="4"/>
+  <line x1="236" y1="100" x2="290" y2="100" stroke="#6b4fd8" stroke-width="4" stroke-linecap="round"/>
+</svg>

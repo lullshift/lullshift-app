@@ -1,0 +1,18 @@
+{
+  "title": "Longer Out-Breath",
+  "intro": "A little longer on the way out. Keep each breath soft and never force it.",
+  "phases": [
+    {
+      "kind": "inhale",
+      "seconds": 4,
+      "cue": "Easy in"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 6,
+      "cue": "Slow out"
+    }
+  ],
+  "rounds": 6,
+  "closing": "Six rounds done. Take your time before you go back."
+}

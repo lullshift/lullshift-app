@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.toy-night-stars",
+  "version": "0.1.0",
+  "name": "Night Stars",
+  "description": "Scatter small stars across a deep blue sky, mirrored in four corners.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["stars", "night", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.toy@1",
+  "data": "toy.json",
+  "help": {
+    "summary": "Scatter small stars across a deep blue sky, mirrored in four corners. Shown on Creative Toy.",
+    "goal": "There is nothing to finish. Make a picture, or just play with the colours.",
+    "howToPlay": [
+      "Click the canvas, or move with the arrow keys and press Space, to leave a mark.",
+      "Pick a colour with the number keys or the round swatches.",
+      "Press Undo to take the last mark back, or Clear to start over."
+    ],
+    "tips": [
+      "Try a few big stars first, then fill the gaps with small ones.",
+      "Your picture stays on this device and cannot be exported."
+    ]
+  },
+  "preview": "preview.svg"
+}

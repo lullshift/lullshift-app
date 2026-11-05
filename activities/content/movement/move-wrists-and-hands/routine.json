@@ -1,0 +1,71 @@
+{
+  "title": "Wrists and hands",
+  "intro": "Small, kind moves for the hands that do so much typing. Keep everything light and easy.",
+  "moves": [
+    {
+      "name": "Open and close",
+      "steps": [
+        "Rest your hands in front of you.",
+        "Spread your fingers wide, then softly make loose fists.",
+        "Keep the pace slow."
+      ],
+      "reps": 8,
+      "position": "either"
+    },
+    {
+      "name": "Wrist circles",
+      "steps": [
+        "Let your forearms rest on your lap or the desk.",
+        "Draw slow circles with your hands.",
+        "Change direction halfway through."
+      ],
+      "seconds": 30,
+      "position": "either"
+    },
+    {
+      "name": "Finger spread",
+      "steps": [
+        "Press your fingertips lightly together in front of you.",
+        "Spread your fingers apart, then bring them back together.",
+        "Keep your shoulders loose."
+      ],
+      "reps": 6,
+      "position": "either"
+    },
+    {
+      "name": "Gentle wrist bend",
+      "steps": [
+        "Hold one arm out with the palm facing down.",
+        "With the other hand, softly guide the fingers toward the floor.",
+        "Ease off at the first sign of tightness, then switch hands."
+      ],
+      "seconds": 20,
+      "side": "left-right",
+      "position": "either"
+    },
+    {
+      "name": "Shake it out",
+      "steps": [
+        "Let your hands hang loose.",
+        "Shake them lightly, like drying them without a towel.",
+        "Let your arms stay relaxed."
+      ],
+      "seconds": 15,
+      "position": "either"
+    },
+    {
+      "name": "Thumb circles",
+      "steps": [
+        "Make a loose fist with your thumb resting outside.",
+        "Draw small slow circles with your thumb.",
+        "Change direction halfway through."
+      ],
+      "seconds": 20,
+      "side": "left-right",
+      "position": "either"
+    }
+  ],
+  "restSeconds": 5,
+  "closing": "That is the set. Your hands can go back to work whenever you are ready.",
+  "wayOut": "Stop if anything feels uncomfortable, and skip any move that does not suit you."
+}

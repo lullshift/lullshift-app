@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.engines.breathing",
+  "version": "0.1.0",
+  "name": "Breathing Space",
+  "description": "A soft shape that grows and shrinks to a gentle breathing pattern. Install a breathing pack to choose the pattern. Your place is saved.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["breathing", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "help": {
+    "summary": "A shape that grows and shrinks to a gentle breathing pattern. The pattern comes from a breathing pack.",
+    "goal": "There is nothing to finish. Follow the shape for a few rounds, or stop whenever you like.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Breathe in as the shape grows and out as it shrinks. The words and the number on screen say the same thing.",
+      "Press Pause to stop the timer, then Continue to pick up where you were.",
+      "Press Restart to go back to the first round."
+    ],
+    "controls": [
+      { "keys": "Tab", "action": "Move between the buttons" },
+      { "keys": "Enter / Space", "action": "Press the focused button" }
+    ],
+    "tips": [
+      "Breathe in a way that feels easy. If anything feels uncomfortable, stop and breathe normally.",
+      "With reduced motion on, the shape stays still and the words and numbers guide you.",
+      "This is a calm moment, not advice or treatment."
+    ]
+  },
+  "preview": "preview.svg"
+}

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.move-standing-reset",
+  "version": "0.1.0",
+  "name": "Standing Reset",
+  "description": "Seven easy moves done on your feet, using only a little space beside your desk.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["movement", "standing", "reset"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.movement@1",
+  "data": "routine.json",
+  "help": {
+    "summary": "A short standing routine that fits in the space beside your desk, shown on Movement Routine.",
+    "goal": "There is nothing to finish. Stand up, move a little and head back when you like.",
+    "howToPlay": [
+      "Stand with your feet about hip width apart and read the move.",
+      "Press Start timer for timed moves, or take your time with moves counted in times.",
+      "Press Next for the following move, or Skip to leave one out."
+    ],
+    "tips": [
+      "General ideas for a break, not advice. If standing does not suit you today, most moves also work with a hand on the desk or chair. Skip any that do not suit you."
+    ]
+  },
+  "preview": "preview.svg"
+}

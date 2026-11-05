@@ -1,0 +1,78 @@
+{
+  "title": "Rivers and Mountains",
+  "intro": "A wander across the map, following rivers and climbing peaks. Take your time.",
+  "shuffle": true,
+  "questions": [
+    {
+      "prompt": "Which mountain has the highest peak above sea level?",
+      "choices": ["K2", "Mount Everest", "Kilimanjaro", "Denali"],
+      "answer": 1,
+      "explanation": "Mount Everest, on the border of Nepal and China, rises about 8,849 metres above sea level."
+    },
+    {
+      "prompt": "Which mountain range is often used as part of the boundary between Europe and Asia?",
+      "choices": ["The Andes", "The Urals", "The Alps", "The Rockies"],
+      "answer": 1,
+      "explanation": "The Ural Mountains run north to south through Russia and are traditionally treated as part of the divide between the two continents."
+    },
+    {
+      "prompt": "Which is the longest mountain range on land?",
+      "choices": ["The Himalayas", "The Alps", "The Andes", "The Rockies"],
+      "answer": 2,
+      "explanation": "The Andes stretch about 7,000 kilometres along the west side of South America."
+    },
+    {
+      "prompt": "Into which sea does the Nile flow at its end?",
+      "choices": ["The Red Sea", "The Mediterranean Sea", "The Arabian Sea", "The Black Sea"],
+      "answer": 1,
+      "explanation": "The Nile flows north through Egypt and ends in a wide delta where it meets the Mediterranean Sea."
+    },
+    {
+      "prompt": "Most of the Amazon River flows through which country?",
+      "choices": ["Peru", "Colombia", "Brazil", "Argentina"],
+      "answer": 2,
+      "explanation": "The Amazon carries more water than any other river, and the largest part of its basin and its course lies in Brazil."
+    },
+    {
+      "prompt": "Which river flows through Paris?",
+      "choices": ["The Seine", "The Thames", "The Danube", "The Rhine"],
+      "answer": 0,
+      "explanation": "The Seine winds through the middle of Paris on its way to the English Channel."
+    },
+    {
+      "prompt": "Which river flows from the Alps to the North Sea?",
+      "choices": ["The Volga", "The Ebro", "The Tiber", "The Rhine"],
+      "answer": 3,
+      "explanation": "The Rhine begins in the Swiss Alps and runs through or beside several countries before reaching the North Sea in the Netherlands."
+    },
+    {
+      "prompt": "The Mississippi River ends in a wide delta in which US state?",
+      "choices": ["Louisiana", "Texas", "Florida", "Ohio"],
+      "answer": 0,
+      "explanation": "The Mississippi flows south through the middle of the United States and reaches the sea in southern Louisiana."
+    },
+    {
+      "prompt": "Which is the highest mountain in Africa?",
+      "choices": ["Mount Kenya", "Toubkal", "Kilimanjaro", "Mount Stanley"],
+      "answer": 2,
+      "explanation": "Kilimanjaro in Tanzania rises about 5,895 metres. It stands alone rather than in a range."
+    },
+    {
+      "prompt": "Where is the mouth of a river?",
+      "choices": [
+        "Where it begins",
+        "Where it meets a sea, lake or larger river",
+        "Where it is widest",
+        "Where it has a waterfall"
+      ],
+      "answer": 1,
+      "explanation": "The source is where a river starts and the mouth is where it ends, flowing into a sea, a lake or another river."
+    },
+    {
+      "prompt": "In which country is Mount Fuji?",
+      "choices": ["China", "South Korea", "Japan", "The Philippines"],
+      "answer": 2,
+      "explanation": "Mount Fuji, a snow-capped volcano, is the highest mountain in Japan at about 3,776 metres."
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "title": "Unclench",
+  "intro": "A small tour of places that often tighten while we work. Soften what you can and skip what you cannot.",
+  "steps": [
+    {
+      "text": "Let your jaw soften. Teeth slightly apart, tongue resting.",
+      "seconds": 15,
+      "look": "jaw"
+    },
+    {
+      "text": "Let your shoulders drop away from your ears.",
+      "seconds": 15,
+      "look": "shoulders"
+    },
+    {
+      "text": "Open your hands and let your fingers lie loose.",
+      "seconds": 15,
+      "look": "hands"
+    },
+    {
+      "text": "Smooth your forehead and let your eyes be soft.",
+      "seconds": 15,
+      "look": "eyes"
+    },
+    {
+      "text": "Take one easy breath and notice if anything else wants to soften.",
+      "seconds": 15,
+      "look": "breath"
+    }
+  ],
+  "closing": "That is the tour. Carry on whenever you are ready."
+}

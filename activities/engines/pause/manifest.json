@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.engines.pause",
+  "version": "0.1.0",
+  "name": "Guided Pause",
+  "description": "A short run of timed steps, one at a time, with a small picture and a gentle progress bar. Install a pause pack to choose the steps. Your place is saved.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["pause", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "help": {
+    "summary": "A short run of timed steps, shown one at a time. The steps come from a pause pack.",
+    "goal": "There is nothing to finish. Follow the steps you like, skip the ones you do not, and stop whenever you want.",
+    "howToPlay": [
+      "Press Begin when you are ready. Each step shows for a few seconds, then the next one appears.",
+      "Press Next to skip ahead, or Back to return to the start of a step.",
+      "Press Pause to stop the timer, then Continue to pick up where you were.",
+      "At the end you can press Restart to go round again."
+    ],
+    "controls": [
+      { "keys": "Tab", "action": "Move between Back, Next, Begin and Restart" },
+      { "keys": "Enter / Space", "action": "Press the focused button" }
+    ],
+    "tips": [
+      "Skip any step that does not suit you, and stop if anything feels uncomfortable.",
+      "Your place is saved, so a pause can be as short as one step.",
+      "These are small ideas for a break, not advice."
+    ]
+  },
+  "preview": "preview.svg"
+}

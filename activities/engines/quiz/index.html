@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quick Quiz</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1 id="title">Quick Quiz</h1>
+      <p id="intro" class="lede" hidden></p>
+      <p id="progress" class="progress" role="status" aria-live="polite"></p>
+
+      <div id="card" class="card" role="group" aria-labelledby="prompt">
+        <p id="prompt" class="prompt" tabindex="-1"></p>
+        <div id="choices" class="choices" role="group" aria-label="Choices"></div>
+        <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="controls">
+        <button id="next" type="button" hidden>Next question</button>
+        <button id="again" type="button" hidden>Play again</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,52 @@
+{
+  "title": "Social micro-breaks",
+  "intro": "Small, friendly moments, only if you feel like it. Quiet is always an option too.",
+  "prompts": [
+    {
+      "text": "Say hello to someone you pass. A smile counts.",
+      "category": "chat"
+    },
+    {
+      "text": "Send a short, kind message to someone you have not spoken to in a while.",
+      "category": "chat"
+    },
+    {
+      "text": "Ask someone nearby how their day is going, and listen.",
+      "category": "chat"
+    },
+    {
+      "text": "Thank someone for something small they did.",
+      "category": "chat"
+    },
+    {
+      "text": "Offer to make someone a drink while you are up.",
+      "category": "chat"
+    },
+    {
+      "text": "Share something small that made you smile today.",
+      "category": "chat"
+    },
+    {
+      "text": "Wave to a neighbour or colleague you can see.",
+      "category": "chat"
+    },
+    {
+      "text": "Ask a friendly question about the weekend, a hobby or a pet.",
+      "category": "chat"
+    },
+    {
+      "text": "Hold the door and say good morning, afternoon or evening.",
+      "category": "chat"
+    },
+    {
+      "text": "No chat today? Sit quietly for a minute. That is a fine break too.",
+      "category": "rest"
+    },
+    {
+      "text": "Pay someone a small, sincere compliment.",
+      "category": "chat"
+    }
+  ],
+  "shuffle": true,
+  "backAtDesk": "Welcome back. Whether you chatted or not, that was a good break."
+}

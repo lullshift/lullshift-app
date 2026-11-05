@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Brain Teasers: a puzzle card with a lightbulb-like hint shape">
+  <rect width="320" height="200" fill="#f1ebe3"/>
+  <rect x="60" y="24" width="200" height="152" rx="14" fill="#fffdf9" stroke="#6b4fd8" stroke-width="2"/>
+  <circle cx="160" cy="76" r="26" fill="#ece6ff" stroke="#6b4fd8" stroke-width="3"/>
+  <rect x="148" y="104" width="24" height="10" rx="4" fill="#6b4fd8"/>
+  <rect x="94" y="132" width="132" height="8" rx="4" fill="#2a2633"/>
+  <rect x="116" y="150" width="88" height="8" rx="4" fill="#625b6c"/>
+</svg>

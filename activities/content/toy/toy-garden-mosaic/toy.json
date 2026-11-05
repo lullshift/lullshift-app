@@ -1,0 +1,37 @@
+{
+  "title": "Garden Mosaic",
+  "intro": "Little tiles snap to a grid, and every tile gets a mirror twin on the other side.",
+  "palette": [
+    {
+      "name": "Leaf green",
+      "color": "#4f8a4b"
+    },
+    {
+      "name": "Fern",
+      "color": "#8fbf7a"
+    },
+    {
+      "name": "Petal pink",
+      "color": "#e9a3b5"
+    },
+    {
+      "name": "Sun yellow",
+      "color": "#f0c94f"
+    },
+    {
+      "name": "Soil brown",
+      "color": "#8a6244"
+    },
+    {
+      "name": "Sky blue",
+      "color": "#7fb4d6"
+    }
+  ],
+  "mode": "mosaic",
+  "symmetry": "mirror",
+  "brushSize": {
+    "min": 6,
+    "max": 14
+  },
+  "background": "#f4efe3"
+}

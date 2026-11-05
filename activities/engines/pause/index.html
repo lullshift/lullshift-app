@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Guided Pause</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1 id="title">Guided Pause</h1>
+      <p id="intro" class="lede" hidden></p>
+
+      <div id="look" class="look" aria-hidden="true"></div>
+
+      <p id="text" class="text" role="status" aria-live="polite"></p>
+      <p id="status" class="status"></p>
+
+      <div
+        id="bar"
+        class="bar"
+        role="progressbar"
+        aria-label="Pause progress"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+      ></div>
+
+      <div class="controls">
+        <button id="prev" type="button">Back</button>
+        <button id="next" type="button">Next</button>
+        <button id="toggle" type="button">Begin</button>
+        <button id="restart" type="button">Restart</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

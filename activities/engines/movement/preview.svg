@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Movement Routine: two calm figures made of simple shapes, one seated and one standing">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <rect x="40" y="30" width="240" height="140" rx="18" fill="#fffdf9" stroke="#6b4fd8" stroke-width="2"/>
+  <circle cx="116" cy="74" r="14" fill="#6b4fd8"/>
+  <rect x="100" y="92" width="32" height="34" rx="16" fill="#6b4fd8"/>
+  <rect x="88" y="130" width="56" height="8" rx="4" fill="#625b6c"/>
+  <rect x="94" y="138" width="8" height="16" rx="3" fill="#625b6c"/>
+  <rect x="130" y="138" width="8" height="16" rx="3" fill="#625b6c"/>
+  <circle cx="204" cy="62" r="14" fill="#b9a6ff"/>
+  <rect x="188" y="80" width="32" height="64" rx="16" fill="#b9a6ff"/>
+  <rect x="172" y="150" width="64" height="6" rx="3" fill="#625b6c"/>
+  <circle cx="252" cy="52" r="5" fill="#d7ccf7"/>
+  <circle cx="70" cy="52" r="6" fill="#d7ccf7"/>
+</svg>

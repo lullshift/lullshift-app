@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Wonder Facts: a simple illustration">
+  <rect width="320" height="200" fill="#e8eefb"/>
+  <circle cx="160" cy="100" r="40" fill="#14213d"/><circle cx="160" cy="100" r="40" fill="none" stroke="#f2d98a" stroke-width="3"/><path d="M160 72 L166 94 L188 100 L166 106 L160 128 L154 106 L132 100 L154 94 Z" fill="#f6f2ec"/><circle cx="90" cy="60" r="4" fill="#f2d98a"/><circle cx="240" cy="150" r="5" fill="#9ec5f0"/>
+</svg>

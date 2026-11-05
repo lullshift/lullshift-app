@@ -1,0 +1,31 @@
+{
+  "title": "Curiosity",
+  "intro": "A few open questions about what you learned and what you wonder. No right answers.",
+  "allowNotes": true,
+  "prompts": [
+    {
+      "text": "What is something you learned today, even a small detail?"
+    },
+    {
+      "text": "What is a question you would like to look into when you have time?"
+    },
+    {
+      "text": "What surprised you today?"
+    },
+    {
+      "text": "Which tool or idea have you been meaning to try?"
+    },
+    {
+      "text": "What is something that works well, that you wonder about?"
+    },
+    {
+      "text": "If you had an extra hour this week to explore anything, what would it be?"
+    },
+    {
+      "text": "What is a word or term you came across lately and would like to understand better?"
+    },
+    {
+      "text": "What would you like to be a little more curious about?"
+    }
+  ]
+}

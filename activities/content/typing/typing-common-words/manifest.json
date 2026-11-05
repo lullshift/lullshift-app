@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.typing-common-words",
+  "version": "0.1.0",
+  "name": "Common Words",
+  "description": "Eight lines of everyday English words, with accuracy and a gentle words-per-minute count.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["typing", "words"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.typing@1",
+  "data": "lines.json",
+  "help": {
+    "summary": "Eight lines of common English words, shown on Typing Drills with a speed count.",
+    "goal": "Just for fun. Your speed is private and counts only the time you spend typing.",
+    "howToPlay": [
+      "Type the line shown. Correct letters are underlined and mistakes are struck through.",
+      "At the end of a line the next one appears.",
+      "Accuracy and words per minute appear below the line as you go."
+    ],
+    "tips": ["Pausing does not cost you speed. What you type never leaves this page."]
+  },
+  "preview": "preview.svg"
+}

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.breath-two-minute-settle",
+  "version": "0.1.0",
+  "name": "Two-Minute Settle",
+  "description": "Two unhurried minutes: in for four, out for six, then a two-second rest.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["breathing", "settle"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.breathing@1",
+  "data": "breathing.json",
+  "help": {
+    "summary": "A two-minute settle with a rest after each breath, on Breathing Space.",
+    "goal": "There is nothing to finish. Stop after any round if two minutes is more than you want.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Breathe in as the shape grows and out as it shrinks.",
+      "Use the short rest to simply sit. The timer shows how much is left in the paused view."
+    ],
+    "tips": [
+      "Breathe in a way that feels easy. If anything feels uncomfortable, stop and breathe normally.",
+      "You can pause and come back later. Your place is saved."
+    ]
+  },
+  "preview": "preview.svg"
+}

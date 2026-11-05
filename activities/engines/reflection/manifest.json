@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "version": "0.1.0",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "id": "app.lullshift.engines.reflection",
+  "name": "Reflection Prompts",
+  "description": "Light, open questions shown one at a time. Install a prompt pack to fill it. Any notes you write stay on this device.",
+  "category": "break",
+  "tags": ["reflection", "calm"],
+  "help": {
+    "summary": "A set of short prompts shown one at a time. The prompts come from a prompt pack.",
+    "goal": "There is nothing to finish. Read a prompt, think about it, and move on whenever you like.",
+    "howToPlay": [
+      "Read the prompt in front of you.",
+      "If the pack allows notes, you can type a few words in the box. This is optional.",
+      "Press Next for another prompt, or Back to return to the one before.",
+      "Press Clear my notes to erase everything you wrote in this pack."
+    ],
+    "controls": [
+      {
+        "keys": "Left / Right arrow",
+        "action": "Previous or next prompt, when the prompt is focused"
+      },
+      {
+        "keys": "Tab",
+        "action": "Move between the prompt, the notes box and the buttons"
+      },
+      {
+        "keys": "Enter / Space",
+        "action": "Press the focused button"
+      }
+    ],
+    "tips": [
+      "Notes stay on this device, inside this pack's saved state. They are never sent anywhere and never shown on the paused view.",
+      "Skip any prompt that does not suit the moment."
+    ]
+  },
+  "preview": "preview.svg"
+}

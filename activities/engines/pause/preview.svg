@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Guided Pause: a pair of eyes above a short progress bar">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <rect x="70" y="26" width="180" height="108" rx="16" fill="#fffdf9" stroke="#d7ccf7" stroke-width="2"/>
+  <ellipse cx="128" cy="80" rx="26" ry="18" fill="none" stroke="#6b4fd8" stroke-width="4"/>
+  <ellipse cx="192" cy="80" rx="26" ry="18" fill="none" stroke="#6b4fd8" stroke-width="4"/>
+  <circle cx="128" cy="80" r="8" fill="#6b4fd8"/>
+  <circle cx="192" cy="80" r="8" fill="#6b4fd8"/>
+  <rect x="70" y="158" width="56" height="8" rx="4" fill="#6b4fd8"/>
+  <rect x="132" y="158" width="56" height="8" rx="4" fill="#b9a6ff"/>
+  <rect x="194" y="158" width="56" height="8" rx="4" fill="#d7ccf7"/>
+</svg>

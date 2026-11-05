@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="One-Minute Arrive: a simple clock face">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <circle cx="160" cy="100" r="64" fill="#fffdf9" stroke="#6b4fd8" stroke-width="4"/>
+  <line x1="160" y1="100" x2="160" y2="56" stroke="#6b4fd8" stroke-width="5" stroke-linecap="round"/>
+  <line x1="160" y1="100" x2="190" y2="116" stroke="#6b4fd8" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="160" cy="100" r="6" fill="#6b4fd8"/>
+</svg>

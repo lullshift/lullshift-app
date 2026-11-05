@@ -1,0 +1,69 @@
+{
+  "title": "Coding-Flavoured Teasers",
+  "intro": "Puzzles with a programmer's flavour. There is nothing to run or type. Just think it through.",
+  "teasers": [
+    {
+      "question": "A sorted list has 10 items. You find an item by checking the middle one and discarding the half that cannot hold it, again and again. What is the most checks you could need?",
+      "hint": "Count how many times 10 can be halved before one item is left.",
+      "answer": "Four",
+      "explanation": "Ten items become at most 5, then 2, then 1 after three checks, so a fourth check settles it. This is the idea behind binary search.",
+      "kind": "math"
+    },
+    {
+      "question": "A fence in a straight line has 10 posts. How many gaps are there between the posts?",
+      "hint": "Draw three posts and count the gaps.",
+      "answer": "Nine",
+      "explanation": "Each gap sits between two neighbouring posts, so there is always one fewer gap than posts. This is called an off-by-one trap.",
+      "kind": "math"
+    },
+    {
+      "question": "Say x is true and y is false. What is the result of: x and not y?",
+      "hint": "Work out not y first.",
+      "answer": "True",
+      "explanation": "Not y turns false into true. Then true and true is true.",
+      "kind": "logic"
+    },
+    {
+      "question": "A program counts from 1 to 20 and skips every number that divides by 3. How many numbers does it show?",
+      "hint": "Count how many numbers it skips.",
+      "answer": "Fourteen",
+      "explanation": "It skips 3, 6, 9, 12, 15 and 18, which is six numbers. Twenty take away six leaves fourteen.",
+      "kind": "math"
+    },
+    {
+      "question": "A function doubles a number and then adds 3, and the result is 17. What number went in?",
+      "hint": "Work backwards from 17.",
+      "answer": "Seven",
+      "explanation": "Undo the steps in reverse: 17 take away 3 is 14, and half of 14 is 7.",
+      "kind": "math"
+    },
+    {
+      "question": "A panel has 3 switches and each can be on or off. How many different patterns can it show?",
+      "hint": "Each switch doubles the choices.",
+      "answer": "Eight",
+      "explanation": "Two choices times two choices times two choices makes eight patterns. In general, n switches give 2 to the power n patterns.",
+      "kind": "pattern"
+    },
+    {
+      "question": "A queue serves people first in, first out. A, B and C join in that order. The front person is served, then D joins. Who is at the front now?",
+      "hint": "Who was served?",
+      "answer": "B",
+      "explanation": "A was served first, so B is now at the front, with C and D behind.",
+      "kind": "logic"
+    },
+    {
+      "question": "A stack of plates works last in, first out. You add A, B and C in that order, take one off, then add D. Which plate is on top?",
+      "hint": "The newest plate is always on top.",
+      "answer": "D",
+      "explanation": "Taking one off removes C, then D goes on top of B. The stack is A, B, D with D on top.",
+      "kind": "logic"
+    },
+    {
+      "question": "A counter starts at 5. It adds 2, then multiplies by 3, then subtracts 4. What does it end up as?",
+      "hint": "Follow the steps in order, one at a time.",
+      "answer": "17",
+      "explanation": "Five plus two is seven, seven times three is 21, and 21 take away 4 is 17.",
+      "kind": "math"
+    }
+  ]
+}

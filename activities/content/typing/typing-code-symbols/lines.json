@@ -1,0 +1,15 @@
+{
+  "title": "Code-like Symbols",
+  "intro": "Brackets, operators and other symbols, typed as plain text. Nothing here is ever run.",
+  "mode": "accuracy",
+  "lines": [
+    "if (count > 0 && ready) { next(); }",
+    "items[0] = items[1] + items[2];",
+    "name = \"lull\"; size += 2; size -= 1;",
+    "a != b || c == d ? e : f",
+    "{ key: [1, 2, 3], other: (4 * 5) }",
+    "x <= y; y >= z; z /= 2; z %= 3;",
+    "path/to/file_name.txt and other-name.md",
+    "total = (first + second) * third - fourth / fifth"
+  ]
+}

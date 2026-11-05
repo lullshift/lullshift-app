@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.reflect-small-wins",
+  "version": "0.1.0",
+  "name": "Small Wins",
+  "description": "Eight light prompts for noticing the little things that went well. Read-only, no notes.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["reflection", "wins"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.reflection@1",
+  "data": "prompts.json",
+  "help": {
+    "summary": "Eight light prompts for noticing small wins, shown on Reflection Prompts.",
+    "goal": "There is nothing to finish. This pack has no notes box, so it is just for thinking.",
+    "howToPlay": [
+      "Read the prompt and let an answer come to mind.",
+      "Press Next for another prompt, or Back to return.",
+      "Stop whenever you like. Your place is saved."
+    ],
+    "tips": ["A small win can be as small as a tidy desk or a clear commit message."]
+  },
+  "preview": "preview.svg"
+}

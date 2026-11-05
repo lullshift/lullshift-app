@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.away-tidy-a-little",
+  "version": "0.1.0",
+  "name": "Tidy a Little",
+  "description": "Tiny tidying ideas that take a minute or two, with no pressure to finish anything.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["away", "tidy", "small-tasks"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.away@1",
+  "data": "prompts.json",
+  "help": {
+    "summary": "Tiny tidying ideas for a few minutes away, shown on Away Prompts.",
+    "goal": "There is nothing to finish. One small thing is plenty.",
+    "howToPlay": [
+      "Step away and read the idea.",
+      "Press Another idea if it does not fit your space.",
+      "Press Back at desk when you return."
+    ],
+    "tips": ["Ideas are only suggestions. Leave anything that does not suit you."]
+  },
+  "preview": "preview.svg"
+}

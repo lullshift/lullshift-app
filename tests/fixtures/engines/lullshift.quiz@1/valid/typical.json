@@ -1,0 +1,98 @@
+{
+  "title": "Night Sky Quiz",
+  "intro": "A few questions about what is up there. No pressure, and no one is keeping score but you.",
+  "shuffle": true,
+  "questions": [
+    {
+      "prompt": "Which star is closest to Earth?",
+      "choices": ["Polaris", "Sirius", "The Sun", "Proxima Centauri"],
+      "answer": 2,
+      "explanation": "The Sun is a star, about 150 million kilometres away. The next nearest star system is more than 4 light-years away."
+    },
+    {
+      "prompt": "Roughly how long does the Moon take to go through all its phases, from one full Moon to the next?",
+      "choices": ["About a day", "About a week", "About a month", "About a year"],
+      "answer": 2,
+      "explanation": "The cycle of phases takes about 29.5 days, which is where the idea of a month comes from."
+    },
+    {
+      "prompt": "Why does the Moon seem to change shape over a month?",
+      "choices": [
+        "Earth's shadow covers different parts of it",
+        "We see more or less of its sunlit half as it orbits Earth",
+        "It really grows and shrinks",
+        "Clouds hide parts of it"
+      ],
+      "answer": 1,
+      "explanation": "Half of the Moon is always lit by the Sun. As the Moon orbits Earth, we see more or less of that lit half, which makes the phases."
+    },
+    {
+      "prompt": "Which planet is known as the Red Planet?",
+      "choices": ["Mars", "Mercury", "Jupiter", "Neptune"],
+      "answer": 0,
+      "explanation": "Mars looks reddish because its dust and rocks contain a lot of iron oxide, which is the same stuff as rust."
+    },
+    {
+      "prompt": "Which planet is best known for its bright, wide rings?",
+      "choices": ["Mars", "Saturn", "Venus", "Mercury"],
+      "answer": 1,
+      "explanation": "Saturn's rings are made of countless pieces of ice and rock. Other giant planets have rings too, but they are much fainter."
+    },
+    {
+      "prompt": "What is the Milky Way?",
+      "choices": [
+        "A cloud high in our atmosphere",
+        "A single very bright star",
+        "A galaxy that contains our Sun",
+        "A comet that returns every year"
+      ],
+      "answer": 2,
+      "explanation": "The Milky Way is our home galaxy, a huge spinning collection of stars. From a dark place you can see a pale band of its stars across the sky."
+    },
+    {
+      "prompt": "Why does the North Star seem to stay almost still while the other stars wheel around it?",
+      "choices": [
+        "It is the closest star to Earth",
+        "It sits almost straight above Earth's north pole",
+        "It is the brightest star in the sky",
+        "It does not move at all"
+      ],
+      "answer": 1,
+      "explanation": "Earth spins around an axis that points almost exactly at Polaris, so it hardly moves while the sky turns. It is not especially bright or near."
+    },
+    {
+      "prompt": "About how long does sunlight take to reach Earth?",
+      "choices": ["About 8 seconds", "About 8 minutes", "About 8 hours", "About 8 days"],
+      "answer": 1,
+      "explanation": "Light travels extremely fast, but the Sun is far away, so it takes a little over 8 minutes. We always see the Sun as it was a few minutes ago."
+    },
+    {
+      "prompt": "What is a shooting star?",
+      "choices": [
+        "A star falling out of the sky",
+        "A tiny bit of rock or dust glowing as it burns up in the air",
+        "A satellite switching on",
+        "A small planet passing by"
+      ],
+      "answer": 1,
+      "explanation": "It is called a meteor. A speck of space dust or rock hits the upper atmosphere at high speed and glows for a moment."
+    },
+    {
+      "prompt": "Which planet is closest to the Sun?",
+      "choices": ["Venus", "Mercury", "Earth", "Mars"],
+      "answer": 1,
+      "explanation": "Mercury orbits closest to the Sun and has the shortest year of any planet, at about 88 Earth days."
+    },
+    {
+      "prompt": "What mostly causes the ocean tides?",
+      "choices": [
+        "Wind blowing over the sea",
+        "The pull of the Moon and the Sun",
+        "Earth's magnetic field",
+        "Rain"
+      ],
+      "answer": 1,
+      "explanation": "The Moon's gravity pulls on the oceans most, with a smaller pull from the Sun. As Earth turns, the water rises and falls along the coasts."
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "title": "Even",
+  "phases": [
+    {
+      "kind": "inhale",
+      "seconds": 2
+    },
+    {
+      "kind": "exhale",
+      "seconds": 2
+    },
+    {
+      "kind": "inhale",
+      "seconds": 2
+    },
+    {
+      "kind": "exhale",
+      "seconds": 2
+    },
+    {
+      "kind": "inhale",
+      "seconds": 2
+    },
+    {
+      "kind": "exhale",
+      "seconds": 2
+    },
+    {
+      "kind": "inhale",
+      "seconds": 2
+    },
+    {
+      "kind": "exhale",
+      "seconds": 2
+    },
+    {
+      "kind": "inhale",
+      "seconds": 2
+    },
+    {
+      "kind": "exhale",
+      "seconds": 2
+    },
+    {
+      "kind": "inhale",
+      "seconds": 2
+    },
+    {
+      "kind": "exhale",
+      "seconds": 2
+    },
+    {
+      "kind": "inhale",
+      "seconds": 2
+    }
+  ],
+  "rounds": 3
+}

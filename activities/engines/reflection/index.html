@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reflection Prompts</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1 id="title">Reflection Prompts</h1>
+      <p id="intro" class="lede" hidden></p>
+
+      <div id="card" class="card" tabindex="0" role="group" aria-labelledby="prompt followup">
+        <p id="prompt" class="prompt"></p>
+        <p id="followup" class="followup" hidden></p>
+      </div>
+
+      <div id="notes-area" class="notes" hidden>
+        <label for="notes" id="notes-label">Your notes for this prompt (optional)</label>
+        <textarea
+          id="notes"
+          rows="4"
+          maxlength="1000"
+          spellcheck="false"
+          aria-describedby="privacy"
+        ></textarea>
+        <p id="privacy" class="privacy">
+          Notes stay on this device, saved only with this pack. They are never sent anywhere.
+        </p>
+      </div>
+
+      <p id="progress" class="progress" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="prev" type="button">Back</button>
+        <button id="next" type="button">Next</button>
+        <button id="clear" type="button" hidden>Clear my notes</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

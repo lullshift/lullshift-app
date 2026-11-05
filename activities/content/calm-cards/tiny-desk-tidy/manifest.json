@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.tiny-desk-tidy",
+  "version": "0.1.0",
+  "name": "Tiny Desk Tidy",
+  "description": "Ten two-minute tidying ideas for a calmer desk.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["tidy", "desk", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.cards@1",
+  "data": "deck.json",
+  "help": {
+    "summary": "A deck of tiny tidying ideas for your desk and screen, shown on Calm Cards.",
+    "goal": "Nothing to finish. Even one tiny tidy is a fine break.",
+    "howToPlay": [
+      "Read the idea on the card.",
+      "Press Show more for a hint on how to do it.",
+      "Try it, or press Next for something different."
+    ],
+    "tips": [
+      "Lift with care and skip anything that does not feel comfortable. These are only ideas."
+    ]
+  },
+  "preview": "preview.svg"
+}

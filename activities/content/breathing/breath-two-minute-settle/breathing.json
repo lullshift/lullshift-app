@@ -1,0 +1,23 @@
+{
+  "title": "Two-Minute Settle",
+  "intro": "Two quiet minutes to settle. Each round has a little rest at the end, so there is no rush.",
+  "phases": [
+    {
+      "kind": "inhale",
+      "seconds": 4,
+      "cue": "Breathe in"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 6,
+      "cue": "Breathe out"
+    },
+    {
+      "kind": "rest",
+      "seconds": 2,
+      "cue": "Rest"
+    }
+  ],
+  "rounds": 10,
+  "closing": "Two minutes are up. Stretch if you like, then carry on."
+}

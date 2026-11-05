@@ -1,0 +1,32 @@
+{
+  "title": "Window Gaze",
+  "intro": "Find a window, or just somewhere with a view. If there is no view, any far wall will do.",
+  "steps": [
+    {
+      "text": "Turn toward a window or the farthest point you can see.",
+      "seconds": 15,
+      "look": "window"
+    },
+    {
+      "text": "Notice the light. Is it bright, soft, warm, cool?",
+      "seconds": 20,
+      "look": "window"
+    },
+    {
+      "text": "Notice anything moving: leaves, clouds, people, or a flicker of reflection.",
+      "seconds": 25,
+      "look": "eyes"
+    },
+    {
+      "text": "Let your gaze drift, with nothing to find and nowhere to be.",
+      "seconds": 20,
+      "look": "window"
+    },
+    {
+      "text": "Take a slow breath and turn back, taking a little of that space with you.",
+      "seconds": 10,
+      "look": "breath"
+    }
+  ],
+  "closing": "Back from the window. Carry on whenever you are ready."
+}

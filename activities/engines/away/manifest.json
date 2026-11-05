@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.engines.away",
+  "version": "0.1.0",
+  "name": "Away Prompts",
+  "description": "Gentle ideas for when you step away from your desk while agents work, one at a time, with a quiet clock for time away. Install a prompt pack to fill it.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["away", "break"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "help": {
+    "summary": "One gentle idea at a time for when you step away from your desk. The ideas come from a prompt pack.",
+    "goal": "There is nothing to finish. Take an idea or leave it, and come back when you are ready.",
+    "howToPlay": [
+      "Read the idea on the card.",
+      "Press Another idea to see a different one, or Previous idea to go back.",
+      "A quiet clock counts the time you have been away.",
+      "Press Back at desk when you return. Press Away again to keep counting."
+    ],
+    "controls": [
+      {
+        "keys": "Left / Right arrow",
+        "action": "Previous or another idea, when the card is focused"
+      },
+      {
+        "keys": "Tab",
+        "action": "Reach the buttons"
+      },
+      {
+        "keys": "Enter / Space",
+        "action": "Press the focused button"
+      }
+    ],
+    "tips": [
+      "The clock only counts while this activity is open and running. It stops when Lullshift pauses it.",
+      "Ideas are only suggestions. Skip any that do not suit you."
+    ]
+  },
+  "preview": "preview.svg"
+}

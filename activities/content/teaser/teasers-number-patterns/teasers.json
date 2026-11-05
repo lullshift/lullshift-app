@@ -1,0 +1,69 @@
+{
+  "title": "Number Patterns",
+  "intro": "Each teaser has a rule hiding in the numbers. Find the rule and the next number follows.",
+  "teasers": [
+    {
+      "question": "What comes next: 3, 6, 12, 24, and then what?",
+      "hint": "Look at how each number compares with the one before it.",
+      "answer": "48",
+      "explanation": "Every number is double the one before it, so 24 doubled is 48.",
+      "kind": "pattern"
+    },
+    {
+      "question": "What comes next: 1, 4, 9, 16, 25, and then what?",
+      "hint": "Try picturing each number as a square of dots.",
+      "answer": "36",
+      "explanation": "These are square numbers: 1 times 1, 2 times 2, 3 times 3, and so on. The next is 6 times 6.",
+      "kind": "pattern"
+    },
+    {
+      "question": "What comes next: 100, 90, 81, 73, 66, and then what?",
+      "hint": "Look at the gaps between neighbours, not the numbers.",
+      "answer": "60",
+      "explanation": "The numbers drop by 10, then 9, then 8, then 7. The next drop is 6, and 66 take away 6 is 60.",
+      "kind": "pattern"
+    },
+    {
+      "question": "What comes next: 2, 3, 5, 8, 12, and then what?",
+      "hint": "The gaps between the numbers are growing.",
+      "answer": "17",
+      "explanation": "The gaps are 1, 2, 3, 4, so the next gap is 5. Twelve plus 5 is 17.",
+      "kind": "pattern"
+    },
+    {
+      "question": "What comes next: 1, 1, 2, 3, 5, 8, and then what?",
+      "hint": "Try adding two numbers together.",
+      "answer": "13",
+      "explanation": "Each number is the sum of the two before it, so 5 plus 8 gives 13.",
+      "kind": "pattern"
+    },
+    {
+      "question": "What comes next: 4, 7, 6, 9, 8, 11, and then what?",
+      "hint": "Think of two jobs that take turns.",
+      "answer": "10",
+      "explanation": "The rule alternates: add 3, then take away 1. After 11 comes take away 1, which is 10.",
+      "kind": "pattern"
+    },
+    {
+      "question": "What comes next: 81, 27, 9, 3, and then what?",
+      "hint": "Is the rule about taking away or about sharing?",
+      "answer": "1",
+      "explanation": "Each number is a third of the one before it, so 3 divided by 3 is 1.",
+      "kind": "pattern"
+    },
+    {
+      "question": "What comes next: 2, 6, 12, 20, 30, and then what?",
+      "hint": "Look at the gaps, then look at the gaps between the gaps.",
+      "answer": "42",
+      "explanation": "The gaps are 4, 6, 8, 10, going up by 2 each time. The next gap is 12, and 30 plus 12 is 42.",
+      "kind": "pattern"
+    },
+    {
+      "question": "Three even numbers in a row add up to 12. What are they?",
+      "hint": "They are small numbers, and the middle one is the average.",
+      "answer": "2, 4 and 6",
+      "explanation": "The average of the three is 12 divided by 3, which is 4. The even numbers either side of 4 are 2 and 6.",
+      "kind": "math"
+    }
+  ]
+}

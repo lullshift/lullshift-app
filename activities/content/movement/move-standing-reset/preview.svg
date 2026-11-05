@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Standing Reset: simple shapes in soft colours">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <rect x="146" y="70" width="28" height="70" rx="14" fill="#6b4fd8"/><circle cx="160" cy="50" r="16" fill="#b9a6ff"/><rect x="118" y="148" width="84" height="8" rx="4" fill="#625b6c"/><path d="M110 92 L134 74 M210 92 L186 74" stroke="#6b4fd8" stroke-width="6" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.engines.movement",
+  "version": "0.1.0",
+  "name": "Movement Routine",
+  "description": "A short routine of gentle moves, one at a time, with a calm timer. Install a routine pack to fill it. Your place is saved, so you can stop whenever you like.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["movement", "stretch"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "help": {
+    "summary": "A short routine of gentle moves shown one at a time, with an optional calm timer. The moves come from a routine pack.",
+    "goal": "There is nothing to win. Do as many moves as you like, and stop whenever you like.",
+    "howToPlay": [
+      "Read the move and its steps. A small picture shows whether it is seated or standing.",
+      "For timed moves, press Start timer when you are ready. Press Pause timer to stop it.",
+      "Press Next when you have finished a move, or Skip to leave it out.",
+      "Press Back to return to the previous move."
+    ],
+    "controls": [
+      {
+        "keys": "Left / Right arrow",
+        "action": "Back or next, when the move card is focused"
+      },
+      {
+        "keys": "Tab",
+        "action": "Reach Back, the timer, Next and Skip"
+      },
+      {
+        "keys": "Enter / Space",
+        "action": "Press the focused button"
+      }
+    ],
+    "tips": [
+      "These are general ideas for a break, not advice. Stop if anything feels uncomfortable, and skip any move that does not suit you.",
+      "The timer stops when Lullshift pauses the activity and picks up where it left off."
+    ]
+  },
+  "preview": "preview.svg"
+}

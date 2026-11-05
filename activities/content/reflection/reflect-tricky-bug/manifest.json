@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.reflect-tricky-bug",
+  "version": "0.1.0",
+  "name": "After a Tricky Bug",
+  "description": "Eight questions for looking back after a stubborn problem, with optional notes that stay on this device.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["reflection", "debugging"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.reflection@1",
+  "data": "prompts.json",
+  "help": {
+    "summary": "Eight questions for looking back after a hard bug, shown on Reflection Prompts.",
+    "goal": "There is nothing to finish. Look back as far as feels useful.",
+    "howToPlay": [
+      "Read the prompt and think about the problem you just solved.",
+      "If you like, type a few words in the notes box. They stay on this device.",
+      "Press Next for another prompt, or Back to return."
+    ],
+    "tips": ["Keep notes free of secrets and private details. Clear them any time."]
+  },
+  "preview": "preview.svg"
+}

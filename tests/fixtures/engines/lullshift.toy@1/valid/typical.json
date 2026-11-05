@@ -1,0 +1,25 @@
+{
+  "title": "Garden Mosaic",
+  "intro": "Little tiles in leafy colours.",
+  "palette": [
+    {
+      "name": "Violet",
+      "color": "#6b4fd8"
+    },
+    {
+      "name": "Coral",
+      "color": "#e07a5f"
+    },
+    {
+      "name": "Leaf",
+      "color": "#4f8a4b"
+    }
+  ],
+  "mode": "mosaic",
+  "symmetry": "mirror",
+  "brushSize": {
+    "min": 6,
+    "max": 14
+  },
+  "background": "#f4efe3"
+}

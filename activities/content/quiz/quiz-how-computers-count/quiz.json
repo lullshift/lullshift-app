@@ -1,0 +1,78 @@
+{
+  "title": "How Computers Count",
+  "intro": "Bits, bytes and binary, in small bites. Guess freely; the explanations are the fun part.",
+  "shuffle": true,
+  "questions": [
+    {
+      "prompt": "How many different values can a single bit hold?",
+      "choices": ["Two", "Four", "Eight", "Ten"],
+      "answer": 0,
+      "explanation": "A bit is either 0 or 1, so it holds two values. Everything else in computing is built from many bits together."
+    },
+    {
+      "prompt": "How many bits are in a byte?",
+      "choices": ["4", "8", "10", "16"],
+      "answer": 1,
+      "explanation": "A byte is a group of 8 bits. It became the standard small chunk of memory."
+    },
+    {
+      "prompt": "What is the binary number 101 in everyday decimal?",
+      "choices": ["3", "5", "6", "101"],
+      "answer": 1,
+      "explanation": "Read from the right, the places are worth 1, 2 and 4. So 101 is 4 plus 0 plus 1, which makes 5."
+    },
+    {
+      "prompt": "How many different values can one byte hold?",
+      "choices": ["64", "100", "256", "1000"],
+      "answer": 2,
+      "explanation": "Each of the 8 bits has two choices, which gives eight 2s multiplied together. That is 256 values, from 0 to 255."
+    },
+    {
+      "prompt": "In hexadecimal, which number does the letter F stand for?",
+      "choices": ["6", "15", "16", "255"],
+      "answer": 1,
+      "explanation": "Hexadecimal uses sixteen digits, 0 to 9 and then A to F. A is 10, so F is 15."
+    },
+    {
+      "prompt": "What is the decimal number 4 written in binary?",
+      "choices": ["10", "11", "100", "110"],
+      "answer": 2,
+      "explanation": "The binary places are worth 1, 2, 4, and so on. The 4 place is the third one, so 4 is written 100."
+    },
+    {
+      "prompt": "Which of these is the largest unit of storage?",
+      "choices": ["Kilobyte", "Byte", "Megabyte", "Gigabyte"],
+      "answer": 3,
+      "explanation": "Each step up is much larger: a kilobyte is about a thousand bytes, a megabyte about a million, and a gigabyte about a billion."
+    },
+    {
+      "prompt": "Why do computers use binary?",
+      "choices": [
+        "Binary is the easiest maths for people",
+        "Electronic circuits can reliably tell two states, such as on and off",
+        "Decimal is not allowed in computers",
+        "It uses less electricity than any other idea"
+      ],
+      "answer": 1,
+      "explanation": "Telling two clear states apart, like a high or low voltage, is dependable and cheap. Longer numbers are made by using many such switches."
+    },
+    {
+      "prompt": "In the common UTF-8 text format, how many bytes does a plain English letter such as A usually take?",
+      "choices": ["Half a byte", "One byte", "Four bytes", "Eight bytes"],
+      "answer": 1,
+      "explanation": "UTF-8 stores the basic English letters in a single byte. Other characters, such as many symbols and emoji, use two to four bytes."
+    },
+    {
+      "prompt": "What is 1 plus 1 in binary?",
+      "choices": ["2", "10", "11", "0"],
+      "answer": 1,
+      "explanation": "Binary has no digit 2. Like carrying in decimal when 9 plus 1 becomes 10, 1 plus 1 becomes 10, which is read as one-zero."
+    },
+    {
+      "prompt": "How many bits do you need to count from 0 up to 7?",
+      "choices": ["Two", "Three", "Four", "Seven"],
+      "answer": 1,
+      "explanation": "Three bits give 2 times 2 times 2, which is 8 different values, enough for 0 to 7."
+    }
+  ]
+}

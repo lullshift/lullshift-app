@@ -1,0 +1,71 @@
+{
+  "title": "Seated easy stretches",
+  "intro": "No twisting and no forward folds. Just easy stretches while you stay in your chair.",
+  "moves": [
+    {
+      "name": "Sit tall",
+      "steps": [
+        "Place your feet flat on the floor.",
+        "Imagine a string lifting the top of your head.",
+        "Let your shoulders settle and breathe slowly."
+      ],
+      "seconds": 20,
+      "position": "seated"
+    },
+    {
+      "name": "Arms overhead",
+      "steps": [
+        "Breathe in and lift both arms up in front of you.",
+        "Reach toward the ceiling, only as high as is comfortable.",
+        "Breathe out and lower them."
+      ],
+      "reps": 5,
+      "position": "seated"
+    },
+    {
+      "name": "Gentle side reach",
+      "steps": [
+        "Rest one hand on the seat beside you.",
+        "Reach the other arm up and gently over, keeping your hips still.",
+        "Come back to centre, then switch sides."
+      ],
+      "reps": 3,
+      "side": "left-right",
+      "position": "seated"
+    },
+    {
+      "name": "Open the chest",
+      "steps": [
+        "Clasp your hands behind your back, or hold the sides of the chair.",
+        "Ease your shoulder blades slightly toward each other.",
+        "Keep your chin level and breathe easily."
+      ],
+      "seconds": 20,
+      "position": "seated"
+    },
+    {
+      "name": "Seat marching",
+      "steps": [
+        "Sit tall with your hands on your thighs.",
+        "Lift one knee a little, set it down, then the other.",
+        "Keep it slow and steady."
+      ],
+      "seconds": 30,
+      "position": "seated"
+    },
+    {
+      "name": "Ankle circles",
+      "steps": [
+        "Lift one foot slightly off the floor.",
+        "Draw slow circles with your toes.",
+        "Switch direction halfway, then change feet."
+      ],
+      "seconds": 20,
+      "side": "left-right",
+      "position": "seated"
+    }
+  ],
+  "restSeconds": 5,
+  "closing": "That is the set. Your chair is all you needed.",
+  "wayOut": "Stop if anything feels uncomfortable, and skip any move that does not suit you."
+}

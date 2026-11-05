@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.teasers-gentle-logic",
+  "version": "0.1.0",
+  "name": "Gentle Logic",
+  "description": "Nine small logic puzzles that can be solved in your head.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["puzzle", "logic"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.teaser@1",
+  "data": "teasers.json",
+  "help": {
+    "summary": "Nine small logic puzzles to think about, shown on Brain Teasers.",
+    "goal": "Nothing to win. Think it over, then reveal the answer when you are ready.",
+    "howToPlay": [
+      "Read the teaser and take your time.",
+      "Press Hint for a nudge, if there is one.",
+      "Press Reveal answer to see the answer and why.",
+      "Optionally mark I got it or Not this time. This stays private.",
+      "Press Next for another teaser."
+    ],
+    "tips": ["Sketching the clues on paper can help, but you never need to."]
+  },
+  "preview": "preview.svg"
+}

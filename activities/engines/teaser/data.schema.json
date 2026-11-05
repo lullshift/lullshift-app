@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lullshift:engine:teaser:v1:data",
+  "title": "Brain Teasers pack (lullshift.teaser@1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "teasers"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+    },
+    "intro": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+    },
+    "teasers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 40,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question", "answer", "explanation"],
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+          },
+          "hint": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+          },
+          "answer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["logic", "pattern", "wordplay", "math"]
+          }
+        }
+      }
+    }
+  }
+}

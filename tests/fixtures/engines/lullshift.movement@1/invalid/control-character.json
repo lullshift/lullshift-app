@@ -1,0 +1,11 @@
+{
+  "title": "Bad\u0007title",
+  "wayOut": "Stop or skip anything that does not suit you.",
+  "moves": [
+    {
+      "name": "Shoulder roll",
+      "steps": ["Lift your shoulders gently.", "Roll them back and down."],
+      "seconds": 30
+    }
+  ]
+}

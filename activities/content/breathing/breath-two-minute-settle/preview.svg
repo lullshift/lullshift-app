@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Two-Minute Settle: three nested circles, the middle one dotted">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <circle cx="160" cy="100" r="72" fill="#fffdf9" stroke="#d7ccf7" stroke-width="3"/>
+  <circle cx="160" cy="100" r="50" fill="none" stroke="#b9a6ff" stroke-width="4" stroke-dasharray="3 8" stroke-linecap="round"/>
+  <circle cx="160" cy="100" r="28" fill="#b9a6ff" stroke="#6b4fd8" stroke-width="4"/>
+</svg>

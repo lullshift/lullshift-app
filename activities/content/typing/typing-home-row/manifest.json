@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.typing-home-row",
+  "version": "0.1.0",
+  "name": "Home Row Warm-up",
+  "description": "Eight short lines that stay on the home row, for a slow and steady warm-up.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["typing", "warm-up"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.typing@1",
+  "data": "lines.json",
+  "help": {
+    "summary": "Eight home-row lines for a calm typing warm-up, shown on Typing Drills.",
+    "goal": "Just a warm-up. There is no score to beat.",
+    "howToPlay": [
+      "Rest your fingers on the middle row of the keyboard.",
+      "Type the line shown. Correct letters are underlined and mistakes are struck through.",
+      "At the end of a line the next one appears. Use Start line over or Skip line any time."
+    ],
+    "tips": ["Slow is fine. What you type never leaves this page."]
+  },
+  "preview": "preview.svg"
+}

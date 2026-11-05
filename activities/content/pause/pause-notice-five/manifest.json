@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.pause-notice-five",
+  "version": "0.1.0",
+  "name": "Notice Five Things",
+  "description": "A gentle noticing game: five things you see, four you hear, three you feel, then two colours and a breath.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["pause", "noticing"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.pause@1",
+  "data": "steps.json",
+  "help": {
+    "summary": "A five-step noticing game on Guided Pause.",
+    "goal": "There is nothing to finish and no right answers. Notice what you notice.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Look, listen or feel as each step suggests. Say the answers in your head or aloud.",
+      "Press Next to skip a step, or Back to repeat one."
+    ],
+    "tips": ["If a step does not suit you, skip it. This is a game for a break, not advice."]
+  },
+  "preview": "preview.svg"
+}

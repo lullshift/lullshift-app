@@ -1,0 +1,32 @@
+{
+  "title": "Small Wins",
+  "intro": "Little things count. Read each prompt and see what comes to mind.",
+  "allowNotes": false,
+  "prompts": [
+    {
+      "text": "What is a small thing that went right today?"
+    },
+    {
+      "text": "What did you figure out that you did not know this morning?"
+    },
+    {
+      "text": "What is something you did that your past self would be glad of?"
+    },
+    {
+      "text": "What made a task go a little smoother than usual?"
+    },
+    {
+      "text": "What small step did you take that you did not have to?"
+    },
+    {
+      "text": "What is one thing you handled calmly?"
+    },
+    {
+      "text": "What is a tiny improvement you made, like a clearer name or a tidier note?"
+    },
+    {
+      "text": "Which small win would you like to repeat tomorrow?",
+      "followUp": "Maybe it is easier to repeat than you think."
+    }
+  ]
+}

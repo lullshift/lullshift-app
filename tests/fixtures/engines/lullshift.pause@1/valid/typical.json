@@ -1,0 +1,22 @@
+{
+  "title": "Eye rest",
+  "intro": "A quiet moment away from the screen.",
+  "steps": [
+    {
+      "text": "Look at something far away.",
+      "seconds": 20,
+      "look": "eyes"
+    },
+    {
+      "text": "Blink slowly a few times.",
+      "seconds": 10,
+      "look": "eyes"
+    },
+    {
+      "text": "Look out of a window.",
+      "seconds": 15,
+      "look": "window"
+    }
+  ],
+  "closing": "Done. Back to it when you are ready."
+}

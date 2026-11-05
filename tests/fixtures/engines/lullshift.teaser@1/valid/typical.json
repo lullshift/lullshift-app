@@ -1,0 +1,69 @@
+{
+  "title": "Gentle Logic",
+  "intro": "Small puzzles with clear clues. Piece the clues together and the answer falls into place.",
+  "teasers": [
+    {
+      "question": "Three mugs stand in a row: red, blue and green. The red mug is not at either end, and the blue mug is somewhere to the left of the green one. What is the order, left to right?",
+      "hint": "Start with where the red mug has to be.",
+      "answer": "Blue, red, green",
+      "explanation": "Red is not at an end, so it is in the middle. Blue must be left of green, so blue takes the left end and green the right.",
+      "kind": "logic"
+    },
+    {
+      "question": "Ana, Ben and Cy each have one pet: a cat, a dog or a fish. Cy's pet barks, and Ana cannot have a pet with fur. Who has the cat?",
+      "hint": "Settle Cy first, then Ana.",
+      "answer": "Ben",
+      "explanation": "Cy has the dog because it barks. Ana cannot have fur, so she has the fish. That leaves the cat for Ben.",
+      "kind": "logic"
+    },
+    {
+      "question": "A lamp starts off. You press its switch seven times in a row. Is it on or off?",
+      "hint": "What happens after two presses? After three?",
+      "answer": "On",
+      "explanation": "Every odd press leaves it on and every even press leaves it off. Seven is odd, so the lamp ends up on.",
+      "kind": "logic"
+    },
+    {
+      "question": "A drawer holds only black and white socks, all mixed up, and the light is out. How many socks must you take to be sure you have a matching pair?",
+      "hint": "What is the worst luck you could have with the first two socks?",
+      "answer": "Three",
+      "explanation": "Two socks might be one of each colour. The third sock must match one of them, because there are only two colours.",
+      "kind": "logic"
+    },
+    {
+      "question": "Four friends queue for a lift. Mia is ahead of Noor, Noor is directly ahead of Ola, and Pip is last. Who is first?",
+      "hint": "Draw the queue as four boxes, then fill them in.",
+      "answer": "Mia",
+      "explanation": "Pip is fourth. Noor and Ola are an adjacent pair with Noor first, and Mia is ahead of both of them, so the order is Mia, Noor, Ola, Pip.",
+      "kind": "logic"
+    },
+    {
+      "question": "Two days after the day before yesterday was a Friday. What day is it today?",
+      "hint": "Count forward from the day before yesterday.",
+      "answer": "Friday",
+      "explanation": "The day before yesterday is two days back. Two days after that brings you straight back to today, so today is the Friday.",
+      "kind": "logic"
+    },
+    {
+      "question": "You have a 3-litre jug, a 4-litre jug, a tap and a drain. How can you measure exactly 1 litre?",
+      "hint": "Fill the larger one first and pour into the smaller.",
+      "answer": "Fill the 4-litre jug, then pour from it into the 3-litre jug until that one is full",
+      "explanation": "The 3-litre jug takes 3 litres, which leaves exactly 1 litre in the 4-litre jug.",
+      "kind": "logic"
+    },
+    {
+      "question": "A choir has 6 people who sing and 4 who play an instrument. Two of them do both. How many people are in the choir?",
+      "hint": "Be careful not to count anyone twice.",
+      "answer": "Eight",
+      "explanation": "Add 6 and 4 to get 10, which counts the two who do both twice. Take 2 away to get 8.",
+      "kind": "math"
+    },
+    {
+      "question": "A farmer sees only hens and goats and counts 20 legs in all. There are 2 goats. How many hens are there?",
+      "hint": "Each goat has four legs and each hen has two.",
+      "answer": "Six",
+      "explanation": "Two goats have 8 legs, which leaves 12 legs for the hens. At two legs each, that is 6 hens.",
+      "kind": "math"
+    }
+  ]
+}

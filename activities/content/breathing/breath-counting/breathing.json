@@ -1,0 +1,58 @@
+{
+  "title": "Counting Breaths",
+  "intro": "Count each breath from one to five, then start over once. If you lose count, simply begin again.",
+  "phases": [
+    {
+      "kind": "inhale",
+      "seconds": 3,
+      "cue": "In, one"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 4,
+      "cue": "Out"
+    },
+    {
+      "kind": "inhale",
+      "seconds": 3,
+      "cue": "In, two"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 4,
+      "cue": "Out"
+    },
+    {
+      "kind": "inhale",
+      "seconds": 3,
+      "cue": "In, three"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 4,
+      "cue": "Out"
+    },
+    {
+      "kind": "inhale",
+      "seconds": 3,
+      "cue": "In, four"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 4,
+      "cue": "Out"
+    },
+    {
+      "kind": "inhale",
+      "seconds": 3,
+      "cue": "In, five"
+    },
+    {
+      "kind": "exhale",
+      "seconds": 4,
+      "cue": "Out"
+    }
+  ],
+  "rounds": 2,
+  "closing": "Ten breaths counted. Losing count is part of it. Carry on when you are ready."
+}

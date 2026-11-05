@@ -1,0 +1,32 @@
+{
+  "title": "Eye Rest",
+  "intro": "A quiet moment away from the screen. Skip any step that does not suit you.",
+  "steps": [
+    {
+      "text": "Look away from the screen and find something far from you, ideally about six metres away.",
+      "seconds": 20,
+      "look": "eyes"
+    },
+    {
+      "text": "Rest your gaze there. Let it be soft, with no need to focus hard.",
+      "seconds": 20,
+      "look": "window"
+    },
+    {
+      "text": "Blink slowly a few times, at an easy pace.",
+      "seconds": 10,
+      "look": "eyes"
+    },
+    {
+      "text": "Close your eyes if you like and let them rest in the dark.",
+      "seconds": 15,
+      "look": "eyes"
+    },
+    {
+      "text": "Look at something close, then something far, once or twice, at your own speed.",
+      "seconds": 15,
+      "look": "eyes"
+    }
+  ],
+  "closing": "Eyes rested for a moment. Back to it whenever you are ready."
+}

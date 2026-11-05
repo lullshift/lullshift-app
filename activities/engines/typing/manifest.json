@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "version": "0.1.0",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "id": "app.lullshift.engines.typing",
+  "name": "Typing Drills",
+  "description": "Short lines to type at your own pace, with a gentle count of accuracy and speed. Install a drill pack to fill it.",
+  "category": "interactive",
+  "tags": ["typing", "practice"],
+  "help": {
+    "summary": "Type short lines one at a time. The lines come from a drill pack.",
+    "goal": "Just for fun and warm-up. There is no leaderboard and nothing to unlock.",
+    "howToPlay": [
+      "Type the line shown. Each letter is marked as you go: correct ones are underlined, mistakes are struck through.",
+      "When you reach the end of the line, the next one appears.",
+      "Press Start line over to try the line again, or Skip line to move on.",
+      "Accuracy counts finished lines. Speed counts only the time you spend typing, so pausing never costs you."
+    ],
+    "controls": [
+      {
+        "keys": "Letters and symbols",
+        "action": "Type the line"
+      },
+      {
+        "keys": "Backspace",
+        "action": "Fix a mistake"
+      },
+      {
+        "keys": "Tab",
+        "action": "Move to the buttons"
+      },
+      {
+        "keys": "Enter / Space",
+        "action": "Press the focused button"
+      }
+    ],
+    "tips": [
+      "What you type never leaves this page. Only your counts are saved, not the text.",
+      "Stop whenever you like. Your place is saved."
+    ]
+  },
+  "preview": "preview.svg"
+}

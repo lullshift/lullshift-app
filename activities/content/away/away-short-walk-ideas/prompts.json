@@ -1,0 +1,56 @@
+{
+  "title": "Short walk ideas",
+  "intro": "Wherever you go, a few steps will do. Pick whatever sounds nice.",
+  "prompts": [
+    {
+      "text": "Walk to the end of the street and back.",
+      "category": "walk"
+    },
+    {
+      "text": "Take the long way to the nearest door.",
+      "category": "walk"
+    },
+    {
+      "text": "Walk a slow lap of the building, indoors or out.",
+      "category": "walk"
+    },
+    {
+      "text": "Choose a colour and look for it as you walk.",
+      "category": "walk"
+    },
+    {
+      "text": "Walk at a relaxed pace and let your arms swing.",
+      "category": "walk"
+    },
+    {
+      "text": "Go up or down one flight of stairs, then come back.",
+      "category": "walk"
+    },
+    {
+      "text": "Pause somewhere with a view and take it in.",
+      "category": "window"
+    },
+    {
+      "text": "Walk and listen: how many different sounds can you hear?",
+      "category": "walk"
+    },
+    {
+      "text": "Stroll to somewhere green, even if it is only a single plant.",
+      "category": "walk"
+    },
+    {
+      "text": "Walk without your phone, just for a few minutes.",
+      "category": "rest"
+    },
+    {
+      "text": "Take a few steps outside to feel the air on your face.",
+      "category": "window"
+    },
+    {
+      "text": "Find a spot in the sun or in the shade, whichever you prefer.",
+      "category": "rest"
+    }
+  ],
+  "shuffle": true,
+  "backAtDesk": "Welcome back. Your walk is yours to keep."
+}

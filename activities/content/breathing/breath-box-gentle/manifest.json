@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.breath-box-gentle",
+  "version": "0.1.0",
+  "name": "Gentle Box Breathing",
+  "description": "Four steady sides: in, a short hold, out, a short hold. Holds are only two seconds.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["breathing", "steady"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.breathing@1",
+  "data": "breathing.json",
+  "help": {
+    "summary": "A gentle box pattern with two-second pauses, on Breathing Space.",
+    "goal": "There is nothing to finish. Go round the box as many times as you like.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Breathe in as the shape grows, pause briefly, breathe out as it shrinks, pause briefly.",
+      "If the pauses feel like too much, skip them and just keep breathing."
+    ],
+    "tips": [
+      "Breathe in a way that feels easy. If anything feels uncomfortable, stop and breathe normally.",
+      "The pauses are short on purpose. You never need to hold your breath hard."
+    ]
+  },
+  "preview": "preview.svg"
+}

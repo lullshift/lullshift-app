@@ -1,0 +1,29 @@
+{
+  "title": "Night Stars",
+  "intro": "A quiet sky. Each star you place is repeated in all four corners.",
+  "palette": [
+    {
+      "name": "Star white",
+      "color": "#f6f2ec"
+    },
+    {
+      "name": "Pale gold",
+      "color": "#f2d98a"
+    },
+    {
+      "name": "Soft blue",
+      "color": "#9ec5f0"
+    },
+    {
+      "name": "Faint pink",
+      "color": "#f0b8d0"
+    }
+  ],
+  "mode": "stars",
+  "symmetry": "quad",
+  "brushSize": {
+    "min": 4,
+    "max": 16
+  },
+  "background": "#14213d"
+}

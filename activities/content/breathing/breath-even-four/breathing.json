@@ -1,0 +1,16 @@
+{
+  "title": "Even Breathing",
+  "intro": "Six slow breaths, the same length in and out. Let the shape lead and keep it comfortable.",
+  "phases": [
+    {
+      "kind": "inhale",
+      "seconds": 4
+    },
+    {
+      "kind": "exhale",
+      "seconds": 4
+    }
+  ],
+  "rounds": 6,
+  "closing": "That was six breaths. Notice how you feel, then carry on when you are ready."
+}

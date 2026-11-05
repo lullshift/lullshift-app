@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.move-energiser-three-minutes",
+  "version": "0.1.0",
+  "name": "Three-Minute Energiser",
+  "description": "A lively but low-impact routine of about three minutes. No jumping and nothing on the floor.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["movement", "energiser", "quick", "low-impact"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.movement@1",
+  "data": "routine.json",
+  "help": {
+    "summary": "A quick, low-impact routine of about three minutes, shown on Movement Routine.",
+    "goal": "There is nothing to finish. Do a move, a few, or all of them.",
+    "howToPlay": [
+      "Stand up if you can, or stay seated, and read the move.",
+      "Press Start timer for each timed move.",
+      "Press Next for the following move, or Skip to leave one out."
+    ],
+    "tips": [
+      "General ideas for a break, not advice. Keep it comfortable rather than hard, and stop if anything feels uncomfortable. There is no jumping in this routine."
+    ]
+  },
+  "preview": "preview.svg"
+}

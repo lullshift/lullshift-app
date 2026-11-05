@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Notice Five Things: five circles of different sizes">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <circle cx="80" cy="100" r="18" fill="#b9a6ff" stroke="#6b4fd8" stroke-width="3"/>
+  <circle cx="130" cy="84" r="14" fill="#fffdf9" stroke="#6b4fd8" stroke-width="3"/>
+  <circle cx="176" cy="112" r="20" fill="#d7ccf7" stroke="#6b4fd8" stroke-width="3"/>
+  <circle cx="224" cy="88" r="12" fill="#b9a6ff" stroke="#6b4fd8" stroke-width="3"/>
+  <circle cx="258" cy="116" r="16" fill="#fffdf9" stroke="#6b4fd8" stroke-width="3"/>
+</svg>

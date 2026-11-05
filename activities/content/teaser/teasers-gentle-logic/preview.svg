@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A simple pattern of shapes">
+  <rect width="320" height="200" fill="#e6f4f1"/>
+  <rect x="70" y="120" width="60" height="50" rx="6" fill="#2a7f78"/>
+  <rect x="130" y="120" width="60" height="50" rx="6" fill="#9bd3cc"/>
+  <rect x="190" y="120" width="60" height="50" rx="6" fill="#2a7f78"/>
+  <rect x="100" y="70" width="60" height="50" rx="6" fill="#9bd3cc"/>
+  <rect x="160" y="70" width="60" height="50" rx="6" fill="#2a7f78"/>
+  <rect x="130" y="20" width="60" height="50" rx="6" fill="#2a7f78"/>
+</svg>

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.quiz-rivers-and-mountains",
+  "version": "0.1.0",
+  "name": "Rivers and Mountains Quiz",
+  "description": "Eleven questions about famous rivers and mountains around the world.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["quiz", "geography"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.quiz@1",
+  "data": "quiz.json",
+  "help": {
+    "summary": "Eleven multiple-choice questions about famous rivers and mountains, shown on Quick Quiz.",
+    "goal": "Just for fun. Answer what you like; your score is shown only to you.",
+    "howToPlay": [
+      "Read the question and choose an answer.",
+      "A short explanation follows each answer.",
+      "Press Next question to carry on.",
+      "At the end, Play again gives a fresh shuffle."
+    ],
+    "tips": ["Heights are rounded, so treat them as good estimates."]
+  },
+  "preview": "preview.svg"
+}

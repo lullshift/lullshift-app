@@ -1,0 +1,35 @@
+{
+  "title": "One-Minute Arrive",
+  "intro": "One minute, six small steps. Come back to the room you are in.",
+  "steps": [
+    {
+      "text": "Pause what you are doing and let your hands rest.",
+      "seconds": 10,
+      "look": "hands"
+    },
+    {
+      "text": "Feel your feet on the floor and your weight in the chair.",
+      "seconds": 10
+    },
+    {
+      "text": "Look around the room and name one thing you had not noticed.",
+      "seconds": 10,
+      "look": "eyes"
+    },
+    {
+      "text": "Take one slow breath in and a slow breath out.",
+      "seconds": 10,
+      "look": "breath"
+    },
+    {
+      "text": "Let your shoulders drop a little.",
+      "seconds": 10,
+      "look": "shoulders"
+    },
+    {
+      "text": "Decide the very next small thing you will do.",
+      "seconds": 10
+    }
+  ],
+  "closing": "One minute, done. Off you go."
+}

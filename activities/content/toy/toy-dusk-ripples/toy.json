@@ -1,0 +1,33 @@
+{
+  "title": "Dusk Ripples",
+  "intro": "Evening colours on a dark pond. Each mark sends out a few quiet rings.",
+  "palette": [
+    {
+      "name": "Twilight violet",
+      "color": "#9d8cf0"
+    },
+    {
+      "name": "Dusk rose",
+      "color": "#e68fb0"
+    },
+    {
+      "name": "Lantern amber",
+      "color": "#f2b866"
+    },
+    {
+      "name": "Pond teal",
+      "color": "#62c4b8"
+    },
+    {
+      "name": "Moon white",
+      "color": "#ece8f2"
+    }
+  ],
+  "mode": "ripples",
+  "symmetry": "none",
+  "brushSize": {
+    "min": 4,
+    "max": 18
+  },
+  "background": "#26223a"
+}

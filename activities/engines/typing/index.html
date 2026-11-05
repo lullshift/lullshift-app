@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Typing Drills</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1 id="title">Typing Drills</h1>
+      <p id="intro" class="lede" hidden></p>
+
+      <div class="card">
+        <p id="targetText" class="sr-only"></p>
+        <p id="target" class="target" aria-hidden="true"></p>
+        <label for="typed" class="sr-only">Type the line shown above</label>
+        <input
+          id="typed"
+          class="typed"
+          type="text"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          aria-describedby="now"
+        />
+        <p id="now" class="now"></p>
+      </div>
+
+      <p id="stats" class="stats"></p>
+      <p id="progress" class="progress" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="restart" type="button">Start line over</button>
+        <button id="skip" type="button">Skip line</button>
+        <button id="again" type="button" hidden>Practice again</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

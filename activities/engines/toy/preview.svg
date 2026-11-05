@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Creative Toy: soft rings and a star on a quiet canvas">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <rect x="40" y="26" width="240" height="148" rx="14" fill="#fffdf9" stroke="#6b4fd8" stroke-width="2"/>
+  <g fill="none" stroke-width="3">
+    <circle cx="110" cy="92" r="10" stroke="#6b4fd8"/>
+    <circle cx="110" cy="92" r="20" stroke="#6b4fd8" opacity="0.6"/>
+    <circle cx="110" cy="92" r="30" stroke="#6b4fd8" opacity="0.3"/>
+    <circle cx="206" cy="120" r="9" stroke="#e07a5f"/>
+    <circle cx="206" cy="120" r="18" stroke="#e07a5f" opacity="0.5"/>
+  </g>
+  <path d="M220 60 L225 74 L240 76 L228 85 L232 100 L220 91 L208 100 L212 85 L200 76 L215 74 Z" fill="#d9a441"/>
+  <circle cx="132" cy="186" r="5" fill="#6b4fd8"/>
+  <circle cx="160" cy="186" r="5" fill="#e07a5f"/>
+  <circle cx="188" cy="186" r="5" fill="#3d9a8b"/>
+</svg>

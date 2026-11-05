@@ -1,0 +1,37 @@
+{
+  "title": "Warm Sand Mandala",
+  "intro": "Every thread you draw is repeated six times around the centre, like a slow pattern in the sand.",
+  "palette": [
+    {
+      "name": "Dune",
+      "color": "#c9a26b"
+    },
+    {
+      "name": "Terracotta",
+      "color": "#c8643f"
+    },
+    {
+      "name": "Clay red",
+      "color": "#9c3d2e"
+    },
+    {
+      "name": "Dry grass",
+      "color": "#d8c07a"
+    },
+    {
+      "name": "Shadow plum",
+      "color": "#5b3a4a"
+    },
+    {
+      "name": "Shell",
+      "color": "#fffaf0"
+    }
+  ],
+  "mode": "threads",
+  "symmetry": "radial6",
+  "brushSize": {
+    "min": 2,
+    "max": 8
+  },
+  "background": "#f7efe2"
+}

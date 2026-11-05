@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Unclench: a head above relaxed, rounded shoulders">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <circle cx="160" cy="62" r="22" fill="#fffdf9" stroke="#6b4fd8" stroke-width="4"/>
+  <rect x="100" y="94" width="120" height="58" rx="29" fill="#b9a6ff" stroke="#6b4fd8" stroke-width="4"/>
+  <circle cx="104" cy="104" r="7" fill="#6b4fd8"/>
+  <circle cx="216" cy="104" r="7" fill="#6b4fd8"/>
+</svg>

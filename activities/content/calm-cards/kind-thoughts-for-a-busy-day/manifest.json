@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.kind-thoughts-for-a-busy-day",
+  "version": "0.1.0",
+  "name": "Kind Thoughts for a Busy Day",
+  "description": "Ten short, friendly thoughts to read between tasks.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["kind", "encouragement", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.cards@1",
+  "data": "deck.json",
+  "help": {
+    "summary": "A short deck of friendly thoughts for a busy day, shown on Calm Cards.",
+    "goal": "There is nothing to finish. One card is plenty.",
+    "howToPlay": [
+      "Read the thought on the card.",
+      "Press Show more for a little extra, if there is any.",
+      "Press Next for another thought."
+    ],
+    "tips": ["These are just kind words, not advice. Skip any that do not suit your day."]
+  },
+  "preview": "preview.svg"
+}

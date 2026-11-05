@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Creative Toy</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1 id="title">Creative Toy</h1>
+      <p id="intro" class="lede" hidden></p>
+
+      <canvas
+        id="canvas"
+        class="canvas"
+        width="320"
+        height="240"
+        tabindex="0"
+        role="application"
+        aria-label="Drawing canvas"
+        aria-describedby="keyhint canvasSummary"
+      ></canvas>
+      <p id="keyhint" class="sr-only">
+        Arrow keys move the cursor, Shift makes bigger steps, Space places a mark, number keys pick
+        a colour, U undoes, C clears, minus and plus change the brush size.
+      </p>
+      <p id="canvasSummary" class="sr-only"></p>
+
+      <div id="palette" class="palette" role="group" aria-label="Colours"></div>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="place" type="button">Place</button>
+        <button id="undo" type="button">Undo</button>
+        <button id="clear" type="button">Clear</button>
+        <button id="size" type="button">Size</button>
+      </div>
+    </main>
+    <script src="lullshift-bridge-v1.js"></script>
+    <script src="logic.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

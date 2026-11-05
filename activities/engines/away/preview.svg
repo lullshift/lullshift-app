@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Away Prompts: an open doorway, a small clock and a soft idea card">
+  <rect width="320" height="200" fill="#f1ebe3"/>
+  <rect x="48" y="36" width="88" height="130" rx="10" fill="#fffdf9" stroke="#625b6c" stroke-width="3"/>
+  <rect x="60" y="48" width="64" height="118" rx="6" fill="#ece6ff"/>
+  <circle cx="114" cy="110" r="5" fill="#6b4fd8"/>
+  <circle cx="226" cy="66" r="24" fill="#fffdf9" stroke="#6b4fd8" stroke-width="3"/>
+  <path d="M226 52 L226 66 L238 72" stroke="#6b4fd8" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <rect x="176" y="112" width="110" height="52" rx="12" fill="#fffdf9" stroke="#6b4fd8" stroke-width="2"/>
+  <rect x="192" y="128" width="78" height="7" rx="3.5" fill="#2a2633"/>
+  <rect x="192" y="144" width="52" height="7" rx="3.5" fill="#625b6c"/>
+  <circle cx="160" cy="178" r="4" fill="#b9a6ff"/>
+</svg>

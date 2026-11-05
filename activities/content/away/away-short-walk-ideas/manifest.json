@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.away-short-walk-ideas",
+  "version": "0.1.0",
+  "name": "Short Walk Ideas",
+  "description": "Light ideas for a short stroll, indoors or out, while your agents work.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["away", "walk", "outdoors"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.away@1",
+  "data": "prompts.json",
+  "help": {
+    "summary": "Ideas for a short walk, one at a time, shown on Away Prompts.",
+    "goal": "There is nothing to finish. A few steps is enough.",
+    "howToPlay": [
+      "Head away from your desk and read the idea.",
+      "Press Another idea for a different one.",
+      "Press Back at desk when you return."
+    ],
+    "tips": ["Walk at a pace and distance that suits you today. Ideas are only suggestions."]
+  },
+  "preview": "preview.svg"
+}

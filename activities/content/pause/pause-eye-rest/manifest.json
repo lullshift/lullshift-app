@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.pause-eye-rest",
+  "version": "0.1.0",
+  "name": "Eye Rest",
+  "description": "A short screen break for your eyes: look far, blink slowly, look near and far again.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["pause", "eyes"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.pause@1",
+  "data": "steps.json",
+  "help": {
+    "summary": "A five-step screen break for your eyes, on Guided Pause.",
+    "goal": "There is nothing to finish. Use as many steps as you like.",
+    "howToPlay": [
+      "Press Begin when you are ready.",
+      "Do what each step says. It moves on by itself.",
+      "Press Next to skip a step or Back to repeat one."
+    ],
+    "tips": [
+      "This is a break, not advice. Stop if anything feels uncomfortable, and skip any step."
+    ]
+  },
+  "preview": "preview.svg"
+}

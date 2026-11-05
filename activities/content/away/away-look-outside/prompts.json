@@ -1,0 +1,52 @@
+{
+  "title": "Look outside",
+  "intro": "Let your eyes wander somewhere far from the screen.",
+  "prompts": [
+    {
+      "text": "Find the farthest thing you can see and rest your eyes on it.",
+      "category": "window"
+    },
+    {
+      "text": "Watch the sky for a minute. What is it doing?",
+      "category": "window"
+    },
+    {
+      "text": "Count how many different greens you can see.",
+      "category": "window"
+    },
+    {
+      "text": "Find something that moves, like a leaf, a cloud or a person walking.",
+      "category": "window"
+    },
+    {
+      "text": "Pick one small detail on a distant building.",
+      "category": "window"
+    },
+    {
+      "text": "Look left, then right, then up, slowly.",
+      "category": "window"
+    },
+    {
+      "text": "Notice the light: where is it brightest, and where is it soft?",
+      "category": "window"
+    },
+    {
+      "text": "Find three shapes out there: a square, a circle and a triangle.",
+      "category": "window"
+    },
+    {
+      "text": "Blink slowly a few times, then look at something far away again.",
+      "category": "rest"
+    },
+    {
+      "text": "Watch the weather for a moment without any need to judge it.",
+      "category": "window"
+    },
+    {
+      "text": "If there is no window, look at the farthest corner of the room.",
+      "category": "window"
+    }
+  ],
+  "shuffle": false,
+  "backAtDesk": "Welcome back. The view will still be there next time."
+}

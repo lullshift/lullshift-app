@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A simple pattern of shapes">
+  <rect width="320" height="200" fill="#fff1e0"/>
+  <path d="M50 150 C 90 50, 150 50, 160 110 S 230 160, 270 70" fill="none" stroke="#d98324" stroke-width="8" stroke-linecap="round"/>
+  <polygon points="262,48 290,80 252,88" fill="#d98324"/>
+  <circle cx="50" cy="150" r="12" fill="#f6c98b"/>
+</svg>

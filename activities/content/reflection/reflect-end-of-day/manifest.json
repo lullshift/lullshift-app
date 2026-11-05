@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.reflect-end-of-day",
+  "version": "0.1.0",
+  "name": "End of Day",
+  "description": "Eight gentle questions for closing out the day, with optional notes that stay on this device.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "break",
+  "tags": ["reflection", "evening"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.reflection@1",
+  "data": "prompts.json",
+  "help": {
+    "summary": "Eight gentle questions for the end of a work day, shown on Reflection Prompts.",
+    "goal": "There is nothing to finish. Think about one prompt or all eight.",
+    "howToPlay": [
+      "Read the prompt and take a moment with it.",
+      "If you like, type a few words in the notes box. They stay on this device.",
+      "Press Next for another prompt, or Back to return.",
+      "Press Clear my notes whenever you want a clean slate."
+    ],
+    "tips": ["Skip any prompt that does not suit you today."]
+  },
+  "preview": "preview.svg"
+}

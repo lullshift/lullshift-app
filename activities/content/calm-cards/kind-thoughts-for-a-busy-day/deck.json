@@ -1,0 +1,46 @@
+{
+  "title": "Kind Thoughts for a Busy Day",
+  "intro": "A few small, kind thoughts. Read one, or read them all, and carry on whenever you like.",
+  "cards": [
+    {
+      "front": "A pause counts",
+      "back": "Taking a minute is not falling behind. It is part of how a day gets done."
+    },
+    {
+      "front": "Good enough is allowed",
+      "back": "Not everything needs to be perfect today. Some things only need to work."
+    },
+    {
+      "front": "You have done hard things before",
+      "back": "Think of one problem from this month that now feels small."
+    },
+    {
+      "front": "Small steps still move you",
+      "back": "A single tidy function or a single sent message is real progress."
+    },
+    {
+      "front": "Questions are welcome",
+      "back": "Asking for help early often saves a lot of time, and most people are glad to give it."
+    },
+    {
+      "front": "Let the waiting be waiting",
+      "back": "While something runs, you do not have to fill the time. Looking out of the window is fine."
+    },
+    {
+      "front": "Be as patient as you would be with a friend",
+      "back": "If a friend were stuck on this, you would be kind. You can be kind to yourself too."
+    },
+    {
+      "front": "Notice one thing that went well",
+      "back": "It can be tiny: a clean build, a good cup of tea, a quiet five minutes."
+    },
+    {
+      "front": "Thank someone, quietly",
+      "back": "Think of a person who made your week easier. A short thank you can mean a lot."
+    },
+    {
+      "front": "You can start again",
+      "back": "If the morning went sideways, the afternoon is still yours to shape."
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="Eye Rest: a pair of eyes above a bar">
+  <rect width="320" height="200" fill="#ece6ff"/>
+  <ellipse cx="120" cy="96" rx="40" ry="26" fill="#fffdf9" stroke="#6b4fd8" stroke-width="4"/>
+  <ellipse cx="200" cy="96" rx="40" ry="26" fill="#fffdf9" stroke="#6b4fd8" stroke-width="4"/>
+  <circle cx="124" cy="96" r="11" fill="#6b4fd8"/>
+  <circle cx="204" cy="96" r="11" fill="#6b4fd8"/>
+  <rect x="96" y="158" width="128" height="8" rx="4" fill="#b9a6ff"/>
+</svg>

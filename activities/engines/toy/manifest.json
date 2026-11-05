@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "app.lullshift.engines.toy",
+  "version": "0.1.0",
+  "name": "Creative Toy",
+  "description": "A calm, open-ended drawing toy. Leave soft marks with the keyboard or the mouse; a toy pack sets the colours and the style of the marks.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["drawing", "generative", "calm"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": { "pause": true, "resume": true, "persistState": true },
+  "help": {
+    "summary": "A quiet canvas where you leave marks. A toy pack decides the colours, the style and any mirroring.",
+    "goal": "There is nothing to finish. Make something, or just move the cursor around.",
+    "howToPlay": [
+      "Click the canvas to leave a mark, or drag to draw a trail.",
+      "With the keyboard, focus the canvas, move with the arrow keys and press Space to place a mark.",
+      "Pick a colour with the number keys or the round swatches.",
+      "Press Undo to take the last mark back, or Clear to start over."
+    ],
+    "controls": [
+      { "keys": "Arrow keys", "action": "Move the cursor (hold Shift for bigger steps)" },
+      { "keys": "Space / Enter", "action": "Place a mark" },
+      { "keys": "1 to 8", "action": "Choose a colour" },
+      { "keys": "[ and ]", "action": "Smaller or bigger brush" },
+      { "keys": "U / Backspace / Ctrl+Z", "action": "Undo" },
+      { "keys": "C", "action": "Clear the canvas (Undo brings it back)" }
+    ],
+    "tips": [
+      "Your picture is saved on this device when you pause. Nothing is uploaded and it cannot be exported.",
+      "The canvas keeps up to 2000 marks; the oldest fade away after that."
+    ]
+  },
+  "preview": "preview.svg"
+}

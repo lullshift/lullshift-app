@@ -1,0 +1,20 @@
+{
+  "title": "Kitchen break",
+  "intro": "Ideas for a few minutes away.",
+  "prompts": [
+    {
+      "text": "Fill a glass of water.",
+      "category": "water"
+    },
+    {
+      "text": "Look out of a window.",
+      "category": "window"
+    },
+    {
+      "text": "Sit down for a minute.",
+      "category": "rest"
+    }
+  ],
+  "shuffle": true,
+  "backAtDesk": "Welcome back."
+}

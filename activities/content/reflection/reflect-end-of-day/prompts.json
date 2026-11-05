@@ -1,0 +1,33 @@
+{
+  "title": "End of Day",
+  "intro": "A few gentle questions to close the day. Answer in your head or jot a note. Skip any you like.",
+  "allowNotes": true,
+  "prompts": [
+    {
+      "text": "What is one thing you finished today, however small?"
+    },
+    {
+      "text": "What took more effort than you expected?",
+      "followUp": "What helped you keep going?"
+    },
+    {
+      "text": "What would you like to leave for tomorrow?"
+    },
+    {
+      "text": "Is there anything you can set down for now?",
+      "followUp": "A quick note to yourself can hold it until morning."
+    },
+    {
+      "text": "What was a good moment from the day?"
+    },
+    {
+      "text": "What is one small thing that would make tomorrow's start easier?"
+    },
+    {
+      "text": "How would you like the evening to feel?"
+    },
+    {
+      "text": "What is one thing you want to remember about today?"
+    }
+  ]
+}

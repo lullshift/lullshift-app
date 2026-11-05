@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lullshift:engine:breathing:v1:data",
+  "title": "Breathing Space pattern (lullshift.breathing@1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "phases", "rounds"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "intro": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "phases": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "seconds"],
+        "properties": {
+          "kind": {
+            "enum": ["inhale", "hold", "exhale", "rest"]
+          },
+          "seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          },
+          "cue": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 24,
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+          }
+        },
+        "if": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "hold"
+            }
+          },
+          "required": ["kind"]
+        },
+        "then": {
+          "properties": {
+            "seconds": {
+              "type": "integer",
+              "maximum": 4
+            }
+          }
+        }
+      }
+    },
+    "rounds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "closing": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    }
+  }
+}
