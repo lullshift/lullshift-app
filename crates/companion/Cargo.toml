@@ -1,0 +1,28 @@
+[package]
+name = "companion"
+description = "Lullshift Companion (BYOK): providers, HTTP client, keychain, budget and context scopes (ADR-020)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+# An in-memory key store for TESTS of other crates. Enable it only from `[dev-dependencies]`.
+test-support = []
+
+[dependencies]
+# OS keychain, default feature `v1`: Windows Credential Manager, macOS Keychain and the Linux
+# Secret Service. No file or mock backend is compiled in (ADR-020). Pinned exactly.
+agent-core.workspace = true
+keyring = "=4.2.0"
+serde.workspace = true
+serde_json.workspace = true
+# Blocking client, rustls with the operating system's certificate verifier.
+ureq = { version = "=3.5.1", default-features = false, features = ["rustls", "platform-verifier"] }
+url = "2"
+zeroize = "1.9"
+
+[lints]
+workspace = true
