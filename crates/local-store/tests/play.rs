@@ -1,6 +1,6 @@
 //! Sprint 05: migration 0005 (time played, session tracking and title columns).
 
-use local_store::{MIGRATIONS, Store, StoreError, migrate};
+use local_store::{MIGRATIONS, Store, StoreError, latest_version, migrate};
 use rusqlite::Connection;
 use time::OffsetDateTime;
 use time::macros::datetime;
@@ -26,7 +26,10 @@ fn version_4_database_upgrades_to_5_and_keeps_data() {
         .expect("snapshot");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (4, 5));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (4, latest_version())
+    );
     assert!(report.backup.expect("backup before upgrade").exists());
     assert_eq!(s.sessions().expect("sessions").len(), 1);
     assert!(s.snapshot("app.x.game").expect("get").is_some());

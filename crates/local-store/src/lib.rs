@@ -11,6 +11,13 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 mod context;
+mod marketplaces;
+
+pub use marketplaces::{
+    ActivityKind, BUILTIN_MARKETPLACE_ID, InstalledActivity, MAX_ACTIVITY_ID_CHARS,
+    MAX_MARKETPLACE_ID_CHARS, MAX_PATH_CHARS, MAX_URL_CHARS, MarketplaceRecord,
+    NewInstalledActivity, SavedState,
+};
 
 pub use context::{
     Captured, ContextRecord, ContextSummary, Item, MAX_ASK_CHARS, MAX_INTENT_CHARS, MAX_ITEM_CHARS,
@@ -51,6 +58,14 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 5,
         sql: include_str!("../migrations/0005_activity_play_and_session_tracking.sql"),
     },
+    Migration {
+        version: 6,
+        sql: include_str!("../migrations/0006_marketplaces.sql"),
+    },
+    Migration {
+        version: 7,
+        sql: include_str!("../migrations/0007_saved_state_owner.sql"),
+    },
 ];
 
 pub fn latest_version() -> i64 {
@@ -83,6 +98,10 @@ pub enum StoreError {
     TooMany {
         limit: usize,
     },
+    /// The built-in marketplace cannot be removed.
+    BuiltinProtected,
+    /// The id is already in use.
+    AlreadyExists,
     Sqlite(rusqlite::Error),
 }
 
@@ -106,6 +125,8 @@ impl fmt::Display for StoreError {
             Self::NotFound => f.write_str("not found"),
             Self::InvalidInput(what) => write!(f, "invalid input: {what}"),
             Self::TooMany { limit } => write!(f, "limit of {limit} items reached"),
+            Self::BuiltinProtected => f.write_str("the built-in marketplace cannot be removed"),
+            Self::AlreadyExists => f.write_str("already exists"),
             Self::Sqlite(e) => write!(f, "database error: {e}"),
         }
     }
