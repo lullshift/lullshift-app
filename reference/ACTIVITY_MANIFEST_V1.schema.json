@@ -37,16 +37,20 @@
     "name": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 100
+      "maxLength": 100,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$",
+      "description": "Plain text, shown as the activity's title."
     },
     "description": {
       "type": "string",
-      "maxLength": 500
+      "maxLength": 500,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
     },
     "author": {
       "description": "Self-declared and unverified (there are no accounts). The install UI shows the source repository as the trust signal.",
       "type": "string",
-      "maxLength": 100
+      "maxLength": 100,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
     },
     "license": {
       "description": "SPDX license expression for the activity's code and content.",
@@ -66,10 +70,12 @@
       }
     },
     "minHostVersion": {
-      "type": "string"
+      "description": "Oldest Lullshift version that can run this activity (semver).",
+      "$ref": "#/$defs/semver"
     },
     "sdkVersion": {
-      "type": "string"
+      "description": "Activity SDK version the activity was built against (semver).",
+      "$ref": "#/$defs/semver"
     },
     "permissions": {
       "type": "array",
@@ -109,9 +115,19 @@
       "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+@[0-9]+$"
     },
     "data": {
-      "description": "Relative path to the engine data file inside the activity folder. Validated against the engine's data schema.",
+      "description": "Relative path to the engine data file inside the activity folder, validated against the engine's data schema. Segments start with a letter, digit or underscore, so `.`, `..`, `.git`, hidden names and a leading `-` are impossible.",
       "type": "string",
-      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.json$"
+      "pattern": "^(?:[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}/){0,7}[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\\.json$",
+      "maxLength": 256
+    },
+    "help": {
+      "$ref": "#/$defs/help"
+    },
+    "preview": {
+      "description": "Relative path to a preview image (PNG, JPEG, WebP or SVG, at most 256 KiB), shown on the activity card and the paused view. The host shows it only as an image.",
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^(?:[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}/){0,7}[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\\.(?:png|jpg|jpeg|webp|svg)$"
     }
   },
   "allOf": [
@@ -150,5 +166,81 @@
         }
       }
     }
-  ]
+  ],
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[0-9]{1,5}\\.[0-9]{1,5}\\.[0-9]{1,5}(?:-[0-9A-Za-z.-]{1,40})?$"
+    },
+    "help": {
+      "description": "How-to-play help, rendered by the host in its own panel (S05-T07). Plain text only: no control, bidirectional-override or invisible formatting characters, never HTML or Markdown.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "howToPlay"],
+      "properties": {
+        "summary": {
+          "description": "One or two sentences: what this is.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+        },
+        "goal": {
+          "description": "What counts as done or winning, if anything.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300,
+          "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+        },
+        "howToPlay": {
+          "description": "Steps, in order.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+          }
+        },
+        "controls": {
+          "description": "Keyboard and pointer controls.",
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["keys", "action"],
+            "properties": {
+              "keys": {
+                "description": "Key names as shown to the user, e.g. \"Arrow keys\" or \"Enter / Space\".",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40,
+                "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+              },
+              "action": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120,
+                "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+              }
+            }
+          }
+        },
+        "tips": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+          }
+        }
+      }
+    }
+  }
 }

@@ -1,22 +1,19 @@
-import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
-import addFormatsModule from "ajv-formats";
-import agentEventSchema from "../../../reference/AGENT_EVENT_V1.schema.json";
-import activityManifestSchema from "../../../reference/ACTIVITY_MANIFEST_V1.schema.json";
-import marketplaceSchema from "../../../reference/MARKETPLACE_V1.schema.json";
+import type { ErrorObject, ValidateFunction } from "ajv/dist/2020.js";
+import { createAjv } from "./ajv.ts";
+import agentEventSchema from "../../../reference/AGENT_EVENT_V1.schema.json" with { type: "json" };
+import activityManifestSchema from "../../../reference/ACTIVITY_MANIFEST_V1.schema.json" with { type: "json" };
+import marketplaceSchema from "../../../reference/MARKETPLACE_V1.schema.json" with { type: "json" };
 import type { AgentEventV1 } from "./generated/agent-event";
-import type { ActivityManifestV1 } from "./generated/activity-manifest";
+import type { ActivityManifestV1, Help } from "./generated/activity-manifest";
 import type { MarketplaceIndexV1 } from "./generated/marketplace";
 
-export type { AgentEventV1, ActivityManifestV1, MarketplaceIndexV1 };
+export type { AgentEventV1, ActivityManifestV1, Help, MarketplaceIndexV1 };
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: string[] };
 
-// ajv-formats is CommonJS; normalise the default export across bundlers.
-const addFormats = ((addFormatsModule as unknown as { default?: typeof addFormatsModule })
-  .default ?? addFormatsModule) as typeof addFormatsModule;
+export { createAjv } from "./ajv.ts";
 
-const ajv = new Ajv2020({ allErrors: false, strict: true, strictRequired: false });
-addFormats(ajv);
+const ajv = createAjv();
 
 function makeValidator<T>(schema: object): (input: unknown) => ValidationResult<T> {
   const validate = ajv.compile(schema) as ValidateFunction<T>;

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "dev.lullshift.games.grid-logic",
+  "version": "0.1.0",
+  "name": "Grid Logic",
+  "description": "Place numbers so every row, column and box is complete.",
+  "author": "Lullshift contributors",
+  "license": "Apache-2.0",
+  "category": "arcade",
+  "tags": ["puzzle", "grid"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "1.0.0",
+  "permissions": ["activity.storage"],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "preview": "../preview.png"
+}

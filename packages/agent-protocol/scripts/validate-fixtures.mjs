@@ -3,13 +3,10 @@
 // Exits 1 if any fixture behaves unexpectedly or a schema has no valid or no invalid fixtures.
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { Ajv2020 } from "ajv/dist/2020.js";
-import addFormatsModule from "ajv-formats";
+import { createAjv } from "../src/ajv.ts";
 import { fixturesDir, repoRoot, schemas } from "./schemas.mjs";
 
-const addFormats = addFormatsModule.default ?? addFormatsModule;
-const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
-addFormats(ajv);
+const ajv = createAjv({ allErrors: true });
 
 const listJson = async (dir) =>
   (await readdir(dir).catch(() => [])).filter((f) => f.endsWith(".json")).sort();
