@@ -35,3 +35,5 @@ A sprint is complete only when observed behavior meets the documented acceptance
 ## Required QA evidence
 
 Record the exact command and exit code, environment, fixture identifiers, failed/blocked checks and manual steps. Report platform gaps honestly.
+
+Every check that needs a person, an account or another OS goes into `docs/MANUAL_TESTS.md` with exact steps and expected results when the sprint closes. The product owner runs them all together before release (S11-T02).

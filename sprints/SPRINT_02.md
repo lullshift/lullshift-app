@@ -16,7 +16,7 @@
 ## Acceptance criteria
 
 - [ ] S02-A01: Real Claude Code smoke test shows working / needs_attention / turn events
-  (pending: needs the product owner's interactive Claude Code session; see closeout)
+  (pending: product owner runs it with the other manual checks, `docs/MANUAL_TESTS.md` M02-1)
 - [x] S02-A02: No duplicated attention notifications on replay
 - [x] S02-A03: Uninstall restores previous hook configuration exactly
 - [x] S02-A04: Capability matrix documented
@@ -81,5 +81,6 @@ Acceptance checks passed/failed:
   A01 pending (product owner's interactive run). A02 passed by tests (state-change rule plus
   15 s per-session gate); toast count to be confirmed in A01. A03 passed (exact byte restore,
   repair and edit cases). A04 passed.
-Recommended next action: run the A01 interactive smoke test, then commit Sprint 02.
+Manual checks owed: docs/MANUAL_TESTS.md M02-1 to M02-5 (run after all sprints, S11-T02).
+Recommended next action: start Sprint 03.
 ```

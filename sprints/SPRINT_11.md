@@ -7,7 +7,7 @@
 ## Work items
 
 - [ ] S11-T01: Installers, signed updater and release provenance. Product owner decision (2026-11-05): build installers with a GitHub Actions workflow that runs only on manual `workflow_dispatch` (never on push, merge or PR, to protect the free-plan quota) and attaches artifacts to a draft GitHub Release; amend ADR-004 accordingly. Windows/Apple code-signing certificates are not available yet: plan for unsigned installers with documented SmartScreen/Gatekeeper warnings unless that changes
-- [ ] S11-T02: Full threat-case, privacy, migration and cross-platform QA
+- [ ] S11-T02: Full threat-case, privacy, migration and cross-platform QA, including every check in `docs/MANUAL_TESTS.md` (product owner runs them together)
 - [ ] S11-T03: Accessibility audit and onboarding polish (hook consent, first activity)
 - [ ] S11-T04: User docs, creator docs (SDK, kits, engines, marketplace repos) and contribution guide
 - [ ] S11-T05: Release notes and feedback channels (GitHub issues/discussions); release only with explicit human approval
