@@ -1,6 +1,7 @@
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { useEffect, useState, type RefObject } from "react";
+import { ContextSettings } from "./context/ContextSettings";
 import { NotificationSettings } from "./NotificationSettings";
 import { Banner } from "./ui/Banner";
 import { Icon } from "./ui/Icon";
@@ -107,6 +108,8 @@ export default function Settings({
         </div>
         <NotificationSettings />
       </div>
+
+      <ContextSettings />
 
       <div className="card quiet-card">
         <Icon name="power" />

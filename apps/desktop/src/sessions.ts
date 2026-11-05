@@ -21,6 +21,8 @@ export interface SessionView {
   lastKnownState: SessionState;
   lastSeenUtc: string;
   lastReceivedUtc: string;
+  /** True when the session ended and the user hasn't reviewed it yet (return card, ADR-013). */
+  needsReview: boolean;
 }
 
 export type Health = { status: "ok" } | { status: "error"; code: string };

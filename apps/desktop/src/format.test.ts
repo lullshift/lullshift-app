@@ -28,6 +28,7 @@ function session(
     lastKnownState: state,
     lastSeenUtc: ago(10),
     lastReceivedUtc: ago(10),
+    needsReview: false,
   } satisfies SessionView;
 }
 

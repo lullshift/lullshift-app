@@ -33,6 +33,8 @@ export default function App() {
   const [view, setView] = useState<ViewId>("sessions");
   const [now, setNow] = useState(() => Date.now());
   const [pause, setPause] = useState<PauseRequest | null>(null);
+  // Bumps on each sessions-changed event so an open detail panel re-reads its session.
+  const [changeTick, setChangeTick] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
   // The Activities heading while that view is hidden (only the visible view gets focus).
   const unusedHeading = useRef<HTMLHeadingElement>(null);
@@ -67,6 +69,7 @@ export default function App() {
       pending ??= window.setTimeout(() => {
         pending = undefined;
         setNow(Date.now());
+        setChangeTick((n) => n + 1);
         void refresh();
       }, CHANGE_DEBOUNCE_MS);
     };
@@ -144,6 +147,9 @@ export default function App() {
             staleAfterSeconds={dashboard?.staleAfterSeconds ?? 600}
             now={now}
             onConnect={() => setView("integrations")}
+            changeTick={changeTick}
+            onRefresh={() => void refresh()}
+            onOpenSettings={() => setView("settings")}
           />
         )}
         {/* Stays mounted while hidden so a running activity can save before it pauses. */}

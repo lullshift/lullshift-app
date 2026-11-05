@@ -23,6 +23,7 @@ const s = (
   lastKnownState: state,
   lastSeenUtc: at,
   lastReceivedUtc: at,
+  needsReview: false,
   ...extra,
 });
 

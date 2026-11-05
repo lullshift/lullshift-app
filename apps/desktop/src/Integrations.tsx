@@ -8,6 +8,7 @@ import {
   type AdapterView,
   type UninstallView,
 } from "./adapters";
+import { TaskContextSwitch } from "./context/TaskContextSwitch";
 import { Banner } from "./ui/Banner";
 import { Dialog } from "./ui/Dialog";
 import { Icon } from "./ui/Icon";
@@ -135,6 +136,8 @@ export default function Integrations({
             <span>You get one gentle notification when a session needs you.</span>
           </li>
         </ul>
+
+        <TaskContextSwitch />
 
         {(canInstall || canRemove) && (
           <div className="actions">
