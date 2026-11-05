@@ -7,28 +7,38 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "name", "activities"],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": {
+      "const": 1
+    },
     "name": {
       "description": "Short marketplace name shown in the UI and used in commands. 'lullshift' is reserved for the built-in marketplace.",
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]{1,39}$"
     },
-    "description": { "type": "string", "maxLength": 500 },
-    "owner": {
-      "description": "Self-declared, unverified.",
+    "description": {
       "type": "string",
-      "maxLength": 100
+      "maxLength": 500,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "owner": {
+      "description": "Self-declared, unverified. Plain text.",
+      "type": "string",
+      "maxLength": 100,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
     },
     "activities": {
       "type": "array",
       "maxItems": 1000,
-      "items": { "$ref": "#/$defs/entry" }
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
     }
   },
   "$defs": {
     "relativePath": {
+      "description": "A `/`-separated path of at most 12 parts. Each part starts with a letter, digit or underscore (so no empty, `.`, `..`, `.git` or leading `-`), has at most 64 characters from letters, digits, `.`, `_`, `-`, does not end with `.`, and is not a Windows reserved device name (CON, PRN, AUX, NUL, COM1-9, LPT1-9, with or without an extension). Enforced again by the Rust marketplace crate.",
       "type": "string",
-      "pattern": "^(?!/)(?!.*\\.\\.)(?!.*\\\\)[A-Za-z0-9_./-]+$",
+      "pattern": "^(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|/|$))[A-Za-z0-9_](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9_-])?(?:/(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\.|/|$))[A-Za-z0-9_](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9_-])?){0,11}$",
       "maxLength": 300
     },
     "entry": {
@@ -49,7 +59,11 @@
               "type": "object",
               "additionalProperties": false,
               "required": ["path"],
-              "properties": { "path": { "$ref": "#/$defs/relativePath" } }
+              "properties": {
+                "path": {
+                  "$ref": "#/$defs/relativePath"
+                }
+              }
             },
             {
               "description": "Folder in another Git repository. 'ref' is a tag, branch or commit; the installed version is always pinned to the resolved commit SHA.",
@@ -58,18 +72,31 @@
               "required": ["git"],
               "properties": {
                 "git": {
+                  "description": "https://host/path, ssh://[user@]host[:port]/path, git@host:path or GitHub shorthand owner/repo. No userinfo (https allows none; ssh allows a user name only, never a password), no option-looking host, owner or path part, no `..` or `.git` path part (a final `repo.git` is fine), no control characters or whitespace, and no localhost, IP literal or local-network host name.",
                   "type": "string",
-                  "pattern": "^(https://|ssh://|git@)[^\\s]+$|^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$",
+                  "pattern": "^(?:https://(?![A-Za-z0-9.-]*\\.(?:[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt]|[Ll][Oo][Cc][Aa][Ll]|[Ii][Nn][Tt][Ee][Rr][Nn][Aa][Ll]|[Ll][Aa][Nn]|[Ll][Oo][Cc][Aa][Ll][Dd][Oo][Mm][Aa][Ii][Nn]|[Ii][Nn][Tt][Rr][Aa][Nn][Ee][Tt]|[Cc][Oo][Rr][Pp]|[Hh][Oo][Mm][Ee]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]|[Aa][Rr][Pp][Aa])(?::|/|$))(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z][A-Za-z0-9-]{0,61}[A-Za-z0-9](?::[1-9][0-9]{0,4})?(?:/[A-Za-z0-9_][A-Za-z0-9._-]{0,99}){1,10}|ssh://(?:[A-Za-z0-9][A-Za-z0-9._-]{0,31}@)?(?![A-Za-z0-9.-]*\\.(?:[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt]|[Ll][Oo][Cc][Aa][Ll]|[Ii][Nn][Tt][Ee][Rr][Nn][Aa][Ll]|[Ll][Aa][Nn]|[Ll][Oo][Cc][Aa][Ll][Dd][Oo][Mm][Aa][Ii][Nn]|[Ii][Nn][Tt][Rr][Aa][Nn][Ee][Tt]|[Cc][Oo][Rr][Pp]|[Hh][Oo][Mm][Ee]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]|[Aa][Rr][Pp][Aa])(?::|/|$))(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z][A-Za-z0-9-]{0,61}[A-Za-z0-9](?::[1-9][0-9]{0,4})?(?:/[A-Za-z0-9_][A-Za-z0-9._-]{0,99}){1,10}|git@(?![A-Za-z0-9.-]*\\.(?:[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt]|[Ll][Oo][Cc][Aa][Ll]|[Ii][Nn][Tt][Ee][Rr][Nn][Aa][Ll]|[Ll][Aa][Nn]|[Ll][Oo][Cc][Aa][Ll][Dd][Oo][Mm][Aa][Ii][Nn]|[Ii][Nn][Tt][Rr][Aa][Nn][Ee][Tt]|[Cc][Oo][Rr][Pp]|[Hh][Oo][Mm][Ee]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee]|[Aa][Rr][Pp][Aa])(?::|/|$))(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z][A-Za-z0-9-]{0,61}[A-Za-z0-9]:[A-Za-z0-9_][A-Za-z0-9._-]{0,99}(?:/[A-Za-z0-9_][A-Za-z0-9._-]{0,99}){0,9}|[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_][A-Za-z0-9._-]{0,99})$",
                   "maxLength": 300
                 },
-                "ref": { "type": "string", "maxLength": 200 },
-                "path": { "$ref": "#/$defs/relativePath" }
+                "ref": {
+                  "$ref": "#/$defs/gitRef"
+                },
+                "path": {
+                  "$ref": "#/$defs/relativePath"
+                }
               }
             }
           ]
         },
-        "featured": { "type": "boolean" }
+        "featured": {
+          "type": "boolean"
+        }
       }
+    },
+    "gitRef": {
+      "description": "A branch, tag or commit id. No leading '-', '..', '//', ':', '^', '~', '*', '?', '[', backslash, whitespace or '@{', no part starting with '.', no '.lock' suffix. At run time it must also pass `git check-ref-format --allow-onelevel`, or be a 40-hex commit id.",
+      "type": "string",
+      "pattern": "^(?!-)(?!/)(?!\\.)(?!.*\\.\\.)(?!.*//)(?!.*/$)(?!.*/\\.)(?!.*\\.$)(?!.*\\.lock(?:/|$))[A-Za-z0-9._/-]{1,200}$",
+      "maxLength": 200
     }
   }
 }

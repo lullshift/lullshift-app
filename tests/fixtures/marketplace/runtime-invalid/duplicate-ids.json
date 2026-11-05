@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "name": "test-market",
+  "activities": [
+    {
+      "id": "com.example.pack",
+      "source": {
+        "path": "a"
+      }
+    },
+    {
+      "id": "com.example.pack",
+      "source": {
+        "path": "b"
+      }
+    }
+  ]
+}

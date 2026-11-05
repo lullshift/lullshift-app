@@ -2179,8 +2179,10 @@ dependencies = [
  "agent-core",
  "agent-ipc",
  "chrono",
+ "getrandom 0.4.3",
  "include_dir",
  "local-store",
+ "marketplace",
  "regex",
  "rusqlite",
  "serde",
@@ -2207,6 +2209,17 @@ dependencies = [
  "objc2-foundation",
  "time",
  "uuid",
+]
+
+[[package]]
+name = "marketplace"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
 ]
 
 [[package]]

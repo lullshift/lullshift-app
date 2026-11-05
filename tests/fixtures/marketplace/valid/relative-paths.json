@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "name": "test-market",
+  "activities": [
+    {
+      "id": "com.example.q0",
+      "source": {
+        "path": "a"
+      }
+    },
+    {
+      "id": "com.example.q1",
+      "source": {
+        "path": "activities/content/x"
+      }
+    },
+    {
+      "id": "com.example.q2",
+      "source": {
+        "path": "a-b/c_d/e.f"
+      }
+    },
+    {
+      "id": "com.example.q3",
+      "source": {
+        "path": "_x"
+      }
+    },
+    {
+      "id": "com.example.q4",
+      "source": {
+        "path": "icon"
+      }
+    },
+    {
+      "id": "com.example.q5",
+      "source": {
+        "path": "console/x"
+      }
+    },
+    {
+      "id": "com.example.q6",
+      "source": {
+        "path": "com10"
+      }
+    },
+    {
+      "id": "com.example.q7",
+      "source": {
+        "path": "nullable"
+      }
+    },
+    {
+      "id": "com.example.q8",
+      "source": {
+        "path": "aux-tools/lpt10"
+      }
+    },
+    {
+      "id": "com.example.q9",
+      "source": {
+        "path": "a.b/c.d.e"
+      }
+    },
+    {
+      "id": "com.example.q10",
+      "source": {
+        "path": "a/a/a/a/a/a/a/a/a/a/a/a"
+      }
+    }
+  ]
+}

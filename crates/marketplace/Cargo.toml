@@ -1,0 +1,28 @@
+[package]
+name = "marketplace"
+description = "Lullshift Git marketplaces: hardened git runner, index and pack validation, pinned installs (ADR-015)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+# Lets another crate's TESTS use `file://` repositories (`Git::for_tests`, `GitUrl::for_test_file`).
+# Enable it only from a `[dev-dependencies]` entry. Even then it is compiled in only when
+# `debug_assertions` is on, so no release build can contain it.
+unsafe-test-file-urls = []
+
+[dependencies]
+# Moved here with the engine data-schema validator (ADR-016); already in the lockfile via Tauri.
+regex = "1.13"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

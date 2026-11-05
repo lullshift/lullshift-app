@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "name": "test-market",
+  "description": "bad\u0007text",
+  "activities": []
+}

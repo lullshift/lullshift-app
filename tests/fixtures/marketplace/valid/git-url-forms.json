@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "name": "test-market",
+  "activities": [
+    {
+      "id": "com.example.p0",
+      "source": {
+        "git": "https://github.com/o/r"
+      }
+    },
+    {
+      "id": "com.example.p1",
+      "source": {
+        "git": "https://gitlab.example.org:8443/group/sub/r.git"
+      }
+    },
+    {
+      "id": "com.example.p2",
+      "source": {
+        "git": "ssh://git@host.example.com/o/r.git"
+      }
+    },
+    {
+      "id": "com.example.p3",
+      "source": {
+        "git": "ssh://host.example.com:2222/o/r"
+      }
+    },
+    {
+      "id": "com.example.p4",
+      "source": {
+        "git": "git@github.com:o/r.git"
+      }
+    },
+    {
+      "id": "com.example.p5",
+      "source": {
+        "git": "owner/repo"
+      }
+    },
+    {
+      "id": "com.example.p6",
+      "source": {
+        "git": "Owner-1/re_po.v2"
+      }
+    },
+    {
+      "id": "com.example.p7",
+      "source": {
+        "git": "acme/stretch",
+        "path": "packs/a-b/c_d"
+      }
+    }
+  ]
+}

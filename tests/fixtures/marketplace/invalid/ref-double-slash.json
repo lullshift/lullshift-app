@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "name": "test-market",
+  "activities": [
+    {
+      "id": "com.example.pack",
+      "source": {
+        "git": "acme/stretch",
+        "ref": "a//b"
+      }
+    }
+  ]
+}

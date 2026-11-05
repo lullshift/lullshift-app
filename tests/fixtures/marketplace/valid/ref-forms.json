@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "name": "test-market",
+  "activities": [
+    {
+      "id": "com.example.r0",
+      "source": {
+        "git": "acme/stretch",
+        "ref": "main"
+      }
+    },
+    {
+      "id": "com.example.r1",
+      "source": {
+        "git": "acme/stretch",
+        "ref": "v1.2.3"
+      }
+    },
+    {
+      "id": "com.example.r2",
+      "source": {
+        "git": "acme/stretch",
+        "ref": "release/2026-11"
+      }
+    },
+    {
+      "id": "com.example.r3",
+      "source": {
+        "git": "acme/stretch",
+        "ref": "feature/a_b.c"
+      }
+    },
+    {
+      "id": "com.example.r4",
+      "source": {
+        "git": "acme/stretch",
+        "ref": "HEAD"
+      }
+    },
+    {
+      "id": "com.example.r5",
+      "source": {
+        "git": "acme/stretch",
+        "ref": "3f9c2e1"
+      }
+    },
+    {
+      "id": "com.example.r6",
+      "source": {
+        "git": "acme/stretch",
+        "ref": "0123456789abcdef0123456789abcdef01234567"
+      }
+    }
+  ]
+}
