@@ -17,6 +17,16 @@ All artwork here is original and Apache-2.0 like the rest of the repository.
 
 The tray versions keep only two faces with oversized eyes, cropped tight, so asleep and awake stay distinct at 16 px. The full-color face is not legible below 24 px.
 
+## Color roles
+
+Each color has one job, so the attention signal never gets lost:
+
+- **Teal is identity.** App icon, tray, the mascot wherever it appears (including inside the app), README and website art. Never used for buttons or other controls.
+- **Lavender is interaction.** In-app accent for primary buttons, links, focus rings, selected tabs and the Working state. It is never applied to the mascot. The tokens live in the design system (`docs/DESIGN_SYSTEM.md`).
+- **Orange is attention.** "Needs you" in the tray, the window and notifications. Nothing else is orange.
+
+Teal and lavender should not appear side by side as equal controls. The teal mascot inside a lavender interface is fine, because it is an illustration, not a control.
+
 ## Colors
 
 | Name | Value | Use |
