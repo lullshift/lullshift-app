@@ -638,3 +638,48 @@ Record any "ESCAPED" line in ADR-012.
 **Expected:** all tests pass (they include the Unix-only checks), and installing works as on Windows.
 
 **Result:** \_\_\_
+
+## Sprint 09 – Companion (BYOK)
+
+### M09-1: A real provider with your own key (S09-A01)
+
+**Why manual:** the automated checks use a local fake provider; a real key and real provider responses need you.
+
+1. In **Companion > Settings**, add an Anthropic provider with a current model name and your key. Press **Test connection**.
+2. Repeat with OpenAI (or an OpenAI-compatible service you use) if you have a key.
+3. Start a conversation and send two messages with **No context**.
+4. Enter a wrong key, test again; then set a tiny monthly budget (for example 50 tokens) and send.
+5. Search the app data folders (`%APPDATA%\app.lullshift.desktop` and `%LOCALAPPDATA%\app.lullshift.desktop` on Windows) for a distinctive part of your key.
+6. Remove the provider and check the system keychain (Credential Manager, Keychain Access, Seahorse) has no Lullshift entry.
+
+**Expected:** replies arrive and show as plain text; a wrong key says the key was rejected; the tiny budget blocks sending with a clear message; the key is found nowhere in Lullshift's files; removal deletes the keychain entry. The OpenAI request format was written without the official page to hand, so a failure there is a real bug to report.
+
+**Result:** \_\_\_
+
+### M09-2: Context is only shared when you choose it (S09-A02)
+
+1. With an agent session that has notes and checklist items, send a message with **Session summary**, then one with **Selected notes** (tick one note and one item).
+2. In each preview, read the exact text, then send.
+3. Expand **Shared with** on each sent message.
+
+**Expected:** nothing is sent until you press **Send with this context**; the text matches the preview; the choice goes back to **No context** after each message; nothing else from your sessions (captured prompts, other sessions) appears.
+
+**Result:** \_\_\_
+
+### M09-3: Keyboard, screen reader, offline
+
+1. Use Companion with the keyboard only, then with a screen reader: settings, key entry, the context preview dialog, sending, cancel, Try again.
+2. Disconnect from the network and send.
+
+**Expected:** every control is reachable with visible focus; the screen reader announces sending, replies and errors; offline gives "Can't reach <host>", the message stays as not sent, and **Try again** works once you reconnect.
+
+**Result:** \_\_\_
+
+### M09-4: Keychain on macOS and Linux
+
+1. On macOS and Linux, run `cargo test -p companion -- --ignored` and repeat M09-1 steps 1 and 6.
+2. On a Linux desktop without a Secret Service running, open Companion settings.
+
+**Expected:** the keychain test passes and leaves nothing behind; without a Secret Service, Companion says the system keychain isn't available and does not offer to store the key elsewhere.
+
+**Result:** \_\_\_
