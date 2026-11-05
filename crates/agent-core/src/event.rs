@@ -16,6 +16,8 @@ const MAX_PROVIDER_LEN: usize = 80;
 const MAX_ID_LEN: usize = 256;
 const MAX_CAPABILITIES: usize = 32;
 const MAX_METADATA_KEYS: usize = 20;
+const MAX_METADATA_STRING_LEN: usize = 256;
+const MAX_SLUG_LEN: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -43,6 +45,20 @@ impl EventType {
             "heartbeat" => Self::Heartbeat,
             _ => return None,
         })
+    }
+
+    /// Wire name, e.g. `needs_attention`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SessionStarted => "session_started",
+            Self::Working => "working",
+            Self::NeedsAttention => "needs_attention",
+            Self::TurnEnded => "turn_ended",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+            Self::Heartbeat => "heartbeat",
+        }
     }
 }
 
@@ -75,12 +91,22 @@ struct WireEvent {
     provider_session_id: String,
     event_type: String,
     timestamp_utc: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "present")]
     correlation_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "present")]
     capabilities: Option<Vec<String>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "present")]
     metadata: Option<Map<String, Value>>,
+}
+
+/// Optional field that, when present, must hold a value: explicit `null` is rejected, as in
+/// the schema. A missing field still becomes `None` through `#[serde(default)]`.
+fn present<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(d).map(Some)
 }
 
 /// Why an event was rejected. Deliberately holds no input content, so it is safe to log.
@@ -198,6 +224,49 @@ fn parse_timestamp(s: &str) -> Option<OffsetDateTime> {
     OffsetDateTime::parse(s, &Rfc3339).ok()
 }
 
+/// Characters that can hide or reorder displayed text (ADR-008): C0/C1 controls and DEL, the
+/// Arabic letter mark, zero-width and directional marks (U+200B-200F), line/paragraph
+/// separators, bidi embeddings/overrides/isolates, invisible operators (U+2060-2064), the BOM
+/// and interlinear annotation controls. Must match the schema's opaque-text pattern.
+pub fn is_forbidden_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0}'..='\u{1F}'
+            | '\u{7F}'..='\u{9F}'
+            | '\u{61C}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{2028}'..='\u{202E}'
+            | '\u{2060}'..='\u{2069}'
+            | '\u{FEFF}'
+            | '\u{FFF9}'..='\u{FFFB}'
+    )
+}
+
+/// 1-256 characters, none forbidden. Matches the schema's opaque-id pattern.
+fn is_opaque_id(s: &str) -> bool {
+    let n = s.chars().count();
+    (1..=MAX_ID_LEN).contains(&n) && !s.chars().any(is_forbidden_char)
+}
+
+/// `^[first][first|0-9|._-]{0,max-1}$` with `first` deciding the allowed leading letters.
+fn is_slug(s: &str, max: usize, first: impl Fn(char) -> bool) -> bool {
+    let mut chars = s.chars();
+    let Some(c0) = chars.next() else { return false };
+    first(c0)
+        && s.chars().count() <= max
+        && chars
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
+}
+
+/// `^[A-Za-z][A-Za-z0-9_.-]{0,max-1}$` (metadata keys).
+fn is_slug_any_case(s: &str, max: usize) -> bool {
+    let mut chars = s.chars();
+    let Some(c0) = chars.next() else { return false };
+    c0.is_ascii_alphabetic()
+        && s.chars().count() <= max
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
 /// Parses and validates one agent event from JSON. Errors never echo input content.
 pub fn parse_event(json: &str) -> Result<AgentEvent, EventError> {
     let w: WireEvent = serde_json::from_str(json).map_err(|e| malformed(&e))?;
@@ -210,12 +279,16 @@ pub fn parse_event(json: &str) -> Result<AgentEvent, EventError> {
     let event_id = parse_event_id(&w.event_id).ok_or(EventError::Invalid(
         "eventId must be a lowercase hyphenated UUID",
     ))?;
-    if w.provider.is_empty() || w.provider.chars().count() > MAX_PROVIDER_LEN {
-        return Err(EventError::Invalid("provider must be 1-80 characters"));
-    }
-    if w.provider_session_id.chars().count() > MAX_ID_LEN {
+    if !is_slug(&w.provider, MAX_PROVIDER_LEN, |c| {
+        c.is_ascii_lowercase() || c.is_ascii_digit()
+    }) {
         return Err(EventError::Invalid(
-            "providerSessionId exceeds 256 characters",
+            "provider must be a lowercase slug of 1-80 characters",
+        ));
+    }
+    if !is_opaque_id(&w.provider_session_id) {
+        return Err(EventError::Invalid(
+            "providerSessionId must be 1-256 characters without control or bidi characters",
         ));
     }
     let event_type =
@@ -224,22 +297,47 @@ pub fn parse_event(json: &str) -> Result<AgentEvent, EventError> {
         "timestampUtc must be a strict RFC 3339 date-time",
     ))?;
     if w.correlation_id
-        .as_ref()
-        .is_some_and(|c| c.chars().count() > MAX_ID_LEN)
+        .as_deref()
+        .is_some_and(|c| !is_opaque_id(c))
     {
-        return Err(EventError::Invalid("correlationId exceeds 256 characters"));
+        return Err(EventError::Invalid(
+            "correlationId must be 1-256 characters without control or bidi characters",
+        ));
     }
-    if w.capabilities
-        .as_ref()
-        .is_some_and(|c| c.len() > MAX_CAPABILITIES)
-    {
-        return Err(EventError::Invalid("capabilities exceeds 32 items"));
+    if let Some(caps) = &w.capabilities {
+        if caps.len() > MAX_CAPABILITIES {
+            return Err(EventError::Invalid("capabilities exceeds 32 items"));
+        }
+        if !caps
+            .iter()
+            .all(|c| is_slug(c, MAX_SLUG_LEN, |ch| ch.is_ascii_lowercase()))
+        {
+            return Err(EventError::Invalid("capabilities must be lowercase slugs"));
+        }
+        let mut seen = std::collections::HashSet::new();
+        if !caps.iter().all(|c| seen.insert(c)) {
+            return Err(EventError::Invalid("capabilities must be unique"));
+        }
     }
-    if w.metadata
-        .as_ref()
-        .is_some_and(|m| m.len() > MAX_METADATA_KEYS)
-    {
-        return Err(EventError::Invalid("metadata exceeds 20 properties"));
+    if let Some(meta) = &w.metadata {
+        if meta.len() > MAX_METADATA_KEYS {
+            return Err(EventError::Invalid("metadata exceeds 20 properties"));
+        }
+        if !meta.keys().all(|k| is_slug_any_case(k, MAX_SLUG_LEN)) {
+            return Err(EventError::Invalid("metadata keys must be identifiers"));
+        }
+        let scalar_ok = |v: &Value| match v {
+            Value::Null | Value::Bool(_) | Value::Number(_) => true,
+            Value::String(s) => {
+                s.chars().count() <= MAX_METADATA_STRING_LEN && !s.chars().any(is_forbidden_char)
+            }
+            Value::Array(_) | Value::Object(_) => false,
+        };
+        if !meta.values().all(scalar_ok) {
+            return Err(EventError::Invalid(
+                "metadata values must be short scalars without control characters",
+            ));
+        }
     }
 
     Ok(AgentEvent {
@@ -334,6 +432,54 @@ mod tests {
         }
         for good_ts in ["2026-11-05T10:15:30Z", "2026-11-05T10:20:01.250+03:00"] {
             assert!(parse_timestamp(good_ts).is_some(), "{good_ts}");
+        }
+    }
+
+    #[test]
+    fn input_limit_helpers_match_schema_boundaries() {
+        let provider = |s: &str| {
+            is_slug(s, MAX_PROVIDER_LEN, |c| {
+                c.is_ascii_lowercase() || c.is_ascii_digit()
+            })
+        };
+        assert!(provider("claude-code") && provider("1agent") && provider(&"a".repeat(80)));
+        for bad in ["", "Claude", "a b", "-x", &"a".repeat(81)] {
+            assert!(!provider(bad), "{bad:?}");
+        }
+        assert!(is_opaque_id("s") && is_opaque_id(&"s".repeat(256)) && is_opaque_id("sessão-日本"));
+        for bad in [
+            "",
+            "a\u{0}b",
+            "a\u{85}b",
+            "a\u{202E}b",
+            "a\u{2066}b",
+            &"s".repeat(257),
+        ] {
+            assert!(!is_opaque_id(bad), "{bad:?}");
+        }
+        assert!(is_slug_any_case("Tool.name_2", MAX_SLUG_LEN));
+        for bad in ["", "1st", "a b", &"k".repeat(65)] {
+            assert!(!is_slug_any_case(bad, MAX_SLUG_LEN), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn metadata_and_capability_rules() {
+        let with = |extra: &str| BASE.replace(r#""eventType""#, &format!(r#"{extra},"eventType""#));
+        assert!(parse_event(&with(r#""metadata":{"a":1,"b":true,"c":null,"d":"x"}"#)).is_ok());
+        assert!(parse_event(&with(r#""capabilities":["lifecycle","needs.attention"]"#)).is_ok());
+        for bad in [
+            r#""metadata":{"a":{"b":1}}"#,
+            r#""metadata":{"a":[1]}"#,
+            r#""metadata":{"a":"x\ny"}"#,
+            r#""capabilities":["a","a"]"#,
+            r#""capabilities":["A"]"#,
+            r#""correlationId":"""#,
+        ] {
+            assert!(
+                matches!(parse_event(&with(bad)), Err(EventError::Invalid(_))),
+                "{bad}"
+            );
         }
     }
 }

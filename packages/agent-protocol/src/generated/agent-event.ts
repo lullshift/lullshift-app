@@ -6,7 +6,13 @@ export interface AgentEventV1 {
    * Lowercase hyphenated UUID.
    */
   eventId: string;
+  /**
+   * Lowercase provider slug, e.g. claude-code.
+   */
   provider: string;
+  /**
+   * Opaque provider session id. No control, bidi, zero-width or other invisible formatting characters.
+   */
   providerSessionId: string;
   eventType:
     | "session_started"
@@ -21,10 +27,18 @@ export interface AgentEventV1 {
    * Strict RFC 3339: T separator, seconds 00-59, 1-9 fractional digits, Z or +HH:MM/-HH:MM.
    */
   timestampUtc: string;
+  /**
+   * Opaque correlation id. No control, bidi, zero-width or other invisible formatting characters.
+   */
   correlationId?: string;
   /**
    * @maxItems 32
    */
   capabilities?: string[];
-  metadata?: {};
+  /**
+   * Small, non-sensitive hints only. Scalar values; never prompts, code or task content.
+   */
+  metadata?: {
+    [k: string]: string | number | boolean | null | undefined;
+  };
 }

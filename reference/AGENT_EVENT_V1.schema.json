@@ -23,12 +23,15 @@
     },
     "provider": {
       "type": "string",
-      "minLength": 1,
-      "maxLength": 80
+      "description": "Lowercase provider slug, e.g. claude-code.",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,79}$"
     },
     "providerSessionId": {
       "type": "string",
-      "maxLength": 256
+      "description": "Opaque provider session id. No control, bidi, zero-width or other invisible formatting characters.",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2069\\uFEFF\\uFFF9-\\uFFFB]+$"
     },
     "eventType": {
       "enum": [
@@ -50,18 +53,45 @@
     },
     "correlationId": {
       "type": "string",
-      "maxLength": 256
+      "description": "Opaque correlation id. No control, bidi, zero-width or other invisible formatting characters.",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2069\\uFEFF\\uFFF9-\\uFFFB]+$"
     },
     "capabilities": {
       "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
       "items": {
-        "type": "string"
-      },
-      "maxItems": 32
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_.-]{0,63}$"
+      }
     },
     "metadata": {
       "type": "object",
-      "maxProperties": 20
+      "description": "Small, non-sensitive hints only. Scalar values; never prompts, code or task content.",
+      "maxProperties": 20,
+      "propertyNames": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "maxLength": 256,
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2069\\uFEFF\\uFFF9-\\uFFFB]*$"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
     }
   }
 }
