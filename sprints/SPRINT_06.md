@@ -1,48 +1,39 @@
-# Sprint 06 - Companion BYOK & Activity SDK
+# Sprint 06 - Game Kits and First Games
 
-**Goal:** Companion BYOK & Activity SDK. **Duration:** indicative two weeks. **Owner:** implementation lead, with relevant Claude Code specialist agents.
+**Goal:** Shared kits make games cheap to build well; the first games ship on them.
 
-## Dependencies and scope
-
-Read `CLAUDE.md`, product and technical docs, and `sprints/ROADMAP.md`. Complete earlier sprint acceptance criteria. Do not implement later sprints or substitute unsupported provider behavior.
+**Depends on:** Sprint 05.
 
 ## Work items
 
-- [ ] S06-T01: Implement secure BYOK provider settings and keychain storage
-- [ ] S06-T02: Build Companion threads with scoped context permissions
-- [ ] S06-T03: Define versioned TypeScript activity API and state persistence
-- [ ] S06-T04: Bundle trusted activities only; design plugin sandbox ADR
-- [ ] S06-T05: Test network failure, budgets, permissions and malformed plugins
+- [ ] S06-T01: Grid kit: cells, selection, keyboard navigation, undo, seeded generators, daily seed
+- [ ] S06-T02: Card kit: deck, moves, keyboard play, undo
+- [ ] S06-T03: Arcade kit: game loop, forced pause, resume countdown, reduced-motion mode
+- [ ] S06-T04: At least 8 original games across the kits, puzzle/turn-based first
+- [ ] S06-T05: Kit test suites (lifecycle, persistence, accessibility) and per-game rule tests
 
-## Acceptance criteria / demonstrable exit tests
+## Acceptance criteria
 
-- [ ] S06-A01: BYOK key never appears in SQLite, logs or UI error traces
-- [ ] S06-A02: Context sharing requires explicit scope selection
-- [ ] S06-A03: Activity SDK contract tests pass with sample activity
-- [ ] S06-A04: Untrusted executable plugins remain disabled
+- [ ] S06-A01: Each kit passes the activity gates in `DEFINITION_OF_DONE.md`
+- [ ] S06-A02: At least 8 games pass validate, simulate, persistence and keyboard checks
+- [ ] S06-A03: Games listed in the built-in marketplace index
 
-## Engineering guardrails
+## Guardrails
 
-- Account is mandatory for both Community and commercial clients; every provider is covered by interface and tests.
-- No secrets in git, no covert source/prompt upload, no unapproved hook/agent changes.
-- Maintain Windows/macOS/Linux compatibility in native code where applicable.
-- Always represent unknown agent status accurately, and retain local user-owned data.
+- No accounts, hosted services, default telemetry or stubs for `docs/future/` items (ADR-001).
+- Treat agent hooks, marketplace repos and activity code as sensitive or untrusted input.
+- Represent unknown agent status honestly; never lose local user data.
+- Keep Windows, macOS and Linux compatibility in native code.
 
-## Delegation guidance
-
-- Use Opus 5.5 for architecture, identity, cryptography, cross-module risks, and acceptance review.
-- Use Sonnet for scoped code generation, fixtures, UX components and tests.
-- Delegate reviews to `.claude/agents/architecture-reviewer.md`, `.claude/agents/security-qa-reviewer.md` or other relevant agents.
-
-## Sprint closeout template
+## Closeout
 
 ```text
 Sprint: 06
-Completed tasks (links/commits):
-Commands run and observed results:
-Tests not run and reason:
+Completed tasks (commits):
+Commands run and results:
+Tests not run and why:
 Security/privacy review:
 Remaining defects and risks:
 Acceptance checks passed/failed:
-Recommended next sprint action:
+Recommended next action:
 ```

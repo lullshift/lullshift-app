@@ -2,32 +2,28 @@
 
 ## Start the project (Opus)
 
-Read `CLAUDE.md`, both docs, `sprints/ROADMAP.md` and `sprints/SPRINT_00.md`. Implement Sprint 00 only. First list 5 critical ambiguities and choose reversible defaults with ADRs. Then scaffold and actually run the required tests/build checks. Do not implement Sprint 01 until Sprint 00 acceptance is verified.
+Read `CLAUDE.md`, both docs, `docs/adr/`, `sprints/ROADMAP.md` and `sprints/SPRINT_00.md`. Implement Sprint 00 only. First list the critical open technical choices and record reversible defaults as ADR-004 onward. Then scaffold and actually run the required tests/build checks. Do not start Sprint 01 until Sprint 00 acceptance is verified.
 
 ## Start a sprint (Opus)
 
 Use `/sprint-delivery` for Sprint XX. Read its tasks and acceptance criteria. Delegate tightly scoped code to Sonnet and architecture/security reviews to specialist agents. Deliver vertical slices, run real tests and report blockers.
 
-## Auth sprint review (Opus)
-
-Use `/account-auth` to threat-model mandatory email/Google/GitHub/Apple login, account linking, external-browser PKCE, token storage and 30-day signed offline lease. Produce failing negative tests first. Never describe mocks as live federation.
-
 ## Add an adapter (Sonnet with Opus review)
 
-Use `/agent-adapter` for PROVIDER. Read current provider documentation and generate a capability matrix. Create fixture-based tests for duplicate, reordered, partial and stale events. Preserve previous hooks and require consent to change them.
+Use `/agent-adapter` for PROVIDER. Read current provider documentation and write a capability matrix. Create fixture-based tests for duplicate, reordered, partial and stale events. Preserve existing hooks and require consent to change them.
 
-## Release gate (Opus)
+## Build the activity host and sandbox (Opus architecture, Sonnet implementation)
 
-Use `/quality-gate`. Enumerate every sprint acceptance criterion and present actual commands, results, failures and blockers. Invoke security-qa-reviewer. Refuse to mark any unexecuted test passed.
+Start Sprint 03. Read ADR-003 and the sandbox section of the architecture doc. Write the sandbox strategy ADR and denial tests first (Tauri IPC, network, filesystem, clipboard, navigation, cross-activity storage), then the lifecycle bridge and host-enforced pause. Record per-OS results honestly.
 
 ## Create an activity (Sonnet implementation; Opus security review)
 
-Use `/activity-creator` and `creator/ACTIVITY_CREATOR_PROMPT.md` to generate an original pauseable grid puzzle. Verify manifest, all simulator states, restrictive permissions, keyboard accessibility, storage persistence and license inventory. Do not claim a signed package or successful publish unless tools exist and execute successfully.
+Use `/activity-creator` and `creator/ACTIVITY_CREATOR_PROMPT.md`. Prefer a content pack if an engine fits; otherwise build on a kit. Verify manifest, all simulator states, restrictive permissions, keyboard accessibility, persistence and license inventory. Do not claim passing checks unless the tools exist and ran.
 
-## Implement the package platform (Opus architecture, Sonnet implementation)
+## Build Git marketplaces (Opus review, Sonnet implementation)
 
-Start Sprint 10. Read the manifest schema, security checklist, and architecture revision 1.1. First write ADR-022/023, security negative tests and threat model. Implement safe local pack/validate/simulate and a sandbox prototype. Do not build marketplace payment routes yet.
+Start Sprint 08. Read ADR-002, `reference/MARKETPLACE_V1.schema.json` and the distribution section of the architecture doc. Write the malicious-repo fixtures and hardened Git invocation tests first, then add/install/update with commit pinning and the install review screen. Never store or log Git credentials.
 
-## Implement Stripe commerce (Opus review, Sonnet bounded modules)
+## Release gate (Opus)
 
-Start Sprint 12 only after identity/entitlement prerequisites. Read `reference/COMMERCE_DOMAIN.md`. Confirm operator country and MoR are still unresolved; keep production disabled. Implement fake checkout, Stripe sandbox adapter behind explicit capability interfaces, verified webhook inbox, idempotent fulfillment and test evidence. Sprint 13 adds Connect only after legal and seller geography decisions.
+Use `/quality-gate`. Enumerate every sprint acceptance criterion and present actual commands, results, failures and blockers. Invoke security-qa-reviewer. Refuse to mark any unexecuted test as passed.

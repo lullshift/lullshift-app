@@ -1,102 +1,123 @@
 # Lullshift - Technical Architecture and Stack
 
-**Version:** 1.1 draft | **Date:** 2026-11-04 | **Audience:** Engineering and Claude Code implementation agents
+**Version:** 2.0 | **Date:** 2026-11-05 | **Audience:** Engineering and Claude Code implementation agents
+
+**Governing decisions:** [ADR-001](adr/ADR-001-open-source-v1-no-accounts.md), [ADR-002](adr/ADR-002-git-repo-marketplaces.md), [ADR-003](adr/ADR-003-activity-model-kits-engines-content.md). Where this document and an accepted ADR disagree, the ADR wins. The v1.1 cloud/commerce design is kept unchanged in [`docs/future/TECHNICAL_ARCHITECTURE_v1.1.md`](future/TECHNICAL_ARCHITECTURE_v1.1.md) and is not part of v1.
 
 ## 1. Executive architecture
 
-A **local-first Tauri 2 desktop application** communicates with agent adapters on the user's computer. The open-source client requires a **mandatory hosted Lullshift account** (email, Google, GitHub or Apple) to activate, but performs agent monitoring, activities, storage and BYOK conversations locally. A commercial ASP.NET Core backend provides identity for **all** editions and optional paid sync, notifications, hosted AI, billing and organization functions. A paid Flutter companion and React web console connect through hosted APIs.
+Lullshift v1 is a **local-first, desktop-only Tauri 2 application**, fully open source under Apache-2.0. It observes external coding agents through hook adapters on the user's computer, keeps agent sessions and user context in a local SQLite database, and offers interruptible activities while agents work. There is **no account, no sign-in, no device enrollment, no offline lease and no Lullshift-operated server**. The app is fully functional on first launch.
 
-**Important architectural distinction:** mandatory online initial authentication does *not* mean every local event is routed through the cloud. The client must operate during temporary outages with a valid offline lease; local workflows never require continuous network availability.
+The only network traffic is **user-initiated**:
+
+- Git fetches of marketplaces the user added (system `git`, user's own credentials).
+- Update checks and downloads for the app itself (signed updater artifacts).
+- BYOK Companion calls to the AI provider the user configured.
+
+There is no telemetry by default; any future diagnostics must be opt-in (ADR-001).
 
 ```text
-       User desktop (Apache-2.0 source)              Hosted cloud (commercial)
-+------------------------------------------+    +----------------------------------+
-| Tauri 2 / React / TypeScript / Vite      |    | ASP.NET Core .NET 10 API         |
-|  - Tray UI, activities, Context Keeper   |    |  - Identity & OIDC broker        |
-|  - Next Move, Companion BYOK             |<-->|  - Entitlements & device registry|
-|------------------------------------------|TLS |  - Sync, Push, Hosted AI, Billing |
-| Rust core, agent state, IPC, SQLite      |    |  - Organization & policy         |
-|  - Claude Code / Codex / Cursor adapters |    +-----------------+----------------+
-|  - Secure token store / offline lease    |                      |
-+------------------------------------------+          +-----------+------------+
-                                                        | Postgres / object store|
-            Flutter iOS/Android  <---- HTTPS/Push ----> | background workers     |
-            React web portal     <---- HTTPS ---------> +------------------------+
+               User's computer (all Apache-2.0, no Lullshift server)
++-----------------------------------------------------------------+
+| React + TS UI: tray, Context Keeper, Next Move, Companion,      |
+|   activity library, marketplace + install review, settings      |
++--------------------------+--------------------------------------+
+                           | typed Tauri commands/events
++--------------------------v--------------------------------------+
+| Rust core: agent-core (reducer/state machine), agent-ipc,       |
+|   agent-adapters, local-store (SQLite), activity-runtime,       |
+|   marketplace (git/index/validate/install/pin), keychain (BYOK) |
++----^----------------+-------------------+----------------+-------+
+     | local IPC      | nonce-bound       | hardened git   | HTTPS
+     | (UDS/pipe)     | postMessage       | (user-init.)   | (user-init.)
++----+-----------+ +--v---------------+ +-v--------------+ +v-------------+
+| Hook forwarder | | Sandboxed        | | Git remotes    | | BYOK AI      |
+|   ^ external   | | activity WebViews| | (https/ssh,    | | provider     |
+|   agents hooks | | no IPC/net/fs    | | user creds)    | | (Companion)  |
++----------------+ +------------------+ +----------------+ +--------------+
 ```
+
+**Architectural principles**
+
+- The agent runtime is external; Lullshift observes and guides human attention, it does not orchestrate agents.
+- Rust core and SQLite are authoritative; the UI stays responsive when agents, Git remotes or the AI provider are unavailable, and shows unknown/stale state honestly.
+- No source code or raw prompts leave the machine unless the user sends selected context to their own BYOK provider.
+- v1 code must not add abstractions, feature flags or stubs for accounts, sync, mobile, hosted catalogs or payments (ADR-001 §5).
 
 ## 2. Stack decisions
 
 | Layer | Technology | Notes |
 |---|---|---|
 | Desktop runtime | Tauri 2 | system tray, notifications, autostart, signed updates |
-| Desktop UI | React + TypeScript + Vite | React Router, typed boundaries |
-| Styling | Tailwind CSS + shadcn/ui | accessible primitives; no vendor lock-in |
-| UI state | Zustand | local ephemeral state; Rust/SQLite authoritative |
-| Rust crates | Rust stable, serde, tokio, sqlx/rusqlite | choose one SQLite library after spike, use transactions |
-| Local database | SQLite | versioned migrations and WAL; no plaintext secrets |
-| Local agent IPC | Unix domain socket / Windows named pipe | authenticated local endpoint; optional restricted loopback API |
+| Desktop UI | React + TypeScript + Vite | React Router, typed command/event boundaries |
+| Styling | Tailwind CSS + shadcn/ui | accessible primitives; keyboard-first; reduced-motion support |
+| UI state | Zustand | ephemeral view state only; Rust/SQLite authoritative |
+| Rust core | Rust stable, serde, tokio | SQLite library (`rusqlite` vs `sqlx`) chosen by ADR after spike |
+| Local database | SQLite | versioned migrations, WAL, transactions; no secrets |
+| Local agent IPC | Unix domain socket / Windows named pipe | authenticated local endpoint; no unauthenticated TCP listener |
 | Adapter packaging | Native hook forwarder + Rust adapter registry | explicit capability reporting |
-| Local AI | Provider abstraction, BYOK HTTP clients | OS keychain via native API, no browser storage for secrets |
-| Cloud API | ASP.NET Core / .NET 10 | modular monolith, REST + SignalR |
-| Cloud ORM/db | EF Core + PostgreSQL | migrations, tenant/org isolation |
-| Auth | OpenIddict or managed OIDC broker | compare operational cost; provider federation |
-| Mobile | Flutter | iOS + Android; commercial companion |
-| Web console | React + TypeScript | account, linked identities, devices, subscription, org admin |
-| Push | APNs + FCM | cloud-mediated notification delivery |
-| Jobs | ASP.NET hosted workers + PostgreSQL queue | dedicated broker later if needed |
-| Backups | S3-compatible object storage | client-side encryption for private content |
-| Billing | Payment provider abstraction | provider chosen after regional policy review |
-| Observability | OpenTelemetry | minimal, scrub PII and task content |
-| Deploy | Docker on Linux + private registry | initial Compose, later orchestrator if justified |
+| Activity runtime | Isolated WebViews + versioned host bridge | per-OS sandbox proof before third-party code (§6.4) |
+| Secrets | OS keychain via native API | BYOK provider keys only; never browser storage, SQLite or logs |
+| Local AI | Provider abstraction, BYOK HTTP clients | user-initiated calls only |
+| Marketplaces | System `git` executable (hardened invocation) | uses the user's existing Git credentials; library alternative evaluated by ADR |
+| Creator tooling | TypeScript SDK, kits, CLI, simulator | CLI language/distribution chosen by ADR |
+| Tests | Vitest, Playwright, `cargo test` | plus fixture-driven adapter and malicious-repo tests |
+| CI | GitHub Actions | fmt/lint/typecheck/test/build on Windows, macOS, Linux |
 
-Use explicit version pins only after bootstrap resolves stable compatible releases. Keep documented framework constraints in repo `DECISIONS.md`.
+Explicitly **not** in the v1 stack: .NET/ASP.NET Core, PostgreSQL, OIDC/OAuth brokers, Flutter, a React web console, push services, billing/payment providers, object storage/CDN, Docker deployment, cloud OpenTelemetry export.
+
+Use explicit version pins only after bootstrap resolves stable compatible releases, verified against official documentation. Record framework constraints in ADRs.
 
 ## 3. Repository design
 
-```text
-lullshift/
-  CLAUDE.md
-  docs/                          # PRD, architecture, ADRs
-  .claude/agents/                # specialist delegations
-  .claude/skills/                # workflow skills
-  apps/desktop/                  # Tauri + React UI
-  crates/agent-core/             # event model and state reducer
-  crates/agent-adapters/         # hook adapter contracts
-  crates/agent-ipc/              # native pipe/socket, auth
-  crates/local-store/            # SQLite migrations/repository
-  crates/activity-runtime/       # pause/resume, permissions
-  packages/agent-protocol/       # versioned JSON schemas/types
-  packages/activity-sdk/         # sandboxed activity contracts
-  activities/{arcade,break,next-move,context-keeper,companion}/
-  tests/fixtures/                # synthetic hooks, event replay
-  sprints/                       # implementation backlog
+Single open-source repository, `lullshift-app`. There is no separate commercial repository in v1.
 
-lullshift-commercial/            # optional later separate repository
-  backend/                       # .NET modules
-  mobile/                        # Flutter
-  web/                           # React
-  infra/                         # Compose/deployment
+```text
+lullshift-app/
+  CLAUDE.md, LICENSE (Apache-2.0)
+  docs/                       # PRD, architecture; adr/ (ADRs); future/ (deferred)
+  .claude/{agents,skills}/    # delegations and workflow skills
+  .lullshift/marketplace.json # built-in marketplace index ("lullshift")
+  apps/desktop/               # Tauri shell + React UI
+  crates/agent-core/          # event model, dedupe, state reducer
+  crates/agent-adapters/      # hook adapters, install/uninstall
+  crates/agent-ipc/           # UDS / named pipe server, peer auth
+  crates/local-store/         # SQLite migrations and repositories
+  crates/activity-runtime/    # sandbox host, bridge, lifecycle, quotas
+  crates/marketplace/         # git fetch, index, validate, install, pin
+  packages/agent-protocol/    # versioned event schemas/types
+  packages/activity-sdk/      # lifecycle + bridge client (TS)
+  packages/activity-kits/{grid,card,arcade}/  # optional kits
+  tools/lullshift-cli/        # create / dev / simulate / validate / pack
+  creator/                    # provider-independent creator prompts
+  activities/{games,engines,content}/*        # bundled activities
+  reference/                  # JSON Schemas (manifest, marketplace, events)
+  tests/fixtures/             # hook payloads, event replay, malicious repos
+  sprints/                    # implementation backlog
 ```
 
-The provided handoff is **documentation and Claude Code configuration**, not a preimplemented software repository.
+Every item under `activities/` is listed in `.lullshift/marketplace.json`, which makes this repository the built-in marketplace (ADR-002 §6).
 
 ## 4. Domain model and event protocol
 
-### 4.1 Entities
+### 4.1 Entities (all local, SQLite)
 
-- `Account` (cloud): UUID, verified email(s), profile, plan, consents, created/updated timestamps.
-- `ExternalIdentity` (cloud): provider, subject ID, account ID, verified claims, link metadata. Unique `(provider, subject)`.
-- `Device` (cloud): device UUID, account ID, platform, public key, last seen, revoked.
-- `EntitlementLease` (signed): account, device, plan, issued/expiry, key ID, policy version; validate locally.
-- `AgentSession` (local): UUID, adapter, provider session ID, workspace alias, state, observed timestamps, confidence.
-- `AgentEvent` (local): event UUID, session ID, event type, sequence, provider timestamp, receipt timestamp, payload reference.
-- `ContextBookmark` (local): session, intent, approved notes, review items, retention policy.
-- `ActivityInstance` (local): activity ID, session link, lifecycle status, serializable state.
-- `NextMoveItem` (local): session, content, status, created time.
-- `CompanionThread` (local): thread and user-approved context scopes.
-- `SyncItem` (local/cloud): opaque encrypted payload, vector/sequence, version and device ID.
+- `AgentSession`: UUID, adapter, provider session ID, workspace alias, state, observed timestamps, confidence.
+- `AgentEvent`: event UUID, session ID, event type, sequence, provider timestamp, receipt timestamp, payload reference.
+- `ContextBookmark`: session, intent, approved notes, review items, retention policy.
+- `NextMoveItem`: session, content, status, created time.
+- `CompanionThread`: thread, provider reference (no key material), user-approved context scopes.
+- `AdapterInstallation`: adapter ID, target config path, backup reference, installed version, consent timestamp, status.
+- `Marketplace`: ID (short name), Git URL, `added_at`, `last_fetched_commit`, `builtin` flag. The built-in `lullshift` marketplace is always present and cannot be removed.
+- `InstalledActivity`: activity ID, marketplace ID, source (path within marketplace repo, or external Git URL + path), pinned commit SHA, manifest version, `kind` (`app` | `content`), engine reference (`id@major`, content only), `enabled`, `installed_at`, content digest of the installed folder.
+- `ActivityInstance`: activity ID, optional session link, lifecycle status, timestamps.
+- `ActivityState`: activity ID, namespace, activity-declared schema version, snapshot, size, `saved_at`. Host-enforced quota; last committed snapshot kept for crash recovery.
+
+No `Account`, `ExternalIdentity`, `Device`, `EntitlementLease`, `Organization` or `SyncItem` entities exist in v1.
 
 ### 4.2 Event schema (illustrative, version 1)
+
+Canonical schema: `reference/AGENT_EVENT_V1.schema.json`; TypeScript/Rust types generated or mirrored in `packages/agent-protocol`.
 
 ```json
 {
@@ -105,276 +126,225 @@ The provided handoff is **documentation and Claude Code configuration**, not a p
   "provider": "claude-code",
   "providerSessionId": "opaque",
   "eventType": "needs_attention",
-  "timestampUtc": "2026-11-04T10:00:00Z",
+  "timestampUtc": "2026-11-05T10:00:00Z",
   "correlationId": "opaque",
   "capabilities": ["lifecycle", "permission_prompt"],
   "metadata": { "reason": "permission_request" }
 }
 ```
 
-Contract rules: preserve raw provider message locally only when needed/allowed; validate bounded input; dedupe by stable event ID; tolerate reordered callbacks; state changes are idempotent. A stop/turn-end event can be `idle` or `unknown`, not necessarily `completed`.
+Contract rules: preserve raw provider messages locally only when needed and allowed; validate bounded input (size, depth, string lengths); dedupe by stable event ID; tolerate reordered and duplicated callbacks; state changes are idempotent. A stop/turn-end event can mean `idle` or `unknown`, not necessarily `completed`. Never log raw task content.
 
 ### 4.3 State machine
 
-States: `unknown`, `idle`, `working`, `needs_attention`, `completed`, `failed`, `cancelled`. Explicit transitions with timestamps and source confidence; providers can emit only partial signals. Restore sessions as `unknown` after restart until confirmed. Stale timeout triggers `unknown` rather than a false success notice.
+States: `unknown`, `idle`, `working`, `needs_attention`, `completed`, `failed`, `cancelled`. Explicit transitions with timestamps and source confidence; providers can emit only partial signals. Restore sessions as `unknown` after restart until confirmed. A stale timeout moves a session to `unknown` rather than producing a false success notice. Transition to `needs_attention` is the highest-priority signal and drives host-enforced activity freeze (§6.4).
 
-## 5. Authentication, identity, mandatory account
+## 5. Local secrets and trust boundaries
 
-### 5.1 Boundary
+There are **no accounts and no hosted identity** (ADR-001). Consequently:
 
-Identity and plan are issued by Lullshift Cloud to every client, including Community. Account enrollment and first activation require Internet. After activation, the client validates a signed offline lease without querying the server for each event. **Proposed 30-day maximum offline lease**; product owner must ratify revocation/security tradeoff. No indefinite anonymous mode.
+- **The only secrets the app holds are BYOK AI provider keys.** They live exclusively in the OS keychain (Windows Credential Manager, macOS Keychain, Linux Secret Service). SQLite stores only a non-secret reference. Keys never appear in SQLite, logs, crash reports, activity bridges, exported data or the UI after entry.
+- **Git credentials are never handled by Lullshift.** System `git` uses the user's own credential manager, SSH agent or `gh` auth; Lullshift does not prompt for, store, read or transmit tokens (ADR-002 §3).
+- **Local IPC authentication remains required** for hook forwarder -> app traffic (see table).
+- **Activities are untrusted.** Code and data from any non-built-in marketplace is attacker-controlled (§6.4, §7).
 
-### 5.2 Login providers and email
+| Boundary | Threat | Control |
+|---|---|---|
+| Hook forwarder -> core | Local malicious process injecting events | user-only socket/pipe ACL, per-install secret, peer checks, validation, rate limits |
+| Core -> agent configs | Corrupting user agent configuration | explicit consent, backup, atomic merge, idempotent install, restorable uninstall |
+| Core -> keychain | Key theft from disk/logs | OS keychain only, redaction, no key in IPC to WebViews |
+| Core -> activity WebView | Sandbox escape, data exfiltration | isolated origin, no Tauri IPC, no network, no fs, CSP, nonce-bound bridge, quotas |
+| Core -> git remote | Malicious repository content or git config | hardened `git` invocation, app-owned dirs, strict validation (§7.3) |
+| Core -> BYOK provider | Over-sharing context | user-selected context scopes, preview before send, TLS verification never disabled |
+| App updater | Tampered update | signed updates verified by the Tauri updater |
+## 6. Local runtime, adapters and activities
 
-- Email: verified passwordless magic link or OTP with one-time nonce, expiration, rate limiting and anti-enumeration; optionally add passkeys later.
-- Google: OIDC federation with validated issuer/audience/nonce.
-- GitHub: OAuth provider integration with verified email handling; do not depend on public GitHub email presence.
-- Apple: Sign in with Apple and private relay handling; validate provider ID token and provider requirements.
-- All providers map to one internal account through unique provider subject identifiers. Linking an identity requires a signed-in session and proof-of-control. Never merge accounts solely because two emails match.
+### 6.1 Runtime and adapters
 
-### 5.3 Native OAuth/OIDC flow
-
-1. Desktop creates state, nonce and PKCE verifier; invokes external system browser.
-2. Browser reaches hosted authorization endpoint; user selects email, Google, GitHub or Apple.
-3. Authorization code returns through **loopback redirect or registered custom URI scheme**; enforce redirect allowlist and ownership controls.
-4. Native client exchanges code with PKCE; verify issuer, audience, nonce, state, clock skew and token signatures as applicable.
-5. Persist refresh token only in OS secure storage; cache access token in memory, rotate refresh tokens and revoke devices on logout.
-6. Call entitlement endpoint; verify signed offline lease using embedded public verification key and bound device identity.
-7. On temporary outage, continue core local features while valid lease lasts. On expiry, show account-required reauthentication without deleting local data.
-
-Browser redirects must not use embedded webviews. Public desktop/mobile clients cannot hold a confidential OAuth client secret. Align with RFC 8252 (https://www.rfc-editor.org/rfc/rfc8252).
-
-### 5.4 Threat cases and controls
-
-| Threat | Control |
-|---|---|
-| Fake login callback / code substitution | state, nonce, PKCE, strict callback validation |
-| Token theft from disk | OS keychain, short-lived access, rotation, revocation |
-| Identity takeover through account linking | proof of current login and provider ownership, audit events |
-| Forged offline entitlement | asymmetric signature, device binding, expiry, key rotation |
-| Rollback local system clock | detect anomalies, bounded lease, document limitations |
-| Local malicious process injecting agent events | socket permissions, per-install secret/peer checks, validation, rate limits |
-| Cloud server unavailable | lease-based local continuity and clear expiration UX |
-| Cloud breach | minimize task data; optional client-side-encrypted sync |
-| Organization-admin overreach | role scoping, no surveillance dashboards, tenant isolation |
-
-**Clarify licensing:** Apache-2.0 source grants rights to run/modify client; required account is a product policy in distributed official builds, not an attempt to restrict rights granted by Apache-2.0. A fork can remove the gate. State this honestly in commercial terms.
-
-## 6. Local runtime and adapters
-
-- Tauri holds tray and window; Rust core stays alive when window is hidden; shutdown explicitly releases hooks/IPC.
-- Use authenticated UDS or Windows named pipes; no open unauthenticated TCP listener.
-- Hook forwarder is a small packaged native executable invoked by supported agent tools, with timeouts, structured JSON and bounded logs.
-- Existing agent configurations must be read, backed up and merged atomically, with uninstall restoration and user consent.
-- Adapter capabilities include `canObserveLifecycle`, `canObserveAttention`, `canObserveCompletion`, `canProvideTaskSummary`, `canRemoteApprove` (default false).
+- Tauri holds tray and windows; Rust core stays alive when windows are hidden; shutdown explicitly releases hooks/IPC.
+- The hook forwarder is a small packaged native executable invoked by supported agent tools, with timeouts, structured JSON and bounded logs. It must fail fast and never block the agent when the app is not running.
+- Existing agent configurations are read, backed up and merged atomically, with uninstall restoration and explicit user consent. Install/uninstall is idempotent.
+- Adapter capabilities: `canObserveLifecycle`, `canObserveAttention`, `canObserveCompletion`, `canProvideTaskSummary`, `canRemoteApprove` (default false; out of scope for v1).
 - Gracefully degrade when a provider lacks support. Avoid UI/terminal scraping as a default integration strategy.
-- Keep core protocol independent from Tauri UI so it can later become a local daemon.
+- Keep the core protocol independent from the Tauri UI so it could later run as a local daemon.
 
-## 7. Activities and extensibility
+### 6.2 Activity model (ADR-003)
 
-Lifecycle: `initialize -> start -> pause -> resume -> saveState -> dispose`, plus optional `restoreState`. Permission manifest for activity: storage namespace, notifications, optional user-approved context access, AI invocation, network access. Plugins must not receive raw codebase contents by default. Initial release ships only trusted bundled activities; third-party executable plugins are disabled until an isolation strategy is proven (webview origin isolation / validated message bridge / capability sandbox). No dynamic unrestricted native plugins.
+Three tiers, chosen by the creator: **custom code activity** (any static web app implementing the SDK lifecycle), **code activity on a kit**, and **content pack** (JSON data plus optional static media for a named engine; runs no code).
 
-## 8. Context and local persistence
+**Manifest v1** (`reference/ACTIVITY_MANIFEST_V1.schema.json`) gains `kind: "app" | "content"`:
 
-SQLite migrations with tests and backup/rollback plan; WAL and atomic writes. Store metadata-only agent sessions by default. Per-session user-created context and decisions are opt-in. Store OAuth credentials exclusively in OS secure store; store non-secret references in SQLite. Provide data export (JSON and Markdown), delete-all-local-data control and configurable retention.
+- `kind: "app"` requires `entrypoint` and `runtime` (`isolated-web-v1`), `sdkVersion`, `permissions` and `interruptibility`.
+- `kind: "content"` requires `engine` (`id@major`, e.g. `com.lullshift.engine.breathing@1`) and `data` (path to the JSON data file within the pack) and **forbids executable files** (no `.js`, `.mjs`, `.wasm`, `.html`, native binaries, scripts). Allowed static media types are allowlisted by the host.
 
-## 9. Commercial cloud design
-
-One modular ASP.NET Core .NET 10 deployment initially, with modules:
-
-1. `Identity`: federation, email verification, OIDC endpoints, refresh/revocation.
-2. `Accounts`: profiles, linked providers, consents, deletions, entitlements.
-3. `Devices`: key registration, trusted devices, enrollment, revoke, signed offline leases.
-4. `Subscriptions`: feature entitlements, payment events, invoices, fraud/abuse safeguards.
-5. `Sync`: upload/download of versioned client-side encrypted records, conflicts and reconciliation.
-6. `Push`: device tokens, notification priorities, dedupe and APNs/FCM delivery.
-7. `HostedAI`: user-approved prompt boundary, capped usage, provider routing, audit/cost controls.
-8. `Organizations`: membership, SSO/provisioning, policy and deployment preferences.
-
-Use PostgreSQL + EF Core with explicit org/tenant IDs and authorization per resource. Prefer durable database jobs to introducing a broker in v1. Add object storage for backup blobs. Use HTTPS, rate limits, structured logging with redaction and OpenTelemetry. Web portal: React. Mobile: Flutter for paid features (status, notifications, notes, Companion); not a coding agent runner.
-
-### Example endpoints (draft)
-
-```text
-GET    /v1/me
-GET    /v1/identity/providers
-POST   /v1/devices/enroll
-POST   /v1/devices/{deviceId}/revoke
-GET    /v1/entitlements/lease
-POST   /v1/sync/batches
-GET    /v1/sync/changes?cursor=...
-POST   /v1/notifications/register-device
-POST   /v1/notifications/relay
-GET    /v1/subscriptions/current
-POST   /v1/accounts/export
-DELETE /v1/accounts/me
-```
-
-Endpoints and OIDC standards contracts must be refined in ADRs and OpenAPI before implementation. Never invent direct provider-token trust in the APIs.
-
-## 10. Synchronization semantics
-
-- Offline-first local writes; encrypted outbound queue with client-generated stable IDs.
-- Cloud stores opaque ciphertext for sensitive content, not searchable plaintext.
-- Sync preferences, explicit notes and activity state only when opted in; raw prompts and source code are excluded by default.
-- Concurrent edits: scoped last-write-wins for harmless preferences; conflict-copy/manual resolution for notes, never silent deletion.
-- Handle account switching and device revocation without silently merging local work from two identities.
-- Prefer incremental cursor + idempotent upsert; append-only audit for critical entitlement/device changes.
-
-## 11. Mobile security and push behavior
-
-Flutter mobile signs in with external-browser PKCE, OS secure storage, provider broker. Mobile push carries only minimal opaque session reference and generic attention message by default. Detailed context is fetched after authenticated unlock. APNs/FCM token rotation supported. Remote approval is **out of scope** until separately threat modeled and adapter-authorized; never infer approval from tapping a notification.
-
-## 12. Testing and operations
-
-- Rust unit tests for reducer, dedupe, ordering, lease verification, IPC validation and migrations.
-- TypeScript tests for UI component behavior and activity lifecycle; end-to-end smoke tests on every OS.
-- Cloud integration tests for email verification, provider linking, PKCE, tokens, device revoke, plan changes and tenant isolation.
-- Fixture-driven adapter tests for exact provider hook payloads, with unknown-state and restarts.
-- Flutter tests for notification routing, background-to-foreground and device registration.
-- CI: Rust fmt/clippy/test, TypeScript lint/typecheck/test/build, .NET restore/build/test, secret/dependency scan, SBOM, signing, artifact provenance.
-- Deploy: Docker Compose Linux for cloud; dev uses fake email/push providers. Ship signed updates; Tauri updater requires signatures (https://v2.tauri.app/plugin/updater/).
-- Security review before enabling third-party activities, account linking, or remote actions.
-
-## 13. Sequence and ADRs
-
-1. Bootstrap repo and contract schemas; CI/tests.
-2. Build mandatory auth / provider federation / device lease service and desktop sign-in.
-3. Tauri tray + SQLite + Rust session state engine.
-4. Claude Code hook forwarder and reversible installation.
-5. Notifications, Break, Arcade.
-6. Context Keeper, Next Move.
-7. Companion BYOK and extension SDK.
-8. Additional adapters and stability release.
-9. Optional commercial sync/cloud and Flutter mobile.
-
-Required ADRs: `ADR-001-tauri-react-rust`, `ADR-002-required-account-and-offline-lease`, `ADR-003-oauth-broker-and-providers`, `ADR-004-agent-event-contract`, `ADR-005-local-ipc`, `ADR-006-activity-sandbox`, `ADR-007-encrypted-sync`, `ADR-008-business-monetization`.
-
-## 14. External reference URLs
-
-- Tauri 2: https://v2.tauri.app/
-- Tauri updater: https://v2.tauri.app/plugin/updater/
-- OAuth native apps: https://www.rfc-editor.org/rfc/rfc8252
-- Claude Code skills and subagents: https://claude.com/blog/steering-claude-code-skills-hooks-rules-subagents-and-more
-- Flutter: https://docs.flutter.dev/
-- OpenIddict: https://documentation.openiddict.com/
-- ASP.NET Core: https://learn.microsoft.com/aspnet/core/
-
----
-**Status:** Design baseline. Provider support and exact dependency versions must be validated against current official documentation during each sprint.
-
----
-
-## Architecture Revision 1.1: Activity Packages, Creator Toolchain, Marketplace and Stripe
-
-### Component boundaries and ownership
-
-```text
-Open-source user's device                   Hosted Lullshift services (commercial)
-+------------------------------------+      +------------------------------------+
-| Tauri 2 / React / Rust             |      | Identity / OIDC                     |
-| Agent adapters and event bus       |      | Marketplace catalog and publishing |
-| Context Keeper / Next Move         | HTTPS| Moderation and signing             |
-| Arcade / Break / Companion BYOK    |<---->| Commerce / Billing / Entitlements  |
-| Activity SDK and sandbox host      |      | Stripe gateway / Connect webhooks  |
-| .lullpack installer + SQLite       |      | PostgreSQL / S3 / CDN / Workers    |
-+------------------------------------+      +------------------------------------+
-              ^                                       ^
-              |                                       |
-       Open-source creator CLI ---- publish ----> Authenticated submissions
-              |
-     Claude/Codex/Cursor skills
-```
-
-The commercial backend remains an ASP.NET Core .NET 10 modular monolith with PostgreSQL and S3-compatible package storage. The mobile companion remains Flutter and uses the hosted account; mobile digital-goods checkout is excluded from the initial release.
-
-### Proposed `.lullpack` v1 format
-
-A deterministic ZIP-compatible package with validated size and file limits, canonical manifest, assets and optional puzzle/content files. Reject `../`, absolute paths, links, nested archives, zip bombs, duplicate canonical filenames, executable native files, dangerous content types and unknown privileges. Use SHA-256 for package integrity and separate verifiable platform/publisher signatures. Reproducible builds should yield stable hashes for identical inputs.
+Illustrative content pack manifest (an `app` manifest instead carries `entrypoint`, `runtime`, `sdkVersion`, `permissions` and `interruptibility`):
 
 ```json
 {
   "schemaVersion": 1,
-  "id": "com.example.sudoku",
+  "kind": "content",
+  "id": "com.example.box-breathing",
   "version": "1.0.0",
-  "name": "Sudoku",
-  "category": "arcade",
-  "entrypoint": "index.html",
-  "runtime": "isolated-web-v1",
+  "name": "Box Breathing",
+  "category": "break",
+  "engine": "com.lullshift.engine.breathing@1",
+  "data": "data.json",
   "minHostVersion": "0.3.0",
-  "sdkVersion": "1.0.0",
-  "permissions": ["activity.storage"],
-  "interruptibility": { "pause": true, "resume": true, "persistState": true },
   "offline": true
 }
 ```
 
-Host-verified metadata (publisher IDs, package digests, signing keys, review status and entitlement) lives outside the author-controlled manifest. Never trust an unsigned manifest's publisher or price claim. Schema is specified at `reference/ACTIVITY_MANIFEST_V1.schema.json`.
+The manifest is author-controlled and therefore untrusted. Host-derived metadata (marketplace, source URL, pinned commit, installed digest, built-in flag) lives in `InstalledActivity`, never in the manifest.
 
-### Activity sandbox and host bridge
+### 6.3 Lifecycle bridge
 
-Treat all downloaded/AI-generated activity JavaScript as attacker-controlled. Load into a dedicated isolated origin or WebView with no Tauri IPC access. Enforce CSP, trusted local asset URL handling, no remote navigation, strict default network-denial, no system clipboard without grant, no filesystem, no arbitrary host API, no shell and no agent token exposure. Expose only a versioned, origin-bound, nonce-validated bridge for pause/resume and namespaced storage. OS/WebView sandbox guarantees vary and must be verified on all three desktop targets; if insufficient, block third-party package loading rather than shipping with a cosmetic sandbox.
+Every code activity (custom, kit-based or engine) implements the SDK lifecycle:
 
-The host controls interruption priorities. `needs_attention` must preempt activities without relying on plugin cooperation; persist last safely committed snapshot and allow recovery after crash. Bound CPU, memory and storage quota; enforce quotas and timeout/crash handling. Sensitive agent context is not a default permission; a separately reviewed user-granted capability may be considered in a future version.
+`initialize -> start -> pause -> resume -> saveState -> restoreState -> dispose`
 
-### Creator tooling and provider-independent AI prompts
+- `initialize` receives host capabilities, locale, reduced-motion/theme preferences and (engines) the validated pack data.
+- `pause` may come from the user or the host; the host does not wait for acknowledgment before freezing (§6.4).
+- `saveState` returns a quota-bounded snapshot; `restoreState` accepts it or rejects cleanly (fresh start, user informed). `dispose` is best-effort; the host destroys the WebView regardless.
+- Real-time games use forced pause plus a resume countdown (arcade kit).
 
-Create open-source TypeScript SDK (`packages/activity-sdk`), build/validator CLI (`tools/lullshift-cli`), deterministic event simulator and starter templates. Claude Code-specific creator skill in `.claude/skills/activity-creator/SKILL.md`; generic creator prompt and alternative-tool wrappers in `creator/`. Creator builds and local validation must work without cloud services; uploading requires Lullshift sign-in. `create/dev/simulate/validate/pack/publish` are proposed CLI commands, not existing commands yet.
+### 6.4 Activity sandbox and host bridge
 
-Pipeline: scaffold -> run local dev preview -> simulate interruption -> static/dependency analysis -> validate manifest and licensing -> deterministic pack -> authenticate -> upload to quarantine bucket -> server-side verification -> moderation -> sign release -> catalog and CDN. No package serves to users until approved. Perform published version immutability checks and handle emergency security revocation.
+Treat all third-party and AI-generated activity JavaScript as attacker-controlled.
 
-### Marketplace modules
+- Load each activity into a **dedicated isolated origin / WebView** with **no Tauri IPC** and no access to the main UI's origin or storage.
+- Strict **CSP**: only the activity's packaged assets via a host-controlled local scheme; no `eval`; no remote navigation, frames or popups.
+- **No network** (default deny, including fetch, WebSocket, WebRTC, beacons, remote fonts/images). **No filesystem.** No shell, no clipboard without an explicit grant, no notifications API, no agent data or BYOK key exposure.
+- Expose only a **versioned, origin-bound, nonce-validated `postMessage` bridge** for lifecycle, namespaced storage and declared permissions. The host validates every message against a schema, size limit and rate limit; unknown messages are dropped and counted.
+- **Storage quota** per activity namespace; snapshots exceeding quota are rejected.
+- **Host-enforced freeze:** on `needs_attention` (or when the user switches away), the host requests `saveState`, then freezes the WebView (suspends timers/rendering, blocks input, hides or overlays) without relying on activity cooperation. A crash or unresponsive activity is killed; the last committed snapshot is kept for recovery.
+- Bound CPU and memory where the OS/WebView allows; enforce timeouts on lifecycle calls.
+- Sensitive agent context is never a default permission; any future context capability needs its own ADR and threat model.
 
-`Catalog`, `Publishers`, `Submissions`, `Moderation`, `PackageSigning`, `Entitlements`, `Orders`, `Payments`, `Subscriptions`, `CreatorSettlement`, `Reconciliation`. Include explicit authorization boundaries and auditable state transitions.
+**Per-OS proof gate:** WebView isolation guarantees differ across WebView2 (Windows), WKWebView (macOS) and WebKitGTK (Linux). Third-party **code** activities (`kind: "app"` from any non-built-in marketplace) stay disabled until sandbox denial tests pass on all three targets. If the guarantees are insufficient on an OS, block third-party code there rather than shipping a cosmetic sandbox. **Content packs can be enabled earlier** because they contain no code; their data is still untrusted input to a first-party engine (§6.6).
 
-Suggested entities: `Publisher`, `SellerVerification`, `Activity`, `ActivityVersion`, `PackageArtifact`, `Listing`, `Price`, `Submission`, `ModerationCase`, `Order`, `OrderItem`, `Payment`, `PaymentEvent`, `Refund`, `Dispute`, `Entitlement`, `Commission`, `SellerTransfer`, `Payout`, `Subscription`, `InvoiceReference`. Use PostgreSQL outbox/inbox tables for durable idempotent webhook and fulfillment jobs, plus scoped object-storage access and content hashing.
+### 6.5 Kits
 
-Public API examples (tentative contracts, ADR required):
+Kits (`packages/activity-kits/{grid,card,arcade}`) are optional first-party TypeScript libraries **compiled into the activity bundle**; the host never loads kit code separately or trusts an activity because it uses a kit. Kits share tested implementations of keyboard navigation, undo, seeded generation, forced pause and resume countdown.
 
-```text
-GET    /api/marketplace/activities
-GET    /api/marketplace/activities/{id}/versions
-POST   /api/creator/submissions
-POST   /api/creator/submissions/{id}/finalize
-GET    /api/library/entitlements
-POST   /api/commerce/checkouts
-POST   /api/webhooks/stripe
-POST   /api/creator/connect/onboarding
-GET    /api/creator/settlements
-```
+### 6.6 Engines
 
-Permission model is seller-scoped; no creator can mutate another publisher's submissions or prices. Account links must never be inferred from unverified email aliases.
+An engine is a **first-party code activity** that renders a family of experiences from data (breathing, movement routine, guided pause, quiz, brain teaser, reflection prompts, creative toy, typing drills, away prompts).
 
-### Payment architecture and financial invariants
+- Referenced by `id@major`; each major publishes a **public data JSON Schema** in `reference/`.
+- Breaking data changes require a new major. **Old majors keep running installed packs**; the app ships every engine major until an ADR retires it.
+- Pack data is untrusted: render text as text (no HTML injection), check media references against the pack file list, bound lists and durations. Packs run inside their engine's sandboxed WebView.
 
-The operator is **expected to incorporate outside Türkiye**, but legal jurisdiction is pending. Stripe Billing, Payments/Checkout and Connect are the preferred first integrations **conditional on official eligibility**. Implement `IPaymentCheckout`, `ISubscriptionBilling`, `IMarketplaceSellerOnboarding`, `ISettlementProvider`, `IPaymentEventVerifier` behind a provider-neutral domain. Avoid a fake generic interface that silently assumes all processors support destination charges, multi-party transfers, subscriptions and tax services.
+### 6.7 Host features (not activities)
 
-- Use server-created Checkout Sessions and external browser checkout; never store card PAN/CVV or persist webhook signing secrets in logs.
-- Store monetary values as integer minor units and ISO currency; validate price snapshots, tax policies, seller/MoR model, rounding and commission bases with finance review.
-- `PaymentProviderEvent` keyed by provider+providerEventId. Verify signature using raw request body and current secret; process asynchronously through transactional inbox/outbox with retries and idempotent handlers.
-- Grant paid license only when trusted settled/paid status is confirmed; success redirect is insufficient. Refund and dispute states are audited and can suspend future downloads according to policy; retain clear rules for offline installed content.
-- Stripe Connect: select destination charges vs separate charges/transfers **after** merchant-of-record and multi-seller basket decisions. Support platform fees and reversals without inventing settlement semantics.
-- Leave payouts to regulated provider, require publisher KYC/KYB, country eligibility and payout account validation. Reconcile provider balance transactions, internal commission ledger, refund transfers and periodic finance reports.
-- Limit offline entitlement duration and sign license leases using rotating asymmetric keys; time skew, revoked packages, refunds and reactivation require documented resolution. Mandatory initial login remains in place for Community.
-- All provider integrations ship with fake providers, deterministic webhook fixtures, idempotency tests and real sandbox tests before enabling production.
+Context Keeper, Next Move and Companion need task context and/or AI access, so they are **host features** in the main UI, not sandboxed activities, and are not distributed through marketplaces.
 
-### Critical sequence sketches
+## 7. Distribution and marketplaces (ADR-002)
 
-**Purchase**: User -> Commerce creates frozen Order -> Stripe Checkout -> signature-verified provider event -> inbox processing -> paid Order -> durable Entitlement -> device obtains signed activity license -> installer checks package integrity/signature -> activity runs in sandbox.
+### 7.1 Marketplace model
 
-**Publisher**: User -> account + verification -> Connect onboarding -> submit immutable version -> quarantine -> scanner + simulated sandbox + review -> package signing -> CDN publish -> later purchase -> provider settles seller amount and platform fee -> reconciled records.
+- A **marketplace is any Git repository** with an index at `.lullshift/marketplace.json`, validated against `reference/MARKETPLACE_V1.schema.json`.
+- Each index entry points to either a **folder in the same repo** or **another Git URL + path**, with an optional `ref`. A `ref` is only a resolution hint: at install time it is resolved to a commit SHA and the SHA is pinned. Branch heads are never executed directly.
+- Any Git URL works (GitHub, GitLab, self-hosted); `owner/repo` is shorthand for GitHub. Public and private repositories are both supported.
+- **No central review.** The install UI labels third-party marketplaces as unverified. Only the built-in marketplace is reviewed (by pull request).
 
-**Subscription**: Account -> Billing checkout -> verified paid subscription event -> Pro/Business entitlement -> sync/mobile/managed services. The Community client remains local-capable on temporary disconnection after activation.
+### 7.2 Git access and hardened invocation
 
-### ADRs required before launch
+Lullshift uses the **system `git` executable** so the user's credential manager, SSH keys and `gh` auth work for private repos; Lullshift never stores or transmits tokens. Transport is plain `clone`/`fetch`, not a provider REST API.
 
-- ADR-020: Legal merchant-of-record, operator jurisdiction, tax registration, invoice obligations.
-- ADR-021: Stripe Connect charge/transfer architecture and creator-country whitelist.
-- ADR-022: Package sandbox security model per OS and restricted host bridge.
-- ADR-023: Immutable package signing, key rotation, revocation and asset CDN.
-- ADR-024: Offline licenses, refunds/disputes and revocation behavior.
-- ADR-025: Creator ownership attestations, AI disclosure, licensing, moderation and appeals.
+Every invocation is hardened:
 
-### Engineering quality gates
+- Runs in an **app-owned cache directory**, one directory per marketplace/source; never inside a user repository.
+- `-c core.hooksPath=<empty app-owned dir>` (no hooks), `-c core.fsmonitor=false`, `-c protocol.allow=never` plus `protocol.https.allow=always`, `protocol.ssh.allow=always`, `protocol.file.allow=always`; no `ext::` or other transports.
+- No submodule recursion; no Git LFS (v1); no custom config read from the repository; `GIT_CONFIG_NOSYSTEM` and a controlled environment where possible without breaking the user's credential helpers.
+- Shallow/partial clone (`--depth`, `--filter=blob:none`) where possible.
+- Timeouts, output bounds and UI cancellation on every call; no terminal prompts (credential helpers may show their own UI).
+- Argument vector, never a shell; URLs and refs validated (reject leading `-`).
+- Failures (offline, auth denied, repo gone, force-push) are reported honestly; installed activities keep working.
 
-Adversarial file/path tests; CSP/bridge isolation and cross-origin tests; abuse and upload throttling; deterministic pack reproducibility; plugin pause/resume/crash tests; package update/migration rollback; signed package tampering and compromised key scenarios; payment webhook signature and replay checks; concurrent duplicate orders and idempotent fulfillment; cross-account entitlement isolation; refunds/disputes and reconciliation; creator payout eligibility; audit-log redaction; mobile store rule review before any in-app sale.
+### 7.3 Install flow
+
+1. **Fetch** the marketplace repo into the cache; record `last_fetched_commit`.
+2. **Resolve** the entry: parse and validate `marketplace.json` strictly; for external-repo entries, fetch that repo too.
+3. **Pin** the resolved commit SHA for the pack source.
+4. **Copy** the pack folder from the pinned tree into an app-owned install directory (never execute from the cache).
+5. **Validate strictly**: manifest against schema; `kind` rules; canonical relative paths only (no `..`, absolute paths, drive letters, case-collisions, reserved names); no symlinks or hard links escaping the pack folder (v1: reject all links); file count and total/per-file size limits; allowlisted file types; **no executables in content packs**; content data against the referenced engine major's data schema; referenced engine must exist in the host; declared permissions must be known.
+6. **Install review** shows source marketplace and repo URL, commit SHA, kind (content vs code), engine, requested permissions, size, and an **"unverified third-party"** notice for non-built-in sources. Third-party code is blocked here if the per-OS sandbox gate (§6.4) is not satisfied.
+7. **Enable** on explicit user confirmation; record `InstalledActivity` with the installed digest.
+
+**Updates** are explicit: fetch, show a diff summary (version, commit, permission and kind/engine changes), re-validate, swap atomically, keep the previous version until the new one works. Removal deletes the install directory and, with consent, its `ActivityState`.
+
+### 7.4 Built-in marketplace
+
+- `lullshift` (this repository) is the built-in marketplace; its activities are **bundled into the installer at the app's release tag**, validated at build time and work offline.
+- They **cannot be removed, only disabled**, and **update with the app** (not via Git fetch).
+- Reviewed via pull request, they are the only code activities allowed before the per-OS sandbox gate is met, and still run in the sandbox.
+
+### 7.5 `.lullpack` archive (optional)
+
+`.lullpack` is an optional deterministic ZIP-compatible archive of a pack folder, for **sideloading from a local file** and as `lullshift pack` output. Same validation and install review as Git sources (source "local file", digest instead of commit). Archive rules: reject `../`, absolute paths, links, nested archives, zip bombs (ratio and size bounds), duplicate canonical filenames, executable native files, dangerous content types and unknown permissions. Use SHA-256 for integrity; reproducible packing yields stable hashes for identical inputs.
+
+**Signing is deferred past v1.** Commit pinning plus the sandbox is the v1 trust baseline.
+
+## 8. Creator tooling
+
+- **SDK** (`packages/activity-sdk`, Apache-2.0, TypeScript): lifecycle interface, bridge client, storage helpers, types generated from the manifest schema.
+- **Kits** (`packages/activity-kits/*`): optional; see §6.5.
+- **CLI** (`tools/lullshift-cli`): `create` (scaffold app or content pack from templates), `dev` (local preview with the host bridge emulated), `simulate`, `validate` (same validator as the app, incl. engine data schemas), `pack` (deterministic `.lullpack`). There is **no `publish`**: publishing is pushing to a Git repository. An optional `lullshift marketplace init` scaffolds `.lullshift/marketplace.json`. These are planned commands, not existing ones.
+- **Simulator** drives an activity through agent states and host events: `working`, `needs_attention`, `completed`, `failed`, `cancelled`, duplicate and out-of-order events, forced pause, close, crash and resume-from-snapshot.
+- **AI-assisted creation:** provider-independent prompts in `creator/`; Claude Code skill `.claude/skills/activity-creator`. Generated code is untrusted (no unrestricted fs, network or Tauri IPC). All tooling works offline with no account.
+
+## 9. Context and local persistence
+
+- SQLite migrations with tests and a backup/rollback plan; WAL and atomic writes; migrations tested from every released schema version.
+- Metadata-only agent sessions by default; per-session user context is opt-in. No secrets in SQLite (§5).
+- Installed activity files live in an app-owned directory; SQLite records pins and digests.
+- Data export (JSON and Markdown), delete-all-local-data and configurable retention.
+- Logs are bounded, rotated and redacted: no raw prompts, source, task content or keys.
+
+## 10. Testing and operations
+
+- **Rust (`cargo test`):** reducer, dedupe, ordering, stale timeout, IPC validation/auth, migrations and rollback/recovery, index parsing, pinning, validation.
+- **TypeScript (Vitest):** UI components, stores, SDK, kits, engines, CLI.
+- **End-to-end (Playwright + Tauri smoke)** on Windows, macOS, Linux: tray, notifications, freeze on `needs_attention`, install review.
+- **Adapter fixtures:** exact hook payloads, unknown state, restarts, install/uninstall idempotence and backup restoration.
+- **Sandbox denial tests per OS:** network (fetch/WebSocket/WebRTC/img), Tauri IPC, filesystem, navigation/popups, cross-origin storage, bridge spoofing, message floods, quota overflow, freeze without cooperation, crash recovery. Must pass before third-party code is enabled on that OS.
+- **Malicious-repo fixtures:** path traversal, absolute paths, symlinks/hard links, case collisions, huge files/file counts, zip bombs (`.lullpack`), repo hooks, submodules, LFS pointers, config tricks, executables in content packs, malformed indexes, refs starting with `-`, force-pushed history.
+- **Engine schema compatibility:** every bundled pack validates against its engine major; every retained major still runs its fixture packs. Simulator lifecycle tests for every bundled code activity and engine.
+- **CI (GitHub Actions):** Rust fmt/clippy/test, TS lint/typecheck/test/build, schema validation of the built-in index and manifests, secret/dependency scans, SBOM, provenance.
+- **Release:** code signing/notarization of the desktop app and signed updater artifacts; signing keys never enter the repository. Security review before enabling third-party code activities.
+
+## 11. ADRs
+
+Accepted:
+
+- [ADR-001](adr/ADR-001-open-source-v1-no-accounts.md): Fully open-source v1 with no accounts and no hosted services.
+- [ADR-002](adr/ADR-002-git-repo-marketplaces.md): Git repositories as activity marketplaces.
+- [ADR-003](adr/ADR-003-activity-model-kits-engines-content.md): Activity model: code activities, kits, engines and content packs; v1 content target.
+
+To be recorded from Sprint 00 onward (numbering indicative):
+
+- ADR-004: SQLite library (`rusqlite` vs `sqlx`), migrations and backup.
+- ADR-005: Agent event contract v1 and state-machine semantics.
+- ADR-006: Local IPC transport and authentication.
+- ADR-007: Activity sandbox strategy per OS and host bridge protocol.
+- ADR-008: Git integration (system `git` vs library), hardening, cache layout.
+- ADR-009: Marketplace index schema v1 and install/update/pin semantics.
+- ADR-010: Engine versioning, data schemas and retirement policy.
+- ADR-011: Creator CLI implementation language and distribution.
+- ADR-012: App update signing, release pipeline and key custody.
+- ADR-013: Bundling built-in activities into the installer.
+- ADR-014: BYOK Companion provider abstraction and context boundary.
+
+Use the `architecture-decision` skill and link new ADRs here.
+
+## 12. External reference URLs
+
+- Tauri 2: https://v2.tauri.app/ (updater: https://v2.tauri.app/plugin/updater/)
+- Git configuration: https://git-scm.com/docs/git-config
+
+## 13. Future (not in v1)
+
+Identity, offline leases, sync, mobile/push, organizations, hosted AI, a hosted catalog, package signing, payments and creator payouts are **not in v1**. Earlier designs remain in [`docs/future/TECHNICAL_ARCHITECTURE_v1.1.md`](future/TECHNICAL_ARCHITECTURE_v1.1.md) as reference, not approved design. Any revival needs a new product-owner ADR and must be **additive**: no v1 feature may move behind an account (ADR-001). A hosted catalog would be just another marketplace source (ADR-002).
+
+---
+**Status:** Design baseline v2.0. Provider support and exact dependency versions must be validated against current official documentation during each sprint.

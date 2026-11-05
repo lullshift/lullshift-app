@@ -1,48 +1,38 @@
-# Sprint 09 - Flutter Mobile & Organization Pilot
+# Sprint 09 - Companion (BYOK)
 
-**Goal:** Flutter Mobile & Organization Pilot. **Duration:** indicative two weeks. **Owner:** implementation lead, with relevant Claude Code specialist agents.
+**Goal:** A separate conversational workspace using the user's own AI provider key.
 
-## Dependencies and scope
-
-Read `CLAUDE.md`, product and technical docs, and `sprints/ROADMAP.md`. Complete earlier sprint acceptance criteria. Do not implement later sprints or substitute unsupported provider behavior.
+**Depends on:** Sprints 01 and 04.
 
 ## Work items
 
-- [ ] S09-T01: Build Flutter sign-in and device pairing via PKCE
-- [ ] S09-T02: Implement status list, minimal push notifications, context and Companion screens
-- [ ] S09-T03: Implement organization membership/role/policy baseline and web management
-- [ ] S09-T04: Audit APNs/FCM payload privacy and mobile token handling
-- [ ] S09-T05: Conduct end-to-end pilot, release/security/privacy review
+- [ ] S09-T01: Provider-neutral BYOK settings; keys in OS keychain only
+- [ ] S09-T02: Companion threads stored locally; explicit context scopes (none / session summary / selected notes)
+- [ ] S09-T03: Network failure, rate limit and budget handling
+- [ ] S09-T04: Tests proving keys never reach SQLite, logs or error traces
 
-## Acceptance criteria / demonstrable exit tests
+## Acceptance criteria
 
-- [ ] S09-A01: Mobile can view authorized status but not execute arbitrary agent approvals
-- [ ] S09-A02: Push contains only opaque identifiers and generic message until unlock
-- [ ] S09-A03: Organization isolation and role checks pass
-- [ ] S09-A04: Commercial pilot supported by incident and support runbooks
+- [ ] S09-A01: BYOK key never appears in SQLite, logs or UI errors
+- [ ] S09-A02: Context sharing requires an explicit scope choice
+- [ ] S09-A03: Companion never gains agent execution privileges
 
-## Engineering guardrails
+## Guardrails
 
-- Account is mandatory for both Community and commercial clients; every provider is covered by interface and tests.
-- No secrets in git, no covert source/prompt upload, no unapproved hook/agent changes.
-- Maintain Windows/macOS/Linux compatibility in native code where applicable.
-- Always represent unknown agent status accurately, and retain local user-owned data.
+- No accounts, hosted services, default telemetry or stubs for `docs/future/` items (ADR-001).
+- Treat agent hooks, marketplace repos and activity code as sensitive or untrusted input.
+- Represent unknown agent status honestly; never lose local user data.
+- Keep Windows, macOS and Linux compatibility in native code.
 
-## Delegation guidance
-
-- Use Opus 5.5 for architecture, identity, cryptography, cross-module risks, and acceptance review.
-- Use Sonnet for scoped code generation, fixtures, UX components and tests.
-- Delegate reviews to `.claude/agents/architecture-reviewer.md`, `.claude/agents/security-qa-reviewer.md` or other relevant agents.
-
-## Sprint closeout template
+## Closeout
 
 ```text
 Sprint: 09
-Completed tasks (links/commits):
-Commands run and observed results:
-Tests not run and reason:
+Completed tasks (commits):
+Commands run and results:
+Tests not run and why:
 Security/privacy review:
 Remaining defects and risks:
 Acceptance checks passed/failed:
-Recommended next sprint action:
+Recommended next action:
 ```

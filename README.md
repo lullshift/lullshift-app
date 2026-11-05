@@ -1,38 +1,44 @@
-# Lullshift - Implementation Handoff Kit
+# Lullshift
 
-This archive is a **documentation and Claude Code execution kit**, not a runnable Lullshift application.
+**The human attention layer for asynchronous AI work.** While your AI agents work, Lullshift lets you disconnect (games, breaks) or stay in flow (Next Move, Companion), tells you the moment an agent needs you, and helps you return with context.
 
-## What is included
+> Status: pre-implementation. This repository currently holds the product and architecture specifications, the sprint plan and the Claude Code setup used to build it. Sprint 00 (foundation) is next.
 
-- `docs/PRODUCT_REQUIREMENTS.md` and `docs/PRODUCT_REQUIREMENTS.pdf`: product vision, user journeys, feature scope, account requirements and open-source/commercial boundary.
-- `docs/TECHNICAL_ARCHITECTURE.md` and `docs/TECHNICAL_ARCHITECTURE.pdf`: Tauri 2/Rust/React, .NET hosted services, Flutter, OAuth/PKCE, security, data model, protocols.
-- `CLAUDE.md`: governing implementation instructions for Claude Code.
-- `.claude/agents/*.md`: eight specialist subagents covering architecture, desktop/Rust, identity/cloud, security/QA, activities, creator experience, and marketplace commerce.
-- `.claude/skills/*/SKILL.md`: nine project skills for sprint delivery, adapters, authentication, activity contracts/creation, publishing, Stripe commerce, QA and ADRs.
-- `sprints/`: roadmap, sprint 00-14 backlogs, definition of done and acceptance criteria.
-- `reference/`: agent event and activity manifest schemas, commerce domain rules, publishing security checklist and Claude handoff prompts.
+## Principles
 
-## Quick start
+- **Fully open source** (Apache-2.0). No accounts, no sign-in, no Lullshift servers, no telemetry by default.
+- **Local-first and offline.** Your agent sessions, notes and activity progress stay on your machine.
+- **Observes, never drives.** Lullshift watches agent lifecycle hooks (Claude Code first, then Codex and Cursor); it never acts on your agents.
+- **Interruptible by design.** Every game and activity pauses and saves instantly when an agent needs you.
 
-1. Create a new empty Git repository and extract all contents at the repository root (preserve hidden `.claude/` folder).
-2. Open the repository in Claude Code. Start with **Opus 5.5** to review the two docs, record ADRs and implement Sprint 00.
-3. Use **Sonnet** for bounded implementation tasks, tests and repetitive UI work; use Opus for architecture, security and cross-module changes.
-4. Begin each sprint using `/sprint-delivery` and its `sprints/SPRINT_XX.md` acceptance criteria.
-5. Require actual commands/tests to pass; no artificial 'done' without build and smoke test evidence.
+## Games and activities
 
-**Suggested initial prompt:** `Read CLAUDE.md, docs/PRODUCT_REQUIREMENTS.md, docs/TECHNICAL_ARCHITECTURE.md, and sprints/ROADMAP.md. Implement Sprint 00 only. Record unresolved choices as ADRs. Do not scaffold future sprint features yet.`
+v1 targets **20 original games and ~100 activities** (breathing, movement, quizzes, brain teasers, creative toys, …), bundled in this repo under `activities/`.
 
-## Mandatory product decision
+Anyone can build more:
 
-Every user (Community included) **must have a Lullshift account**, via verified email, Google, GitHub or Apple. Initial online authentication is required. Community activities run locally after sign-in, including through temporary network outages with a signed, bounded offline lease. Core features are open source; hosted identity is a real service dependency. Preserve both statements in all implementation and marketing materials.
+- **Code activities**: any static web app using the Lullshift SDK, optionally built on our grid, card or arcade kits.
+- **Content packs**: just a JSON file for one of our engines (quiz, breathing, routine, …), no code.
 
-## Clarifications and licensing
+Activities are distributed through **Git repositories**. Publish a public or private repo with a `.lullshift/marketplace.json` index; users add it with something like `lullshift marketplace add owner/repo`. Private repos use your existing Git credentials. This repository is the built-in marketplace.
 
-- Lullshift is a **working name** pending trademark/domain checks.
-- Apache-2.0 will apply to the client and SDK when LICENSE is added to the actual repo. The handoff kit does not substitute for a formal legal review.
-- Hosting/service subscription is commercial, while open-source fork rights remain intact.
-- Validate all provider-specific OAuth and Claude Code lifecycle contracts during implementation; the handoff intentionally avoids hard-coding unverified SDK version assumptions.
+## Repository guide
 
-## Revision 1.1 - Creator & Global Marketplace
+| Path | Contents |
+|---|---|
+| `docs/PRODUCT_REQUIREMENTS.md` | What we are building and why |
+| `docs/TECHNICAL_ARCHITECTURE.md` | How it is built |
+| `docs/adr/` | Architecture decision records |
+| `sprints/` | Roadmap, sprint backlogs, definition of done |
+| `reference/` | JSON schemas: agent events, activity manifest, marketplace index |
+| `creator/` | Tool-neutral prompts for AI-assisted activity creation |
+| `.claude/` | Claude Code agents and skills used to build Lullshift |
+| `docs/future/` | Deferred ideas (accounts, cloud, mobile, commerce). Not part of v1. |
 
-This handoff now includes a first-class open-source **Creator SDK/CLI/simulator**, `.lullpack` specification, AI-assisted creator skills and prompts, hosted marketplace publishing/moderation, paid creator commerce and Stripe Billing/Connect (conditional on future eligible non-Turkish company incorporation). Read the 1.1 revisions at the bottom of the product and architecture docs and Sprints 10-14. No legal jurisdiction, merchant-of-record allocation or paid creator country list has been silently finalized.
+## Name
+
+"Lullshift" is a working name pending trademark and domain checks.
+
+## License
+
+Apache-2.0 (LICENSE file added in Sprint 00).

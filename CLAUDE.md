@@ -2,61 +2,59 @@
 
 ## Mission and source of truth
 
-Build Lullshift following `docs/PRODUCT_REQUIREMENTS.md` and `docs/TECHNICAL_ARCHITECTURE.md`. Execute only the active sprint in `sprints/`. Update ADRs when making architecture decisions; do not silently change product requirements.
+Build Lullshift following `docs/PRODUCT_REQUIREMENTS.md`, `docs/TECHNICAL_ARCHITECTURE.md` and the accepted ADRs in `docs/adr/`. Execute only the active sprint in `sprints/`. Record architecture decisions as ADRs; do not silently change product requirements.
 
-## Immutable product requirements
+`docs/future/` holds deferred v1.1 material (accounts, cloud, mobile, commerce). It is **not** a source of requirements. Do not implement, stub or design for anything in it.
 
-- **Mandatory Lullshift account for Community and paid users**: verified email, Google, GitHub and Apple. Hosted identity for all users. No anonymous bypass in official application.
-- Initial online activation required; after login free local features run offline under a signed time-limited lease. Suggested 30 days is a product decision to confirm in ADR.
-- **Local-first** task/session storage, BYOK Companion; zero default uploading of source code/raw prompts.
-- Agent runtime is external; Lullshift observes and guides human attention, it is not an autonomous agent orchestrator.
-- Community desktop/core/SDK are Apache-2.0; cloud/mobile/business backend separate commercial service.
-- Tauri 2 + React/TypeScript, Rust core, SQLite; cloud ASP.NET Core .NET 10 + PostgreSQL; mobile Flutter.
-- Initial market developers, architect event protocol for later supported business agents.
-- No Academy in initial roadmap; no hidden employee surveillance.
+## Product requirements (v2.0)
+
+- **Fully open source v1** (Apache-2.0): desktop app, Rust core, protocol, SDK, CLI, kits, engines and all bundled activities. (ADR-001)
+- **No accounts of any kind.** No sign-in, registration, device enrollment or offline lease. Fully functional on first launch and fully offline.
+- **No Lullshift-hosted services and no default telemetry.** Network use is only user-initiated: Git fetches of added marketplaces, app update checks, BYOK Companion calls.
+- **Local-first:** task/session data stays local; zero default uploading of source code or prompts.
+- Agent runtime is external; Lullshift observes and guides human attention, it is not an agent orchestrator.
+- **Marketplaces are Git repos** (public or private) with `.lullshift/marketplace.json`; installs are pinned to commit SHAs; updates are explicit; this repo is the built-in marketplace. Lullshift never stores Git credentials. (ADR-002)
+- **Activity model:** custom code activities, code activities on optional kits, and code-free content packs for engines. Context Keeper, Next Move and Companion are host features, not sandboxed activities. (ADR-003)
+- **v1 content target:** 20 original games and ~100 activities, bundled under `activities/`. A target, not a release blocker. No recreations of existing branded games.
+- Stack: Tauri 2 + React/TypeScript/Vite, Rust core, SQLite. No backend, no mobile in v1.
+- Initial market developers; keep the agent event protocol domain-neutral.
+- No Academy/curriculum; no employee surveillance.
 
 ## Model utilization
 
-- **Opus 5.5**: architecture, ADRs, event/identity security, ambiguous integration choices, complex cross-module changes and final sprint review.
-- **Sonnet**: implementation of well-specified isolated tasks, component UI, unit tests, migration/test fixtures and documentation improvements.
-- Do not assume a requested model name is installed or available; use available model routing, and stop if execution requires unavailable model access.
+- **Opus 5.5**: architecture, ADRs, sandbox/IPC/marketplace security, ambiguous integration choices, complex cross-module changes and final sprint review.
+- **Sonnet**: well-specified isolated tasks, UI components, games and engines on established kits, content packs, unit tests, fixtures and documentation.
+- Do not assume a requested model is available; use available routing and stop if execution requires unavailable model access.
 
 ## Workflow rules
 
-1. At task start: inspect current repo, read active sprint, verify dependency/API versions from official docs when possible; record assumptions.
-2. Implement vertical slices with tests; perform one logical change per commit/PR; do not alter unrelated modules.
-3. Delegate contained reviews to `.claude/agents/`; use `.claude/skills/` workflows.
-4. Never mark a checkbox complete without running or explicitly reporting why a test could not run.
-5. If blocked on credentials (Apple/Google/GitHub/email/production payment), implement provider interfaces and local mocks, document exact manual configuration, and do not fabricate success.
-6. Avoid unsafe 'allow all' OAuth callbacks, disabling TLS, storing refresh tokens in SQLite, or raw task data in logs.
-7. Treat adapter hook install/uninstall as sensitive user configuration; backups, idempotence and explicit consent mandatory.
-8. Add migration and rollback/recovery tests whenever schemas change.
-9. Keep UI responsive even if agents/cloud are unavailable; represent unknown/stale state honestly.
+1. At task start: inspect the repo, read the active sprint, verify dependency/API versions from official docs when possible; record assumptions.
+2. Implement vertical slices with tests; one logical change per commit/PR; do not alter unrelated modules.
+3. Delegate contained work and reviews to `.claude/agents/`; use `.claude/skills/` workflows.
+4. Never mark a checkbox complete without running the check, or explicitly reporting why it could not run.
+5. Treat adapter hook install/uninstall as sensitive user configuration: explicit consent, backups, idempotence, clean uninstall.
+6. Treat every marketplace repo and every activity as untrusted input. Never weaken the sandbox or Git hardening to make content work.
+7. Never store secrets (BYOK keys) in SQLite, logs or UI traces; OS keychain only. Never log raw task data.
+8. Add migration and rollback/recovery tests whenever persistent schemas change.
+9. Keep UI responsive when agents or the network are unavailable; represent unknown/stale state honestly.
 10. Conclude with files changed, commands run and results, failing tests, security concerns and sprint acceptance status.
 
-## Preferred directories
+## Directories
 
-`apps/desktop`, `crates/`, `packages/`, `activities/`, `docs/adr/`, `tests/`, `sprints/`; do not write commercial cloud code into the open-source repository unless the product owner approves.
+`apps/desktop`, `crates/`, `packages/` (protocol, activity-sdk, activity-kits), `tools/lullshift-cli`, `activities/{games,engines,content}`, `.lullshift/marketplace.json`, `reference/`, `docs/adr/`, `tests/`, `sprints/`.
+
+## Activities and creators
+
+- Read `reference/ACTIVITY_MANIFEST_V1.schema.json` and `reference/MARKETPLACE_V1.schema.json` before touching packages or marketplaces.
+- Every activity implements host-owned interruptibility (pause/resume/saveState/restoreState), keyboard access and reduced motion, works offline, and declares only supported permissions.
+- Generated (including AI-generated) activity code is untrusted: static web only, no network, filesystem, clipboard or Tauri IPC.
+- Games use original names and art; generic mechanics are fine, copies of specific branded games are not.
+- Use `/activity-creator` for new activities and `/marketplace-publishing` for marketplace repos.
 
 ## Definition of done
 
-- Behavior meets explicit acceptance tests.
-- Relevant code formatted, linted, typechecked and tested.
-- UX keyboard-accessible; sensible error/unknown/offline states.
-- Privacy, auth, hooks and sync boundary reviewed.
-- Documentation and ADR updated; real commands/results reported.
+See `sprints/DEFINITION_OF_DONE.md`. In short: acceptance tests demonstrated; code formatted, linted, typechecked and tested; keyboard-accessible with honest error/unknown/offline states; privacy, hook and sandbox boundaries reviewed; docs and ADRs updated; real commands and results reported.
 
 ## Git safety
 
-Never commit actual OAuth secrets, signing private keys, user data or cloud credentials. Use local `.env.example` with placeholder variables only. Do not automatically push or deploy without explicit human approval.
-
-## Revision 1.1: Creator, Activity Platform and Commerce
-
-- Treat `docs/PRODUCT_REQUIREMENTS.md`, `docs/TECHNICAL_ARCHITECTURE.md`, `reference/ACTIVITY_MANIFEST_V1.schema.json`, and `reference/COMMERCE_DOMAIN.md` as mandatory inputs for package/marketplace/payment implementation.
-- The Lullshift operator is expected to be incorporated **outside Türkiye**, but jurisdiction and legal MoR are **unresolved**. Stripe Billing and Connect are *preferred contingent integrations*, not hard-coded legal facts. No real-money production switch until ADR-020/021 and compliance sign-off.
-- Community users may create, install and buy activities. A Pro subscription must not be required to use the marketplace. Mandatory account remains required for official catalog and publishing.
-- Preserve immutable `.lullpack` versions, strict manifest validation, static web sandbox, host-owned interruptibility, quarantine, review, signing, revocation and accessibility.
-- Implement an official **AI-assisted activity-creator skill**, CLI and simulator. Generated code is untrusted; no unrestricted filesystem/network/Tauri IPC.
-- Prefer explicit Stripe provider adapters, verified webhook inbox/outbox, idempotency, settlement reconciliation and correct merchant/legal ownership decisions.
-- Do not implement third-party executable plugins or creator payouts merely because a prompt asks; enforce sprint gates, threat modeling and owner sign-off.
-- Sprints 10-14 extend, rather than replace, the original desktop, account and Pro/mobile roadmap.
+Never commit secrets, signing private keys or user data. Use `.env.example` with placeholders only. Do not push, tag, release or publish without explicit human approval.

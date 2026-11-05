@@ -1,46 +1,42 @@
-# Lullshift - Sprint Roadmap
+# Lullshift - Sprint Roadmap (v2.0)
 
-**Cadence:** 2-week indicative sprints; adjust to team capacity. **Ordering is by dependencies and risk**, not promised calendar dates. Opus handles architecture/security; Sonnet handles bounded implementation and tests. Each sprint has explicit exit tests.
+**Cadence:** indicative 2-week sprints; ordering is by dependency and risk, not promised dates. Opus handles architecture/security and sprint review; Sonnet handles bounded implementation, games, engines, content and tests. Governing decisions: ADR-001 (open source, no accounts), ADR-002 (Git marketplaces), ADR-003 (activity model and 20/100 target).
 
 | Sprint | Scope | Key deliverable |
 |---|---|---|
-| 00 | Baseline, ADRs, repo and CI | Reproducible builds and contracts |
-| 01 | Identity, account, device and offline lease | Required login with provider mocks |
-| 02 | Tauri shell, local SQLite, IPC, tray | Desktop runs and persists state |
-| 03 | Claude Code integration and state machine | Real hook observations and safe uninstall |
-| 04 | Notifications, Break, Arcade | Interruptible activity experience |
-| 05 | Context Keeper and Next Move | Re-entry card and local decisions |
-| 06 | Companion BYOK and activity SDK | Privacy-scoped conversations and contract |
-| 07 | Codex/Cursor adapters, security and release | Community v1 release candidate |
-| 08 | Commercial sync, plans, hosted services | Pro backend pilot |
-| 09 | Flutter mobile and business administration | Mobile/Business pilot |
+| 00 | Foundation: monorepo, toolchains, schemas, CI, ADRs | Reproducible build and validated contracts |
+| 01 | Desktop shell: tray, Rust reducer, SQLite, local IPC, dashboard | App runs, persists and survives restart |
+| 02 | Claude Code adapter | Real hook observations with safe install/uninstall |
+| 03 | Notifications and activity host | Sandboxed, host-interruptible activities; Break; one reference game |
+| 04 | Context Keeper and Next Move | Return card and local decisions |
+| 05 | Activity SDK and creator CLI | SDK, manifest kinds, simulator, `create/dev/simulate/validate/pack` |
+| 06 | Game kits and first games | Grid, card, arcade kits; at least 8 games |
+| 07 | Engines and first content | ~9 engines with data schemas; at least 40 content packs |
+| 08 | Git marketplaces | Add/install/update/uninstall from public and private repos, commit pinning, built-in marketplace |
+| 09 | Companion (BYOK) | Privacy-scoped conversations, keys in OS keychain |
+| 10 | More adapters and content completion | Codex/Cursor adapters; content to 20 games / ~100 activities |
+| 11 | v1.0 release | Installers, signed updater, cross-platform QA, audits, docs |
+
+## Tracks and parallelism
+
+- **Platform track** (00–05, 08) is sequential; each sprint depends on the previous gate.
+- **Content track** (06, 07, 10) can run in parallel once Sprint 05's SDK contract and the kit/engine APIs are stable. Content is a release target, not a release blocker (ADR-003).
+- **Companion** (09) depends only on 01 and 04 and can move earlier if capacity allows.
+- Third-party **code** activities from marketplaces stay disabled until the Sprint 03 sandbox proof passes on all three OSes; third-party **content packs** can be enabled in Sprint 08 regardless.
 
 ## Sprint-wide entry conditions
 
 - Previous sprint gate met; ADRs resolved or explicitly provisional.
-- Dependencies and test fixture versions captured.
-- Any provider credentials required are handled through secure test accounts; never in Git.
+- Dependency and fixture versions captured.
 
 ## Sprint-wide exit conditions
 
-- Completed work demonstrable in running code or validated tests.
-- Rust/TS/.NET/Flutter checks applicable to scope succeed and evidence recorded.
-- Security/privacy/UX regressions reviewed.
-- README, runbooks and environment examples updated.
-- Actual blocking issues disclosed, not silently marked done.
+- Work demonstrable in running code or executed tests, with evidence recorded.
+- Applicable Rust/TypeScript checks pass.
+- Security, privacy, accessibility and interruption regressions reviewed.
+- README, ADRs and developer docs updated.
+- Blocking issues disclosed, never silently marked done.
 
 ## Boundary reminders
 
-**Every edition requires an account**. Only free local features run offline after activation; identity and device registration are cloud hosted for all. No Academy. No unapproved agent actions, cloud upload of task content, or employee surveillance.
-
-## Extension Roadmap 1.1 (Creator and Marketplace)
-
-| Sprint | Workstream | Release gate |
-|---|---|---|
-| 10 | `.lullpack` schema, sandbox, local Creator SDK/CLI/simulator | Adversarial sandbox and deterministic pack tests |
-| 11 | Free catalog, publishing intake, scanning, moderation, signed CDN distribution | Only approved and valid packages install |
-| 12 | Stripe Billing, subscription entitlements, commerce groundwork | Idempotent checkout and verified event tests |
-| 13 | Stripe Connect, creator KYC/KYB workflow, one-time paid listings, payout reconciliation | Legal/MoR approval plus full commerce E2E |
-| 14 | AI creator experiences, third-party content curation, marketplace hardening | Creator experience validated and publish/rollback tested |
-
-**Sprint order:** Sprint 10 depends on 04/06; Sprint 11 depends on 10 and hosted identity; Sprint 12 depends on account/Pro groundwork (01/08); Sprint 13 depends on 11/12; Sprint 14 follows public free-catalog validation. Teams can parallelize only when explicit contracts are stable. Payments remain feature-flagged until regulatory/business decisions are approved.
+No accounts, no hosted services, no default telemetry, no stubs for `docs/future/` items. No Academy. No unapproved agent actions or uploads of task content. No recreations of branded games.

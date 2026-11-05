@@ -1,48 +1,40 @@
-# Sprint 08 - Commercial Cloud & Sync
+# Sprint 08 - Git Marketplaces
 
-**Goal:** Commercial Cloud & Sync. **Duration:** indicative two weeks. **Owner:** implementation lead, with relevant Claude Code specialist agents.
+**Goal:** Users add public or private Git repos as marketplaces and install activities pinned to commits.
 
-## Dependencies and scope
-
-Read `CLAUDE.md`, product and technical docs, and `sprints/ROADMAP.md`. Complete earlier sprint acceptance criteria. Do not implement later sprints or substitute unsupported provider behavior.
+**Depends on:** Sprints 05 and 06/07 (for real content).
 
 ## Work items
 
-- [ ] S08-T01: Implement plan entitlements and billing adapter with webhook verification
-- [ ] S08-T02: Add encrypted sync protocol, devices and conflict-resolution handling
-- [ ] S08-T03: Provide encrypted backup/restore and hosted AI boundary (feature flagged)
-- [ ] S08-T04: Add observability, quotas, abuse limits and data export/delete APIs
-- [ ] S08-T05: Deploy nonproduction Docker Compose/Postgres/object-store environment
+- [ ] S08-T01: `.lullshift/marketplace.json` for this repo; built-in marketplace bundled into the app at the release tag, removable never, disable-able per activity
+- [ ] S08-T02: Marketplace manager: add/remove/list/refresh via hardened system `git` in an app-owned cache (no hooks, no submodules, no LFS, restricted protocols, timeouts)
+- [ ] S08-T03: Install/update/uninstall with commit pinning, strict validation, install review screen (source, commit, kind, permissions, unverified notice) and explicit updates showing permission changes
+- [ ] S08-T04: Private repo support through the user's existing Git credentials; clear errors when access fails
+- [ ] S08-T05: Malicious-repo fixture suite; third-party code activities enabled only on OSes where Sprint 03 sandbox proof passed
 
-## Acceptance criteria / demonstrable exit tests
+## Acceptance criteria
 
-- [ ] S08-A01: Free users retain all local features without paid plan
-- [ ] S08-A02: Sync uploads opaque encrypted notes with no source code by default
-- [ ] S08-A03: Payment webhooks idempotent; downgrade does not erase local data
-- [ ] S08-A04: Account deletion/device revocation and tenant isolation tests pass
+- [ ] S08-A01: Install from a public and a private test repo works; no credential is ever stored or logged by Lullshift
+- [ ] S08-A02: Malicious-repo fixtures are rejected
+- [ ] S08-A03: Updates never happen silently; a new permission requires explicit approval
+- [ ] S08-A04: Built-in activities work fully offline on first launch
 
-## Engineering guardrails
+## Guardrails
 
-- Account is mandatory for both Community and commercial clients; every provider is covered by interface and tests.
-- No secrets in git, no covert source/prompt upload, no unapproved hook/agent changes.
-- Maintain Windows/macOS/Linux compatibility in native code where applicable.
-- Always represent unknown agent status accurately, and retain local user-owned data.
+- No accounts, hosted services, default telemetry or stubs for `docs/future/` items (ADR-001).
+- Treat agent hooks, marketplace repos and activity code as sensitive or untrusted input.
+- Represent unknown agent status honestly; never lose local user data.
+- Keep Windows, macOS and Linux compatibility in native code.
 
-## Delegation guidance
-
-- Use Opus 5.5 for architecture, identity, cryptography, cross-module risks, and acceptance review.
-- Use Sonnet for scoped code generation, fixtures, UX components and tests.
-- Delegate reviews to `.claude/agents/architecture-reviewer.md`, `.claude/agents/security-qa-reviewer.md` or other relevant agents.
-
-## Sprint closeout template
+## Closeout
 
 ```text
 Sprint: 08
-Completed tasks (links/commits):
-Commands run and observed results:
-Tests not run and reason:
+Completed tasks (commits):
+Commands run and results:
+Tests not run and why:
 Security/privacy review:
 Remaining defects and risks:
 Acceptance checks passed/failed:
-Recommended next sprint action:
+Recommended next action:
 ```

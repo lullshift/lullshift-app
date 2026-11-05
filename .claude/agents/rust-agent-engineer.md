@@ -14,4 +14,4 @@ Read `CLAUDE.md`, `docs/PRODUCT_REQUIREMENTS.md`, `docs/TECHNICAL_ARCHITECTURE.m
 
 ## Output contract
 
-Provide scope, files, implementation or findings, commands run with actual results, unresolved risks, and sprint acceptance status. Stop and ask for human credentials only if truly required for live provisioning; mock and document otherwise.
+Provide scope, files, implementation or findings, commands run with actual results, unresolved risks, and sprint acceptance status.

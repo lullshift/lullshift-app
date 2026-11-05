@@ -1,48 +1,40 @@
-# Sprint 01 - Mandatory Identity & Offline Entitlements
+# Sprint 01 - Desktop Shell, State and Local IPC
 
-**Goal:** Mandatory Identity & Offline Entitlements. **Duration:** indicative two weeks. **Owner:** implementation lead, with relevant Claude Code specialist agents.
+**Goal:** The app runs from the tray, persists agent sessions locally and accepts events over authenticated local IPC.
 
-## Dependencies and scope
-
-Read `CLAUDE.md`, product and technical docs, and `sprints/ROADMAP.md`. Complete earlier sprint acceptance criteria. Do not implement later sprints or substitute unsupported provider behavior.
+**Depends on:** Sprint 00.
 
 ## Work items
 
-- [ ] S01-T01: Build .NET 10 modular identity service with Postgres and provider interfaces
-- [ ] S01-T02: Implement verified email login (mock SMTP locally) plus Google/GitHub/Apple broker adapters with config
-- [ ] S01-T03: Implement native external-browser PKCE login and protected callback handling
-- [ ] S01-T04: Register devices and issue asymmetric signed offline leases
-- [ ] S01-T05: Use OS keychain for tokens and test refresh/revoke/expiry/account linking
+- [ ] S01-T01: Tauri tray lifecycle, hide-to-tray, autostart option and notification permission UX
+- [ ] S01-T02: Rust event reducer and session state machine with migration-managed SQLite (WAL)
+- [ ] S01-T03: Authenticated Unix domain socket / Windows named pipe for hook ingestion
+- [ ] S01-T04: React dashboard with Zustand view state showing sessions, unknown/stale states and empty state
+- [ ] S01-T05: Restart, duplicate, reorder and stale-state tests; migration rollback test
 
-## Acceptance criteria / demonstrable exit tests
+## Acceptance criteria
 
-- [ ] S01-A01: No main UI operation before first successful account activation
-- [ ] S01-A02: All four login choices visible; mocked flow tests pass; live providers marked pending if credentials absent
-- [ ] S01-A03: 30-day prototype lease validates offline; expired lease requires sign-in without data deletion
-- [ ] S01-A04: Provider-link takeover, replay, invalid signature and PKCE negative tests pass
+- [ ] S01-A01: Closing the window does not stop monitoring
+- [ ] S01-A02: Session state survives restart; invalid or unauthenticated IPC input is rejected
+- [ ] S01-A03: Unknown and stale agent status shown truthfully
+- [ ] S01-A04: Tray and SQLite behavior tested on the primary dev OS
 
-## Engineering guardrails
+## Guardrails
 
-- Account is mandatory for both Community and commercial clients; every provider is covered by interface and tests.
-- No secrets in git, no covert source/prompt upload, no unapproved hook/agent changes.
-- Maintain Windows/macOS/Linux compatibility in native code where applicable.
-- Always represent unknown agent status accurately, and retain local user-owned data.
+- No accounts, hosted services, default telemetry or stubs for `docs/future/` items (ADR-001).
+- Treat agent hooks, marketplace repos and activity code as sensitive or untrusted input.
+- Represent unknown agent status honestly; never lose local user data.
+- Keep Windows, macOS and Linux compatibility in native code.
 
-## Delegation guidance
-
-- Use Opus 5.5 for architecture, identity, cryptography, cross-module risks, and acceptance review.
-- Use Sonnet for scoped code generation, fixtures, UX components and tests.
-- Delegate reviews to `.claude/agents/architecture-reviewer.md`, `.claude/agents/security-qa-reviewer.md` or other relevant agents.
-
-## Sprint closeout template
+## Closeout
 
 ```text
 Sprint: 01
-Completed tasks (links/commits):
-Commands run and observed results:
-Tests not run and reason:
+Completed tasks (commits):
+Commands run and results:
+Tests not run and why:
 Security/privacy review:
 Remaining defects and risks:
 Acceptance checks passed/failed:
-Recommended next sprint action:
+Recommended next action:
 ```

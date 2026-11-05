@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lullshift.dev/schemas/marketplace-v1.json",
+  "title": "Lullshift Marketplace Index v1",
+  "description": ".lullshift/marketplace.json at the root of a Git repository that acts as a Lullshift marketplace (ADR-002). Each entry points to an activity folder containing manifest.json, either in this repository or in another Git repository.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "name", "activities"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "name": {
+      "description": "Short marketplace name shown in the UI and used in commands. 'lullshift' is reserved for the built-in marketplace.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,39}$"
+    },
+    "description": { "type": "string", "maxLength": 500 },
+    "owner": {
+      "description": "Self-declared, unverified.",
+      "type": "string",
+      "maxLength": 100
+    },
+    "activities": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*\\.\\.)(?!.*\\\\)[A-Za-z0-9_./-]+$",
+      "maxLength": 300
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source"],
+      "properties": {
+        "id": {
+          "description": "Must equal the id in the referenced manifest.json.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$",
+          "maxLength": 160
+        },
+        "source": {
+          "oneOf": [
+            {
+              "description": "Folder in this repository.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path"],
+              "properties": { "path": { "$ref": "#/$defs/relativePath" } }
+            },
+            {
+              "description": "Folder in another Git repository. 'ref' is a tag, branch or commit; the installed version is always pinned to the resolved commit SHA.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["git"],
+              "properties": {
+                "git": {
+                  "type": "string",
+                  "pattern": "^(https://|ssh://|git@)[^\\s]+$|^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$",
+                  "maxLength": 300
+                },
+                "ref": { "type": "string", "maxLength": 200 },
+                "path": { "$ref": "#/$defs/relativePath" }
+              }
+            }
+          ]
+        },
+        "featured": { "type": "boolean" }
+      }
+    }
+  }
+}

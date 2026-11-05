@@ -1,27 +1,27 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lullshift.dev/schemas/activity-manifest-v1.json",
   "title": "Lullshift Activity Manifest v1",
+  "description": "manifest.json at the root of every activity folder or .lullpack. kind=app is a sandboxed static web app; kind=content is code-free data for a named engine (ADR-003).",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schemaVersion",
+    "kind",
     "id",
     "version",
     "name",
     "category",
-    "entrypoint",
-    "runtime",
     "minHostVersion",
     "sdkVersion",
     "permissions",
-    "interruptibility",
     "offline"
   ],
   "properties": {
-    "schemaVersion": {
-      "const": 1
-    },
+    "schemaVersion": { "const": 1 },
+    "kind": { "enum": ["app", "content"] },
     "id": {
+      "description": "Reverse-DNS style identifier, unique within a marketplace.",
       "type": "string",
       "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$",
       "maxLength": 160
@@ -30,62 +30,70 @@
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
     },
-    "name": {
+    "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "description": { "type": "string", "maxLength": 500 },
+    "author": {
+      "description": "Self-declared and unverified (there are no accounts). The install UI shows the source repository as the trust signal.",
       "type": "string",
-      "minLength": 1,
       "maxLength": 100
     },
-    "category": {
-      "enum": [
-        "arcade",
-        "break",
-        "productivity",
-        "interactive"
-      ]
+    "license": {
+      "description": "SPDX license expression for the activity's code and content.",
+      "type": "string",
+      "maxLength": 100
     },
-    "entrypoint": {
-      "const": "index.html"
+    "category": { "enum": ["arcade", "break", "productivity", "interactive"] },
+    "tags": {
+      "type": "array",
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9-]{1,30}$" }
     },
-    "runtime": {
-      "const": "isolated-web-v1"
-    },
-    "minHostVersion": {
-      "type": "string"
-    },
-    "sdkVersion": {
-      "type": "string"
-    },
+    "minHostVersion": { "type": "string" },
+    "sdkVersion": { "type": "string" },
     "permissions": {
       "type": "array",
       "uniqueItems": true,
-      "items": {
-        "enum": [
-          "activity.storage"
-        ]
-      }
+      "items": { "enum": ["activity.storage"] }
     },
+    "offline": { "const": true },
+    "entrypoint": { "const": "index.html" },
+    "runtime": { "const": "isolated-web-v1" },
     "interruptibility": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "pause",
-        "resume",
-        "persistState"
-      ],
+      "required": ["pause", "resume", "persistState"],
       "properties": {
-        "pause": {
-          "const": true
-        },
-        "resume": {
-          "const": true
-        },
-        "persistState": {
-          "const": true
-        }
+        "pause": { "const": true },
+        "resume": { "const": true },
+        "persistState": { "const": true }
       }
     },
-    "offline": {
-      "type": "boolean"
+    "engine": {
+      "description": "Engine id and major version, e.g. lullshift.quiz@1.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+@[0-9]+$"
+    },
+    "data": {
+      "description": "Relative path to the engine data file inside the activity folder. Validated against the engine's data schema.",
+      "type": "string",
+      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9_./-]+\\.json$"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "app" } } },
+      "then": {
+        "required": ["entrypoint", "runtime", "interruptibility"],
+        "not": { "anyOf": [{ "required": ["engine"] }, { "required": ["data"] }] }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "content" } } },
+      "then": {
+        "required": ["engine", "data"],
+        "not": { "anyOf": [{ "required": ["entrypoint"] }, { "required": ["runtime"] }, { "required": ["interruptibility"] }] }
+      }
+    }
+  ]
 }

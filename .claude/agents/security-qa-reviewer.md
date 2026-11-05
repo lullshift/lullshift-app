@@ -6,12 +6,12 @@ model: opus
 
 # Role
 
-Inspect secret handling, OAuth redirects, provider linking, lease validation, local IPC injection, hook file writes, plugin boundaries, tenant isolation, sync encryption and data minimization. Report reproducible issues by severity and required tests. Do not modify code unless asked.
+Inspect local IPC authentication and injection, hook file writes and uninstall, activity sandbox boundaries (Tauri IPC, network, filesystem, clipboard, navigation, cross-activity storage), Git marketplace handling (hooks, submodules, symlinks, path traversal, oversized content, credential leakage), content-pack validation, BYOK key storage, logging of task data and data minimization. Report reproducible issues by severity with required tests. Do not modify code unless asked.
 
 ## Review inputs
 
-Read `CLAUDE.md`, `docs/PRODUCT_REQUIREMENTS.md`, `docs/TECHNICAL_ARCHITECTURE.md` and current sprint before acting.
+Read `CLAUDE.md`, `docs/PRODUCT_REQUIREMENTS.md`, `docs/TECHNICAL_ARCHITECTURE.md`, `docs/adr/` and the current sprint before acting.
 
 ## Output contract
 
-Provide scope, files, implementation or findings, commands run with actual results, unresolved risks, and sprint acceptance status. Stop and ask for human credentials only if truly required for live provisioning; mock and document otherwise.
+Provide scope, files, findings, commands run with actual results, unresolved risks, and sprint acceptance status.

@@ -1,48 +1,40 @@
-# Sprint 04 - Interruption UX: Notifications, Break, Arcade
+# Sprint 04 - Context Keeper and Next Move
 
-**Goal:** Interruption UX: Notifications, Break, Arcade. **Duration:** indicative two weeks. **Owner:** implementation lead, with relevant Claude Code specialist agents.
+**Goal:** Users return to agent work with their intent, notes and next decisions in front of them.
 
-## Dependencies and scope
-
-Read `CLAUDE.md`, product and technical docs, and `sprints/ROADMAP.md`. Complete earlier sprint acceptance criteria. Do not implement later sprints or substitute unsupported provider behavior.
+**Depends on:** Sprint 03.
 
 ## Work items
 
-- [ ] S04-T01: Implement attention-priority native notifications, quiet hours and preferences
-- [ ] S04-T02: Implement activity contract pause/resume/save and robust interrupted state
-- [ ] S04-T03: Ship Break with away mode and one or two simple local games
-- [ ] S04-T04: Test pause during active input, multi-session priority and focus UX
-- [ ] S04-T05: Accessibility audit keyboard, labels and reduced motion
+- [ ] S04-T01: Consent-gated context bookmark editor (metadata-only by default) and retention controls
+- [ ] S04-T02: Return card on attention/completion: original intent, notes, open decisions, review checklist
+- [ ] S04-T03: Next Move queue for follow-up questions, acceptance criteria and test ideas with copy-to-clipboard (user-initiated)
+- [ ] S04-T04: JSON/Markdown export, per-session deletion, session linking
+- [ ] S04-T05: Tests proving no task content is captured without consent and nothing leaves the device
 
-## Acceptance criteria / demonstrable exit tests
+## Acceptance criteria
 
-- [ ] S04-A01: Agent attention interrupts and saves activities without losing progress
-- [ ] S04-A02: Do not show completions for mere turn-stop
-- [ ] S04-A03: Works offline with valid lease; activity state restored on restart
-- [ ] S04-A04: Screen reader and keyboard smoke checks documented
+- [ ] S04-A01: Return card works with a synthetic multi-session fixture
+- [ ] S04-A02: Export and delete work; retention rules visible
+- [ ] S04-A03: Nothing is ever injected into an active agent
+- [ ] S04-A04: With context off, no content is captured
 
-## Engineering guardrails
+## Guardrails
 
-- Account is mandatory for both Community and commercial clients; every provider is covered by interface and tests.
-- No secrets in git, no covert source/prompt upload, no unapproved hook/agent changes.
-- Maintain Windows/macOS/Linux compatibility in native code where applicable.
-- Always represent unknown agent status accurately, and retain local user-owned data.
+- No accounts, hosted services, default telemetry or stubs for `docs/future/` items (ADR-001).
+- Treat agent hooks, marketplace repos and activity code as sensitive or untrusted input.
+- Represent unknown agent status honestly; never lose local user data.
+- Keep Windows, macOS and Linux compatibility in native code.
 
-## Delegation guidance
-
-- Use Opus 5.5 for architecture, identity, cryptography, cross-module risks, and acceptance review.
-- Use Sonnet for scoped code generation, fixtures, UX components and tests.
-- Delegate reviews to `.claude/agents/architecture-reviewer.md`, `.claude/agents/security-qa-reviewer.md` or other relevant agents.
-
-## Sprint closeout template
+## Closeout
 
 ```text
 Sprint: 04
-Completed tasks (links/commits):
-Commands run and observed results:
-Tests not run and reason:
+Completed tasks (commits):
+Commands run and results:
+Tests not run and why:
 Security/privacy review:
 Remaining defects and risks:
 Acceptance checks passed/failed:
-Recommended next sprint action:
+Recommended next action:
 ```

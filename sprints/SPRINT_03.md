@@ -1,48 +1,40 @@
-# Sprint 03 - Claude Code Adapter
+# Sprint 03 - Notifications and Activity Host
 
-**Goal:** Claude Code Adapter. **Duration:** indicative two weeks. **Owner:** implementation lead, with relevant Claude Code specialist agents.
+**Goal:** Attention-aware notifications and a sandboxed activity host that the host itself can pause, with Break and one reference game.
 
-## Dependencies and scope
-
-Read `CLAUDE.md`, product and technical docs, and `sprints/ROADMAP.md`. Complete earlier sprint acceptance criteria. Do not implement later sprints or substitute unsupported provider behavior.
+**Depends on:** Sprint 02.
 
 ## Work items
 
-- [ ] S03-T01: Confirm current Claude Code hook payloads and supported event semantics
-- [ ] S03-T02: Create hook forwarder and reversible installer with backups and consent
-- [ ] S03-T03: Map hook events into normalized session state, including ambiguous stop
-- [ ] S03-T04: Observe simultaneous sessions, handle missing/replayed events
-- [ ] S03-T05: Write adapter fixtures and uninstall/upgrade tests
+- [ ] S03-T01: Attention-priority native notifications, quiet hours and preferences
+- [ ] S03-T02: Activity host: isolated WebView/origin, CSP, no Tauri IPC/network/filesystem, nonce-bound lifecycle bridge, namespaced storage quota
+- [ ] S03-T03: Host-enforced pause/freeze on `needs_attention`, snapshot persistence and crash recovery
+- [ ] S03-T04: Break activity (away mode, gentle return) and one original reference puzzle game built on the bridge
+- [ ] S03-T05: Sandbox denial test suite; record per-OS results in an ADR (activity sandbox strategy)
 
-## Acceptance criteria / demonstrable exit tests
+## Acceptance criteria
 
-- [ ] S03-A01: Real Claude Code smoke test sees working/attention/turn events
-- [ ] S03-A02: No duplicated critical attention events across replay
-- [ ] S03-A03: Hooks restored after uninstall and previous config remains valid
-- [ ] S03-A04: Provider capability matrix documented
+- [ ] S03-A01: Agent attention pauses the running activity without its cooperation and without losing progress
+- [ ] S03-A02: Turn-stop is never shown as task completion
+- [ ] S03-A03: Sandbox denial tests pass on the dev OS; other OS results recorded or flagged blocked
+- [ ] S03-A04: Keyboard and screen-reader smoke checks documented
 
-## Engineering guardrails
+## Guardrails
 
-- Account is mandatory for both Community and commercial clients; every provider is covered by interface and tests.
-- No secrets in git, no covert source/prompt upload, no unapproved hook/agent changes.
-- Maintain Windows/macOS/Linux compatibility in native code where applicable.
-- Always represent unknown agent status accurately, and retain local user-owned data.
+- No accounts, hosted services, default telemetry or stubs for `docs/future/` items (ADR-001).
+- Treat agent hooks, marketplace repos and activity code as sensitive or untrusted input.
+- Represent unknown agent status honestly; never lose local user data.
+- Keep Windows, macOS and Linux compatibility in native code.
 
-## Delegation guidance
-
-- Use Opus 5.5 for architecture, identity, cryptography, cross-module risks, and acceptance review.
-- Use Sonnet for scoped code generation, fixtures, UX components and tests.
-- Delegate reviews to `.claude/agents/architecture-reviewer.md`, `.claude/agents/security-qa-reviewer.md` or other relevant agents.
-
-## Sprint closeout template
+## Closeout
 
 ```text
 Sprint: 03
-Completed tasks (links/commits):
-Commands run and observed results:
-Tests not run and reason:
+Completed tasks (commits):
+Commands run and results:
+Tests not run and why:
 Security/privacy review:
 Remaining defects and risks:
 Acceptance checks passed/failed:
-Recommended next sprint action:
+Recommended next action:
 ```
