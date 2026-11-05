@@ -12,6 +12,11 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 6 | 06 | The first eight games | open |
 | 7 | 06 | Built-in marketplace lists engines | open |
 | 8 | 06 | Game design details chosen by the game builders | open |
+| 9 | 07 | Engine lineup and pack count | open |
+| 10 | 07 | Content style guide rules | open |
+| 11 | 07 | Timed engines wait for Begin | open |
+| 12 | 07 | British spelling in bundled content | open |
+| 13 | 07 | How the app checks pack data | open |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -67,3 +72,27 @@ Smaller choices made while building the eight games. Each is easy to change.
 - **Kite Drift:** touching a cloud puts the kite back in the middle of that gap and resets the streak; never a game over.
 - **Firefly Catch:** a round is 90 seconds of game time; missed fireflies fly away, no lives.
 - **Best scores:** stored with `activity.storage` where a game keeps one (Moss Paths per day, Stone Slide per size, Tide Pairs per size, Firefly Catch).
+
+## 9. Engine lineup and pack count (Sprint 07)
+
+**Decision:** the nine engines named in the sprint, as `lullshift.<name>@1`: breathing (Breathing Space), pause (Guided Pause), movement (Movement Routine), away (Away Prompts), quiz (Quick Quiz), teaser (Brain Teasers), reflection (Reflection Prompts), typing (Typing Drills) and toy (Creative Toy), plus the existing Calm Cards. Five packs per new engine and four more Calm Cards packs: about 50 packs, above the 40 target. Content packs carry data and a preview only, no other media (finalised in ADR-016). **Alternatives:** fewer, deeper packs; pack media in v1.
+
+## 10. Content style guide (Sprint 07, `docs/CONTENT_STYLE_GUIDE.md`)
+
+Rules I set for all bundled text: no medical or health-outcome claims and always a way out for body content; breath holds no longer than 4 seconds; no streaks or guilt; quizzes and teasers are play (no levels, grades or certificates); reflection notes stay in the pack's saved state on the device and can be cleared; no quotes from real people; plain text only. **Question:** anything to loosen or add?
+
+## 11. Timed engines wait for Begin (Sprint 07)
+
+Breathing Space, Guided Pause and Movement Routine open ready and start when you press Begin (or Start), with Pause/Continue; after an interruption they come back stopped, with the remaining time kept, instead of carrying on by themselves. Movement never moves on to the next move without Next. Reasons: someone returning from "needs you" shouldn't find a timer already running, it meets the WCAG "timing adjustable" need, and it lets the simulator check exact restore. Typing Drills hide words per minute in accuracy mode; quiz scores are never stored. **Alternative:** auto-start on open.
+
+## 12. British spelling in bundled content (Sprint 07)
+
+The packs mixed US and British spelling. **Decision:** user-visible content uses British spelling (colour, favourite), matching the docs. The content review also removed a now-contested place name, a disputed tree-network claim, stock riddles and an implied health claim ("back-friendly" became "Seated Easy Stretches"). **Alternative:** US spelling throughout.
+
+## 13. How the app checks pack data (Sprint 07, ADR-016)
+
+The app must re-check a pack's data against its engine schema before running it. Ajv (used by the CLI) compiles validators with `new Function`, which the app's CSP forbids. **Decision:** a small Rust validator (`data_schema.rs`) that supports a fixed set of schema keywords and refuses schemas using anything else; it uses the existing `regex` crate (already in the lockfile, now a direct dependency). Other choices made with it: a pack gets `activity.storage` only if both the pack and its engine declare it; v1 packs may contain only the manifest, the data file, a preview and `.md`/`.txt` notes; engines stay listed in the marketplace index but hidden in the app; no engine major is removed within v1. **Alternatives:** relax the CSP for Ajv (not recommended), or use a Rust JSON Schema crate (bigger dependency).
+
+## 14. Security review follow-ups left for Sprint 08 (Sprint 07)
+
+The review of the pack checker found no blocking issues. Medium and low items (regex differences, a work budget, exact `multipleOf`, a shared Ajv/Rust test corpus, cleaned terminal output) are fixed with tests in Sprint 07. Two items are deliberately left: (a) the app caches a pack's check result for the session, which is safe while packs are bundled; Sprint 08 must key the cache by installed commit SHA or content hash when marketplace installs land; (b) the shared plain-text pattern still allows the Unicode line and paragraph separators (U+2028/U+2029). Both validators agree, so nothing slips through one side only; banning them means changing every engine schema at once. **Question:** ban them in a later schema pass, or leave as is?

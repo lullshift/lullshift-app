@@ -527,3 +527,66 @@ Record any "ESCAPED" line in ADR-012.
 **Expected:** every activity passes validate and simulate, and the games render and play as on Windows.
 
 **Result:** \_\_\_
+
+## Sprint 07 – Engines and content packs
+
+### M07-1: Play one pack of every engine by keyboard and with a screen reader (S07-T05)
+
+**Why manual:** the accessibility review was static and the simulator does not hear a screen reader. The fixes (announced hints and answers, card text read on Next, plain-text typing target, toy cursor position) need a person to confirm them.
+
+1. In **Activities**, open one pack per engine, for example Gentle Box Breathing, Eye Rest, Three-Minute Energiser, Kitchen Break, Computing Word Origins Quiz, Lateral Thinking, Small Wins, Calm Sentences, Dusk Ripples and Desk Stretches.
+2. Use each with the keyboard only, following its **How to play**.
+3. Repeat with a screen reader on (Narrator, VoiceOver or Orca).
+4. Zoom the app to 200% and narrow the window.
+
+**Expected:**
+
+- Step 2: everything works from the keyboard and focus is always visible, including after the last step of a timed pack (focus moves to a sensible button, never disappears).
+- Step 3: moving to the next card reads its text; a teaser's hint and answer are read out; typing never reads back what you typed; the toy says where the cursor is.
+- Step 4: the buttons wrap onto a second line; nothing scrolls sideways.
+- Text boxes (Reflection notes, Typing) have a clearly visible border in light and dark themes.
+
+**Result:** \_\_\_
+
+### M07-2: Timed packs stop when interrupted
+
+**Why manual:** timing needs a person watching the real app.
+
+1. Start Gentle Box Breathing, press **Begin**, then trigger an agent "needs you" event (or press **Pause**).
+2. Wait 10 seconds, then resume.
+3. Repeat with a Guided Pause and a Movement Routine pack.
+
+**Expected:** the timer stops at once, comes back stopped with the remaining time kept, and only continues when you press Continue. Movement never moves to the next move by itself.
+
+**Result:** \_\_\_
+
+### M07-3: Read the content
+
+**Why manual:** a content review was done by an agent; the product owner should read a sample.
+
+1. Read through at least one pack per engine, plus the style guide (`docs/CONTENT_STYLE_GUIDE.md`).
+
+**Expected:** the tone is calm and plain; no health claims; no stock riddles or quotes; teaser and quiz answers are correct; nothing looks like a copy of a known puzzle book, game or site.
+
+**Result:** \_\_\_
+
+### M07-4: Broken and missing pack data
+
+**Why manual:** the app's error card for a broken pack is covered by tests, not by a person looking at it.
+
+1. Copy a pack folder inside `activities/content/`, give it a new `id`, and add an unknown field to its data file. Rebuild and open it.
+2. Delete the data file and open it again.
+3. Remove the copy.
+
+**Expected:** the pack does not run; a clear, friendly error card names the problem (for example "surprise isn't a known field"), and the rest of the app keeps working.
+
+**Result:** \_\_\_
+
+### M07-5: Packs on macOS and Linux
+
+1. On macOS and Linux, run `node tests/activities/check-engine-compat.mjs` and `node tests/activities/check-bundled.mjs`.
+2. Open two packs in the app.
+
+**Expected:** all checks pass, and the packs render as on Windows.
+
+**Result:** \_\_\_
