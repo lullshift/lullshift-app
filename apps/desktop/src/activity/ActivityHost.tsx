@@ -5,18 +5,23 @@
 // the last saved state. Every state the activity reports (on request or on its own) is saved
 // to the local database right away, so a crash or restart loses at most the last few moves.
 
-import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { providerName } from "../format";
-import { Icon } from "../ui/Icon";
-import { Mascot } from "../ui/Mascot";
+import type { Help } from "@lullshift/activity-sdk";
 import {
   RateLimiter,
   hostEnvelope,
   newNonce,
   parseActivityMessage,
   type HostMessage,
-} from "./protocol";
+  type SummaryItem,
+} from "@lullshift/activity-sdk/host";
+import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { providerName } from "../format";
+import { Icon } from "../ui/Icon";
+import { Mascot } from "../ui/Mascot";
+import { HelpDialog } from "./HelpDialog";
+import { formatPlayed } from "./playTime";
+import { usePreview } from "./usePreview";
 
 export interface ActivityInfo {
   id: string;
@@ -27,6 +32,12 @@ export interface ActivityInfo {
   url: string;
   storage: boolean;
   savedUtc: string | null;
+  /** How-to-play help from the manifest; null if it has none. */
+  help: Help | null;
+  /** The manifest names a preview image (fetched with `activity_preview`). */
+  preview: boolean;
+  /** Total time played before this visit, in seconds. */
+  playedSeconds: number;
 }
 
 /** A pause the host forced; `seq` changes for every new request. */
@@ -84,6 +95,14 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
   const [phase, setPhaseState] = useState<Phase>({ kind: "loading" });
   // Empty until the saved state is loaded; the iframe is created only after that.
   const [nonce, setNonce] = useState("");
+  // The activity's latest stats for the paused view; this visit only, never stored.
+  const [summary, setSummary] = useState<SummaryItem[] | null>(null);
+  // Seconds played this visit (shown) and not yet added to the stored total.
+  const [playedNow, setPlayedNow] = useState(0);
+  const unsaved = useRef(0);
+  const launched = useRef(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const preview = usePreview(activity.id, activity.preview);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const restoreRef = useRef<unknown>(null);
   const phaseRef = useRef<Phase>({ kind: "loading" });
@@ -232,6 +251,7 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
           restore: restoreRef.current,
           reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
           theme: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+          content: null,
         });
         setPhase({ kind: "running" });
         frameRef.current?.focus();
@@ -247,6 +267,9 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
             pending.current.delete(m.requestId);
           }
         });
+      } else if (m.type === "summary") {
+        const now = phaseRef.current.kind;
+        if (now === "running" || now === "pausing") setSummary(m.items);
       } else if (m.type === "storage") {
         const reply = (ok: boolean, value?: string | null, error?: string) =>
           post({ type: "storage-result", requestId: m.requestId, ok, value, error });
@@ -273,6 +296,29 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [nonce, post, persist, freeze, activity.id, activity.storage, setPhase]);
+
+  // Time played: measured by the host while the activity runs (it only runs while visible), and
+  // added to the stored total whenever it stops running (S05-T09).
+  const flushPlay = useCallback(() => {
+    const seconds = Math.round(unsaved.current);
+    if (seconds < 1) return;
+    unsaved.current -= seconds;
+    const launch = !launched.current;
+    launched.current = true;
+    void invoke("activity_add_play", { id: activity.id, seconds, launch }).catch(() => {
+      // Not saved: the total is a little short. Nothing else depends on it.
+    });
+  }, [activity.id]);
+  useEffect(() => {
+    if (phase.kind !== "running") return;
+    const started = performance.now();
+    return () => {
+      const seconds = (performance.now() - started) / 1000;
+      unsaved.current += seconds;
+      setPlayedNow((p) => p + seconds);
+      flushPlay();
+    };
+  }, [phase.kind, flushPlay]);
 
   // An activity that never says it's ready is shown as failed, not left spinning.
   useEffect(() => {
@@ -319,6 +365,12 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
     onClose();
   };
 
+  // Reading help pauses the activity, so nothing happens behind the dialog.
+  const openHelp = () => {
+    if (phaseRef.current.kind === "running") void freeze("user");
+    setHelpOpen(true);
+  };
+
   const live =
     nonce !== "" &&
     (phase.kind === "loading" || phase.kind === "running" || phase.kind === "pausing");
@@ -338,6 +390,10 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
                   ? "Didn't start"
                   : ""}
         </span>
+        <button type="button" className="btn btn-quiet" onClick={openHelp}>
+          <Icon name="help" size={18} />
+          How to play
+        </button>
         {phase.kind === "running" && (
           <button type="button" className="btn btn-quiet" onClick={() => void freeze("user")}>
             <Icon name="pause" size={18} />
@@ -367,7 +423,12 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
           <PausedCard
             phase={phase}
             name={activity.name}
+            summary={summary}
+            playedNow={playedNow}
+            playedTotal={activity.playedSeconds + playedNow}
+            preview={preview}
             onResume={() => void start()}
+            onHelp={openHelp}
             onGoToSessions={onGoToSessions}
           />
         )}
@@ -386,6 +447,13 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
           </div>
         )}
       </div>
+      <HelpDialog
+        open={helpOpen}
+        name={activity.name}
+        description={activity.description}
+        help={activity.help}
+        onClose={() => setHelpOpen(false)}
+      />
     </section>
   );
 }
@@ -393,12 +461,22 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
 function PausedCard({
   phase,
   name,
+  summary,
+  playedNow,
+  playedTotal,
+  preview,
   onResume,
+  onHelp,
   onGoToSessions,
 }: {
   phase: Extract<Phase, { kind: "paused" }>;
   name: string;
+  summary: SummaryItem[] | null;
+  playedNow: number;
+  playedTotal: number;
+  preview: string | null;
   onResume: () => void;
+  onHelp: () => void;
   onGoToSessions: () => void;
 }) {
   const savedText = phase.saved ? "Your progress is saved." : "Your last saved progress is kept.";
@@ -429,6 +507,13 @@ function PausedCard({
               ? `Paused while you were away. ${savedText}`
               : savedText}
       </p>
+      <PausedStats
+        name={name}
+        summary={summary}
+        playedNow={playedNow}
+        playedTotal={playedTotal}
+        preview={preview}
+      />
       <div className="host-actions">
         {attention && (
           <button type="button" className="btn btn-primary" onClick={onGoToSessions} ref={primary}>
@@ -445,7 +530,56 @@ function PausedCard({
           <Icon name="play" size={18} />
           {attention ? "Keep playing" : "Resume"}
         </button>
+        <button type="button" className="btn btn-quiet" onClick={onHelp}>
+          <Icon name="help" size={18} />
+          How to play
+        </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * What the paused view shows instead of an empty card (S05-T09): time played, always; the
+ * activity's own stats if it reported any; otherwise its preview image.
+ */
+function PausedStats({
+  name,
+  summary,
+  playedNow,
+  playedTotal,
+  preview,
+}: {
+  name: string;
+  summary: SummaryItem[] | null;
+  playedNow: number;
+  playedTotal: number;
+  preview: string | null;
+}) {
+  const showTotal = Math.floor(playedTotal / 60) > Math.floor(playedNow / 60);
+  return (
+    <div className="paused-stats">
+      <dl className="stat-list">
+        <div className="stat">
+          <dt>Played this time</dt>
+          <dd>{formatPlayed(playedNow)}</dd>
+        </div>
+        {showTotal && (
+          <div className="stat">
+            <dt>In total</dt>
+            <dd>{formatPlayed(playedTotal)}</dd>
+          </div>
+        )}
+        {summary?.map((item, i) => (
+          <div className="stat" key={i}>
+            <dt>{item.label}</dt>
+            <dd>{String(item.value)}</dd>
+          </div>
+        ))}
+      </dl>
+      {!summary && preview && (
+        <img className="paused-preview" src={preview} alt={`${name} preview`} />
+      )}
     </div>
   );
 }

@@ -45,7 +45,7 @@ body {
   line-height: 1.5;
 }
 .wrap {
-  max-width: 420px;
+  max-width: 460px;
   margin: 0 auto;
   padding: 24px 20px 36px;
   display: grid;
@@ -119,20 +119,29 @@ h1 {
   min-height: 1.5em;
   color: var(--text);
 }
+/* One row of controls (S05-T08). Buttons share the width and never break mid-label; only a
+   very narrow window lets them wrap. */
 .controls {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
 }
 .controls button {
+  flex: 1 1 auto;
+  white-space: nowrap;
   font: inherit;
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 10px 14px;
+  padding: 10px 10px;
   min-height: 44px;
   cursor: pointer;
+}
+@media (max-width: 340px) {
+  .controls {
+    flex-wrap: wrap;
+  }
 }
 .controls button:hover:not(:disabled) {
   background: var(--accent-soft);

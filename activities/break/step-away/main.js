@@ -61,6 +61,14 @@
     LullshiftBridge.autosave(snapshot());
   }
 
+  // What the host shows while paused (S05-T09).
+  function report() {
+    var minutes = Math.floor(state.elapsed / 60);
+    LullshiftBridge.summary([
+      { label: "Time away", value: minutes < 1 ? "Under a minute" : minutes + " min" },
+    ]);
+  }
+
   function tick() {
     var now = Date.now();
     var dt = Math.min(2, Math.max(0, (now - lastTick) / 1000));
@@ -119,6 +127,7 @@
     saveState: snapshot,
     onPause: function () {
       running = false;
+      report();
     },
     onResume: function () {
       lastTick = Date.now();

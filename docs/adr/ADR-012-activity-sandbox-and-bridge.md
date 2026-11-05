@@ -69,7 +69,20 @@ All traffic is `postMessage` of plain objects `{ lullshift: 1, nonce, type, ... 
   - The host ignores state sent before `init`, which would otherwise be a blank start state.
   - Saves are written one at a time, in the order they arrived. A new launch reads the snapshot only after pending saves finish.
 - **An oversized message** from the current launch closes the activity as unresponsive. Its later messages are never decoded.
-- The canonical client is `activities/lib/lullshift-bridge-v1.js`. Each bundled activity carries an identical copy, and a test keeps the copies identical. The Activity SDK (Sprint 05) replaces it, keeping protocol v1.
+- The canonical client is `packages/activity-sdk/bridge/lullshift-bridge-v1.js` (it moved from `activities/lib/` in Sprint 05, ADR-017). Each bundled activity carries an identical copy, and a test keeps the copies identical.
+
+### Additions in Sprint 05 (still protocol v1)
+
+These are optional additions; an older host drops the new message as an unknown type, and an older activity simply never sends it.
+
+- **`summary` (activity to host):** `{ type: "summary", items: [{ label, value }] }`.
+  - One to four items. `label` is plain text of 1–24 characters, and `value` is plain text of 1–24 characters or a finite number.
+  - The host shows the latest summary in the paused view, as text. It is held in memory for the current visit and never stored, so an activity can't use it as a hidden store.
+  - The host keeps only the latest summary. Summaries count against the normal message rate limit.
+- **`init.content`:** the validated pack data for engines (ADR-016), `null` for other activities.
+- **Help and preview come from the manifest, not the bridge.** The host renders `help` as plain text in its own panel; nothing in it is HTML. The host reads `preview` itself and shows it only as an `<img>` from a `data:` URL, so the app's CSP is unchanged and an SVG preview never runs script.
+- **Time played** is measured by the host: the time an activity is running in a visible window. The host adds it to a per-activity total in SQLite (migration 0005) on every pause and close. The activity can't report or change it.
+- **The bridge client always answers `save`** with the last known state if `saveState` returns nothing (ADR-017), which closes the "nothing to save looks like no answer" gap for activities using the SDK.
 
 ### Host-owned interruption
 
@@ -121,7 +134,7 @@ All traffic is `postMessage` of plain objects `{ lullshift: 1, nonce, type, ... 
 - **Before third-party code activities (Sprint 08)**, these must also be settled. They were found in the Sprint 03 security review and are harmless while every activity is bundled and reviewed:
   - **Loading another activity.** An activity can navigate its own frame to another activity's page with the same nonce. That page would then run under the first activity's id and storage. The host should pin the frame to the launched activity's path, or serve each activity from its own host name.
   - **Storage quota.** The quota counts key and value bytes only. Many tiny keys still cost database space, and Rust has no write budget per activity. A cost per row or a cap on keys is needed, plus a write rate limit in Rust.
-  - **"Nothing to save" looks like no answer.** An activity that has nothing to report is closed as unresponsive after three autosaves. Until protocol v1 gets a "no change" reply, activities must always return a state. The SDK (Sprint 05) will do this for them.
+  - **"Nothing to save" looks like no answer.** An activity that has nothing to report is closed as unresponsive after three autosaves. The SDK's bridge client now answers with the last known state (Sprint 05). Activities that use their own client must still always return a state.
   - **Uninstalling hooks and changing notification settings** have no native confirmation (see above).
 
 ## Consequences

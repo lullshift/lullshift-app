@@ -1,7 +1,7 @@
-// Activity bridge protocol v1 (ADR-012). Every message between the host (this app) and an
-// activity is a plain object `{ lullshift: 1, nonce, type, ... }` sent with postMessage.
-// Activities are untrusted: the host checks every message they send with `parseActivityMessage`
-// before acting on it, and drops (and counts) anything else.
+// Activity bridge protocol v1, host side (ADR-012). Every message between a host (the desktop
+// app, or the CLI's simulator) and an activity is a plain object `{ lullshift: 1, nonce, type,
+// ... }` sent with postMessage. Activities are untrusted: the host checks every message they send
+// with `parseActivityMessage` before acting on it, and drops (and counts) anything else.
 
 export const PROTOCOL = 1;
 
@@ -11,6 +11,27 @@ export const MESSAGE_MAX = 320 * 1024;
 export const VALUE_MAX = 64 * 1024;
 const ID_MAX = 64;
 const KEY_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+/** Summary limits (Sprint 05): items per summary, characters per label or value. */
+export const SUMMARY_ITEMS_MAX = 4;
+export const SUMMARY_TEXT_MAX = 24;
+
+// Control, bidirectional-override and invisible formatting characters; mirrors the manifest's
+// plain-text pattern.
+const NOT_PLAIN =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]/u;
+
+/** Plain text of 1 to `max` characters (code points), with no control or invisible characters. */
+export function isPlainText(v: unknown, max: number): v is string {
+  if (typeof v !== "string" || v.length === 0 || NOT_PLAIN.test(v)) return false;
+  return [...v].length <= max;
+}
+
+/** One stat in the paused view, such as `{ label: "Moves", value: 12 }`. */
+export interface SummaryItem {
+  label: string;
+  value: string | number;
+}
 
 /** Activity to host. */
 export type ActivityMessage =
@@ -28,7 +49,8 @@ export type ActivityMessage =
       op: "set";
       key: string;
       value: string;
-    };
+    }
+  | { type: "summary"; items: SummaryItem[] };
 
 /** Host to activity. */
 export type HostMessage =
@@ -37,6 +59,8 @@ export type HostMessage =
       restore: unknown;
       reducedMotion: boolean;
       theme: "light" | "dark";
+      /** Validated pack data for engines (ADR-016); null for every other activity. */
+      content: unknown;
     }
   | { type: "pause" }
   | { type: "resume" }
@@ -97,9 +121,35 @@ export function parseActivityMessage(data: unknown, nonce: string): Parsed {
       }
       return { ok: false, reason: "field" };
     }
+    case "summary": {
+      const items = parseSummary(data.items);
+      return items
+        ? { ok: true, message: { type: "summary", items } }
+        : { ok: false, reason: "field" };
+    }
     default:
       return { ok: false, reason: "type" };
   }
+}
+
+/** A valid summary (copied, so the activity can't change it later), or null. */
+export function parseSummary(items: unknown): SummaryItem[] | null {
+  if (!Array.isArray(items) || items.length === 0 || items.length > SUMMARY_ITEMS_MAX) return null;
+  const out: SummaryItem[] = [];
+  for (const item of items as unknown[]) {
+    if (!isRecord(item) || Object.keys(item).some((k) => k !== "label" && k !== "value")) {
+      return null;
+    }
+    const { label, value } = item;
+    if (!isPlainText(label, SUMMARY_TEXT_MAX)) return null;
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) return null;
+    } else if (!isPlainText(value, SUMMARY_TEXT_MAX)) {
+      return null;
+    }
+    out.push({ label, value });
+  }
+  return out;
 }
 
 /** Wraps a host message for posting. */
@@ -118,14 +168,15 @@ export function newNonce(): string {
  * limit are dropped, never queued, so a flooding activity can't slow the app down.
  */
 export class RateLimiter {
+  private readonly rate: number;
+  private readonly burst: number;
   private tokens: number;
   private last: number;
 
-  constructor(
-    private readonly rate: number,
-    private readonly burst: number,
-    now: number,
-  ) {
+  // Plain fields, not parameter properties: Node runs this file with type stripping only.
+  constructor(rate: number, burst: number, now: number) {
+    this.rate = rate;
+    this.burst = burst;
     this.tokens = burst;
     this.last = now;
   }

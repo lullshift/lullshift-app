@@ -103,6 +103,21 @@
     } else {
       best.hidden = true;
     }
+    report();
+  }
+
+  // What the host shows while the game is paused (S05-T09).
+  function report() {
+    var lit = 0;
+    for (var i = 0; i < L.CELLS; i++) if (state.board[i]) lit += 1;
+    var items = [
+      { label: "Lanterns lit", value: lit + " of " + L.CELLS },
+      { label: "Moves", value: state.moves },
+    ];
+    if (state.mode === "daily" && bestToday !== null) {
+      items.push({ label: "Best today", value: bestToday });
+    }
+    LullshiftBridge.summary(items);
   }
 
   function save() {

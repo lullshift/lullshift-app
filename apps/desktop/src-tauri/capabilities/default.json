@@ -18,6 +18,8 @@
     "allow-activity-snapshot",
     "allow-activity-save-snapshot",
     "allow-activity-clear-snapshot",
+    "allow-activity-preview",
+    "allow-activity-add-play",
     "allow-session-detail",
     "allow-set-session-notes",
     "allow-set-session-intent",

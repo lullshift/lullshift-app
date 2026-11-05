@@ -1051,6 +1051,125 @@ th[aria-sort="descending"] .sort {
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--surface) 70%, transparent);
   text-align: center;
+/* Preview, paused stats and help (S05-T07, S05-T09) */
+
+.activity-preview {
+  aspect-ratio: 16 / 10;
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.activity-preview img,
+.paused-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.paused-stats {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.stat-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.stat {
+  min-width: 9ch;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.stat dt {
+  color: var(--text-subtle);
+  font-size: var(--text-xs);
+}
+
+.stat dd {
+  margin: 0;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.paused-preview {
+  max-width: 280px;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius-md);
+}
+
+.help {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 60ch;
+}
+
+.help-summary {
+  color: var(--text);
+}
+
+.help-section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.help-heading {
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--text-muted);
+}
+
+.help-steps,
+.help-tips {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.help-controls {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.help-control {
+  display: grid;
+  grid-template-columns: minmax(9ch, max-content) 1fr;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.help-control dd {
+  margin: 0;
+}
+
+.help-control kbd {
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+
+.help-missing {
+  color: var(--text-muted);
+}
+
 }
 
 .empty h2 {

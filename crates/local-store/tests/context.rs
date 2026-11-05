@@ -2,7 +2,8 @@
 
 use agent_core::{AgentEvent, parse_event};
 use local_store::{
-    MAX_ITEM_CHARS, MAX_ITEMS_PER_SESSION, MAX_NOTES_CHARS, MIGRATIONS, Store, StoreError, migrate,
+    MAX_ITEM_CHARS, MAX_ITEMS_PER_SESSION, MAX_NOTES_CHARS, MIGRATIONS, Store, StoreError,
+    latest_version, migrate,
 };
 use rusqlite::Connection;
 use time::macros::datetime;
@@ -50,7 +51,10 @@ fn version_3_database_upgrades_to_4_and_keeps_data() {
         .expect("adapter");
     }
     let (mut s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (3, 4));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (3, latest_version())
+    );
     assert!(report.backup.expect("backup before upgrade").exists());
     assert_eq!(s.sessions().expect("sessions").len(), 1);
     assert_eq!(

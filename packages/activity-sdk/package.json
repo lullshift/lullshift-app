@@ -1,0 +1,30 @@
+{
+  "name": "@lullshift/activity-sdk",
+  "version": "0.2.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Build Lullshift activities: the bridge client, the host protocol, and manifest, help and summary types (ADR-012, ADR-017).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./host": "./src/host/protocol.ts",
+    "./bridge/lullshift-bridge-v1.js": "./bridge/lullshift-bridge-v1.js"
+  },
+  "files": [
+    "bridge",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@lullshift/agent-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

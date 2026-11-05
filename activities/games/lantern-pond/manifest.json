@@ -10,10 +10,48 @@
   "category": "arcade",
   "tags": ["puzzle", "calm"],
   "minHostVersion": "0.1.0",
-  "sdkVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
   "permissions": ["activity.storage"],
   "offline": true,
   "entrypoint": "index.html",
   "runtime": "isolated-web-v1",
-  "interruptibility": { "pause": true, "resume": true, "persistState": true }
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "help": {
+    "summary": "A 5 by 5 pond of paper lanterns. Pressing a lantern flips it and the lanterns directly above, below, left and right of it.",
+    "goal": "Light every lantern. Fewer presses is nicer, but there is no timer and no wrong answer.",
+    "howToPlay": [
+      "Press any lantern. It and its up to four neighbours switch between lit and unlit.",
+      "Keep pressing until all 25 lanterns are lit.",
+      "Today's pond is the same for everyone today, and remembers your best. New pond deals a fresh one whenever you like.",
+      "Undo takes back your last press. Restart puts the pond back to how it began."
+    ],
+    "controls": [
+      {
+        "keys": "Arrow keys",
+        "action": "Move between lanterns"
+      },
+      {
+        "keys": "Home / End",
+        "action": "Jump to the start or end of the row"
+      },
+      {
+        "keys": "Enter / Space",
+        "action": "Press the lantern"
+      },
+      {
+        "keys": "Tab",
+        "action": "Reach Undo, Restart and the pond buttons"
+      }
+    ],
+    "tips": [
+      "Work row by row from the top: light each row by pressing the lantern just below any dark one.",
+      "Pressing the same lantern twice undoes it, so nothing is ever lost.",
+      "You can stop at any time. Your pond is saved and waits for you."
+    ]
+  },
+  "preview": "preview.svg"
 }

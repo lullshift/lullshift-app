@@ -7,7 +7,7 @@ import {
   jsonSize,
   newNonce,
   parseActivityMessage,
-} from "./protocol";
+} from "../src/host/protocol";
 
 const N = "a".repeat(32);
 const msg = (fields: Record<string, unknown>) => ({ lullshift: 1, nonce: N, ...fields });

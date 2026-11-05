@@ -30,6 +30,10 @@ pub const VALUE_MAX: usize = 64 * 1024;
 /// One saved state.
 pub const SNAPSHOT_MAX: usize = 256 * 1024;
 const KEY_MAX: usize = 64;
+/// Largest preview image the host will show (ADR-012 additions, Sprint 05).
+pub const PREVIEW_MAX: usize = 256 * 1024;
+/// Most time one call may add to an activity's time played.
+const PLAY_ADD_MAX: i64 = 3600;
 
 static BUNDLED: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../../activities");
 /// Debug builds also carry the sandbox probe used by the denial tests (S03-T05).
@@ -48,11 +52,103 @@ struct Manifest {
     name: String,
     #[serde(default)]
     description: String,
+    author: Option<String>,
     category: String,
+    min_host_version: String,
+    sdk_version: String,
     permissions: Vec<String>,
     entrypoint: Option<String>,
     runtime: Option<String>,
     interruptibility: Option<Interruptibility>,
+    help: Option<Help>,
+    preview: Option<String>,
+}
+
+/// How-to-play help (S05-T07). Plain text only; the UI renders it as text.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Help {
+    summary: String,
+    goal: Option<String>,
+    how_to_play: Vec<String>,
+    #[serde(default)]
+    controls: Vec<HelpControl>,
+    #[serde(default)]
+    tips: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HelpControl {
+    keys: String,
+    action: String,
+}
+
+impl Help {
+    /// The same limits as the manifest schema's `help`.
+    fn is_valid(&self) -> bool {
+        let list = |items: &[String], min: usize, max_items: usize, max: usize| {
+            items.len() >= min && items.len() <= max_items && items.iter().all(|t| plain(t, max))
+        };
+        plain(&self.summary, 200)
+            && self.goal.as_deref().is_none_or(|g| plain(g, 300))
+            && list(&self.how_to_play, 1, 8, 300)
+            && self.controls.len() <= 12
+            && self
+                .controls
+                .iter()
+                .all(|c| plain(&c.keys, 40) && plain(&c.action, 120))
+            && list(&self.tips, 0, 6, 200)
+    }
+}
+
+/// Plain text of 1 to `max` characters with no control, bidirectional-override or invisible
+/// formatting characters. Mirrors the manifest schema and `isPlainText` in the SDK.
+fn plain(text: &str, max: usize) -> bool {
+    !text.is_empty() && text.chars().count() <= max && !text.chars().any(hidden_char)
+}
+
+fn hidden_char(c: char) -> bool {
+    matches!(c,
+        '\u{0}'..='\u{1F}' | '\u{7F}'..='\u{9F}' | '\u{AD}' | '\u{61C}' | '\u{180E}'
+        | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
+        | '\u{2066}'..='\u{206F}' | '\u{FEFF}')
+}
+
+/// A relative file path whose segments start with a letter, digit or underscore (so no `.`,
+/// `..`, hidden names or leading `-`), at most 8 deep, ending in one of `exts`.
+fn valid_rel_path(path: &str, exts: &[&str]) -> bool {
+    let segments: Vec<&str> = path.split('/').collect();
+    let ext_ok = path
+        .rsplit_once('.')
+        .is_some_and(|(_, e)| exts.contains(&e));
+    path.len() <= 256
+        && segments.len() <= 8
+        && ext_ok
+        && segments.iter().all(|s| {
+            s.len() <= 64
+                && s.bytes()
+                    .next()
+                    .is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_')
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+        })
+}
+
+/// `MAJOR.MINOR.PATCH` with an optional pre-release, as in the manifest schema.
+fn valid_semver(v: &str) -> bool {
+    let (core, pre) = v.split_once('-').map_or((v, None), |(c, p)| (c, Some(p)));
+    let nums: Vec<&str> = core.split('.').collect();
+    v.len() <= 64
+        && nums.len() == 3
+        && nums
+            .iter()
+            .all(|n| (1..=5).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_digit()))
+        && pre.is_none_or(|p| {
+            (1..=40).contains(&p.len())
+                && p.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-'))
+        })
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -84,6 +180,11 @@ pub struct ActivityInfo {
     url: String,
     storage: bool,
     saved_utc: Option<String>,
+    help: Option<Help>,
+    /// True if the manifest names a preview image; fetch it with `activity_preview`.
+    preview: bool,
+    /// Total time played, in seconds, measured by the host.
+    played_seconds: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -120,11 +221,14 @@ fn collect(
 ) {
     if let Some(file) = dir.get_file(dir.path().join("manifest.json")) {
         if let Some(manifest) = file.contents_utf8().and_then(parse_manifest) {
+            // Engines (ADR-016) run content packs; on their own they have nothing to show, so
+            // they are not listed. Running packs arrives in Sprint 07.
+            let engine = dir.get_file(dir.path().join("engine.json")).is_some();
             // A duplicate ID is a packaging bug; keep the first and never serve both.
             out.entry(manifest.id.clone()).or_insert(Activity {
                 manifest,
                 dir,
-                listed,
+                listed: listed && !engine,
             });
         }
         return;
@@ -149,9 +253,18 @@ fn parse_manifest(json: &str) -> Option<Manifest> {
         && m.entrypoint.as_deref() == Some("index.html")
         && m.runtime.as_deref() == Some("isolated-web-v1")
         && interruptible
-        && !m.name.is_empty()
-        && m.name.len() <= 100
-        && m.description.len() <= 500
+        && plain(&m.name, 100)
+        && (m.description.is_empty() || plain(&m.description, 500))
+        && m.author
+            .as_deref()
+            .is_none_or(|a| a.is_empty() || plain(a, 100))
+        && valid_semver(&m.version)
+        && valid_semver(&m.min_host_version)
+        && valid_semver(&m.sdk_version)
+        && m.help.as_ref().is_none_or(Help::is_valid)
+        && m.preview
+            .as_deref()
+            .is_none_or(|p| valid_rel_path(p, &["png", "jpg", "jpeg", "webp", "svg"]))
         && ["arcade", "break", "productivity", "interactive"].contains(&m.category.as_str())
         && m.permissions.iter().all(|p| p == "activity.storage");
     ok.then_some(m)
@@ -346,10 +459,21 @@ pub async fn activities_list(
             .unwrap_or_default()
             .into_iter()
             .collect();
+        let played: BTreeMap<String, i64> = with_store(&core, |s| s.play_times())
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
         Ok(catalog()
             .values()
             .filter(|a| a.listed)
-            .map(|a| info(a, saved.get(&a.manifest.id).cloned()))
+            .map(|a| {
+                let id = &a.manifest.id;
+                info(
+                    a,
+                    saved.get(id).cloned(),
+                    played.get(id).copied().unwrap_or(0),
+                )
+            })
             .collect())
     })
     .await
@@ -368,12 +492,13 @@ pub async fn activity_info(
             .ok()
             .flatten()
             .map(|(_, t)| t);
-        Ok(info(a, saved))
+        let played = with_store(&core, |s| s.play_time(&id)).unwrap_or(0);
+        Ok(info(a, saved, played))
     })
     .await
 }
 
-fn info(a: &Activity, saved_utc: Option<String>) -> ActivityInfo {
+fn info(a: &Activity, saved_utc: Option<String>, played_seconds: i64) -> ActivityInfo {
     let m = &a.manifest;
     ActivityInfo {
         id: m.id.clone(),
@@ -384,7 +509,73 @@ fn info(a: &Activity, saved_utc: Option<String>) -> ActivityInfo {
         url: entry_url(&m.id),
         storage: m.permissions.iter().any(|p| p == "activity.storage"),
         saved_utc,
+        help: m.help.clone(),
+        preview: m.preview.is_some(),
+        played_seconds,
     }
+}
+
+/// The activity's preview image as a `data:` URL, or None if it has none (or it is missing,
+/// too large or of the wrong type). The UI shows it only in an `<img>`, so the app's CSP stays
+/// unchanged and an SVG never runs script.
+#[tauri::command]
+pub fn activity_preview(id: String) -> Result<Option<String>, String> {
+    let a = activity(&id)?;
+    Ok(a.manifest.preview.as_deref().and_then(preview_data_url(a)))
+}
+
+fn preview_data_url(a: &Activity) -> impl Fn(&str) -> Option<String> + '_ {
+    move |p| {
+        let content_type = mime(p).filter(|t| t.starts_with("image/"))?;
+        let file = a.dir.get_file(a.dir.path().join(p))?;
+        let bytes = file.contents();
+        (bytes.len() <= PREVIEW_MAX)
+            .then(|| format!("data:{content_type};base64,{}", base64(bytes)))
+    }
+}
+
+/// Adds time the activity spent running in view (S05-T09). Measured by the host, never the
+/// activity; each call adds at most an hour.
+#[tauri::command]
+pub async fn activity_add_play(
+    core: tauri::State<'_, Arc<Core>>,
+    id: String,
+    seconds: i64,
+    launch: bool,
+) -> Result<(), String> {
+    activity(&id)?;
+    let core = Arc::clone(&core);
+    blocking(move || {
+        with_store(&core, |s| {
+            s.add_play_time(
+                &id,
+                seconds,
+                launch,
+                PLAY_ADD_MAX,
+                OffsetDateTime::now_utc(),
+            )
+        })
+    })
+    .await
+}
+
+/// Standard base64 with padding.
+fn base64(bytes: &[u8]) -> String {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b1 = chunk.get(1).copied().unwrap_or(0);
+        let b2 = chunk.get(2).copied().unwrap_or(0);
+        let n = (u32::from(chunk[0]) << 16) | (u32::from(b1) << 8) | u32::from(b2);
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(char::from(ABC[((n >> (18 - 6 * i)) & 63) as usize]));
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 #[tauri::command]
@@ -508,6 +699,75 @@ mod tests {
             (r#""category":"arcade""#, r#""category":"admin""#),
         ] {
             assert!(parse_manifest(&APP.replace(from, to)).is_none(), "{to}");
+        }
+    }
+
+    #[test]
+    fn manifest_text_versions_help_and_preview_are_checked() {
+        let with = |extra: &str| APP.replacen('{', &format!("{{{extra},"), 1);
+        let help = r#""help":{"summary":"Light them all.","howToPlay":["Press a lantern."],"controls":[{"keys":"Enter","action":"Flip"}]}"#;
+        assert!(parse_manifest(&with(help)).is_some());
+        assert!(parse_manifest(&with(r#""preview":"assets/preview.svg""#)).is_some());
+        for bad in [
+            r#""help":{"summary":"Hi"}"#,
+            r#""help":{"summary":"Hi","howToPlay":["Go"],"html":"<b>"}"#,
+            r#""help":{"summary":"Hi\u0007","howToPlay":["Go"]}"#,
+            r#""help":{"summary":"Hi","howToPlay":[]}"#,
+            r#""preview":"../x.png""#,
+            r#""preview":".hidden.png""#,
+            r#""preview":"x.gif""#,
+            r#""author":"Lull\u200bshift""#,
+        ] {
+            assert!(parse_manifest(&with(bad)).is_none(), "{bad}");
+        }
+        for (from, to) in [
+            (r#""name":"Test""#, r#""name":"Te\u202est""#),
+            (r#""sdkVersion":"0.1.0""#, r#""sdkVersion":"latest""#),
+            (r#""minHostVersion":"0.1.0""#, r#""minHostVersion":"1.0""#),
+        ] {
+            assert!(parse_manifest(&APP.replace(from, to)).is_none(), "{to}");
+        }
+    }
+
+    #[test]
+    fn plain_text_counts_characters_and_refuses_hidden_ones() {
+        assert!(plain("Lanterns lit · 7/9", 24));
+        assert!(plain(&"é".repeat(24), 24));
+        assert!(!plain(&"é".repeat(25), 24));
+        for c in [
+            '\n', '\u{202E}', '\u{200B}', '\u{FEFF}', '\u{2066}', '\u{AD}', '\u{7F}',
+        ] {
+            assert!(!plain(&format!("a{c}b"), 24), "{c:?}");
+        }
+    }
+
+    #[test]
+    fn base64_matches_known_vectors() {
+        for (input, out) in [
+            ("", ""),
+            ("f", "Zg=="),
+            ("fo", "Zm8="),
+            ("foo", "Zm9v"),
+            ("foob", "Zm9vYg=="),
+            ("foobar", "Zm9vYmFy"),
+        ] {
+            assert_eq!(base64(input.as_bytes()), out);
+        }
+    }
+
+    #[test]
+    fn bundled_activities_have_help_and_a_preview_that_loads() {
+        for a in catalog().values().filter(|a| {
+            a.manifest.id.starts_with("app.lullshift.") && !a.manifest.id.contains(".test.")
+        }) {
+            let m = &a.manifest;
+            assert!(m.help.is_some(), "{} has no help", m.id);
+            let url = m.preview.as_deref().and_then(preview_data_url(a));
+            assert!(
+                url.is_some_and(|u| u.starts_with("data:image/")),
+                "{} has no usable preview",
+                m.id
+            );
         }
     }
 

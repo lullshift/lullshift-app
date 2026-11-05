@@ -47,6 +47,10 @@ pub const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0004_session_context.sql"),
     },
 ];
+    Migration {
+        version: 5,
+        sql: include_str!("../migrations/0005_activity_play_and_session_tracking.sql"),
+    },
 
 pub fn latest_version() -> i64 {
     MIGRATIONS.last().map_or(0, |m| m.version)
@@ -441,6 +445,51 @@ fn read_version(conn: &Connection) -> Result<i64> {
         .optional()?
         .unwrap_or(0))
 }
+    /// Adds time an activity spent running in view. `seconds` is clamped to 0..=`max_add`, so a
+    /// bad clock or a caller bug can't add hours at once. `launch` counts a new visit.
+    pub fn add_play_time(
+        &self,
+        activity_id: &str,
+        seconds: i64,
+        launch: bool,
+        max_add: i64,
+        at: OffsetDateTime,
+    ) -> Result<()> {
+        let add = seconds.clamp(0, max_add.max(0));
+        self.conn.execute(
+            "INSERT INTO activity_play (activity_id, played_seconds, launches, last_played_utc)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (activity_id) DO UPDATE SET
+               played_seconds = min(played_seconds + excluded.played_seconds, 4000000000),
+               launches = launches + excluded.launches,
+               last_played_utc = excluded.last_played_utc",
+            params![activity_id, add, i64::from(launch), fmt_ts(at)?],
+        )?;
+        Ok(())
+    }
+
+    /// Total seconds played per activity, as `(activity_id, seconds)`.
+    pub fn play_times(&self) -> Result<Vec<(String, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT activity_id, played_seconds FROM activity_play ORDER BY activity_id",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Total seconds played for one activity; 0 if never played.
+    pub fn play_time(&self, activity_id: &str) -> Result<i64> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT played_seconds FROM activity_play WHERE activity_id = ?1",
+                [activity_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .unwrap_or(0))
+    }
+
 
 fn backup_path(db: &Path, from_version: i64) -> PathBuf {
     let stamp = OffsetDateTime::now_utc().unix_timestamp();

@@ -503,6 +503,8 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running Lullshift");
 }
+            activities::activity_preview,
+            activities::activity_add_play,
 
 #[cfg(test)]
 mod tests {

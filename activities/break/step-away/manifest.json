@@ -10,10 +10,38 @@
   "category": "break",
   "tags": ["break", "calm"],
   "minHostVersion": "0.1.0",
-  "sdkVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
   "permissions": [],
   "offline": true,
   "entrypoint": "index.html",
   "runtime": "isolated-web-v1",
-  "interruptibility": { "pause": true, "resume": true, "persistState": true }
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "help": {
+    "summary": "A quiet screen for a real break while your agents work. It counts how long you have been away.",
+    "goal": "Nothing to win. Rest your eyes and come back when Lullshift calls you.",
+    "howToPlay": [
+      "Open it as you leave your desk. The clock shows your time away.",
+      "If you like, start the breathing cue and follow the circle: breathe in as it grows, out as it shrinks.",
+      "Press Another idea for a different suggestion for your break."
+    ],
+    "controls": [
+      {
+        "keys": "Tab",
+        "action": "Move between the buttons"
+      },
+      {
+        "keys": "Enter / Space",
+        "action": "Start or stop the breathing cue, or show another idea"
+      }
+    ],
+    "tips": [
+      "When an agent needs you, Lullshift pauses this screen and tells you which one.",
+      "With reduced motion on, the circle stays still and the words lead your breathing."
+    ]
+  },
+  "preview": "preview.svg"
 }
