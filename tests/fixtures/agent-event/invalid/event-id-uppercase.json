@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "eventId": "6F1C2A52-8A63-4F53-9A0E-1D1F6B7E2C11",
+  "provider": "claude-code",
+  "providerSessionId": "session-abc123",
+  "eventType": "working",
+  "timestampUtc": "2026-11-05T10:15:30Z"
+}

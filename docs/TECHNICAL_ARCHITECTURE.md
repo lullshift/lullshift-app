@@ -321,20 +321,22 @@ Accepted:
 - [ADR-002](adr/ADR-002-git-repo-marketplaces.md): Git repositories as activity marketplaces.
 - [ADR-003](adr/ADR-003-activity-model-kits-engines-content.md): Activity model: code activities, kits, engines and content packs; v1 content target.
 - [ADR-004](adr/ADR-004-local-quality-checks-no-hosted-ci.md): Local quality checks instead of hosted CI (for now).
+- [ADR-005](adr/ADR-005-toolchains-workspace-and-checks.md): Toolchains, workspace layout and local check tooling.
+- [ADR-006](adr/ADR-006-schema-first-contracts.md): Schema-first contracts and type generation.
+- [ADR-007](adr/ADR-007-sqlite-library.md): SQLite library (rusqlite, provisional).
 
 To be recorded from Sprint 00 onward (numbering indicative):
 
-- ADR-005: SQLite library (`rusqlite` vs `sqlx`), migrations and backup.
-- ADR-006: Agent event contract v1 and state-machine semantics.
-- ADR-007: Local IPC transport and authentication.
-- ADR-008: Activity sandbox strategy per OS and host bridge protocol.
-- ADR-009: Git integration (system `git` vs library), hardening, cache layout.
-- ADR-010: Marketplace index schema v1 and install/update/pin semantics.
-- ADR-011: Engine versioning, data schemas and retirement policy.
-- ADR-012: Creator CLI implementation language and distribution.
-- ADR-013: App update signing, release pipeline and key custody.
-- ADR-014: Bundling built-in activities into the installer.
-- ADR-015: BYOK Companion provider abstraction and context boundary.
+- ADR-008: Agent event contract v1 and state-machine semantics.
+- ADR-009: Local IPC transport and authentication.
+- ADR-010: Activity sandbox strategy per OS and host bridge protocol.
+- ADR-011: Git integration (system `git` vs library), hardening, cache layout.
+- ADR-012: Marketplace index schema v1 and install/update/pin semantics.
+- ADR-013: Engine versioning, data schemas and retirement policy.
+- ADR-014: Creator CLI implementation language and distribution.
+- ADR-015: App update signing, release pipeline and key custody.
+- ADR-016: Bundling built-in activities into the installer.
+- ADR-017: BYOK Companion provider abstraction and context boundary.
 
 Use the `architecture-decision` skill and link new ADRs here.
 

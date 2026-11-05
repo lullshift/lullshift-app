@@ -14,7 +14,7 @@ Use `/agent-adapter` for PROVIDER. Read current provider documentation and write
 
 ## Build the activity host and sandbox (Opus architecture, Sonnet implementation)
 
-Start Sprint 03. Read ADR-003 and the sandbox section of the architecture doc. Write the sandbox strategy ADR (ADR-008) and denial tests first (Tauri IPC, network, filesystem, clipboard, navigation, cross-activity storage), then the lifecycle bridge and host-enforced pause. Record per-OS results honestly.
+Start Sprint 03. Read ADR-003 and the sandbox section of the architecture doc. Write the sandbox strategy ADR (ADR-010) and denial tests first (Tauri IPC, network, filesystem, clipboard, navigation, cross-activity storage), then the lifecycle bridge and host-enforced pause. Record per-OS results honestly.
 
 ## Create an activity (Sonnet implementation; Opus security review)
 

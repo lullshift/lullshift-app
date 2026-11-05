@@ -11,6 +11,7 @@
 - [ ] S05-T03: CLI `create`, `dev`, `simulate`, `validate`, `pack` (deterministic `.lullpack` for sideloading); `marketplace init` scaffolds an index
 - [ ] S05-T04: Event-sequence simulator (needs_attention, duplicates, out-of-order, forced pause, close, crash, resume, offline)
 - [ ] S05-T05: Update `/activity-creator` skill and `creator/` prompts; starter templates for custom, kit-based and content activities
+- [ ] S05-T06: Tighten manifest strings (Sprint 00 security review): segment-based `data` path pattern (no `.`, `..`, empty or `.git` segments, no leading `-`), `maxLength`; patterns and `maxLength` for `minHostVersion`/`sdkVersion`; reject bidi/control characters in `name`/`description`/`author`. Share one Ajv factory between the runtime validator and the fixture script
 
 ## Acceptance criteria
 

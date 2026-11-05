@@ -1,0 +1,27 @@
+[package]
+name = "lullshift-desktop"
+description = "Lullshift desktop app (Tauri 2 shell)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name (cargo issue #8519 on Windows).
+name = "lullshift_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+agent-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2", features = [] }
+time.workspace = true
+
+[lints]
+workspace = true

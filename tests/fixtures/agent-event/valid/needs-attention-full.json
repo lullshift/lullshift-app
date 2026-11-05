@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "eventId": "0b0e6a1d-3f2b-4d6e-8c39-5f7a9d2b4e60",
+  "provider": "claude-code",
+  "providerSessionId": "session-abc123",
+  "eventType": "needs_attention",
+  "timestampUtc": "2026-11-05T10:20:01.250+03:00",
+  "correlationId": "turn-42",
+  "capabilities": ["needs_attention", "turn_ended"],
+  "metadata": {
+    "reason": "permission_prompt"
+  }
+}

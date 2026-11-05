@@ -20,3 +20,18 @@ dist/
 target/
 bin/
 obj/
+
+# Keys and certificates (incl. Tauri updater signing keys)
+*.p12
+*.pfx
+*.jks
+*.keystore
+.tauri/
+.npmrc
+
+# Local databases / user data
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*

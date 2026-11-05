@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "name": "bad-market",
+  "activities": [
+    {
+      "id": "com.example.x",
+      "source": {
+        "path": "activities/x",
+        "ref": "v1.0.0"
+      }
+    }
+  ]
+}

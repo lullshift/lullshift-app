@@ -11,6 +11,7 @@
 - [ ] S01-T03: Authenticated Unix domain socket / Windows named pipe for hook ingestion
 - [ ] S01-T04: React dashboard with Zustand view state showing sessions, unknown/stale states and empty state
 - [ ] S01-T05: Restart, duplicate, reorder and stale-state tests; migration rollback test
+- [ ] S01-T06: Harden agent event input (Sprint 00 security review): cap total payload bytes at the IPC transport before parsing; restrict `metadata` to scalar values with value `maxLength` and a `propertyNames` pattern; give `capabilities` items a `maxLength`/pattern; decide `providerSessionId` `minLength: 1`; reject or neutralise control and bidi characters in displayed strings. Update schema, fixtures and both validators together
 
 ## Acceptance criteria
 

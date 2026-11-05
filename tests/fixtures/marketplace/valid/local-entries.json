@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "name": "lullshift",
+  "description": "Built-in Lullshift games and activities.",
+  "owner": "Lullshift contributors",
+  "activities": [
+    {
+      "id": "dev.lullshift.games.grid-logic",
+      "source": {
+        "path": "activities/games/grid-logic"
+      },
+      "featured": true
+    },
+    {
+      "id": "dev.lullshift.breathing.box",
+      "source": {
+        "path": "activities/content/breathing/box"
+      }
+    }
+  ]
+}

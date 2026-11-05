@@ -1,0 +1,29 @@
+{
+  "name": "@lullshift/agent-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Lullshift contracts: generated TypeScript types and validators for the schemas in /reference.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "gen:types": "node scripts/gen-types.mjs",
+    "gen:types:check": "node scripts/gen-types.mjs --check",
+    "validate:fixtures": "node scripts/validate-fixtures.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "json-schema-to-typescript": "^16.0.0",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

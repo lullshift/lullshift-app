@@ -11,6 +11,7 @@
 - [ ] S08-T03: Install/update/uninstall with commit pinning, strict validation, install review screen (source, commit, kind, permissions, unverified notice) and explicit updates showing permission changes
 - [ ] S08-T04: Private repo support through the user's existing Git credentials; clear errors when access fails
 - [ ] S08-T05: Malicious-repo fixture suite; third-party code activities enabled only on OSes where Sprint 03 sandbox proof passed
+- [ ] S08-T06: Close marketplace schema gaps found in the Sprint 00 security review, with fixtures: `git` URLs with embedded credentials (`user:token@`), SSH option injection (`ssh://-o...`, `git0 0o...`), shorthand owner starting with `-`, `..`/`.git` repo segments, loopback/LAN hosts, control characters; a `ref` pattern (no leading `-`, `..`, `:`, `^`, `~`, `*`, whitespace) plus `git check-ref-format` at runtime; segment-based `relativePath` (no `.`/empty/`.git` segments, no leading `-`, no Windows reserved names); enforce the reserved `lullshift` name. At runtime always pass `--`/`--end-of-options` before URLs and refs and set `GIT_ALLOW_PROTOCOL=https:ssh`
 
 ## Acceptance criteria
 

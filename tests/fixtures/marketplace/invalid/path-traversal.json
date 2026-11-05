@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "name": "bad-market",
+  "activities": [
+    {
+      "id": "com.example.x",
+      "source": {
+        "path": "../outside"
+      }
+    }
+  ]
+}

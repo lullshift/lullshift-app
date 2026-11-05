@@ -11,6 +11,7 @@
 - [ ] S03-T03: Host-enforced pause/freeze on `needs_attention`, snapshot persistence and crash recovery
 - [ ] S03-T04: Break activity (away mode, gentle return) and one original reference puzzle game built on the bridge
 - [ ] S03-T05: Sandbox denial test suite; record per-OS results in an ADR (activity sandbox strategy)
+- [ ] S03-T06: Give activities their own origin with an explicit `frame-src` in the app CSP (never `'self'`) (Sprint 00 security review)
 
 ## Acceptance criteria
 

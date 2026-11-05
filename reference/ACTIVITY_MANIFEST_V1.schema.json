@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lullshift.dev/schemas/activity-manifest-v1.json",
+  "$id": "urn:lullshift:schema:activity-manifest:v1",
   "title": "Lullshift Activity Manifest v1",
   "description": "manifest.json at the root of every activity folder or .lullpack. kind=app is a sandboxed static web app; kind=content is code-free data for a named engine (ADR-003).",
   "type": "object",
@@ -18,8 +18,12 @@
     "offline"
   ],
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "kind": { "enum": ["app", "content"] },
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "enum": ["app", "content"]
+    },
     "id": {
       "description": "Reverse-DNS style identifier, unique within a marketplace.",
       "type": "string",
@@ -30,8 +34,15 @@
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
     },
-    "name": { "type": "string", "minLength": 1, "maxLength": 100 },
-    "description": { "type": "string", "maxLength": 500 },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
     "author": {
       "description": "Self-declared and unverified (there are no accounts). The install UI shows the source repository as the trust signal.",
       "type": "string",
@@ -42,31 +53,54 @@
       "type": "string",
       "maxLength": 100
     },
-    "category": { "enum": ["arcade", "break", "productivity", "interactive"] },
+    "category": {
+      "enum": ["arcade", "break", "productivity", "interactive"]
+    },
     "tags": {
       "type": "array",
       "maxItems": 10,
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[a-z0-9-]{1,30}$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]{1,30}$"
+      }
     },
-    "minHostVersion": { "type": "string" },
-    "sdkVersion": { "type": "string" },
+    "minHostVersion": {
+      "type": "string"
+    },
+    "sdkVersion": {
+      "type": "string"
+    },
     "permissions": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["activity.storage"] }
+      "items": {
+        "enum": ["activity.storage"]
+      }
     },
-    "offline": { "const": true },
-    "entrypoint": { "const": "index.html" },
-    "runtime": { "const": "isolated-web-v1" },
+    "offline": {
+      "const": true
+    },
+    "entrypoint": {
+      "const": "index.html"
+    },
+    "runtime": {
+      "const": "isolated-web-v1"
+    },
     "interruptibility": {
       "type": "object",
       "additionalProperties": false,
       "required": ["pause", "resume", "persistState"],
       "properties": {
-        "pause": { "const": true },
-        "resume": { "const": true },
-        "persistState": { "const": true }
+        "pause": {
+          "const": true
+        },
+        "resume": {
+          "const": true
+        },
+        "persistState": {
+          "const": true
+        }
       }
     },
     "engine": {
@@ -82,17 +116,38 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "kind": { "const": "app" } } },
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "app"
+          }
+        },
+        "required": ["kind"]
+      },
       "then": {
         "required": ["entrypoint", "runtime", "interruptibility"],
-        "not": { "anyOf": [{ "required": ["engine"] }, { "required": ["data"] }] }
+        "properties": {
+          "engine": false,
+          "data": false
+        }
       }
     },
     {
-      "if": { "properties": { "kind": { "const": "content" } } },
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "content"
+          }
+        },
+        "required": ["kind"]
+      },
       "then": {
         "required": ["engine", "data"],
-        "not": { "anyOf": [{ "required": ["entrypoint"] }, { "required": ["runtime"] }, { "required": ["interruptibility"] }] }
+        "properties": {
+          "entrypoint": false,
+          "runtime": false,
+          "interruptibility": false
+        }
       }
     }
   ]

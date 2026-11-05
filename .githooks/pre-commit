@@ -1,0 +1,6 @@
+#!/bin/sh
+# Opt-in hook (enable with: pnpm hooks:install).
+# 1. Secret-scan the staged content itself (not the working tree).
+# 2. Fast checks (no Rust build/test, no desktop build).
+node scripts/scan-staged-secrets.mjs || exit 1
+exec pnpm check:fast

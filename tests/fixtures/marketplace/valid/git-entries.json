@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "name": "team-breaks",
+  "activities": [
+    {
+      "id": "com.example.stretch",
+      "source": {
+        "git": "acme/lullshift-stretch",
+        "ref": "v1.2.0"
+      }
+    },
+    {
+      "id": "com.example.quiz",
+      "source": {
+        "git": "https://git.example.com/fun/quiz.git",
+        "path": "packs/quiz"
+      }
+    },
+    {
+      "id": "com.example.doodle",
+      "source": {
+        "git": "git@github.com:acme/doodle.git",
+        "ref": "3f9c2e1"
+      }
+    }
+  ]
+}

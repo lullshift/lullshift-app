@@ -1,0 +1,14 @@
+# Prose and specs are hand-formatted
+*.md
+docs/
+sprints/
+creator/
+.claude/
+
+# Generated / third-party
+pnpm-lock.yaml
+**/src/generated/
+**/dist/
+**/target/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/icons/

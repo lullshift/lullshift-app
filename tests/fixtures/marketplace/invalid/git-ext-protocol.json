@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "name": "bad-market",
+  "activities": [
+    {
+      "id": "com.example.x",
+      "source": {
+        "git": "ext::sh -c touch% /tmp/pwned"
+      }
+    }
+  ]
+}

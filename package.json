@@ -1,0 +1,36 @@
+{
+  "name": "lullshift",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "check:fast": "node scripts/check.mjs --fast",
+    "gen:types": "pnpm --filter @lullshift/agent-protocol gen:types",
+    "validate:schemas": "pnpm --filter @lullshift/agent-protocol validate:fixtures",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm -r --if-present test",
+    "secrets": "secretlint \"**/*\"",
+    "hooks:install": "git config core.hooksPath .githooks && node -e \"console.log('Git hooks enabled for this clone (.githooks). Undo with: git config --unset core.hooksPath')\"",
+    "desktop:dev": "pnpm --filter @lullshift/desktop tauri dev",
+    "desktop:build": "pnpm --filter @lullshift/desktop build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.1.0",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.0.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.9.10",
+    "secretlint": "^13.1.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1"
+  }
+}

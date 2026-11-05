@@ -1,0 +1,3 @@
+#!/bin/sh
+# Opt-in hook (enable with: pnpm hooks:install). Full local check suite (ADR-004).
+exec pnpm check

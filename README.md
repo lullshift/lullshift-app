@@ -2,7 +2,7 @@
 
 **The human attention layer for asynchronous AI work.** While your AI agents work, Lullshift lets you disconnect (games, breaks) or stay in flow (Next Move, Companion), tells you the moment an agent needs you, and helps you return with context.
 
-> Status: pre-implementation. This repository currently holds the product and architecture specifications, the sprint plan and the Claude Code setup used to build it. Sprint 00 (foundation) is next.
+> Status: early development. Sprint 00 (foundation) provides the workspace, contracts and a desktop scaffold with a mock agent feed. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) to build it and [CONTRIBUTING.md](CONTRIBUTING.md) to help.
 
 ## Principles
 
@@ -26,6 +26,11 @@ Activities are distributed through **Git repositories**. Publish a public or pri
 
 | Path | Contents |
 |---|---|
+| `apps/desktop` | Tauri 2 + React desktop app |
+| `crates/` | Rust core crates |
+| `packages/` | TypeScript packages (contracts, later SDK and kits) |
+| `activities/` | Bundled games, engines and content packs |
+| `tests/fixtures/` | Shared contract fixtures |
 | `docs/PRODUCT_REQUIREMENTS.md` | What we are building and why |
 | `docs/TECHNICAL_ARCHITECTURE.md` | How it is built |
 | `docs/adr/` | Architecture decision records |
@@ -41,4 +46,4 @@ Activities are distributed through **Git repositories**. Publish a public or pri
 
 ## License
 
-Apache-2.0 (LICENSE file added in Sprint 00).
+[Apache-2.0](LICENSE).

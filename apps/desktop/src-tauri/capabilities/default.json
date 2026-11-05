@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window: only the app commands the UI uses. Add permissions deliberately, one per need.",
+  "windows": ["main"],
+  "permissions": ["allow-mock-sessions"]
+}

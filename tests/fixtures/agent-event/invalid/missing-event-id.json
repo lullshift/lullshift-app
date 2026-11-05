@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "provider": "claude-code",
+  "providerSessionId": "session-abc123",
+  "eventType": "working",
+  "timestampUtc": "2026-11-05T10:15:30Z"
+}

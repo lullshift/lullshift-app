@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lullshift.dev/schemas/marketplace-v1.json",
+  "$id": "urn:lullshift:schema:marketplace:v1",
   "title": "Lullshift Marketplace Index v1",
   "description": ".lullshift/marketplace.json at the root of a Git repository that acts as a Lullshift marketplace (ADR-002). Each entry points to an activity folder containing manifest.json, either in this repository or in another Git repository.",
   "type": "object",
