@@ -11,6 +11,7 @@
 - [ ] S11-T03: Accessibility audit and onboarding polish (hook consent, first activity)
 - [ ] S11-T04: User docs, creator docs (SDK, kits, engines, marketplace repos) and contribution guide
 - [ ] S11-T05: Release notes and feedback channels (GitHub issues/discussions); release only with explicit human approval
+- [ ] S11-T06 (Sprint 02 review follow-up): the OS uninstaller removes Lullshift's Claude Code hooks (same logic as Disconnect) so Claude Code is not left calling a missing executable (ADR-010); check how Claude Code behaves when the hook executable is missing
 
 ## Acceptance criteria
 

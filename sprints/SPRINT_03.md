@@ -12,6 +12,7 @@
 - [ ] S03-T04: Break activity (away mode, gentle return) and one original reference puzzle game built on the bridge
 - [ ] S03-T05: Sandbox denial test suite; record per-OS results in an ADR (activity sandbox strategy)
 - [ ] S03-T06: Give activities their own origin with an explicit `frame-src` in the app CSP (never `'self'`) (Sprint 00 security review)
+- [ ] S03-T07 (Sprint 02 review follow-up): confirm Claude Code hook install natively from Rust (a dialog naming the settings file) so a script in a webview cannot install hooks without the user; add a test that only the `main` window holds the `claude-code-install`/`uninstall` permissions (ADR-010)
 
 ## Acceptance criteria
 
