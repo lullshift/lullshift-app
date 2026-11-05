@@ -96,3 +96,28 @@ The app must re-check a pack's data against its engine schema before running it.
 ## 14. Security review follow-ups left for Sprint 08 (Sprint 07)
 
 The review of the pack checker found no blocking issues. Medium and low items (regex differences, a work budget, exact `multipleOf`, a shared Ajv/Rust test corpus, cleaned terminal output) are fixed with tests in Sprint 07. Two items are deliberately left: (a) the app caches a pack's check result for the session, which is safe while packs are bundled; Sprint 08 must key the cache by installed commit SHA or content hash when marketplace installs land; (b) the shared plain-text pattern still allows the Unicode line and paragraph separators (U+2028/U+2029). Both validators agree, so nothing slips through one side only; banning them means changing every engine schema at once. **Question:** ban them in a later schema pass, or leave as is?
+
+## 15. Third-party code activities stay blocked on every OS (Sprint 08, ADR-015)
+
+Sprint 08 says third-party code is enabled only where the Sprint 03 sandbox proof passed. Windows passed 42/42 but with the open WebRTC gap (an activity can open a peer connection, a possible way to send data out), and macOS and Linux have not been run (M03-5). **Decision:** third-party `kind: app` activities can be browsed and reviewed but not installed on any OS in this release; one constant per OS controls it. Third-party content packs can be installed. **Question:** keep blocked until WebRTC is closed, or allow on Windows now?
+
+## 16. How Lullshift reads marketplace repos (Sprint 08, ADR-015)
+
+**Decisions:** Lullshift clones into a bare cache with no checkout and reads files from the pinned commit with `git ls-tree`/`cat-file`, then writes the files itself after checking them. So Git never writes repository files, `.gitattributes` filters and LFS never run, and symlinks are never created. Executable bits, symlinks and submodules in a pack are refused. Limits per pack: 512 files, 5 MiB per file, 20 MiB in all. Updates are only checked when you press Refresh. Removing a marketplace keeps the activities you installed from it (they are pinned copies) but stops their updates. Uninstalling keeps saved state unless you tick "also delete saved progress". URLs with a password or token in them are refused, and loopback/LAN hosts are refused. **Alternatives:** a regular checkout; auto-check for updates on launch (a network call the user did not start, so not chosen).
+
+## 17. Marketplace URLs are strict (Sprint 08, ADR-015 implementation notes)
+
+**Decision:** a marketplace URL must use a DNS host name with at least two labels (like `git.example.com`). IP addresses, `localhost`, single-word host names and suffixes such as `.local`, `.lan`, `.internal`, `.corp` and `.home` are refused, and so are `%`, `=` and non-ASCII characters. This closes off pointing Lullshift at services on your own machine or network, but it also blocks self-hosted Git servers reached by IP or by an internal-only name. Non-ASCII file names in packs are refused too. **Alternative:** allow private hosts after an extra "this is on your network" confirmation.
+
+## 18. Sprint 08 security review fixes: conservative choices taken (ADR-015)
+
+Taken while the product owner was away; all fail closed. Please confirm or change each.
+
+1. **Redirects are off** (`http.followRedirects=false`). A repository that moved (for example a renamed GitHub repo) now fails and must be re-added at its new address.
+2. **Git's own object check is on** for every fetch (`transfer.fsckObjects`, `fetch.fsckObjects`). A repository with a malformed tree is refused at fetch with a generic error, before our own pack validation runs.
+3. **Fetch cap is 200 MiB of new objects per fetch.** A new cache is fetched into a staging folder and moved into place only on success. An existing cache is fetched into in place (not swapped), because older commits that installs are pinned to live in it; only temporary pack files are removed after a failure, and the fetched ref moves only on success.
+4. **Re-adding a removed marketplace name from another address is refused** (`alreadyExists` with a message). There is no "replace source" flow.
+5. **Installed files are served from the bytes hashed at verification**, held in memory for the session (a pack keeps only its preview image and its checked data; an app, which can't be installed from third parties in this release, keeps all files, at most 20 MiB). Chosen over re-hashing on every request, which would read the whole pack on each preview.
+6. **Saved state follows its source.** Uninstalling with "keep saved state" records the marketplace and source (migration 0007). Installing the id from a different marketplace or source deletes that state at install; the review does not promise it. State with no recorded owner (older than 0007) is kept and the review says "Saved progress from an earlier install of this id will be used." Deleting unowned state would lose user data on a guess.
+7. **Hidden-character set widened for manifests too.** Manifest text and index text share one check, so the host is now stricter than the JSON schema and the SDK's `isPlainText` (which still accept U+2028/2029, filler characters and long mark runs). Failing closed here is intended; the schema and SDK can be aligned later.
+8. **The "no local hosts" URL rule stays text-only.** DNS names can still resolve to local addresses; noted in ADR-015.

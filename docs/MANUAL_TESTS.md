@@ -590,3 +590,51 @@ Record any "ESCAPED" line in ADR-012.
 **Expected:** all checks pass, and the packs render as on Windows.
 
 **Result:** \_\_\_
+
+## Sprint 08 – Git marketplaces
+
+### M08-1: Install from a public and a private test repository (S08-A01, S08-T04)
+
+**Why manual:** this needs real repositories on a Git host and your own Git sign-in; the automated tests use local repositories only.
+
+1. Create a public test repository with `.lullshift/marketplace.json` (name, for example, `my-test-shelf`) listing one content pack folder copied from `activities/content/` with a new `id`. Push it.
+2. In **Activities > Marketplaces**, add it by `owner/repo`. Browse it and press **Install** on the pack.
+3. Check the review screen, then install. Open the pack from the Library.
+4. Make the repository private (or create a private copy), remove the marketplace, and add it again with the private URL, first in a shell where `git clone` of it works, then after signing Git out of that host.
+5. Search the app data folder and logs for your user name, token or the word `password`.
+
+**Expected:**
+
+- Step 3: the review shows the marketplace, source URL, full commit, "Content pack", the engine, permissions, size and the "Unverified" notice; after install the pack plays and its card shows the marketplace name.
+- Step 4: with Git access it works the same as public; without it, the message says Git couldn't access the repository with your current Git sign-in, and nothing hangs. Your credential manager may show its own sign-in window; Lullshift never asks for a password itself.
+- Step 5: no credentials anywhere in Lullshift's files.
+
+**Result:** \_\_\_
+
+### M08-2: Updates are never silent (S08-A03)
+
+1. In the test repository, add `activity.storage` to the pack's permissions, change its version and push.
+2. Restart Lullshift and wait a minute: nothing should change.
+3. Under **Manage**, press **Check for update** on the pack.
+
+**Expected:** Step 2: no update and no network use. Step 3: the review shows the old and new version and commit, with `activity.storage` marked as new and needing approval; nothing installs until you press the button; the pack keeps its on/off setting.
+
+**Result:** \_\_\_
+
+### M08-3: Built-in activities offline on first launch (S08-A04)
+
+1. Disconnect from the network. Rename the app data folder (to start fresh) and launch Lullshift.
+2. Open three built-in activities, including one content pack.
+3. Under **Manage**, turn one off and on again. Restore your app data folder afterwards.
+
+**Expected:** everything works without a network; a turned-off activity disappears from the Library and comes back with its progress.
+
+**Result:** \_\_\_
+
+### M08-4: Marketplaces on macOS and Linux
+
+1. On macOS and Linux, run `cargo test -p marketplace` and repeat M08-1 steps 2 and 3.
+
+**Expected:** all tests pass (they include the Unix-only checks), and installing works as on Windows.
+
+**Result:** \_\_\_
