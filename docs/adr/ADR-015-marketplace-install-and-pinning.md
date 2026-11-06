@@ -57,7 +57,7 @@ Every call is an argument vector (never a shell) with:
 
 Third-party code activities (`kind: app` from a non-built-in marketplace) can be listed and reviewed but **not installed** on any OS in this release. The gate is one host constant per OS, defaulting to blocked; flipping it is a product-owner decision. Content packs from third-party marketplaces can be installed.
 
-**Sprint 12 note (S12-T13):** the Sprint 03 WebRTC gap is closed. WebRTC is turned off for the whole webview on each OS (ADR-012, "WebRTC is off in the webview").
+**Sprint 12 note (S12-T13):** the Sprint 03 WebRTC gap is closed. WebRTC is turned off for the whole webview on each OS (ADR-012, "WebRTC is off in the webview"). Follow-up: the code gate (`crates/marketplace/src/gate.rs`) now also requires the host to confirm WebRTC read back as off (`set_webrtc_confirmed_off`, set only for `webrtc::State::Off`), so a constant alone cannot enable third-party code; Windows records `Asserted` and stays closed.
 
 - **Windows:** the full sandbox proof passes, 48 of 48 on 2026-11-06.
 - **macOS and Linux:** the settings are in place, but the proof has not run there.

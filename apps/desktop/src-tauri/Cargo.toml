@@ -41,9 +41,11 @@ sha2.workspace = true
 zeroize = "1.9"
 
 # WebRTC is turned off in the webview at run time on macOS and Linux (src/webrtc.rs, ADR-012).
-# Both are already in the lockfile through wry; the versions and features match its own.
+# macOS: the Objective-C messages live in `macos-webrtc`, the one crate that allows unsafe code,
+# so this crate can forbid it. Linux: `webkit2gtk` is already in the lockfile through wry; the
+# version and features match its own.
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
+macos-webrtc = { path = "../../../crates/macos-webrtc" }
 
 [target.'cfg(not(any(windows, target_os = "macos")))'.dependencies]
 webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
@@ -55,12 +57,8 @@ marketplace = { path = "../../../crates/marketplace", features = ["unsafe-test-f
 rusqlite.workspace = true
 tempfile.workspace = true
 
-# The workspace lints, except that unsafe code is denied rather than forbidden: the macOS part
-# of src/webrtc.rs allows it for a few WebKit messages (ADR-012), and a test fails if any other
-# file does. Keep the rest in step with [workspace.lints] in the root Cargo.toml.
-[lints.rust]
-unsafe_code = "deny"
-
-[lints.clippy]
-dbg_macro = "warn"
-todo = "warn"
+# The workspace lints, which forbid unsafe code. The macOS WebKit messages live in the separate
+# `macos-webrtc` crate (ADR-012); a test in src/webrtc.rs checks that every other crate keeps
+# inheriting these lints.
+[lints]
+workspace = true

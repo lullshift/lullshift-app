@@ -16,7 +16,8 @@
 //! - **macOS (WKWebView):** WebKit's `PeerConnectionEnabled` preference is turned off. It hides
 //!   `RTCPeerConnection` and `RTCDataChannel` in every frame of the page, nested ones included.
 //!   It is WebKit SPI (`-[WKPreferences _setPeerConnectionEnabled:]`, macOS 10.13.4+), so the
-//!   selector is checked first and the value read back.
+//!   selector is checked first and the value read back. The Objective-C messages are in the
+//!   `macos-webrtc` crate, the only place in the workspace that allows unsafe code.
 //! - **Linux (WebKitGTK):** `WebKitSettings:enable-webrtc` is set to false (also its default) and
 //!   read back. It covers every frame of the page.
 //!
@@ -46,7 +47,7 @@ pub const WINDOWS_ARGS: &[&str] = &[
      http://lullact.localhost;http://localhost:1420",
 ];
 
-/// Whether WebRTC was confirmed off in the main webview: unknown until checked.
+/// What is known about WebRTC in the main webview: unknown until checked.
 static STATE: AtomicU8 = AtomicU8::new(State::Unknown as u8);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,25 +55,37 @@ static STATE: AtomicU8 = AtomicU8::new(State::Unknown as u8);
 pub enum State {
     /// Not checked yet.
     Unknown = 0,
-    /// Turned off and read back (macOS, Linux), or set at webview creation (Windows).
+    /// Turned off and read back (macOS, Linux). The only state that opens the third-party code
+    /// gate (`marketplace::third_party_code_allowed`).
     Off = 1,
     /// Could not be turned off or confirmed.
     Failed = 2,
+    /// Set when the webview was created but not read back (Windows: browser arguments that
+    /// WebView2 gives no way to read). The sandbox proof checks the result from outside.
+    /// Not `Off`: nothing is confirmed.
+    Asserted = 3,
 }
 
 /// What is known about WebRTC in the main webview.
-#[allow(dead_code)] // Read by tests; the gate for third-party code is a constant (ADR-015).
+#[allow(dead_code)] // Read by tests; the third-party code gate is told through `record`.
 pub fn state() -> State {
     match STATE.load(Ordering::SeqCst) {
         1 => State::Off,
         2 => State::Failed,
+        3 => State::Asserted,
         _ => State::Unknown,
     }
 }
 
+/// Stores `state` and tells the third-party code gate whether WebRTC is confirmed off: only
+/// `Off` counts.
+fn set_state(state: State) {
+    STATE.store(state as u8, Ordering::SeqCst);
+    marketplace::set_webrtc_confirmed_off(state == State::Off);
+}
+
 fn record(ok: bool) {
-    let s = if ok { State::Off } else { State::Failed };
-    STATE.store(s as u8, Ordering::SeqCst);
+    set_state(if ok { State::Off } else { State::Failed });
     if !ok {
         // A fixed message: nothing about the user or their data.
         eprintln!("lullshift: could not turn WebRTC off in the webview (ADR-012)");
@@ -84,8 +97,9 @@ fn record(ok: bool) {
 pub fn disable(window: &tauri::WebviewWindow) {
     #[cfg(windows)]
     {
+        // Not read back, so not `Off`: the gate stays closed (see `State::Asserted`).
         let _ = window;
-        record(true);
+        set_state(State::Asserted);
     }
     #[cfg(not(windows))]
     {
@@ -99,41 +113,13 @@ pub fn disable(window: &tauri::WebviewWindow) {
 }
 
 #[cfg(target_os = "macos")]
-#[allow(unsafe_code)] // The only unsafe code in the app: Objective-C messages to WebKit, see below.
 mod platform {
-    use objc2::rc::Retained;
-    use objc2::runtime::{AnyObject, Bool};
-    use objc2::{msg_send, sel};
-
-    /// Turns off WebKit's `PeerConnectionEnabled` preference and reads it back.
+    /// Turns off WebKit's `PeerConnectionEnabled` preference and reads it back (in the
+    /// `macos-webrtc` crate, which holds the only unsafe code).
     pub fn disable(wv: &tauri::webview::PlatformWebview) -> bool {
-        let ptr = wv.inner().cast::<AnyObject>();
-        if ptr.is_null() {
-            return false;
-        }
-        // SAFETY: Tauri documents `inner()` as the `WKWebView` of a live webview; this runs on
-        // the main thread inside `with_webview`, while Tauri holds that view. `configuration`
-        // and `preferences` are public WebKit properties that return objects (autoreleased,
-        // retained here). `_setPeerConnectionEnabled:` and `_peerConnectionEnabled` are WebKit
-        // SPI (WKPreferencesPrivate.h, macOS 10.13.4+) taking and returning a BOOL; they are sent
-        // only after `respondsToSelector:` confirms both exist.
-        unsafe {
-            let view: &AnyObject = &*ptr;
-            let config: Option<Retained<AnyObject>> = msg_send![view, configuration];
-            let Some(config) = config else { return false };
-            let prefs: Option<Retained<AnyObject>> = msg_send![&*config, preferences];
-            let Some(prefs) = prefs else { return false };
-            let can_set: Bool =
-                msg_send![&*prefs, respondsToSelector: sel!(_setPeerConnectionEnabled:)];
-            let can_get: Bool =
-                msg_send![&*prefs, respondsToSelector: sel!(_peerConnectionEnabled)];
-            if !can_set.as_bool() || !can_get.as_bool() {
-                return false;
-            }
-            let _: () = msg_send![&*prefs, _setPeerConnectionEnabled: Bool::NO];
-            let on: Bool = msg_send![&*prefs, _peerConnectionEnabled];
-            !on.as_bool()
-        }
+        // Tauri documents `inner()` as the `WKWebView` of a live webview, and this runs on the
+        // main thread inside `with_webview`, which is what the function requires.
+        macos_webrtc::disable_peer_connection(wv.inner())
     }
 }
 
@@ -224,41 +210,118 @@ mod tests {
         );
     }
 
+    /// Unsafe code is forbidden for this crate by inheriting the workspace lints, and only
+    /// `macos-webrtc` may opt out. `forbid` cannot be overridden by an attribute, so what has
+    /// to be checked is the manifests: this crate and every other workspace crate inherit the
+    /// workspace lints, the workspace forbids unsafe code, and no manifest lowers the lint.
     #[test]
-    fn unsafe_code_is_allowed_in_one_place_only() {
-        // The crate denies unsafe code (Cargo.toml); this module's macOS part is the exception.
-        let marker = concat!("allow(", "unsafe_code)");
+    fn only_the_macos_crate_may_allow_unsafe_code() {
+        let desktop = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let root = desktop.join("../../..");
+        let root_toml = std::fs::read_to_string(root.join("Cargo.toml")).expect("root manifest");
+        assert!(
+            root_toml.contains("[workspace.lints.rust]\nunsafe_code = \"forbid\"")
+                || root_toml.contains("[workspace.lints.rust]\r\nunsafe_code = \"forbid\""),
+            "the workspace must forbid unsafe code"
+        );
+        let mut manifests = vec![desktop.join("Cargo.toml")];
+        for entry in std::fs::read_dir(root.join("crates")).expect("crates dir") {
+            let path = entry.expect("entry").path();
+            if path.join("Cargo.toml").is_file() {
+                manifests.push(path.join("Cargo.toml"));
+            }
+        }
+        let mut exceptions = Vec::new();
+        for path in manifests {
+            let text = std::fs::read_to_string(&path).expect("manifest");
+            // A table header followed by the key, with any spacing.
+            let lines: Vec<&str> = text.lines().map(str::trim).collect();
+            let inherits = lines
+                .windows(2)
+                .any(|w| w[0] == "[lints]" && w[1].replace(' ', "") == "workspace=true");
+            let lowers = lines.iter().any(|l| {
+                let l = l.replace(' ', "");
+                l.starts_with("unsafe_code=") && !l.starts_with("unsafe_code=\"forbid\"")
+            });
+            if !inherits || lowers {
+                let name = path
+                    .parent()
+                    .and_then(|p| p.file_name())
+                    .expect("dir")
+                    .to_string_lossy()
+                    .into_owned();
+                exceptions.push(name);
+            }
+        }
+        exceptions.sort();
+        assert_eq!(
+            exceptions,
+            ["macos-webrtc"],
+            "only macos-webrtc may differ from the workspace lints"
+        );
+        // And that crate is the only place with an unsafe block or an allow attribute.
         let mut found = Vec::new();
-        let mut dirs = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
-        while let Some(dir) = dirs.pop() {
-            for entry in std::fs::read_dir(&dir).expect("src dir") {
-                let path = entry.expect("entry").path();
-                if path.is_dir() {
-                    dirs.push(path);
-                } else if path.extension().is_some_and(|e| e == "rs") {
-                    let src = std::fs::read_to_string(&path).expect("source");
-                    for _ in src.matches(marker) {
-                        found.push(
-                            path.file_name()
-                                .expect("name")
-                                .to_string_lossy()
-                                .into_owned(),
-                        );
+        let mut dirs = vec![desktop.join("src"), desktop.join("build.rs")];
+        for entry in std::fs::read_dir(root.join("crates")).expect("crates dir") {
+            let path = entry.expect("entry").path();
+            if path.file_name().is_some_and(|n| n != "macos-webrtc") {
+                dirs.push(path.join("src"));
+                dirs.push(path.join("tests"));
+                dirs.push(path.join("build.rs"));
+            }
+        }
+        dirs.push(desktop.join("tests"));
+        while let Some(path) = dirs.pop() {
+            if path.is_dir() {
+                for entry in std::fs::read_dir(&path).expect("dir") {
+                    dirs.push(entry.expect("entry").path());
+                }
+            } else if path.is_file() && path.extension().is_some_and(|e| e == "rs") {
+                let src = std::fs::read_to_string(&path).expect("source");
+                // Any mention of the lint name inside an attribute, or an `unsafe {` / `unsafe fn`
+                // / `unsafe impl`, outside a comment.
+                for line in src.lines() {
+                    let code = line.split("//").next().unwrap_or("");
+                    let attr =
+                        code.trim_start().starts_with("#[") || code.trim_start().starts_with("#![");
+                    // The keyword as a whole word (`ps_unsafe {` is a name, not the keyword).
+                    let word = ["unsafe {", "unsafe fn", "unsafe impl", "unsafe extern"]
+                        .iter()
+                        .any(|w| {
+                            code.match_indices(w).any(|(i, _)| {
+                                code[..i]
+                                    .chars()
+                                    .next_back()
+                                    .is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
+                            })
+                        });
+                    if (attr && code.contains(concat!("unsafe", "_code"))) || word {
+                        found.push(path.display().to_string());
                     }
                 }
             }
         }
-        assert_eq!(found, ["webrtc.rs"]);
+        // This test's own source names the patterns above in string literals.
+        found.retain(|f| !f.ends_with("webrtc.rs"));
+        assert!(
+            found.is_empty(),
+            "unsafe code outside macos-webrtc: {found:?}"
+        );
     }
 
     #[test]
     fn state_starts_unknown_and_records_the_outcome() {
-        // Other tests don't touch STATE; this one runs alone in its own process slot.
+        // No other test touches STATE (tests run on parallel threads, so keep it that way).
         assert_eq!(state(), State::Unknown);
         record(true);
         assert_eq!(state(), State::Off);
         record(false);
         assert_eq!(state(), State::Failed);
-        STATE.store(State::Unknown as u8, Ordering::SeqCst);
+        // Windows: set at creation, not read back. Not `Off`, so the gate gets no confirmation.
+        set_state(State::Asserted);
+        assert_eq!(state(), State::Asserted);
+        assert_ne!(state(), State::Off);
+        assert!(!marketplace::third_party_code_allowed());
+        set_state(State::Unknown);
     }
 }
