@@ -77,6 +77,10 @@ fn uninstaller_hooks_are_wired() {
         nsh.contains("$UpdateMode"),
         "hooks must survive an in-place update"
     );
+    assert!(
+        nsh.contains("$EXEDIR != $INSTDIR"),
+        "hooks must survive a reinstall (the old uninstaller runs in place, S12-T05)"
+    );
     assert_eq!(nsis["installMode"], "currentUser");
 
     let prerm = conf["bundle"]["linux"]["deb"]["preRemoveScript"]

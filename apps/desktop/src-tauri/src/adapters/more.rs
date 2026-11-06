@@ -65,7 +65,7 @@ fn ctx(app: &AppHandle, agent: Agent, recorded: Option<&InstallRecord>) -> Resul
         }
         .ok_or("no_settings_path")?,
     };
-    let exe = std::env::current_exe().map_err(|_| "no_executable_path")?;
+    let exe = crate::hook_exe::hook_exe().map_err(|_| "no_executable_path")?;
     Ok(Ctx {
         agent,
         config: (agent == Agent::Codex)

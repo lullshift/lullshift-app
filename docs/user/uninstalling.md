@@ -10,8 +10,8 @@ Then quit Lullshift from the tray menu and uninstall it the usual way for your s
 
 ### What the uninstaller does for you
 
-- **Windows** (Settings > Apps) and the **Linux `.deb`** (`sudo apt remove lullshift`): the uninstaller also removes Lullshift's agent hooks, the same way Disconnect does, and keeps your own hooks. An in-place update does not remove them. If you cancel a Windows uninstall at the "Lullshift is running" prompt, your agents may already be disconnected; reconnect them in Integrations.
-- **macOS** (drag to the Trash) and the **AppImage**: nothing runs on removal, so Disconnect first.
+- **Windows** (Settings > Apps) and the **Linux `.deb`** (`sudo apt remove lullshift`): the uninstaller also removes Lullshift's agent hooks, the same way Disconnect does, and keeps your own hooks. An in-place update or a reinstall over an existing install does not remove them. If you cancel a Windows uninstall at the "Lullshift is running" prompt, your agents may already be disconnected; reconnect them in Integrations.
+- **macOS** (drag to the Trash) and the **AppImage**: nothing runs on removal, so Disconnect first. An AppImage's hooks point at the AppImage file itself, so if you move it, choose **Repair connection** in Integrations.
 
 Disconnecting first is still the safest route on every system.
 

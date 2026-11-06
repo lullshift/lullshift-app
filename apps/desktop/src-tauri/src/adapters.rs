@@ -56,7 +56,7 @@ fn ctx(app: &AppHandle, recorded: Option<&InstallRecord>) -> Result<Ctx, String>
         Some(r) => r.settings_path.clone(),
         None => install::default_settings_path().ok_or("no_settings_path")?,
     };
-    let exe = std::env::current_exe().map_err(|_| "no_executable_path")?;
+    let exe = crate::hook_exe::hook_exe().map_err(|_| "no_executable_path")?;
     Ok(Ctx {
         settings,
         backups: data_dir.join("adapters").join(ADAPTER_ID).join("backups"),

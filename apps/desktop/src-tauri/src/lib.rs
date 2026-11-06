@@ -6,6 +6,7 @@ mod activities;
 mod adapters;
 mod companion_commands;
 mod context;
+mod hook_exe;
 mod market;
 mod notify;
 pub mod uninstall_hooks;
