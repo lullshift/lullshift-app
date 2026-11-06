@@ -30,7 +30,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 24 | 10 | Content review choices | change: 24.4-24.6 |
 | 25 | 11 | First-launch welcome | change |
 | 26 | 11 | Release packaging | change: 26.3, 26.7, 26.8, 26.12 |
-| 27 | 12 | Sprint 12 build and review choices | open |
+| 27 | 12 | Sprint 12 build and review choices | change: 27.1, 27.5, 27.6, 27.8 |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -335,3 +335,15 @@ These were taken during Sprint 12, mostly to fix security review findings. Pleas
 7. **Pack pictures: some WebP trailing data can't be detected.** Trailing bytes inside a lossy VP8 chunk, or up to 8 bytes in a lossless VP8L chunk, can't be detected with the decoder in use. PNG is checked exactly (ADR-016).
 8. **Moss Paths crossings** can be turned. A turn changes nothing visually, but counts as a move, can be undone, and is announced.
 9. **The Welcome's "all connected" check ignores OpenCode**, because OpenCode is experimental.
+
+**Owner decisions (2026-11-06), item 27:**
+
+- 27.1: change. Allow Windows paths containing the affected letters for Codex and Cursor, and accept the risk. Document that hooks may not work on these paths, and that a host reading the command as cp1252 could misparse it.
+- 27.2: OK.
+- 27.3: OK.
+- 27.4: OK.
+- 27.5: change. Open third-party code activities on all platforms. Each install shows a clear risk warning and asks for consent; there is no extra setting on macOS or Linux. This changes ADR-012 and ADR-015 and the CLAUDE.md rule "only where the sandbox proof passed". The rule changes only through an ADR amendment, and the sandbox itself is not weakened. Claude recommended an extra one-time setting on macOS and Linux until M12-8 passes; the owner chose a consent warning only.
+- 27.6: change. Show a small notice in the conversation, with no approve button, when the Companion asks for a lookup that is unknown, malformed or over the limit.
+- 27.7: accept, documented.
+- 27.8: change. Turning a Moss Paths crossing is announced and undoable but doesn't count as a move.
+- 27.9: OK.
