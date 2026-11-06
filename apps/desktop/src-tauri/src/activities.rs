@@ -32,6 +32,7 @@ use tauri::http::{Response, StatusCode, header};
 use time::OffsetDateTime;
 
 pub(crate) mod installed;
+pub(crate) mod launch;
 
 use crate::Core;
 use installed::Served;
@@ -139,7 +140,6 @@ pub struct ActivityInfo {
     pub(crate) description: String,
     pub(crate) category: String,
     version: String,
-    url: String,
     storage: bool,
     saved_utc: Option<String>,
     pub(crate) help: Option<Help>,
@@ -457,12 +457,13 @@ fn has_storage(a: &Activity) -> bool {
     }
 }
 
-/// Address of an activity's entry page as the webview sees it.
-fn entry_url(id: &str) -> String {
+/// Address of an activity's entry page for one launch, as the webview sees it. `key` is the
+/// launch key from [`launch::Launches::begin`]; the scheme handler serves nothing without it.
+fn entry_url(key: &str, id: &str) -> String {
     #[cfg(any(windows, target_os = "android"))]
-    return format!("http://{SCHEME}.localhost/{id}/index.html");
+    return format!("http://{SCHEME}.localhost/{key}/{id}/index.html");
     #[cfg(not(any(windows, target_os = "android")))]
-    return format!("{SCHEME}://localhost/{id}/index.html");
+    return format!("{SCHEME}://localhost/{key}/{id}/index.html");
 }
 
 /// Origins allowed to frame an activity: the app itself (and the dev server in debug builds).
@@ -611,32 +612,86 @@ fn pack_image(
     Some((read(file)?, content_type))
 }
 
-/// Serves one request on the `lullact` scheme. Only GET; everything carries the activity CSP.
-/// Without the app state (before setup finishes) only bundled activities can be served.
-pub fn serve(core: Option<&Core>, request: &tauri::http::Request<Vec<u8>>) -> Response<Vec<u8>> {
-    let snap = core.and_then(|c| c.library.snapshot(c).ok());
-    let found = if request.method() == tauri::http::Method::GET {
-        match lookup_checked(snap.as_deref(), request.uri().path()) {
-            Ok(found) => found,
-            Err((id, why)) => {
-                // A file that only couldn't be read is a 404 for this request; a retry may
-                // work. Only a changed file turns the activity off (security review INFO-1).
-                if why == VerifyError::Mismatch
-                    && let Some(core) = core
-                {
-                    installed::mark_damaged(core, &id);
-                }
-                None
-            }
-        }
-    } else {
-        None
+/// Splits a request path `/<launch key>/<activity id>/<file>` into the key and the legacy
+/// `/<activity id>/<file>` path that [`lookup_checked`] understands.
+fn split_launch(path: &str) -> Option<(&str, &str)> {
+    let rest = path.strip_prefix('/')?;
+    let (key, _) = rest.split_once('/')?;
+    launch::valid_key(key).then(|| (key, &path[key.len() + 1..]))
+}
+
+/// What the scheme handler decided for one request.
+enum Decision {
+    Ok(FoundFile),
+    NotFound,
+    /// A missing, revoked or foreign launch key, or another activity's path.
+    Forbidden,
+    /// The activity used up its request or byte budget.
+    Limited,
+}
+
+fn decide(core: Option<&Core>, request: &tauri::http::Request<Vec<u8>>) -> Decision {
+    if request.method() != tauri::http::Method::GET {
+        return Decision::NotFound;
+    }
+    let Some(core) = core else {
+        // Before setup finishes there is no launch key to check against.
+        return Decision::Forbidden;
     };
-    let (status, body, content_type) = match found {
-        Some((bytes, ct)) => (StatusCode::OK, bytes.into_owned(), ct),
-        None => (
+    let Some((key, path)) = split_launch(request.uri().path()) else {
+        return Decision::Forbidden;
+    };
+    // The key must be live, and the path must name the activity it was issued for: one
+    // activity can't load another's page or script (ADR-012).
+    let Some(launched) = core.launches.id_of(key) else {
+        return Decision::Forbidden;
+    };
+    let Some((id, _)) = split_path(path) else {
+        return Decision::NotFound;
+    };
+    if id != launched {
+        return Decision::Forbidden;
+    }
+    if !core.launches.admit(id, std::time::Instant::now()) {
+        return Decision::Limited;
+    }
+    let snap = core.library.snapshot(core).ok();
+    match lookup_checked(snap.as_deref(), path) {
+        Ok(Some(found)) => {
+            core.launches.charge(id, found.0.len());
+            Decision::Ok(found)
+        }
+        Ok(None) => Decision::NotFound,
+        Err((id, why)) => {
+            // A file that only couldn't be read is a 404 for this request; a retry may work.
+            // Only a changed file turns the activity off (security review INFO-1).
+            if why == VerifyError::Mismatch {
+                installed::mark_damaged(core, &id);
+            }
+            Decision::NotFound
+        }
+    }
+}
+
+/// Serves one request on the `lullact` scheme. Only GET, only `/<launch key>/<id>/<file>` with a
+/// live key issued for that id, and within the activity's request and byte budget; everything
+/// carries the activity CSP. May read and hash a file, so call it off the UI thread.
+pub fn serve(core: Option<&Core>, request: &tauri::http::Request<Vec<u8>>) -> Response<Vec<u8>> {
+    let (status, body, content_type) = match decide(core, request) {
+        Decision::Ok((bytes, ct)) => (StatusCode::OK, bytes.into_owned(), ct),
+        Decision::NotFound => (
             StatusCode::NOT_FOUND,
             b"Not found".to_vec(),
+            "text/plain; charset=utf-8",
+        ),
+        Decision::Forbidden => (
+            StatusCode::FORBIDDEN,
+            b"Not allowed".to_vec(),
+            "text/plain; charset=utf-8",
+        ),
+        Decision::Limited => (
+            StatusCode::TOO_MANY_REQUESTS,
+            b"Too many requests".to_vec(),
             "text/plain; charset=utf-8",
         ),
     };
@@ -719,7 +774,8 @@ fn with_store<T>(
     let mut guard = core.store.lock().map_err(|_| "internal")?;
     let store = guard.as_mut().ok_or("store_unavailable")?;
     f(store).map_err(|e| match e {
-        local_store::StoreError::QuotaExceeded { .. } => "quota_exceeded".to_owned(),
+        local_store::StoreError::QuotaExceeded { .. }
+        | local_store::StoreError::TooManyKeys { .. } => "quota_exceeded".to_owned(),
         _ => "store_unavailable".to_owned(),
     })
 }
@@ -806,6 +862,33 @@ pub async fn activity_info(
     .await
 }
 
+/// Starts a launch: a fresh key (revoking any earlier one for this activity) and the address of
+/// its entry page. Only the trusted UI calls this; the frame gets the address as its `src`.
+pub(crate) fn launch_activity(core: &Core, id: &str) -> Result<String, String> {
+    find(core, id, true)?;
+    let key = core.launches.begin(id)?;
+    Ok(entry_url(&key, id))
+}
+
+#[tauri::command]
+pub async fn activity_launch(
+    core: tauri::State<'_, Arc<Core>>,
+    id: String,
+) -> Result<String, String> {
+    let core = Arc::clone(&core);
+    blocking(move || launch_activity(&core, &id)).await
+}
+
+/// Ends a launch: its key stops working at once (the activity was paused, closed or replaced).
+#[tauri::command]
+pub async fn activity_launch_end(
+    core: tauri::State<'_, Arc<Core>>,
+    id: String,
+) -> Result<(), String> {
+    core.launches.end(&id);
+    Ok(())
+}
+
 fn info(a: &Activity, saved_utc: Option<String>, played_seconds: i64) -> ActivityInfo {
     let m = &a.manifest;
     ActivityInfo {
@@ -814,7 +897,6 @@ fn info(a: &Activity, saved_utc: Option<String>, played_seconds: i64) -> Activit
         description: m.description.clone(),
         category: m.category.clone(),
         version: m.version.clone(),
-        url: entry_url(&m.id),
         storage: has_storage(a),
         saved_utc,
         help: m.help.clone(),
@@ -833,7 +915,6 @@ fn installed_info(s: &Served, saved_utc: Option<String>, played_seconds: i64) ->
         description: m.description.clone(),
         category: m.category.clone(),
         version: m.version.clone(),
-        url: entry_url(&m.id),
         storage: s.has_storage(),
         saved_utc,
         help: m.help.clone(),
@@ -1015,16 +1096,23 @@ pub async fn activity_storage_set(
     value: String,
 ) -> Result<(), String> {
     let core = Arc::clone(&core);
-    blocking(move || {
-        storage_target(&core, &id, &key)?;
-        if value.len() > VALUE_MAX {
-            return Err("value_too_large".into());
-        }
-        with_store(&core, |s| {
-            s.set_activity_value(&id, &key, &value, STORAGE_QUOTA)
-        })
+    blocking(move || storage_set(&core, &id, &key, &value)).await
+}
+
+/// One storage write: permission, key and value checks, the per-activity write budget
+/// (`rate_limited`), then the quota (`quota_exceeded`: bytes with a per-key overhead, and a
+/// cap on keys).
+pub(crate) fn storage_set(core: &Core, id: &str, key: &str, value: &str) -> Result<(), String> {
+    storage_target(core, id, key)?;
+    if value.len() > VALUE_MAX {
+        return Err("value_too_large".into());
+    }
+    if !core.storage_writes.admit(id, std::time::Instant::now()) {
+        return Err("rate_limited".into());
+    }
+    with_store(core, |s| {
+        s.set_activity_value(id, key, value, STORAGE_QUOTA)
     })
-    .await
 }
 
 #[tauri::command]
@@ -1036,6 +1124,9 @@ pub async fn activity_storage_remove(
     let core = Arc::clone(&core);
     blocking(move || {
         storage_target(&core, &id, &key)?;
+        if !core.storage_writes.admit(&id, std::time::Instant::now()) {
+            return Err("rate_limited".into());
+        }
         with_store(&core, |s| s.remove_activity_value(&id, &key))
     })
     .await
@@ -1272,34 +1363,262 @@ mod tests {
             .collect();
         assert!(!listed.is_empty(), "at least one bundled activity");
         let id = listed[0];
-        let ok = serve(
-            None,
-            &tauri::http::Request::get(format!("{SCHEME}://localhost/{id}/index.html"))
-                .body(Vec::new())
-                .expect("request"),
-        );
+        let dir = tempfile::tempdir().expect("tempdir");
+        let core = Core::for_tests(dir.path());
+        let key = launched(&core, id);
+        let ok = get(&core, &key, id, "index.html");
         assert_eq!(ok.status(), StatusCode::OK);
         assert_eq!(
             ok.headers()[header::CONTENT_SECURITY_POLICY],
             activity_csp().as_str()
         );
         for (method, path) in [
-            ("GET", format!("/{id}/missing.html")),
-            ("GET", format!("/{id}/../{id}/index.html")),
-            ("GET", "/app.unknown.activity/index.html".to_owned()),
-            ("POST", format!("/{id}/index.html")),
+            ("GET", format!("/{key}/{id}/missing.html")),
+            ("GET", format!("/{key}/{id}/../{id}/index.html")),
+            ("POST", format!("/{key}/{id}/index.html")),
         ] {
-            let r = serve(
-                None,
-                &tauri::http::Request::builder()
-                    .method(method)
-                    .uri(format!("{SCHEME}://localhost{path}"))
-                    .body(Vec::new())
-                    .expect("request"),
-            );
+            let r = raw(&core, method, &path);
             assert_eq!(r.status(), StatusCode::NOT_FOUND, "{method} {path}");
             assert!(r.headers().contains_key(header::CONTENT_SECURITY_POLICY));
         }
+        // No key, a made-up key, an unknown activity under a live key: forbidden or not found,
+        // never served.
+        for (path, want) in [
+            (format!("/{id}/index.html"), StatusCode::FORBIDDEN),
+            (
+                format!("/{}/{id}/index.html", "0".repeat(launch::KEY_LEN)),
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                format!("/{key}/app.unknown.activity/index.html"),
+                StatusCode::FORBIDDEN,
+            ),
+        ] {
+            let r = raw(&core, "GET", &path);
+            assert_eq!(r.status(), want, "{path}");
+            assert!(r.headers().contains_key(header::CONTENT_SECURITY_POLICY));
+        }
+        // Before the app state exists nothing is served.
+        let early = serve(
+            None,
+            &tauri::http::Request::get(format!("{SCHEME}://localhost/{key}/{id}/index.html"))
+                .body(Vec::new())
+                .expect("request"),
+        );
+        assert_eq!(early.status(), StatusCode::FORBIDDEN);
+    }
+
+    fn storage_app() -> String {
+        catalog()
+            .values()
+            .find(|a| matches!(a.role, Role::App) && has_storage(a))
+            .map(|a| a.manifest.id.clone())
+            .expect("an activity with storage")
+    }
+
+    #[test]
+    fn the_1025th_empty_key_is_refused_and_the_error_is_quota_exceeded() {
+        let id = storage_app();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut core = Core::for_tests(dir.path());
+        // Out of the way of the write budget, which has its own test.
+        core.storage_writes = launch::WriteBudget::with_limit(100_000, launch::STORAGE_WINDOW);
+        for i in 0..local_store::ACTIVITY_MAX_KEYS {
+            storage_set(&core, &id, &format!("k{i}"), "").unwrap_or_else(|e| panic!("{i}: {e}"));
+        }
+        assert_eq!(
+            storage_set(&core, &id, "one-too-many", "").unwrap_err(),
+            "quota_exceeded"
+        );
+        // An existing key can still be updated.
+        storage_set(&core, &id, "k0", "value").expect("update");
+    }
+
+    #[test]
+    fn a_burst_of_storage_writes_over_the_budget_is_rate_limited() {
+        let id = storage_app();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let core = Core::for_tests(dir.path());
+        for i in 0..launch::STORAGE_WRITES {
+            storage_set(&core, &id, "k", &i.to_string()).unwrap_or_else(|e| panic!("{i}: {e}"));
+        }
+        assert_eq!(
+            storage_set(&core, &id, "k", "again").unwrap_err(),
+            "rate_limited"
+        );
+        // Nothing was written by the refused call, and another activity has its own budget.
+        let value = with_store(&core, |s| s.activity_value(&id, "k")).expect("read");
+        assert_eq!(
+            value.as_deref(),
+            Some((launch::STORAGE_WRITES - 1).to_string().as_str())
+        );
+        let other = catalog()
+            .values()
+            .find(|a| matches!(a.role, Role::App) && has_storage(a) && a.manifest.id != id)
+            .map(|a| a.manifest.id.clone())
+            .expect("a second activity with storage");
+        storage_set(&core, &other, "k", "v").expect("own budget");
+    }
+
+    fn raw(core: &Core, method: &str, path: &str) -> Response<Vec<u8>> {
+        serve(
+            Some(core),
+            &tauri::http::Request::builder()
+                .method(method)
+                .uri(format!("{SCHEME}://localhost{path}"))
+                .body(Vec::new())
+                .expect("request"),
+        )
+    }
+
+    fn launched(core: &Core, id: &str) -> String {
+        core.launches.begin(id).expect("launch key")
+    }
+
+    fn get(core: &Core, key: &str, id: &str, file: &str) -> Response<Vec<u8>> {
+        raw(core, "GET", &format!("/{key}/{id}/{file}"))
+    }
+
+    #[test]
+    fn a_launch_key_serves_only_its_own_activity_and_dies_with_the_launch() {
+        let apps: Vec<&str> = catalog()
+            .values()
+            .filter(|a| a.listed && matches!(a.role, Role::App))
+            .map(|a| a.manifest.id.as_str())
+            .take(2)
+            .collect();
+        assert_eq!(apps.len(), 2, "two bundled apps");
+        let (a, b) = (apps[0], apps[1]);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let core = Core::for_tests(dir.path());
+        let key_a = launched(&core, a);
+        assert_eq!(get(&core, &key_a, a, "index.html").status(), StatusCode::OK);
+        // Navigating to, or loading a script from, another activity is refused.
+        for (id, file) in [
+            (b, "index.html"),
+            (b, "main.js"),
+            (b, "lullshift-bridge-v1.js"),
+        ] {
+            assert_eq!(
+                get(&core, &key_a, id, file).status(),
+                StatusCode::FORBIDDEN,
+                "{id}/{file}"
+            );
+        }
+        // B's own key works for B only.
+        let key_b = launched(&core, b);
+        assert_eq!(get(&core, &key_b, b, "index.html").status(), StatusCode::OK);
+        assert_eq!(
+            get(&core, &key_b, a, "index.html").status(),
+            StatusCode::FORBIDDEN
+        );
+        // A new launch of A revokes its old key; ending the launch revokes the new one.
+        let key_a2 = launched(&core, a);
+        assert_eq!(
+            get(&core, &key_a, a, "index.html").status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            get(&core, &key_a2, a, "index.html").status(),
+            StatusCode::OK
+        );
+        core.launches.end(a);
+        assert_eq!(
+            get(&core, &key_a2, a, "index.html").status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(get(&core, &key_b, b, "index.html").status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn launching_needs_a_runnable_activity_and_gives_a_keyed_address() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let core = Core::for_tests(dir.path());
+        assert_eq!(
+            launch_activity(&core, "app.unknown.activity").unwrap_err(),
+            "unknown_activity"
+        );
+        let id = catalog()
+            .values()
+            .find(|a| a.listed && matches!(a.role, Role::App))
+            .map(|a| a.manifest.id.clone())
+            .expect("an app");
+        let url = launch_activity(&core, &id).expect("launch");
+        let path = url.split_once("localhost").expect("host").1;
+        let (key, _) = split_launch(path).expect("keyed path");
+        assert_eq!(core.launches.id_of(key).as_deref(), Some(id.as_str()));
+        assert!(url.ends_with(&format!("/{key}/{id}/index.html")));
+        // The address works, and a second launch replaces the key.
+        assert_eq!(raw(&core, "GET", path).status(), StatusCode::OK);
+        launch_activity(&core, &id).expect("relaunch");
+        assert_eq!(raw(&core, "GET", path).status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn a_flood_of_requests_gets_429_and_other_activities_are_unaffected() {
+        let apps: Vec<&str> = catalog()
+            .values()
+            .filter(|a| a.listed && matches!(a.role, Role::App))
+            .map(|a| a.manifest.id.as_str())
+            .take(2)
+            .collect();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let core = Core::for_tests(dir.path());
+        core.launches.set_limits(launch::Limits {
+            requests: 5,
+            bytes: u64::MAX,
+            window: std::time::Duration::from_secs(3600),
+        });
+        let key = launched(&core, apps[0]);
+        let other = launched(&core, apps[1]);
+        for i in 0..5 {
+            assert_eq!(
+                get(&core, &key, apps[0], "index.html").status(),
+                StatusCode::OK,
+                "{i}"
+            );
+        }
+        let limited = get(&core, &key, apps[0], "index.html");
+        assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(
+            limited
+                .headers()
+                .contains_key(header::CONTENT_SECURITY_POLICY)
+        );
+        assert_eq!(
+            get(&core, &other, apps[1], "index.html").status(),
+            StatusCode::OK
+        );
+    }
+
+    #[test]
+    fn the_byte_budget_stops_a_flood_of_large_files() {
+        let id = catalog()
+            .values()
+            .find(|a| a.listed && matches!(a.role, Role::App))
+            .map(|a| a.manifest.id.clone())
+            .expect("an app");
+        let size = get_len(&id);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let core = Core::for_tests(dir.path());
+        core.launches.set_limits(launch::Limits {
+            requests: 1_000,
+            bytes: (size * 3) as u64,
+            window: std::time::Duration::from_secs(3600),
+        });
+        let key = launched(&core, &id);
+        let statuses: Vec<StatusCode> = (0..6)
+            .map(|_| get(&core, &key, &id, "index.html").status())
+            .collect();
+        assert_eq!(statuses[0], StatusCode::OK);
+        assert_eq!(*statuses.last().unwrap(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    fn get_len(id: &str) -> usize {
+        lookup(None, &format!("/{id}/index.html"))
+            .expect("index")
+            .0
+            .len()
     }
 
     #[test]
@@ -1425,7 +1744,6 @@ mod tests {
             let i = info(p, None, 0);
             assert_eq!(i.id, *id);
             assert_eq!(i.engine.as_deref(), p.manifest.engine.as_deref());
-            assert!(i.url.contains(&format!("/{id}/index.html")));
         }
         assert!(count >= 1, "at least one bundled content pack");
     }
@@ -1437,6 +1755,8 @@ mod tests {
         let with_images: Vec<&Activity> =
             packs().filter(|p| !p.manifest.images.is_empty()).collect();
         assert!(!with_images.is_empty(), "a bundled pack has pictures");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let core = Core::for_tests(dir.path());
         for p in &with_images {
             let id = &p.manifest.id;
             pack_content(p).unwrap_or_else(|e| panic!("{id}: {e:?}"));
@@ -1445,12 +1765,7 @@ mod tests {
                     lookup(None, &format!("/{id}/{image}")).unwrap_or_else(|| panic!("{image}"));
                 let info = pack_media::check_image(image, &bytes).expect("checked image");
                 assert_eq!(ct, info.kind.content_type(), "{image}");
-                let r = serve(
-                    None,
-                    &tauri::http::Request::get(format!("{SCHEME}://localhost/{id}/{image}"))
-                        .body(Vec::new())
-                        .expect("request"),
-                );
+                let r = get(&core, &launched(&core, id), id, image);
                 assert_eq!(r.status(), StatusCode::OK);
                 assert_eq!(r.headers()[header::CONTENT_TYPE], ct);
                 assert_eq!(r.headers()[header::X_CONTENT_TYPE_OPTIONS], "nosniff");

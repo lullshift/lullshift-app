@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-activity-launch"
+description = "Enables the activity_launch command without any pre-configured scope."
+commands.allow = ["activity_launch"]
+
+[[permission]]
+identifier = "deny-activity-launch"
+description = "Denies the activity_launch command without any pre-configured scope."
+commands.deny = ["activity_launch"]

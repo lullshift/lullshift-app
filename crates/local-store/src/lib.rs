@@ -102,6 +102,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 14,
         sql: include_str!("../migrations/0014_code_consent.sql"),
     },
+    Migration {
+        version: 15,
+        sql: include_str!("../migrations/0015_code_consent_address.sql"),
+    },
 ];
 
 pub fn latest_version() -> i64 {
@@ -124,6 +128,10 @@ pub enum StoreError {
     Corrupt(&'static str),
     /// An activity write would go past `limit` bytes. Nothing was written.
     QuotaExceeded {
+        limit: usize,
+    },
+    /// An activity already holds the most keys it may. Nothing was written.
+    TooManyKeys {
         limit: usize,
     },
     /// The session, item or link asked for does not exist.
@@ -158,6 +166,9 @@ impl fmt::Display for StoreError {
             Self::QuotaExceeded { limit } => {
                 write!(f, "activity storage limit of {limit} bytes reached")
             }
+            Self::TooManyKeys { limit } => {
+                write!(f, "activity storage holds the most keys it may ({limit})")
+            }
             Self::NotFound => f.write_str("not found"),
             Self::InvalidInput(what) => write!(f, "invalid input: {what}"),
             Self::TooMany { limit } => write!(f, "limit of {limit} items reached"),
@@ -177,6 +188,12 @@ impl From<rusqlite::Error> for StoreError {
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;
+
+/// Bytes every stored activity key is charged on top of its key and value, for the row's own
+/// cost in the database (ADR-012).
+pub const ACTIVITY_ROW_OVERHEAD: usize = 64;
+/// Most keys one activity may hold.
+pub const ACTIVITY_MAX_KEYS: usize = 1024;
 
 /// Result of ingesting one event.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -420,19 +437,25 @@ impl Store {
             .optional()?)
     }
 
-    /// Bytes an activity's namespace uses (keys plus values, UTF-8).
+    /// What an activity's namespace costs against its quota: for every row the key and value in
+    /// UTF-8 bytes plus [`ACTIVITY_ROW_OVERHEAD`], so many tiny rows are not free.
     pub fn activity_usage(&self, activity_id: &str) -> Result<usize> {
         let used: i64 = self.conn.query_row(
-            "SELECT coalesce(sum(length(CAST(key AS BLOB)) + length(CAST(value AS BLOB))), 0)
+            "SELECT coalesce(sum(length(CAST(key AS BLOB)) + length(CAST(value AS BLOB)) + ?2), 0)
              FROM activity_storage WHERE activity_id = ?1",
-            [activity_id],
+            params![activity_id, ACTIVITY_ROW_OVERHEAD as i64],
             |r| r.get(0),
         )?;
         usize::try_from(used).map_err(|_| StoreError::Corrupt("negative storage size"))
     }
 
     /// Writes one value, refusing the write (and changing nothing) if the namespace would then
-    /// go past `limit` bytes. The check and the write share one transaction.
+    /// cost more than `limit` bytes (see [`Store::activity_usage`]) or, for a new key, would hold
+    /// more than [`ACTIVITY_MAX_KEYS`] keys. The check and the write share one transaction.
+    ///
+    /// The check sums the namespace's other rows. That scan stays on the `(activity_id, key)`
+    /// primary key and covers at most [`ACTIVITY_MAX_KEYS`] rows, so it costs microseconds while
+    /// the store lock is held and needs no running counter (and no schema change).
     pub fn set_activity_value(
         &mut self,
         activity_id: &str,
@@ -441,15 +464,26 @@ impl Store {
         limit: usize,
     ) -> Result<()> {
         let tx = self.conn.transaction()?;
-        let others: i64 = tx.query_row(
-            "SELECT coalesce(sum(length(CAST(key AS BLOB)) + length(CAST(value AS BLOB))), 0)
+        let (others, rows): (i64, i64) = tx.query_row(
+            "SELECT coalesce(sum(length(CAST(key AS BLOB)) + length(CAST(value AS BLOB)) + ?3), 0),
+                    count(*)
              FROM activity_storage WHERE activity_id = ?1 AND key <> ?2",
-            [activity_id, key],
-            |r| r.get(0),
+            params![activity_id, key, ACTIVITY_ROW_OVERHEAD as i64],
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         let others =
             usize::try_from(others).map_err(|_| StoreError::Corrupt("negative storage size"))?;
-        if others.saturating_add(key.len()).saturating_add(value.len()) > limit {
+        let rows = usize::try_from(rows).map_err(|_| StoreError::Corrupt("negative row count"))?;
+        if rows >= ACTIVITY_MAX_KEYS {
+            return Err(StoreError::TooManyKeys {
+                limit: ACTIVITY_MAX_KEYS,
+            });
+        }
+        let cost = key
+            .len()
+            .saturating_add(value.len())
+            .saturating_add(ACTIVITY_ROW_OVERHEAD);
+        if others.saturating_add(cost) > limit {
             return Err(StoreError::QuotaExceeded { limit });
         }
         tx.execute(

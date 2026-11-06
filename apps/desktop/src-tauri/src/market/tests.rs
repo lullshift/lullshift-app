@@ -190,10 +190,13 @@ fn installed(env: &Env) -> (Repo, String) {
     (repo, commit)
 }
 
+/// Requests `/<id>/<file>` the way the frame does: under a fresh launch key for `<id>`.
 fn request(env: &Env, path: &str) -> tauri::http::Response<Vec<u8>> {
+    let id = path.trim_start_matches('/').split('/').next().unwrap_or("");
+    let key = env.core.launches.begin(id).expect("launch key");
     activities::serve(
         Some(&env.core),
-        &tauri::http::Request::get(format!("{SCHEME}://localhost{path}"))
+        &tauri::http::Request::get(format!("{SCHEME}://localhost/{key}{path}"))
             .body(Vec::new())
             .expect("request"),
     )
@@ -2048,4 +2051,398 @@ fn needs_git_is_a_distinct_error_and_the_backend_is_reported() {
         serde_json::to_value(&dto).expect("json"),
         json!({ "backend": "system" })
     );
+}
+
+// ---- security review of decision 27.5: serving budget, cache, consent edge cases -----------
+
+fn game_url(env_key: &str, file: &str, n: u32) -> String {
+    format!("{SCHEME}://localhost/{env_key}/{GAME}/{file}?{n}")
+}
+
+fn serve_game(env: &Env, key: &str, file: &str, n: u32) -> tauri::http::Response<Vec<u8>> {
+    activities::serve(
+        Some(&env.core),
+        &tauri::http::Request::get(game_url(key, file, n))
+            .body(Vec::new())
+            .expect("request"),
+    )
+}
+
+#[test]
+fn repeated_loads_of_a_large_installed_file_hit_the_serving_budget() {
+    let env = Env::new();
+    let (repo, _) = standard_repo(&env);
+    repo.write("packs/game/big.png", &"a".repeat(1 << 20));
+    write_game(&repo, "");
+    add(&env.core, &repo.url()).expect("add");
+    let p = preview_install(&env.core, MARKET, GAME).expect("preview");
+    install_pending(&env.core, &p.token, false, true, Instant::now()).expect("install");
+
+    // 3 MiB per window; a loop of `new Image().src = '/big.png?' + Math.random()`.
+    env.core.launches.set_limits(activities::launch::Limits {
+        requests: 1_000,
+        bytes: 3 << 20,
+        window: std::time::Duration::from_secs(3600),
+    });
+    let key = env.core.launches.begin(GAME).expect("key");
+    let statuses: Vec<StatusCode> = (0..8)
+        .map(|n| serve_game(&env, &key, "big.png", n).status())
+        .collect();
+    assert_eq!(&statuses[..3], &[StatusCode::OK; 3]);
+    assert!(
+        statuses[3..]
+            .iter()
+            .all(|s| *s == StatusCode::TOO_MANY_REQUESTS),
+        "{statuses:?}"
+    );
+    // The whole activity is limited for the window, small files included; it is not damaged.
+    assert_eq!(
+        serve_game(&env, &key, "main.js", 0).status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(manage_item(&env, GAME).problem, None);
+    // The bundled app next to it is unaffected.
+    let other = bundled_app_id();
+    let other_key = env.core.launches.begin(&other).expect("key");
+    let r = activities::serve(
+        Some(&env.core),
+        &tauri::http::Request::get(format!(
+            "{SCHEME}://localhost/{other_key}/{other}/index.html"
+        ))
+        .body(Vec::new())
+        .expect("request"),
+    );
+    assert_eq!(r.status(), StatusCode::OK);
+}
+
+#[test]
+fn verified_small_files_are_cached_briefly_but_a_change_is_still_caught() {
+    let env = Env::new();
+    let (_repo, commit) = installed_game(&env);
+    let served = Arc::clone(
+        env.core
+            .library
+            .snapshot(&env.core)
+            .expect("snapshot")
+            .served
+            .get(GAME)
+            .expect("served"),
+    );
+    let key = env.core.launches.begin(GAME).expect("key");
+    let path = env.install_dir(GAME, &commit).join("main.js");
+    assert_eq!(
+        serve_game(&env, &key, "main.js", 0).body(),
+        GAME_JS.as_bytes()
+    );
+
+    // Same length, same modification time, different bytes: within the cache window the bytes
+    // that were verified are served, never the tampered ones.
+    let modified = std::fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .expect("mtime");
+    let evil: String = GAME_JS.chars().map(|_| 'x').collect();
+    std::fs::write(&path, &evil).expect("swap");
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .and_then(|f| f.set_modified(modified))
+        .expect("restore mtime");
+    let r = serve_game(&env, &key, "main.js", 1);
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(r.body(), GAME_JS.as_bytes(), "cached verified bytes only");
+
+    // Once the entry expires the file is read and hashed again, and the change is caught.
+    served.set_cache_ttl(std::time::Duration::ZERO);
+    assert_eq!(
+        serve_game(&env, &key, "main.js", 2).status(),
+        StatusCode::NOT_FOUND
+    );
+    env.core.library.invalidate();
+    assert_eq!(manage_item(&env, GAME).problem, Some("tampered"));
+}
+
+#[test]
+fn a_cached_file_that_changes_size_or_time_is_caught_on_the_next_request() {
+    let env = Env::new();
+    let (_repo, commit) = installed_game(&env);
+    let key = env.core.launches.begin(GAME).expect("key");
+    for n in 0..3 {
+        assert_eq!(
+            serve_game(&env, &key, "main.js", n).status(),
+            StatusCode::OK
+        );
+    }
+    let path = env.install_dir(GAME, &commit).join("main.js");
+    std::fs::write(&path, "document.title = 'longer than before';").expect("swap");
+    assert_eq!(
+        serve_game(&env, &key, "main.js", 9).status(),
+        StatusCode::NOT_FOUND
+    );
+    env.core.library.invalidate();
+    assert_eq!(manage_item(&env, GAME).problem, Some("tampered"));
+}
+
+/// Swaps the test core's in-memory store for one in a file, so rows can be changed with SQL.
+fn raw_connection(env: &Env) -> rusqlite::Connection {
+    let path = env.root.join("raw.db");
+    let (store, _) = local_store::Store::open(&path).expect("open");
+    *env.core.store.lock().expect("lock") = Some(store);
+    let conn = rusqlite::Connection::open(&path).expect("raw");
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .expect("timeout");
+    conn
+}
+
+#[test]
+fn rows_without_matching_consent_are_not_served_whatever_their_marketplace() {
+    let env = Env::new();
+    let conn = raw_connection(&env);
+    let (_repo, commit) = installed_game(&env);
+    assert_eq!(
+        request(&env, &format!("/{GAME}/index.html")).status(),
+        StatusCode::OK
+    );
+    let not_served = |why: &str| {
+        env.core.library.invalidate();
+        assert_eq!(
+            request(&env, &format!("/{GAME}/index.html")).status(),
+            StatusCode::NOT_FOUND,
+            "{why}"
+        );
+        assert!(!listed_ids(&env).contains(&GAME.to_owned()), "{why}");
+        assert_eq!(manage_item(&env, GAME).problem, Some("tampered"), "{why}");
+    };
+    let set = |sql: &str| {
+        conn.execute(sql, [GAME]).expect(sql);
+    };
+
+    // No consent at all.
+    set(
+        "UPDATE installed_activities SET code_consent_at = NULL, code_consent_commit = NULL, code_consent_url = NULL
+         WHERE activity_id = ?1",
+    );
+    not_served("no consent");
+    // Consent given for another commit.
+    set(&format!(
+        "UPDATE installed_activities SET code_consent_at = '2026-01-01T00:00:00Z',
+           code_consent_commit = '{}' WHERE activity_id = ?1",
+        "c".repeat(40)
+    ));
+    not_served("consent for another commit");
+    // A row moved under the built-in marketplace's id, with and without stale consent: the id
+    // is no exemption any more.
+    set(
+        "UPDATE installed_activities SET marketplace_id = 'lullshift', code_consent_at = NULL,
+           code_consent_commit = NULL, code_consent_url = NULL WHERE activity_id = ?1",
+    );
+    not_served("built-in marketplace id, no consent");
+    set(&format!(
+        "UPDATE installed_activities SET code_consent_at = '2026-01-01T00:00:00Z',
+           code_consent_commit = '{}' WHERE activity_id = ?1",
+        "d".repeat(40)
+    ));
+    not_served("built-in marketplace id, stale consent");
+
+    // Putting the real consent for the pinned commit back makes it run again.
+    set(&format!(
+        "UPDATE installed_activities SET marketplace_id = '{MARKET}',
+           code_consent_at = '2026-01-01T00:00:00Z', code_consent_commit = '{commit}'
+         WHERE activity_id = ?1"
+    ));
+    env.core.library.invalidate();
+    // A row that failed the check was turned off; it stays off until turned on again.
+    assert!(!manage_item(&env, GAME).enabled);
+    set_enabled(&env.core, GAME, true).expect("enable");
+    assert_eq!(
+        request(&env, &format!("/{GAME}/index.html")).status(),
+        StatusCode::OK
+    );
+}
+
+#[test]
+fn manage_flags_a_program_whose_address_changed_since_consent() {
+    let env = Env::new();
+    let conn = raw_connection(&env);
+    installed_game(&env);
+    let consent_url = with_store(&env.core, |s| s.installed_activity(GAME))
+        .expect("store")
+        .expect("record")
+        .code_consent
+        .expect("consent")
+        .url
+        .expect("the address is recorded with the consent");
+    assert!(!manage_item(&env, GAME).address_changed);
+
+    // The install's address moves (as a confirmed change of address does); the consent keeps
+    // the address the user saw.
+    conn.execute(
+        "UPDATE installed_activities SET source_url = 'https://moved.example/acme/market'
+         WHERE activity_id = ?1",
+        [GAME],
+    )
+    .expect("move");
+    env.core.library.invalidate();
+    assert!(manage_item(&env, GAME).address_changed);
+    let json = serde_json::to_value(manage_item(&env, GAME)).expect("json");
+    assert_eq!(json["addressChanged"], true);
+    // Moving it back clears the note, and a row without a recorded address never shows it.
+    conn.execute(
+        "UPDATE installed_activities SET source_url = ?2 WHERE activity_id = ?1",
+        [GAME, consent_url.as_str()],
+    )
+    .expect("back");
+    env.core.library.invalidate();
+    assert!(!manage_item(&env, GAME).address_changed);
+    conn.execute(
+        "UPDATE installed_activities SET code_consent_url = NULL,
+           source_url = 'https://moved.example/acme/market' WHERE activity_id = ?1",
+        [GAME],
+    )
+    .expect("older row");
+    env.core.library.invalidate();
+    assert!(!manage_item(&env, GAME).address_changed);
+    // Packs and bundled activities never show it.
+    assert!(
+        !manage_item(&env, &bundled_app_id()).address_changed,
+        "bundled"
+    );
+}
+
+#[test]
+fn an_update_from_a_pack_to_a_program_needs_consent() {
+    let env = Env::new();
+    let (repo, v1) = installed(&env);
+    assert!(
+        with_store(&env.core, |s| s.installed_activity(FACTS))
+            .expect("store")
+            .expect("record")
+            .code_consent
+            .is_none()
+    );
+    // The publisher turns the pack into a program under the same id.
+    std::fs::remove_file(repo.dir.join("packs/facts/deck.json")).expect("remove");
+    repo.write("packs/facts/manifest.json", &game_manifest(FACTS));
+    repo.write(
+        "packs/facts/index.html",
+        "<!doctype html><title>f</title><script src=main.js></script>",
+    );
+    repo.write("packs/facts/main.js", GAME_JS);
+    let v2 = repo.commit();
+    refresh(&env.core, MARKET).expect("refresh");
+    let up = preview_update(&env.core, FACTS).expect("preview");
+    assert_eq!(up.preview.kind, "app");
+    assert!(up.preview.code_risk.is_some(), "the update warns");
+    assert_eq!(
+        err_kind(update_pending(
+            &env.core,
+            &up.preview.token,
+            false,
+            Instant::now()
+        )),
+        "codeRiskNotAccepted"
+    );
+    let rec = with_store(&env.core, |s| s.installed_activity(FACTS))
+        .expect("store")
+        .expect("record");
+    assert_eq!(
+        (rec.kind, rec.commit_sha.as_str()),
+        (ActivityKind::Content, v1.as_str())
+    );
+    assert!(rec.code_consent.is_none());
+
+    let up = preview_update(&env.core, FACTS).expect("again");
+    update_pending(&env.core, &up.preview.token, true, Instant::now()).expect("update");
+    let rec = with_store(&env.core, |s| s.installed_activity(FACTS))
+        .expect("store")
+        .expect("record");
+    assert_eq!(rec.kind, ActivityKind::App);
+    assert_eq!(rec.code_consent.expect("consent").commit, v2);
+    assert_eq!(
+        request(&env, &format!("/{FACTS}/main.js")).status(),
+        StatusCode::OK
+    );
+}
+
+#[test]
+fn an_update_from_a_program_to_a_pack_clears_consent_and_serves_it_as_a_pack() {
+    let env = Env::new();
+    let (repo, _v1) = installed_game(&env);
+    let program_page = request(&env, &format!("/{GAME}/index.html"));
+    assert!(String::from_utf8_lossy(program_page.body()).contains("main.js"));
+
+    for f in ["index.html", "main.js", "style.css"] {
+        std::fs::remove_file(repo.dir.join("packs/game").join(f)).expect("remove");
+    }
+    repo.write(
+        "packs/game/manifest.json",
+        &cards_manifest(GAME, "1.0.0", &[]),
+    );
+    repo.write("packs/game/deck.json", DECK);
+    let v2 = repo.commit();
+    refresh(&env.core, MARKET).expect("refresh");
+    let up = preview_update(&env.core, GAME).expect("preview");
+    assert_eq!(up.preview.kind, "content");
+    assert!(up.preview.code_risk.is_none(), "a pack has no code warning");
+    update_pending(&env.core, &up.preview.token, false, Instant::now()).expect("update");
+
+    let rec = with_store(&env.core, |s| s.installed_activity(GAME))
+        .expect("store")
+        .expect("record");
+    assert_eq!(rec.kind, ActivityKind::Content);
+    assert_eq!(rec.commit_sha, v2);
+    assert!(rec.code_consent.is_none(), "consent cleared");
+    // It now serves the engine's page, not the program's.
+    let page = request(&env, &format!("/{GAME}/index.html"));
+    assert_eq!(page.status(), StatusCode::OK);
+    assert_ne!(page.body(), program_page.body());
+    assert_ne!(
+        request(&env, &format!("/{GAME}/main.js")).body(),
+        GAME_JS.as_bytes(),
+        "the old program's script is gone"
+    );
+    assert!(
+        activities::content_for_core(&env.core, GAME)
+            .expect("content")
+            .is_object()
+    );
+}
+
+#[test]
+fn a_downgrade_to_an_older_commit_needs_consent_again() {
+    let env = Env::new();
+    let (repo, v1) = installed_game(&env);
+    let v2 = write_game(&repo, "<p>v2</p>");
+    refresh(&env.core, MARKET).expect("refresh");
+    let up = preview_update(&env.core, GAME).expect("preview");
+    update_pending(&env.core, &up.preview.token, true, Instant::now()).expect("to v2");
+
+    // The publisher rewinds the repository to the first commit.
+    repo.git(&["reset", "--hard", &v1]);
+    refresh(&env.core, MARKET).expect("refresh after rewind");
+    let down = preview_update(&env.core, GAME).expect("preview");
+    assert!(!down.unchanged);
+    assert_eq!(down.preview.commit, v1);
+    assert!(down.preview.code_risk.is_some(), "the downgrade warns");
+    assert_eq!(
+        err_kind(update_pending(
+            &env.core,
+            &down.preview.token,
+            false,
+            Instant::now()
+        )),
+        "codeRiskNotAccepted"
+    );
+    let rec = with_store(&env.core, |s| s.installed_activity(GAME))
+        .expect("store")
+        .expect("record");
+    assert_eq!(rec.commit_sha, v2, "still on v2");
+    assert_eq!(rec.code_consent.expect("v2 consent").commit, v2);
+
+    let down = preview_update(&env.core, GAME).expect("again");
+    update_pending(&env.core, &down.preview.token, true, Instant::now()).expect("to v1");
+    let rec = with_store(&env.core, |s| s.installed_activity(GAME))
+        .expect("store")
+        .expect("record");
+    assert_eq!(rec.commit_sha, v1);
+    assert_eq!(rec.code_consent.expect("v1 consent").commit, v1);
 }

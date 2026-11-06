@@ -62,6 +62,10 @@ pub struct CodeConsent {
     pub at: OffsetDateTime,
     /// The pinned commit the consent was given for; always the install's own commit.
     pub commit: String,
+    /// The address the program was installed from when the user accepted. Unlike the install's
+    /// `source_url`, a later change of address does not move it. None for rows from before
+    /// migration 0015.
+    pub url: Option<String>,
 }
 
 /// What the installer knows when it installs or updates an activity.
@@ -162,6 +166,13 @@ fn check_commit(commit: &str) -> Result<()> {
 fn validate(a: &NewInstalledActivity) -> Result<()> {
     check_activity_id(&a.activity_id)?;
     check_marketplace_id(&a.marketplace_id)?;
+    // The built-in marketplace's activities are the bundled ones; nothing is installed from it,
+    // so a record under its id could only be a way around the code-consent rule.
+    if a.marketplace_id == BUILTIN_MARKETPLACE_ID {
+        return Err(StoreError::InvalidInput(
+            "the built-in marketplace has no installs",
+        ));
+    }
     check_url(&a.source_url)?;
     if a.source_path.len() > MAX_PATH_CHARS || a.source_path.chars().any(char::is_control) {
         return Err(StoreError::InvalidInput("source path"));
@@ -250,7 +261,7 @@ fn decode_marketplace(
 
 const INSTALL_COLS: &str = "activity_id, marketplace_id, source_url, source_path, commit_sha, \
      manifest_version, kind, engine, permissions, digest, size_bytes, enabled, installed_at, \
-     updated_at, code_consent_at, code_consent_commit";
+     updated_at, code_consent_at, code_consent_commit, code_consent_url";
 
 type RawInstall = (
     String,
@@ -267,6 +278,7 @@ type RawInstall = (
     i64,
     String,
     String,
+    Option<String>,
     Option<String>,
     Option<String>,
 );
@@ -289,6 +301,7 @@ fn install_row(r: &Row<'_>) -> rusqlite::Result<RawInstall> {
         r.get(13)?,
         r.get(14)?,
         r.get(15)?,
+        r.get(16)?,
     ))
 }
 
@@ -310,11 +323,13 @@ fn decode_install(raw: RawInstall) -> Result<InstalledActivity> {
         updated,
         consent_at,
         consent_commit,
+        consent_url,
     ) = raw;
     let code_consent = match (consent_at, consent_commit) {
         (Some(at), Some(commit)) => Some(CodeConsent {
             at: parse_ts(&at)?,
             commit,
+            url: consent_url,
         }),
         (None, None) => None,
         _ => return Err(StoreError::Corrupt("stored code consent")),
@@ -670,13 +685,19 @@ impl Store {
         let size = i64::try_from(a.size_bytes).map_err(|_| StoreError::InvalidInput("size"))?;
         let consent_at = a.code_consent.as_ref().map(|c| fmt_ts(c.at)).transpose()?;
         let consent_commit = a.code_consent.as_ref().map(|c| c.commit.as_str());
+        // The address the user saw when they accepted: the one this install comes from now.
+        let consent_url = a
+            .code_consent
+            .as_ref()
+            .map(|c| c.url.as_deref().unwrap_or(&a.source_url));
         self.conn
             .execute(
                 "INSERT INTO installed_activities
                    (activity_id, marketplace_id, source_url, source_path, commit_sha,
                     manifest_version, kind, engine, permissions, digest, size_bytes, enabled,
-                    installed_at, updated_at, code_consent_at, code_consent_commit)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12, ?12, ?13, ?14)
+                    installed_at, updated_at, code_consent_at, code_consent_commit,
+                    code_consent_url)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12, ?12, ?13, ?14, ?15)
                  ON CONFLICT (activity_id) DO UPDATE SET
                    marketplace_id = excluded.marketplace_id, source_url = excluded.source_url,
                    source_path = excluded.source_path, commit_sha = excluded.commit_sha,
@@ -685,7 +706,8 @@ impl Store {
                    digest = excluded.digest, size_bytes = excluded.size_bytes,
                    updated_at = excluded.updated_at, source_note = NULL,
                    code_consent_at = excluded.code_consent_at,
-                   code_consent_commit = excluded.code_consent_commit",
+                   code_consent_commit = excluded.code_consent_commit,
+                   code_consent_url = excluded.code_consent_url",
                 params![
                     a.activity_id,
                     a.marketplace_id,
@@ -700,7 +722,8 @@ impl Store {
                     size,
                     at,
                     consent_at,
-                    consent_commit
+                    consent_commit,
+                    consent_url
                 ],
             )
             .map_err(|e| match e {

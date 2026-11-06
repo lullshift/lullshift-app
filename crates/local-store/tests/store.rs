@@ -4,7 +4,8 @@
 use agent_core::reducer::DEFAULT_STALE_AFTER;
 use agent_core::{AgentEvent, SessionState, ViewReason, parse_event, view};
 use local_store::{
-    IngestOutcome, MIGRATIONS, Migration, Store, StoreError, latest_version, migrate,
+    ACTIVITY_MAX_KEYS, ACTIVITY_ROW_OVERHEAD, IngestOutcome, MIGRATIONS, Migration, Store,
+    StoreError, latest_version, migrate,
 };
 use rusqlite::Connection;
 use time::macros::datetime;
@@ -418,9 +419,13 @@ fn preferences_round_trip_and_replace() {
 
 #[test]
 fn activity_storage_is_namespaced_and_bounded() {
+    // Every row costs key + value + ACTIVITY_ROW_OVERHEAD bytes against the limit.
+    const OVER: usize = ACTIVITY_ROW_OVERHEAD;
+    let limit = OVER + 16;
     let mut s = Store::open_in_memory().expect("open");
-    s.set_activity_value("a", "best", "12", 16).expect("fits");
-    s.set_activity_value("b", "best", "99", 16)
+    s.set_activity_value("a", "best", "12", limit)
+        .expect("fits");
+    s.set_activity_value("b", "best", "99", limit)
         .expect("other namespace");
     assert_eq!(
         s.activity_value("a", "best").expect("get").as_deref(),
@@ -430,14 +435,14 @@ fn activity_storage_is_namespaced_and_bounded() {
         s.activity_value("b", "best").expect("get").as_deref(),
         Some("99")
     );
-    assert_eq!(s.activity_usage("a").expect("usage"), 6);
+    assert_eq!(s.activity_usage("a").expect("usage"), 6 + OVER);
 
     // Replacing a value counts only the new size.
-    s.set_activity_value("a", "best", "0123456789ab", 16)
+    s.set_activity_value("a", "best", "0123456789ab", limit)
         .expect("exactly at limit");
     assert!(matches!(
-        s.set_activity_value("a", "more", "x", 16),
-        Err(StoreError::QuotaExceeded { limit: 16 })
+        s.set_activity_value("a", "more", "x", limit),
+        Err(StoreError::QuotaExceeded { limit: l }) if l == limit
     ));
     assert_eq!(
         s.activity_value("a", "more").expect("get"),
@@ -445,10 +450,53 @@ fn activity_storage_is_namespaced_and_bounded() {
         "nothing written"
     );
     // Multi-byte characters count as bytes.
-    assert!(s.set_activity_value("c", "k", "ééééééééé", 16).is_err());
+    assert!(s.set_activity_value("c", "k", "éééééééééé", limit).is_err());
 
     s.remove_activity_value("a", "best").expect("remove");
     assert_eq!(s.activity_usage("a").expect("usage"), 0);
+}
+
+#[test]
+fn empty_keys_are_not_free_and_the_key_count_is_capped() {
+    let mut s = Store::open_in_memory().expect("open");
+    // The byte quota used by the app (256 KiB) comfortably holds the key cap, so the cap is
+    // what stops this loop.
+    let quota = 256 * 1024;
+    for i in 0..ACTIVITY_MAX_KEYS {
+        s.set_activity_value("a", &format!("k{i}"), "", quota)
+            .unwrap_or_else(|e| panic!("key {i}: {e}"));
+    }
+    assert!(matches!(
+        s.set_activity_value("a", "one-too-many", "", quota),
+        Err(StoreError::TooManyKeys { limit }) if limit == ACTIVITY_MAX_KEYS
+    ));
+    assert_eq!(
+        s.activity_value("a", "one-too-many").expect("get"),
+        None,
+        "nothing written"
+    );
+    // Existing keys can still be replaced, other activities are unaffected, and removing a key
+    // makes room again.
+    s.set_activity_value("a", "k0", "now with a value", quota)
+        .expect("replace");
+    s.set_activity_value("b", "k0", "", quota).expect("other");
+    s.remove_activity_value("a", "k1").expect("remove");
+    s.set_activity_value("a", "one-more", "", quota)
+        .expect("room again");
+    // Rows cost their overhead: the usage is far above the bare key bytes.
+    let usage = s.activity_usage("a").expect("usage");
+    assert!(usage >= ACTIVITY_MAX_KEYS * ACTIVITY_ROW_OVERHEAD);
+    // A tiny quota is spent by overhead alone.
+    let mut t = Store::open_in_memory().expect("open");
+    let small = ACTIVITY_ROW_OVERHEAD * 3;
+    for i in 0..3 {
+        t.set_activity_value("a", &format!("{i}"), "", small + 3)
+            .expect("fits");
+    }
+    assert!(matches!(
+        t.set_activity_value("a", "x", "", small + 3),
+        Err(StoreError::QuotaExceeded { .. })
+    ));
 }
 
 #[test]

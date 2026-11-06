@@ -1167,6 +1167,7 @@ fn code_consent_for(pending: &Pending, accept_code_risk: bool) -> Res<Option<Cod
     Ok(Some(CodeConsent {
         at: OffsetDateTime::now_utc(),
         commit: p.commit.clone(),
+        url: Some(p.source_url.clone()),
     }))
 }
 

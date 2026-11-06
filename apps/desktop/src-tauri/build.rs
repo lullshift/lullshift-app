@@ -33,6 +33,8 @@ fn main() {
             "activity_uninstall",
             "activity_set_enabled",
             "activity_info",
+            "activity_launch",
+            "activity_launch_end",
             "activity_storage_get",
             "activity_storage_set",
             "activity_storage_remove",

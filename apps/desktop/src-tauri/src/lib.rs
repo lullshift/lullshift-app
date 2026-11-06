@@ -100,6 +100,10 @@ struct Core {
     app_dir: PathBuf,
     /// What the activity library shows and serves, and the install-verification cache.
     library: activities::installed::Library,
+    /// Live launch keys and request budgets of the `lullact` scheme (ADR-012).
+    launches: activities::launch::Launches,
+    /// Storage write budget per activity (ADR-012).
+    storage_writes: activities::launch::WriteBudget,
     /// Marketplace operations in flight and pending install reviews.
     market: market::MarketState,
     /// Companion (BYOK): keychain, HTTP limits and in-flight sends.
@@ -119,6 +123,8 @@ impl Core {
             tray_face: Mutex::new(None),
             app_dir: app_dir.to_path_buf(),
             library: activities::installed::Library::default(),
+            launches: activities::launch::Launches::default(),
+            storage_writes: activities::launch::WriteBudget::default(),
             market: market::MarketState::default(),
             companion: companion_commands::CompanionState::with(
                 std::sync::Arc::new(::companion::MemoryKeyStore::new()),
@@ -481,12 +487,16 @@ pub fn run() {
         // Used from Rust only (install confirmation); no capability grants its JS commands.
         .plugin(tauri_plugin_dialog::init())
         // Bundled activities, framed by the UI in a sandboxed iframe (ADR-012).
-        .register_uri_scheme_protocol(activities::SCHEME, |ctx, request| {
+        // Asynchronous: serving may read and hash a file (up to 5 MiB), which must not run on the
+        // webview's thread. Floods are limited by the per-activity budget in `serve`.
+        .register_asynchronous_uri_scheme_protocol(activities::SCHEME, |ctx, request, responder| {
             let core: Option<Arc<Core>> = ctx
                 .app_handle()
                 .try_state::<Arc<Core>>()
                 .map(|s| Arc::clone(&s));
-            activities::serve(core.as_deref(), &request)
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(activities::serve(core.as_deref(), &request));
+            });
         })
         .setup(|app| {
             // Before anything can open an activity: WebRTC off in the webview (ADR-012).
@@ -504,6 +514,8 @@ pub fn run() {
                 tray_face: Mutex::new(None),
                 app_dir: handle.path().app_data_dir().unwrap_or_default(),
                 library: activities::installed::Library::default(),
+                launches: activities::launch::Launches::default(),
+                storage_writes: activities::launch::WriteBudget::default(),
                 market: market::MarketState::default(),
                 companion: companion_commands::CompanionState::new(),
             });
@@ -557,6 +569,8 @@ pub fn run() {
             activities::activities_list,
             activities::activities_manage_list,
             activities::activity_info,
+            activities::activity_launch,
+            activities::activity_launch_end,
             activities::activity_storage_get,
             activities::activity_storage_set,
             activities::activity_storage_remove,

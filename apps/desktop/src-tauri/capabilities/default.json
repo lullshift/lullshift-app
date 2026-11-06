@@ -35,6 +35,8 @@
     "allow-activity-uninstall",
     "allow-activity-set-enabled",
     "allow-activity-info",
+    "allow-activity-launch",
+    "allow-activity-launch-end",
     "allow-activity-storage-get",
     "allow-activity-storage-set",
     "allow-activity-storage-remove",

@@ -599,6 +599,7 @@ fn code_install(id: &str, sha: &str, consent: Option<OffsetDateTime>) -> NewInst
         code_consent: consent.map(|at| CodeConsent {
             at,
             commit: sha.to_owned(),
+            url: None,
         }),
         ..install(id, "acme")
     }
@@ -616,7 +617,8 @@ fn code_consent_is_recorded_with_its_commit_and_replaced_on_update() {
         a.code_consent,
         Some(CodeConsent {
             at: T0,
-            commit: SHA_A.to_owned()
+            commit: SHA_A.to_owned(),
+            url: Some("https://example.org/team/pack".to_owned()),
         })
     );
     // An update to a new commit records the consent given for that commit.
@@ -627,7 +629,8 @@ fn code_consent_is_recorded_with_its_commit_and_replaced_on_update() {
         b.code_consent,
         Some(CodeConsent {
             at: T1,
-            commit: SHA_B.to_owned()
+            commit: SHA_B.to_owned(),
+            url: Some("https://example.org/team/pack".to_owned()),
         })
     );
     assert_eq!(b.installed_at, T0, "an update keeps the install time");
@@ -658,6 +661,7 @@ fn code_consent_must_match_the_commit_and_the_kind() {
         code_consent: Some(CodeConsent {
             at: T0,
             commit: SHA_A.to_owned(),
+            url: None,
         }),
         ..install("com.acme.p", "acme")
     };
@@ -732,7 +736,7 @@ fn version_13_database_upgrades_to_14_and_keeps_installs_without_consent() {
         .expect("install");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (13, 14));
+    assert_eq!((report.from_version, report.to_version), (13, 15));
     assert!(
         report.backup.is_some(),
         "a backup is taken before migrating"
@@ -782,6 +786,129 @@ fn failed_version_14_migration_rolls_back_to_13() {
         )
         .expect("columns");
     assert_eq!(has_at, 0, "the first ALTER of the step was rolled back too");
+}
+
+// ---- security review of 27.5: the address a program was accepted from, migration 0015 -----
+
+#[test]
+fn version_14_database_upgrades_to_15_and_keeps_consent_without_an_address() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("open raw");
+        migrate(&conn, &MIGRATIONS[..14], None).expect("v14");
+        conn.execute(
+            "INSERT INTO marketplaces (id, url, added_at, builtin)
+             VALUES ('acme', 'https://github.com/acme/market', '2026-11-05T10:00:00Z', 0)",
+            [],
+        )
+        .expect("row");
+        conn.execute(
+            &format!(
+                "INSERT INTO installed_activities (activity_id, marketplace_id, source_url,
+                   source_path, commit_sha, manifest_version, kind, engine, permissions, digest,
+                   size_bytes, installed_at, updated_at, code_consent_at, code_consent_commit)
+                 VALUES ('com.acme.g', 'acme', 'https://github.com/acme/market', 'p', '{SHA_A}',
+                   '1.0.0', 'app', NULL, '[]', '{DIGEST}', 1, '2026-11-05T10:00:00Z',
+                   '2026-11-05T10:00:00Z', '2026-11-06T10:00:00Z', '{SHA_A}')"
+            ),
+            [],
+        )
+        .expect("install");
+    }
+    let (s, report) = Store::open(&path).expect("upgrade");
+    assert_eq!((report.from_version, report.to_version), (14, 15));
+    assert!(
+        report.backup.is_some(),
+        "a backup is taken before migrating"
+    );
+    let rec = s
+        .installed_activity("com.acme.g")
+        .expect("get")
+        .expect("kept");
+    let consent = rec.code_consent.expect("consent kept");
+    assert_eq!(consent.commit, SHA_A);
+    assert_eq!(consent.url, None, "older consent has no recorded address");
+}
+
+#[test]
+fn failed_version_15_migration_rolls_back_to_14() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("open raw");
+        migrate(&conn, &MIGRATIONS[..14], None).expect("v14");
+        conn.execute(
+            "ALTER TABLE installed_activities ADD COLUMN code_consent_url INTEGER",
+            [],
+        )
+        .expect("clash");
+    }
+    assert!(matches!(
+        Store::open(&path),
+        Err(StoreError::Migration { version: 15, .. })
+    ));
+    let conn = Connection::open(&path).expect("reopen raw");
+    let v: i64 = conn
+        .query_row("SELECT max(version) FROM schema_version", [], |r| r.get(0))
+        .expect("version");
+    assert_eq!(v, 14, "left at the last good version");
+}
+
+#[test]
+fn the_consent_address_stays_when_the_install_address_moves() {
+    let mut s = Store::open_in_memory().expect("store");
+    s.add_marketplace("acme", "https://github.com/acme/market", T0)
+        .expect("add");
+    s.put_installed_activity(&code_install("com.acme.g", SHA_A, Some(T0)), T0)
+        .expect("install");
+    let before = s
+        .installed_activity("com.acme.g")
+        .expect("get")
+        .expect("row");
+    let old = before.source_url.clone();
+    assert_eq!(before.code_consent.expect("consent").url, Some(old.clone()));
+
+    s.change_marketplace_address(&local_store::AddressChange {
+        id: "acme",
+        new_url: "https://git.example.org/acme/market",
+        private_host: false,
+        commit: SHA_A,
+        found: &["com.acme.g".to_owned()],
+        missing: &[],
+        at: T1,
+    })
+    .expect("move");
+    let after = s
+        .installed_activity("com.acme.g")
+        .expect("get")
+        .expect("row");
+    assert_eq!(after.source_url, "https://git.example.org/acme/market");
+    assert_eq!(
+        after.code_consent.expect("consent").url,
+        Some(old),
+        "the consent keeps the address the user accepted"
+    );
+}
+
+#[test]
+fn nothing_can_be_installed_under_the_built_in_marketplace_id() {
+    let s = Store::open_in_memory().expect("store");
+    for install in [
+        code_install("com.acme.g", SHA_A, Some(T0)),
+        code_install("com.acme.g", SHA_A, None),
+        NewInstalledActivity {
+            marketplace_id: BUILTIN_MARKETPLACE_ID.to_owned(),
+            ..install("com.acme.p", "acme")
+        },
+    ] {
+        let install = NewInstalledActivity {
+            marketplace_id: BUILTIN_MARKETPLACE_ID.to_owned(),
+            ..install
+        };
+        invalid(s.put_installed_activity(&install, T0));
+    }
+    assert!(s.installed_activities().expect("list").is_empty());
 }
 
 // ---- API: marketplaces -----------------------------------------------------------------
@@ -932,11 +1059,13 @@ fn removing_a_marketplace_keeps_its_installs_and_revival_reuses_the_row() {
 
 #[test]
 fn install_round_trips_and_lists_sorted() {
-    let s = Store::open_in_memory().expect("store");
+    let mut s = Store::open_in_memory().expect("store");
+    s.add_marketplace("acme", "https://github.com/acme/market", T0)
+        .expect("add");
     let a = s
-        .put_installed_activity(&install("pack.b", "lullshift"), T0)
+        .put_installed_activity(&install("pack.b", "acme"), T0)
         .expect("b");
-    s.put_installed_activity(&install("pack.a", "lullshift"), T0)
+    s.put_installed_activity(&install("pack.a", "acme"), T0)
         .expect("a");
     assert_eq!(a.activity_id, "pack.b");
     assert_eq!(a.kind, ActivityKind::Content);
@@ -956,13 +1085,15 @@ fn install_round_trips_and_lists_sorted() {
 
 #[test]
 fn put_replaces_atomically_and_keeps_install_time_and_enabled_choice() {
-    let s = Store::open_in_memory().expect("store");
-    s.put_installed_activity(&install("pack.one", "lullshift"), T0)
+    let mut s = Store::open_in_memory().expect("store");
+    s.add_marketplace("acme", "https://github.com/acme/market", T0)
+        .expect("add");
+    s.put_installed_activity(&install("pack.one", "acme"), T0)
         .expect("v1");
     s.set_installed_enabled("pack.one", false, T0)
         .expect("disable");
 
-    let mut next = install("pack.one", "lullshift");
+    let mut next = install("pack.one", "acme");
     next.commit_sha = SHA_B.to_owned();
     next.manifest_version = "1.1.0".to_owned();
     next.permissions = vec!["storage".to_owned(), "audio".to_owned()];
@@ -987,10 +1118,12 @@ fn put_replaces_atomically_and_keeps_install_time_and_enabled_choice() {
 
 #[test]
 fn put_validates_every_field() {
-    let s = Store::open_in_memory().expect("store");
+    let mut s = Store::open_in_memory().expect("store");
+    s.add_marketplace("acme", "https://github.com/acme/market", T0)
+        .expect("add");
     let mut cases: Vec<NewInstalledActivity> = Vec::new();
     let mut with = |f: &dyn Fn(&mut NewInstalledActivity)| {
-        let mut a = install("pack.one", "lullshift");
+        let mut a = install("pack.one", "acme");
         f(&mut a);
         cases.push(a);
     };
@@ -1015,7 +1148,7 @@ fn put_validates_every_field() {
     assert!(s.installed_activities().expect("list").is_empty());
 
     // An app without an engine is fine.
-    let mut app = install("app.one", "lullshift");
+    let mut app = install("app.one", "acme");
     app.kind = ActivityKind::App;
     app.engine = None;
     assert_eq!(
@@ -1024,7 +1157,7 @@ fn put_validates_every_field() {
     );
 
     // 128-char id is the accepted maximum.
-    s.put_installed_activity(&install(&"a".repeat(128), "lullshift"), T0)
+    s.put_installed_activity(&install(&"a".repeat(128), "acme"), T0)
         .expect("max id");
 }
 
@@ -1040,7 +1173,9 @@ fn install_for_an_unknown_marketplace_is_not_found() {
 #[test]
 fn enable_disable_and_remove_installed() {
     let mut s = Store::open_in_memory().expect("store");
-    s.put_installed_activity(&install("pack.one", "lullshift"), T0)
+    s.add_marketplace("acme", "https://github.com/acme/market", T0)
+        .expect("add");
+    s.put_installed_activity(&install("pack.one", "acme"), T0)
         .expect("install");
     s.set_installed_enabled("pack.one", false, T1).expect("off");
     let i = s
