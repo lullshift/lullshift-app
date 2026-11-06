@@ -10,14 +10,14 @@ Lullshift watches your coding agents and gives your attention somewhere calm to 
 
 - **Agent sessions.** Follows Claude Code, Codex and Cursor through their own documented hooks (and OpenCode 2.x through an experimental plugin): what is working, what needs you, what has finished. Unknown or stale status is shown as unknown, never guessed. What each agent can and can't report is listed in [ADAPTER_CAPABILITIES.md](ADAPTER_CAPABILITIES.md).
 - **Connecting an agent is your choice.** Lullshift asks first, names the exact file it changes, backs it up, and Disconnect restores it. Lullshift only observes: its hooks never block or answer an agent.
-- **Activities.** 20 original games and 72 breaks and content packs, all playable offline with the keyboard, paused and saved whenever an agent needs you. Grid puzzles have a daily puzzle.
+- **Activities.** 20 original games and 73 breaks and content packs, all playable offline with the keyboard, paused and saved whenever an agent needs you. Grid puzzles have a daily puzzle. Content packs may include checked still pictures.
 - **Git marketplaces.** Add any public or private Git repository with a `.lullshift/marketplace.json` index. Installs are pinned to a commit and only update when you choose. Lullshift stores no Git credentials. In this release, third-party marketplaces can supply content packs; third-party code activities can't be installed yet.
-- **Companion (optional).** A separate conversation space using your own AI provider key (Anthropic, OpenAI or an OpenAI-compatible server). Keys stay in your system keychain. You choose exactly what context is shared, with a preview, and the Companion can't run tools or reach your agents.
+- **Companion (optional).** A separate conversation space using your own AI provider key (Anthropic, OpenAI or an OpenAI-compatible server). Keys stay in your system keychain. Replies stream as they are written. You choose exactly what context is shared, with a preview. If you turn on "Let the Companion look things up" (off by default), it can ask for three read-only lookups: a session overview, a break suggestion and activity help. You approve each one before anything is sent. It can't act, run tools or reach your agents.
 - **Creator tools.** An activity SDK, three game kits, ten engines for code-free content packs and the `lullshift` CLI to create, validate, simulate and pack activities. See the [creator guide](creators/README.md).
 
 ### Privacy
 
-No telemetry, no accounts, no Lullshift servers. Lullshift only goes online when you ask it to: fetching a marketplace you added, or sending a Companion message to the provider you set up. Details in the [privacy page](user/privacy.md).
+No telemetry, no accounts, no Lullshift servers. Lullshift only goes online when you ask it to: fetching a marketplace you added, or sending a Companion message to the provider you set up. WebRTC is turned off in the app, so activities can't open peer-to-peer connections (tested on Windows; macOS and Linux checks are still to run). Details in the [privacy page](user/privacy.md).
 
 ### Installing
 
