@@ -72,6 +72,9 @@ fn main() {
             "companion_retry",
             "companion_cancel",
             "companion_usage",
+            "companion_prefs",
+            "companion_set_tools_enabled",
+            "companion_tool_decision",
         ]),
     ))
     .expect("failed to run tauri-build");

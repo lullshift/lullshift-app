@@ -21,9 +21,9 @@ pub use marketplaces::{
 };
 
 pub use companion::{
-    CompanionMessage, CompanionProfile, CompanionThread, CompanionUsage, DEFAULT_THREAD_TITLE,
-    MAX_ATTACHED_CHARS, MAX_MESSAGE_CHARS, MAX_PROFILES, MAX_THREAD_TITLE_CHARS, MAX_THREADS,
-    NewUserMessage, month_of,
+    CompanionMessage, CompanionProfile, CompanionThread, CompanionToolCall, CompanionUsage,
+    DEFAULT_THREAD_TITLE, MAX_ATTACHED_CHARS, MAX_MESSAGE_CHARS, MAX_PROFILES,
+    MAX_THREAD_TITLE_CHARS, MAX_THREADS, NewToolCall, NewUserMessage, month_of,
 };
 
 pub use context::{
@@ -80,6 +80,10 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 9,
         sql: include_str!("../migrations/0009_companion_message_host.sql"),
+    },
+    Migration {
+        version: 10,
+        sql: include_str!("../migrations/0010_companion_tool_calls.sql"),
     },
 ];
 

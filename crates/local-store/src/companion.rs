@@ -76,6 +76,39 @@ pub struct NewUserMessage<'a> {
     pub host: &'a str,
 }
 
+/// A lookup the model asked for during a reply, with what was sent back (S12-T16).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompanionToolCall {
+    pub id: i64,
+    pub message_id: i64,
+    pub round: i64,
+    pub tool: String,
+    pub arguments: String,
+    /// Exactly what was sent to the provider.
+    pub result_text: String,
+    /// `approved` or `declined`.
+    pub status: String,
+    pub card_activity_id: Option<String>,
+    pub card_name: Option<String>,
+    pub card_minutes: Option<i64>,
+    pub host: Option<String>,
+    pub created_utc: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewToolCall<'a> {
+    pub message_id: i64,
+    pub round: i64,
+    pub tool: &'a str,
+    pub arguments: &'a str,
+    pub result_text: &'a str,
+    pub status: &'a str,
+    pub card_activity_id: Option<&'a str>,
+    pub card_name: Option<&'a str>,
+    pub card_minutes: Option<i64>,
+    pub host: &'a str,
+}
+
 /// `YYYY-MM` in UTC.
 pub fn month_of(t: OffsetDateTime) -> String {
     let t = t.to_offset(time::UtcOffset::UTC);
@@ -417,6 +450,32 @@ impl Store {
         output_tokens: i64,
         now: OffsetDateTime,
     ) -> Result<CompanionMessage> {
+        self.companion_complete_send_booked(
+            user_message,
+            reply,
+            input_tokens,
+            output_tokens,
+            input_tokens,
+            output_tokens,
+            now,
+        )
+    }
+
+    /// Like [`Self::companion_complete_send`], for a reply that took several provider calls: the
+    /// message shows the totals (`input_tokens`, `output_tokens`), while only the last call's
+    /// tokens (`booked_*`) are recorded as usage here, because the earlier calls were booked as
+    /// they finished.
+    #[allow(clippy::too_many_arguments)]
+    pub fn companion_complete_send_booked(
+        &mut self,
+        user_message: i64,
+        reply: &str,
+        input_tokens: i64,
+        output_tokens: i64,
+        booked_input: i64,
+        booked_output: i64,
+        now: OffsetDateTime,
+    ) -> Result<CompanionMessage> {
         let ts = fmt_ts(now)?;
         let tx = self.conn.transaction()?;
         let (thread, profile, model, host): (i64, Option<String>, Option<String>, Option<String>) =
@@ -442,7 +501,7 @@ impl Store {
         .map_err(check_invalid)?;
         let id = tx.last_insert_rowid();
         if let Some(p) = &profile {
-            record_usage_on(&tx, p, now, input_tokens, output_tokens)?;
+            record_usage_on(&tx, p, now, booked_input, booked_output)?;
         }
         tx.execute(
             "UPDATE companion_threads SET updated_utc = ?2 WHERE id = ?1",
@@ -455,6 +514,59 @@ impl Store {
         )?;
         tx.commit()?;
         Ok(out)
+    }
+
+    /// Stores a lookup the user approved or declined, for a user message of this thread.
+    pub fn companion_add_tool_call(&self, c: &NewToolCall<'_>, now: OffsetDateTime) -> Result<i64> {
+        self.conn
+            .execute(
+                "INSERT INTO companion_tool_calls
+                   (message_id, round, tool, arguments, result_text, status, card_activity_id,
+                    card_name, card_minutes, host, created_utc)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    c.message_id,
+                    c.round,
+                    c.tool,
+                    c.arguments,
+                    c.result_text,
+                    c.status,
+                    c.card_activity_id,
+                    c.card_name,
+                    c.card_minutes,
+                    c.host,
+                    fmt_ts(now)?
+                ],
+            )
+            .map_err(check_invalid)?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Every lookup recorded in a thread, oldest first.
+    pub fn companion_tool_calls(&self, thread_id: i64) -> Result<Vec<CompanionToolCall>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT t.id, t.message_id, t.round, t.tool, t.arguments, t.result_text, t.status,
+                    t.card_activity_id, t.card_name, t.card_minutes, t.host, t.created_utc
+             FROM companion_tool_calls t JOIN companion_messages m ON m.id = t.message_id
+             WHERE m.thread_id = ?1 ORDER BY t.id",
+        )?;
+        let rows = stmt.query_map([thread_id], |r| {
+            Ok(CompanionToolCall {
+                id: r.get(0)?,
+                message_id: r.get(1)?,
+                round: r.get(2)?,
+                tool: r.get(3)?,
+                arguments: r.get(4)?,
+                result_text: r.get(5)?,
+                status: r.get(6)?,
+                card_activity_id: r.get(7)?,
+                card_name: r.get(8)?,
+                card_minutes: r.get(9)?,
+                host: r.get(10)?,
+                created_utc: r.get(11)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     /// Marks a user message `failed` with a fixed kind and friendly message.

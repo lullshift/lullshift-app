@@ -45,6 +45,8 @@ export default function App() {
   }, []);
   const [now, setNow] = useState(() => Date.now());
   const [pause, setPause] = useState<PauseRequest | null>(null);
+  // An activity the user chose to start from a Companion suggestion (their click, never the model).
+  const [launch, setLaunch] = useState<{ id: string; nonce: number } | null>(null);
   // Bumps on each sessions-changed event so an open detail panel re-reads its session.
   const [changeTick, setChangeTick] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -191,6 +193,7 @@ export default function App() {
             active={view === "activities"}
             pause={pause}
             now={now}
+            launch={launch}
             onGoToSessions={() => setView("sessions")}
           />
         </div>
@@ -202,6 +205,10 @@ export default function App() {
               headingRef={view === "companion" ? headingRef : unusedCompanionHeading}
               sessions={sessions}
               now={now}
+              onStartActivity={(id) => {
+                setLaunch({ id, nonce: Date.now() });
+                setView("activities");
+              }}
             />
           </div>
         )}

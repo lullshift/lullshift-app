@@ -22,7 +22,7 @@ Lullshift connects to the network only when you do something that needs it:
 |---|---|
 | You add or refresh a marketplace | The Git host you entered (https or ssh). `owner/repo` means github.com. Addresses on `localhost` or IP addresses are refused |
 | You open an install review for an entry that lives in another repository | That repository's Git host |
-| You press **Test connection**, **Send** or **Retry** in Companion | Your provider: `api.anthropic.com`, `api.openai.com`, or the base URL you entered (plain http only for your own computer) |
+| You press **Test connection**, **Send**, **Retry** or **Approve** (for a lookup) in Companion | Your provider: `api.anthropic.com`, `api.openai.com`, or the base URL you entered (plain http only for your own computer) |
 
 During Git actions, your own Git configuration applies: credential helpers, proxies and SSH settings. Lullshift doesn't change them.
 
@@ -36,6 +36,10 @@ During Git actions, your own Git configuration applies: credential helpers, prox
 ### Check it yourself
 
 Run Lullshift with no marketplaces added and no Companion provider set up, and watch your firewall log. You should see no connections from Lullshift.
+
+## Companion lookups
+
+If you turn on **Let the Companion look things up** (off by default), the provider you chose can ask for three read-only lookups: your sessions' tool, state and time in state; one suggested activity; or one installed activity's help. You see the exact text of every lookup and press Approve or Decline before anything is sent. The lookups never send keys, file paths, Git addresses, session ids, other conversations, prompts or notes, and a session's task label only for a tool where you turned on task text. Approved lookups are stored with the conversation on your computer, together with the host they went to, and are deleted with it. The last context choice you used in Companion is stored locally so the next message can start with it; it holds ids only, not the text.
 
 ## Secrets
 

@@ -607,7 +607,10 @@ pub fn run() {
             companion_commands::companion_send,
             companion_commands::companion_retry,
             companion_commands::companion_cancel,
-            companion_commands::companion_usage
+            companion_commands::companion_usage,
+            companion_commands::companion_prefs,
+            companion_commands::companion_set_tools_enabled,
+            companion_commands::companion_tool_decision
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lullshift");
@@ -636,7 +639,9 @@ mod tests {
 
     #[test]
     fn only_the_main_window_may_change_agent_settings() {
-        const SENSITIVE: [&str; 17] = [
+        const SENSITIVE: [&str; 19] = [
+            "allow-companion-set-tools-enabled",
+            "allow-companion-tool-decision",
             "allow-companion-set-key",
             "allow-companion-clear-key",
             "allow-companion-send",

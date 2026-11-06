@@ -6,7 +6,7 @@
 // is the backend's fixed friendly sentence, and nothing the caller passed in is ever copied
 // into an error.
 
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 export type ErrorKind =
   | "offline"
@@ -117,6 +117,57 @@ export interface Message {
   inputTokens: number | null;
   outputTokens: number | null;
   createdAt: string;
+  /** Lookups made while answering a message of yours, oldest first. */
+  toolCalls: ToolCallRecord[];
+}
+
+export type ToolName = "session_overview" | "suggest_break" | "activity_help";
+
+/** A suggested activity. Starting it is always the user's click. */
+export interface BreakCard {
+  activityId: string;
+  name: string;
+  minutes: number;
+}
+
+export interface ToolCallRecord {
+  id: number;
+  round: number;
+  tool: ToolName | string;
+  label: string;
+  arguments: string;
+  /** Exactly what was sent to the provider. */
+  resultText: string;
+  status: "approved" | "declined";
+  card: BreakCard | null;
+  host: string | null;
+  createdAt: string;
+}
+
+/** Events of one streaming call. Each carries the request id it belongs to. */
+export type StreamEvent =
+  | { type: "started"; requestId: string }
+  | { type: "round"; requestId: string; round: number }
+  | { type: "delta"; requestId: string; text: string }
+  | {
+      type: "toolRequest";
+      requestId: string;
+      callId: string;
+      tool: ToolName | string;
+      label: string;
+      arguments: string;
+      /** Exactly what will be sent if you approve. */
+      resultText: string;
+      host: string;
+    }
+  | { type: "toolSkipped"; requestId: string; tool: string; text: string }
+  | { type: "toolResolved"; requestId: string; callId: string; approved: boolean };
+
+export interface CompanionPrefs {
+  /** "Let the Companion look things up". Off by default. */
+  toolsEnabled: boolean;
+  /** The context choice of the last message sent. */
+  lastScope: Scope | null;
 }
 
 export interface Thread {
@@ -202,17 +253,56 @@ export const companionMessages = (threadId: number) =>
 export const companionPreviewContext = (scope: Scope) =>
   call<ContextPreview>("companion_preview_context", { scope });
 
-/** Returns the assistant message. */
+/** A fresh id for one send or retry. Events for any other id are ignored. */
+export function newRequestId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return "r-" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function eventChannel(onEvent: (e: StreamEvent) => void): Channel<StreamEvent> {
+  const ch = new Channel<StreamEvent>();
+  ch.onmessage = onEvent;
+  return ch;
+}
+
+/**
+ * Streams the reply: `onEvent` gets text and lookup requests while the call runs, and the
+ * returned promise ends with the stored assistant message (or rejects).
+ */
 export const companionSend = (
   threadId: number,
   profileId: string,
   text: string,
   scope: Scope,
   expectedContextSha256: string | null,
-) => call<Message>("companion_send", { threadId, profileId, text, scope, expectedContextSha256 });
+  requestId: string,
+  onEvent: (e: StreamEvent) => void,
+) =>
+  call<Message>("companion_send", {
+    threadId,
+    profileId,
+    text,
+    scope,
+    expectedContextSha256,
+    requestId,
+    onEvent: eventChannel(onEvent),
+  });
 
-export const companionRetry = (messageId: number) =>
-  call<Message>("companion_retry", { messageId });
+export const companionRetry = (
+  messageId: number,
+  requestId: string,
+  onEvent: (e: StreamEvent) => void,
+) => call<Message>("companion_retry", { messageId, requestId, onEvent: eventChannel(onEvent) });
+
+/** Answers a lookup the model asked for. Nothing is sent to the provider before this. */
+export const companionToolDecision = (requestId: string, callId: string, approve: boolean) =>
+  call<void>("companion_tool_decision", { requestId, callId, approve });
+
+export const companionPrefs = () => call<CompanionPrefs>("companion_prefs");
+
+export const companionSetToolsEnabled = (enabled: boolean) =>
+  call<CompanionPrefs>("companion_set_tools_enabled", { enabled });
 
 export const companionCancel = (threadId: number) => call<void>("companion_cancel", { threadId });
 

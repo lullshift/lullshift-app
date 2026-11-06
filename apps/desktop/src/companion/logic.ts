@@ -7,6 +7,8 @@ import {
   type ProviderKind,
   type Scope,
   type ScopeKind,
+  type StreamEvent,
+  type ToolCallRecord,
   type Usage,
 } from "./api";
 
@@ -404,4 +406,152 @@ export function historyText(count: number, host: string | null | undefined): str
  */
 export function shouldMountCompanion(view: string, openedBefore: boolean): boolean {
   return openedBefore || view === "companion";
+}
+
+// ---------- Streaming ----------
+
+export interface PendingTool {
+  callId: string;
+  tool: string;
+  label: string;
+  arguments: string;
+  /** Exactly what will be sent to the provider if the user approves. */
+  resultText: string;
+  host: string;
+}
+
+/** What the screen shows while one request runs. Built only from events of that request. */
+export interface StreamState {
+  requestId: string;
+  text: string;
+  round: number;
+  /** A lookup waiting for Approve or Decline. */
+  pending: PendingTool | null;
+  /** Lookups that got a fixed sentence and no data (not offered, or over the limit). */
+  skipped: string[];
+  /** Lookups answered during this request. */
+  answered: { label: string; approved: boolean }[];
+}
+
+export function initialStream(requestId: string): StreamState {
+  return { requestId, text: "", round: 1, pending: null, skipped: [], answered: [] };
+}
+
+/**
+ * Applies one stream event. Events for any other request id are ignored, which is what keeps a
+ * late chunk from a cancelled request out of a newer one in the same conversation.
+ */
+export function reduceStream(s: StreamState, e: StreamEvent): StreamState {
+  if (e.requestId !== s.requestId) return s;
+  switch (e.type) {
+    case "started":
+      return s;
+    case "round":
+      // The next provider call starts a fresh text; what came before belonged to the call before.
+      return { ...s, round: e.round, text: "", pending: null };
+    case "delta":
+      return { ...s, text: s.text + e.text };
+    case "toolRequest":
+      return {
+        ...s,
+        pending: {
+          callId: e.callId,
+          tool: e.tool,
+          label: e.label,
+          arguments: e.arguments,
+          resultText: e.resultText,
+          host: e.host,
+        },
+      };
+    case "toolSkipped":
+      return { ...s, skipped: [...s.skipped, e.text] };
+    case "toolResolved": {
+      // Only the lookup that is waiting can be resolved.
+      if (s.pending?.callId !== e.callId) return s;
+      return {
+        ...s,
+        pending: null,
+        answered: [...s.answered, { label: s.pending.label, approved: e.approved }],
+      };
+    }
+  }
+}
+
+/**
+ * The one short sentence for the screen-reader live region. It changes only when the phase
+ * changes (waiting, replying, waiting for you), never per token, so a reply is not read out as
+ * it arrives. The finished reply is announced once, by the conversation.
+ */
+export function streamStatus(s: StreamState | null, host: string | null): string {
+  if (!s) return "";
+  const where = host?.trim() || "the provider";
+  if (s.pending) {
+    return `${where} asked to look something up: ${s.pending.label}. It waits for your decision.`;
+  }
+  return s.text.length === 0 ? `Waiting for ${where}…` : "Companion is replying…";
+}
+
+// ---------- Remembered context ----------
+
+/** The composer's draft for a scope that was chosen before. */
+export function draftFromScope(scope: Scope | null): ScopeDraft {
+  if (!scope || scope.kind === "none") return EMPTY_SCOPE;
+  if (scope.kind === "sessionSummary") {
+    return {
+      ...EMPTY_SCOPE,
+      kind: "sessionSummary",
+      provider: scope.provider,
+      sessionId: scope.sessionId,
+    };
+  }
+  return {
+    kind: "selectedNotes",
+    provider: scope.provider,
+    sessionId: scope.sessionId,
+    notes: scope.notes,
+    itemIds: [...scope.itemIds],
+  };
+}
+
+export interface RestoredScope {
+  draft: ScopeDraft;
+  /** Said under the composer when the last choice could not be used. */
+  note: string | null;
+}
+
+/**
+ * What the composer starts with. The last choice is used only if it can still be previewed;
+ * otherwise the composer falls back to No context and says so. Either way the preview is shown
+ * and confirmed before every send.
+ */
+export function restoreScope(remembered: Scope | null, available: boolean): RestoredScope {
+  if (!remembered || remembered.kind === "none") return { draft: EMPTY_SCOPE, note: null };
+  if (!available) {
+    return {
+      draft: EMPTY_SCOPE,
+      note: `The context you used last time (${scopeLabel(remembered.kind).toLowerCase()}) isn't available any more, so this message starts with No context.`,
+    };
+  }
+  return { draft: draftFromScope(remembered), note: null };
+}
+
+export function rememberedText(kind: ScopeKind): string {
+  return `Started with your last choice: ${scopeLabel(kind).toLowerCase()}. You will still see exactly what is sent before it goes.`;
+}
+
+// ---------- Lookups (tools) ----------
+
+export const TOOLS_SETTING_LABEL = "Let the Companion look things up";
+export const TOOLS_SETTING_HELP =
+  "Off by default. When on, the provider may ask for three read-only lookups: a summary of your agent sessions (tool, state and time in state; task names only for tools where you allowed task text), a break suggestion, and an installed activity's help. You see the exact result and choose Approve or Decline for every single lookup, and nothing is sent until you do. Lookups never change anything and never start anything. They add a little to each request, so they count toward your token budget. Some servers don't support them; turn this off if replies fail.";
+
+export function toolDecisionNote(rec: Pick<ToolCallRecord, "status" | "host">): string {
+  const to = rec.host?.trim() || "the provider";
+  return rec.status === "approved"
+    ? `Approved. This exact text was sent to ${to}.`
+    : `Declined. Only the words "The user declined." were sent to ${to}.`;
+}
+
+export function approvalPrompt(p: Pick<PendingTool, "label" | "host">): string {
+  return `${p.host} asked for a lookup: ${p.label}. This exact text will be sent to it if you approve.`;
 }

@@ -18,6 +18,45 @@ enum Sc {
     Status(u16),
     Echo,
     Slow,
+    /// An SSE body (OpenAI shape), then the connection closes.
+    Sse(&'static str),
+    /// The first part of an SSE body, a pause, then the second part.
+    SseLate(&'static str, u64, &'static str),
+}
+
+/// One OpenAI-shaped chunk with text.
+const OA_TEXT: &str = "data: {\"choices\":[{\"delta\":{\"content\":\"streamed reply\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":40,\"completion_tokens\":7}}\n\ndata: [DONE]\n\n";
+
+fn sse_head(s: &mut TcpStream) {
+    let _ = s.write_all(
+        b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n",
+    );
+}
+
+/// An OpenAI-shaped stream with several tool calls in one reply.
+fn oa_calls(calls: &[(String, &str, &str)]) -> String {
+    let parts: Vec<String> = calls
+        .iter()
+        .enumerate()
+        .map(|(i, (id, name, args))| {
+            let args = args.replace('\\', "\\\\").replace('"', "\\\"");
+            format!(
+                "{{\"index\":{i},\"id\":\"{id}\",\"type\":\"function\",\"function\":{{\"name\":\"{name}\",\"arguments\":\"{args}\"}}}}"
+            )
+        })
+        .collect();
+    format!(
+        "data: {{\"choices\":[{{\"delta\":{{\"tool_calls\":[{}]}}}}]}}\n\ndata: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"tool_calls\"}}]}}\n\ndata: {{\"choices\":[],\"usage\":{{\"prompt_tokens\":30,\"completion_tokens\":4}}}}\n\ndata: [DONE]\n\n",
+        parts.join(",")
+    )
+}
+
+/// An OpenAI-shaped tool call stream.
+fn oa_call(id: &str, name: &str, args: &str) -> String {
+    let args = args.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        "data: {{\"choices\":[{{\"delta\":{{\"tool_calls\":[{{\"index\":0,\"id\":\"{id}\",\"type\":\"function\",\"function\":{{\"name\":\"{name}\",\"arguments\":\"{args}\"}}}}]}}}}]}}\n\ndata: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"tool_calls\"}}]}}\n\ndata: {{\"choices\":[],\"usage\":{{\"prompt_tokens\":30,\"completion_tokens\":4}}}}\n\ndata: [DONE]\n\n"
+    )
 }
 
 struct Mock {
@@ -63,8 +102,18 @@ fn respond(s: &mut TcpStream, status: &str, body: &str) {
     let _ = s.write_all(body.as_bytes());
 }
 
-/// Answers request n with `script[n]`; the last entry repeats.
+/// Answers request n with `script[n]`; the last entry repeats. Owned bodies (built at run time)
+/// are given through `mock_sse`.
 fn mock(script: Vec<Sc>) -> Mock {
+    mock_with(script, Vec::new())
+}
+
+/// Like [`mock`], but request n is answered with the SSE body `bodies[n]` when there is one.
+fn mock_sse(bodies: Vec<String>) -> Mock {
+    mock_with(vec![Sc::Ok], bodies)
+}
+
+fn mock_with(script: Vec<Sc>, bodies: Vec<String>) -> Mock {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let port = listener.local_addr().expect("addr").port();
     let requests = Arc::new(Mutex::new(Vec::new()));
@@ -81,7 +130,23 @@ fn mock(script: Vec<Sc>) -> Mock {
                 l.len() - 1
             };
             let sc = script[n.min(script.len() - 1)];
+            let owned = bodies.get(n).cloned();
             std::thread::spawn(move || match sc {
+                _ if owned.is_some() => {
+                    sse_head(&mut s);
+                    let _ = s.write_all(owned.unwrap_or_default().as_bytes());
+                }
+                Sc::Sse(b) => {
+                    sse_head(&mut s);
+                    let _ = s.write_all(b.as_bytes());
+                }
+                Sc::SseLate(a, ms, b) => {
+                    sse_head(&mut s);
+                    let _ = s.write_all(a.as_bytes());
+                    let _ = s.flush();
+                    std::thread::sleep(Duration::from_millis(ms));
+                    let _ = s.write_all(b.as_bytes());
+                }
                 Sc::Ok => respond(
                     &mut s,
                     "200 OK",
@@ -120,6 +185,9 @@ fn core_with(dir: &std::path::Path, keys: Arc<dyn KeyStore>, timeout_ms: u64) ->
         keys,
         HttpConfig {
             timeout: Duration::from_millis(timeout_ms),
+            first_byte_timeout: Duration::from_millis(timeout_ms),
+            idle_timeout: Duration::from_millis(timeout_ms),
+            total_timeout: Duration::from_millis(timeout_ms.max(10_000)),
             ..HttpConfig::default()
         },
     );
@@ -214,10 +282,51 @@ fn kind(e: &CommandError) -> &'static str {
 
 /// What the UI does: send with the hash of the preview it just showed (none for scope `none`).
 fn send(core: &Core, t: i64, pid: &str, text: &str, scope: &Scope) -> Res<MessageDto> {
+    send_events(core, t, pid, text, scope, &|_| {})
+}
+
+fn next_request_id() -> String {
+    static N: AtomicU64 = AtomicU64::new(1);
+    format!("test-req-{}", N.fetch_add(1, Ordering::SeqCst))
+}
+
+/// Like `send`, with a handler for the stream events.
+fn send_events(
+    core: &Core,
+    t: i64,
+    pid: &str,
+    text: &str,
+    scope: &Scope,
+    emit: Emit<'_>,
+) -> Res<MessageDto> {
     let sha = preview_context(core, scope.clone())
         .ok()
         .and_then(|p| p.sha256);
-    super::send(core, t, pid, text, scope, sha.as_deref())
+    super::send(
+        core,
+        t,
+        pid,
+        text,
+        scope,
+        sha.as_deref(),
+        &next_request_id(),
+        emit,
+    )
+}
+
+fn raw_send(
+    core: &Core,
+    t: i64,
+    pid: &str,
+    text: &str,
+    scope: &Scope,
+    hash: Option<&str>,
+) -> Res<MessageDto> {
+    super::send(core, t, pid, text, scope, hash, &next_request_id(), &|_| {})
+}
+
+fn retry(core: &Core, id: i64) -> Res<MessageDto> {
+    super::retry(core, id, &next_request_id(), &|_| {})
 }
 
 /// Points an existing compatible profile at another base URL.
@@ -225,21 +334,6 @@ fn repoint(core: &Core, id: &str, base: &str) {
     let mut p = input("openaiCompatible", Some(base), "mock-model", None);
     p.id = Some(id.to_owned());
     save_profile(core, p).expect("repoint");
-}
-
-/// Waits until the thread's busy mark is gone, i.e. the HTTP worker has really finished.
-fn wait_until_free(core: &Core, t: i64) {
-    let start = std::time::Instant::now();
-    loop {
-        if core.companion.begin(t).is_ok() {
-            return;
-        }
-        assert!(
-            start.elapsed() < Duration::from_secs(15),
-            "worker never finished"
-        );
-        std::thread::sleep(Duration::from_millis(25));
-    }
 }
 
 fn used_tokens(core: &Core) -> i64 {
@@ -860,7 +954,7 @@ fn busy_while_sending_and_cancel_stops_it() {
     assert_eq!(kind(&delete_thread(&core, t).unwrap_err()), "busy");
     // Another thread is not blocked by this one.
     let other = thread(&core);
-    assert!(core.companion.begin(other).is_ok());
+    assert!(core.companion.begin(other, "test-request-id").is_ok());
     cancel(&core, t);
     let r = first.join().expect("join");
     assert_eq!(kind(&r.unwrap_err()), "cancelled");
@@ -1013,10 +1107,11 @@ fn test_connection_records_usage_and_reports_the_model() {
 // -- security review fixes (M1, L1, L3, I2)
 
 #[test]
-fn cancel_keeps_the_thread_busy_until_the_worker_ends_and_then_books_usage() {
+fn cancel_frees_the_thread_at_once_and_the_late_call_is_still_counted() {
     let dir = tempfile::tempdir().expect("dir");
     let core = Arc::new(core_with(dir.path(), memory(), 20_000));
-    let m = mock(vec![Sc::Slow]);
+    // The first request is slow (and ends with an unusable body); the second answers at once.
+    let m = mock(vec![Sc::Slow, Sc::Ok]);
     let pid = profile(&core, &m.base, None);
     let t = thread(&core);
     let (c2, pid2) = (Arc::clone(&core), pid.clone());
@@ -1030,23 +1125,28 @@ fn cancel_keeps_the_thread_busy_until_the_worker_ends_and_then_books_usage() {
     let e = first.join().expect("join").unwrap_err();
     assert_eq!(kind(&e), "cancelled");
     assert!(e.message.contains("may already have reached the provider"));
-    // The send returned, but the mock is still sleeping: the thread is still busy.
-    let failed = messages(&core, t).expect("m")[0].id;
-    assert_eq!(kind(&retry(&core, failed).unwrap_err()), "busy");
+    // The mock is still sleeping, yet the thread is free: a new send goes straight through, and
+    // so does a delete-protected operation on another thread.
+    let again = send(&core, t, &pid, "again", &Scope::None).expect("free at once");
+    assert_eq!(again.text, "a reply");
+    let ms = messages(&core, t).expect("m");
+    assert_eq!(ms.len(), 3);
+    assert_eq!(ms[0].status, "failed");
+    assert_eq!(ms[0].error.as_ref().expect("e").kind, "cancelled");
     assert_eq!(
-        kind(&send(&core, t, &pid, "again", &Scope::None).unwrap_err()),
-        "busy"
+        (ms[1].status.as_str(), ms[2].role.as_str()),
+        ("sent", "assistant")
     );
-    assert_eq!(kind(&delete_thread(&core, t).unwrap_err()), "busy");
-    assert_eq!(
-        m.requests.lock().expect("log").len(),
-        1,
-        "no second request"
-    );
-    // Once the worker has ended, the call's cost is on the books (an estimate: the mock sends
-    // no usable reply) and the thread is free.
-    wait_until_free(&core, t);
-    assert!(used_tokens(&core) > 0, "cancelled call was not counted");
+    // When the slow worker ends, the cancelled call's cost is on the books (an estimate: the mock
+    // sends no usable reply). The reply of the second send is 10 + 5 tokens.
+    let start = std::time::Instant::now();
+    while used_tokens(&core) <= 15 {
+        assert!(
+            start.elapsed() < Duration::from_secs(15),
+            "cancelled call was not counted"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 #[test]
@@ -1076,7 +1176,7 @@ fn stale_context_hash_is_refused_before_anything_is_stored_or_sent() {
         )
     })
     .expect("change");
-    let e = super::send(&core, t, &pid, "hi", &scope, Some(&hash)).unwrap_err();
+    let e = raw_send(&core, t, &pid, "hi", &scope, Some(&hash)).unwrap_err();
     assert_eq!(kind(&e), "invalidInput");
     assert_eq!(
         e.message,
@@ -1086,18 +1186,18 @@ fn stale_context_hash_is_refused_before_anything_is_stored_or_sent() {
     assert!(m.requests.lock().expect("log").is_empty(), "nothing sent");
     // A missing hash for a scope that attaches text is also a mismatch; a hash for scope none is.
     assert_eq!(
-        kind(&super::send(&core, t, &pid, "hi", &scope, None).unwrap_err()),
+        kind(&raw_send(&core, t, &pid, "hi", &scope, None).unwrap_err()),
         "invalidInput"
     );
     assert_eq!(
-        kind(&super::send(&core, t, &pid, "hi", &Scope::None, Some(&hash)).unwrap_err()),
+        kind(&raw_send(&core, t, &pid, "hi", &Scope::None, Some(&hash)).unwrap_err()),
         "invalidInput"
     );
     assert!(m.requests.lock().expect("log").is_empty());
     // The fresh preview works, and scope none needs no hash.
     let fresh = preview_context(&core, scope.clone()).expect("p").sha256;
-    super::send(&core, t, &pid, "hi", &scope, fresh.as_deref()).expect("fresh hash");
-    super::send(&core, t, &pid, "plain", &Scope::None, None).expect("none");
+    raw_send(&core, t, &pid, "hi", &scope, fresh.as_deref()).expect("fresh hash");
+    raw_send(&core, t, &pid, "plain", &Scope::None, None).expect("none");
     assert!(
         preview_context(&core, Scope::None)
             .expect("p")
@@ -1169,3 +1269,5 @@ fn retry_after_the_address_changed_to_another_host_is_refused() {
     repoint(&core, &pid, &a.base);
     assert_eq!(kind(&retry(&core, failed).unwrap_err()), "providerError");
 }
+
+mod streaming;

@@ -6,9 +6,11 @@ import {
   companionDeleteProfile,
   companionSaveProfile,
   companionSetKey,
+  companionSetToolsEnabled,
   companionTest,
   companionUsage,
   toCommandError,
+  type CompanionPrefs,
   type ProfileInput,
   type ProviderKind,
   type ProviderProfile,
@@ -28,6 +30,8 @@ import {
   parseBudget,
   providerKindLabel,
   sendsToText,
+  TOOLS_SETTING_HELP,
+  TOOLS_SETTING_LABEL,
 } from "./logic";
 
 interface Props {
@@ -35,6 +39,8 @@ interface Props {
   onProfilesChanged: (profiles: ProviderProfile[]) => void;
   /** Re-reads profiles and threads from the core. */
   onReload: () => Promise<void>;
+  toolsEnabled: boolean;
+  onToolsChanged: (prefs: CompanionPrefs) => void;
   onDone: () => void;
 }
 
@@ -379,7 +385,62 @@ function KeyPanel({
 
 /** Provider profiles, keys, usage. Companion's settings live here rather than in Settings so the
  * key, the host and the budget are next to the conversation they apply to. */
-export function CompanionSettings({ profiles, onProfilesChanged, onReload, onDone }: Props) {
+/** The switch for read-only lookups. Off by default; every single lookup still needs approval. */
+export function ToolsSetting({
+  enabled,
+  onChanged,
+  say,
+}: {
+  enabled: boolean;
+  onChanged: (prefs: CompanionPrefs) => void;
+  say: (n: Notice) => void;
+}) {
+  const id = useId();
+  const [busy, setBusy] = useState(false);
+  const toggle = async (next: boolean) => {
+    setBusy(true);
+    try {
+      onChanged(await companionSetToolsEnabled(next));
+      say({
+        tone: "success",
+        text: next
+          ? "Lookups are on. You will be asked about each one."
+          : "Lookups are off. Requests carry no tools.",
+      });
+    } catch (err) {
+      say({ tone: "danger", text: errorText(toCommandError(err)) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="tools-setting" aria-labelledby={`${id}-h`}>
+      <h2 className="section-title" id={`${id}-h`}>
+        Lookups
+      </h2>
+      <label className="check-row" htmlFor={id}>
+        <input
+          id={id}
+          type="checkbox"
+          checked={enabled}
+          disabled={busy}
+          onChange={(e) => void toggle(e.target.checked)}
+        />{" "}
+        {TOOLS_SETTING_LABEL}
+      </label>
+      <p className="field-note">{TOOLS_SETTING_HELP}</p>
+    </section>
+  );
+}
+
+export function CompanionSettings({
+  profiles,
+  onProfilesChanged,
+  onReload,
+  toolsEnabled,
+  onToolsChanged,
+  onDone,
+}: Props) {
   const [editing, setEditing] = useState<Editing>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [usage, setUsage] = useState<Usage[] | null>(null);
@@ -538,6 +599,8 @@ export function CompanionSettings({ profiles, onProfilesChanged, onReload, onDon
       )}
 
       {editingProfile && <KeyPanel profile={editingProfile} onChanged={changed} say={setNotice} />}
+
+      <ToolsSetting enabled={toolsEnabled} onChanged={onToolsChanged} say={setNotice} />
 
       <Dialog
         open={deleting !== null}

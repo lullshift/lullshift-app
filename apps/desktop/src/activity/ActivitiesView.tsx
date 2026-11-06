@@ -35,11 +35,20 @@ interface Props {
   active: boolean;
   pause: PauseRequest | null;
   now: number;
+  /** A start the user asked for elsewhere (a Companion suggestion they clicked). */
+  launch?: { id: string; nonce: number } | null;
   onGoToSessions: () => void;
 }
 
 /** Disconnect while agents work: bundled activities, each in the sandboxed host. */
-export default function ActivitiesView({ headingRef, active, pause, now, onGoToSessions }: Props) {
+export default function ActivitiesView({
+  headingRef,
+  active,
+  pause,
+  now,
+  launch,
+  onGoToSessions,
+}: Props) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [running, setRunning] = useState<ActivityInfo | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -53,6 +62,17 @@ export default function ActivitiesView({ headingRef, active, pause, now, onGoToS
   }, []);
 
   useEffect(refresh, [refresh]);
+
+  // Start the activity the user clicked in a Companion suggestion, once per click. An id that is
+  // no longer installed just leaves the library showing.
+  const lastLaunch = useRef(0);
+  useEffect(() => {
+    if (!launch || launch.nonce === lastLaunch.current) return;
+    lastLaunch.current = launch.nonce;
+    invoke<ActivityInfo>("activity_info", { id: launch.id })
+      .then((a) => setRunning(a))
+      .catch(() => setMessage("That activity isn't available any more."));
+  }, [launch]);
 
   // Closing an activity removes the player, so focus would drop to the page: put it back on the
   // Activities heading. Only when it was lost, and only after a real close.
