@@ -184,6 +184,7 @@ export default function Integrations({
 
       <AgentCard agent="codex" />
       <AgentCard agent="cursor" />
+      <AgentCard agent="opencode" />
 
       <Dialog
         open={dialog === "install"}

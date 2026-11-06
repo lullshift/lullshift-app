@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { SUPPORTED_AGENTS } from "../adapters";
+import { EXPERIMENTAL_AGENTS, SUPPORTED_AGENTS } from "../adapters";
+
+const ALL = [...SUPPORTED_AGENTS, ...EXPERIMENTAL_AGENTS];
 import { CONSENT_SCOPE_NOTE, consentItems, consentSwitchDescription } from "./consentCopy";
 
 const NEWLINE = String.fromCharCode(10);
-const textOf = (agent: (typeof SUPPORTED_AGENTS)[number]) => consentItems(agent).join(NEWLINE);
+const textOf = (agent: (typeof ALL)[number]) => consentItems(agent).join(NEWLINE);
 
 describe("task context consent copy", () => {
   it("names each captured Claude Code field and its limit", () => {
@@ -16,7 +18,7 @@ describe("task context consent copy", () => {
   });
 
   it("keeps Codex and Cursor to the first prompt only", () => {
-    for (const agent of ["codex", "cursor"] as const) {
+    for (const agent of ["codex", "cursor", "opencode"] as const) {
       const text = textOf(agent);
       expect(text).toMatch(/first prompt of each session/);
       expect(text).toMatch(/2,000/);
@@ -27,7 +29,7 @@ describe("task context consent copy", () => {
   });
 
   it("says secrets are hidden as a safety net, not a guarantee, for every agent", () => {
-    for (const agent of SUPPORTED_AGENTS) {
+    for (const agent of ALL) {
       const text = textOf(agent);
       expect(text).toMatch(/secrets are hidden/);
       expect(text).toMatch(/not a guarantee/);
@@ -36,7 +38,7 @@ describe("task context consent copy", () => {
   });
 
   it("names what is never kept", () => {
-    for (const agent of SUPPORTED_AGENTS) {
+    for (const agent of ALL) {
       const text = textOf(agent);
       for (const w of ["tool inputs", "commands", "files", "paths", "transcripts"]) {
         expect(text).toContain(w);
@@ -45,7 +47,7 @@ describe("task context consent copy", () => {
   });
 
   it("describes each switch without promising more than it keeps", () => {
-    for (const agent of SUPPORTED_AGENTS) {
+    for (const agent of ALL) {
       expect(consentSwitchDescription(agent)).toMatch(/first prompt of each/);
       expect(consentSwitchDescription(agent)).toMatch(/Off by default/);
     }

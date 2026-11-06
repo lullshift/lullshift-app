@@ -8,7 +8,7 @@ Lullshift watches your coding agents and gives your attention somewhere calm to 
 
 ### What's in it
 
-- **Agent sessions.** Follows Claude Code, Codex and Cursor through their own documented hooks: what is working, what needs you, what has finished. Unknown or stale status is shown as unknown, never guessed. What each agent can and can't report is listed in [ADAPTER_CAPABILITIES.md](ADAPTER_CAPABILITIES.md).
+- **Agent sessions.** Follows Claude Code, Codex and Cursor through their own documented hooks (and OpenCode 2.x through an experimental plugin): what is working, what needs you, what has finished. Unknown or stale status is shown as unknown, never guessed. What each agent can and can't report is listed in [ADAPTER_CAPABILITIES.md](ADAPTER_CAPABILITIES.md).
 - **Connecting an agent is your choice.** Lullshift asks first, names the exact file it changes, backs it up, and Disconnect restores it. Lullshift only observes: its hooks never block or answer an agent.
 - **Activities.** 20 original games and 72 breaks and content packs, all playable offline with the keyboard, paused and saved whenever an agent needs you. Grid puzzles have a daily puzzle.
 - **Git marketplaces.** Add any public or private Git repository with a `.lullshift/marketplace.json` index. Installs are pinned to a commit and only update when you choose. Lullshift stores no Git credentials. In this release, third-party marketplaces can supply content packs; third-party code activities can't be installed yet.
@@ -34,6 +34,7 @@ Check your download against `SHA256SUMS` and its build provenance (see [RELEASIN
 - App updates: there is no in-app updater yet. Download new versions from the Releases page.
 - macOS and the AppImage have no uninstaller step: choose **Disconnect** for each agent before removing the app. Windows and the `.deb` remove Lullshift's hooks for you (a Windows reinstall over an existing install keeps them). AppImage hooks point at the AppImage file, so keep it in one place; if you move or rename it, choose **Repair connection**.
 - Cursor has no hook for "waiting for you", so Cursor sessions never show as needing you.
+- OpenCode support is experimental and works only with OpenCode 2.x. It is built on OpenCode's source, not documented event payloads, and shows "Unknown" until the first event arrives. Only permission requests count as "needs you".
 - Codex asks you to trust new hooks in `/hooks` before they run.
 - Tested mainly on Windows 11; macOS and Linux have had automated checks only.
 

@@ -7,6 +7,7 @@ const AGENT_NAME: Record<AgentId, string> = {
   "claude-code": "Claude Code",
   codex: "Codex",
   cursor: "Cursor",
+  opencode: "OpenCode",
 };
 
 const SECRETS_ITEM =
@@ -40,7 +41,7 @@ export function consentSwitchDescription(agent: AgentId): string {
 }
 
 export const CONSENT_SCOPE_NOTE =
-  "Task context is available for Claude Code, Codex and Cursor. Each tool has its own switch, off by default.";
+  "Task context is available for Claude Code, Codex, Cursor and OpenCode (experimental). Each tool has its own switch, off by default.";
 
 export function agentDisplayName(agent: AgentId): string {
   return AGENT_NAME[agent];

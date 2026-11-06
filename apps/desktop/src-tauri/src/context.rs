@@ -19,7 +19,7 @@ use std::time::Duration;
 use agent_adapters::claude_code::ADAPTER_ID;
 use agent_adapters::forward::CAPTURE_DIR;
 use agent_adapters::redact;
-use agent_adapters::{codex, cursor};
+use agent_adapters::{codex, cursor, opencode};
 use agent_core::{AgentEvent, SessionRecord, SessionState, SessionView};
 use agent_ipc::{EventContext, MAX_ASK_CHARS, MAX_INTENT_CHARS, MAX_TITLE_CHARS};
 use local_store::{
@@ -41,7 +41,12 @@ pub const UI_PREFS_KEY: &str = "ui";
 pub const RETENTION_CHOICES: [u32; 4] = [7, 30, 90, 365];
 pub const DEFAULT_RETENTION_DAYS: u32 = 30;
 /// Adapters that can capture task text. Marker file names come only from this list.
-pub const CAPTURE_ADAPTERS: [&str; 3] = [ADAPTER_ID, codex::ADAPTER_ID, cursor::ADAPTER_ID];
+pub const CAPTURE_ADAPTERS: [&str; 4] = [
+    ADAPTER_ID,
+    codex::ADAPTER_ID,
+    cursor::ADAPTER_ID,
+    opencode::ADAPTER_ID,
+];
 /// Timeline entries returned to the panel (the newest).
 pub const TIMELINE_LIMIT: usize = 500;
 const PURGE_EVERY: Duration = Duration::from_secs(60 * 60);
@@ -1575,8 +1580,8 @@ mod tests {
     }
 
     #[test]
-    fn codex_and_cursor_have_their_own_capture_setting_and_marker() {
-        for adapter in ["codex", "cursor"] {
+    fn codex_cursor_and_opencode_have_their_own_capture_setting_and_marker() {
+        for adapter in ["codex", "cursor", "opencode"] {
             let on = only(adapter);
             assert!(on.validate().is_ok(), "{adapter}");
             assert!(on.capture_on(adapter) && !on.capture_on(P));
@@ -1595,8 +1600,8 @@ mod tests {
     }
 
     #[test]
-    fn codex_and_cursor_prompts_are_stored_only_when_their_capture_is_on() {
-        for adapter in ["codex", "cursor"] {
+    fn codex_cursor_and_opencode_prompts_are_stored_only_when_their_capture_is_on() {
+        for adapter in ["codex", "cursor", "opencode"] {
             let mut store = Store::open_in_memory().expect("open");
             // Off (no setting): the arriving text is discarded, the event is kept.
             let out = ingest_with_context(
@@ -1651,8 +1656,8 @@ mod tests {
     }
 
     #[test]
-    fn event_log_never_holds_codex_or_cursor_prompts() {
-        for adapter in ["codex", "cursor"] {
+    fn event_log_never_holds_codex_cursor_or_opencode_prompts() {
+        for adapter in ["codex", "cursor", "opencode"] {
             let mut store = Store::open_in_memory().expect("open");
             set_prefs(&store, &only(adapter));
             ingest_with_context(

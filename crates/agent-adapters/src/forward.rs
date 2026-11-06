@@ -17,7 +17,7 @@ use time::format_description::well_known::Rfc3339;
 
 use agent_ipc::EventContext;
 
-use crate::{claude_code, codex, cursor};
+use crate::{claude_code, codex, cursor, opencode};
 
 /// Directory under the app data dir that holds one consent marker file per adapter. The app
 /// creates `<data-dir>/context-capture/<adapter>` when the user turns capture on and deletes it
@@ -127,6 +127,16 @@ fn run_inner(args: &HookArgs, mut stdin: impl Read, started: OffsetDateTime) -> 
             }
             None => return Outcome::Ignored,
         },
+        // OpenCode: the installed plugin sends a small allow-listed message, not OpenCode's own
+        // events (ADR-022). The prompt in it is read only with the consent marker.
+        opencode::ADAPTER_ID => match build_opencode_event(&buf, started) {
+            Some(e) => {
+                let context =
+                    prompt_context_for(&args.data_dir, &args.adapter, &buf, opencode::map_context);
+                (e, context)
+            }
+            None => return Outcome::Ignored,
+        },
         _ => return Outcome::BadArguments,
     };
     send(&args.data_dir, &event, context.as_ref())
@@ -151,7 +161,7 @@ pub fn context_for(
     context.normalized()
 }
 
-/// The optional task text for one Codex or Cursor hook (ADR-013): the prompt, as the intent.
+/// The optional task text for one Codex, Cursor or OpenCode hook (ADR-013): the prompt, as the intent.
 /// Without the consent marker this returns `None` before `map` is called, so the prompt field is
 /// never read. `map` is a parameter so tests can prove that.
 pub fn prompt_context_for(
@@ -201,6 +211,19 @@ pub fn build_cursor_event(stdin: &[u8], now: OffsetDateTime) -> Option<String> {
         m.event_type.as_str(),
         now,
         &cursor::CAPABILITIES,
+        m.metadata,
+    )
+}
+
+/// Builds and validates the agent event JSON for one OpenCode plugin message.
+pub fn build_opencode_event(stdin: &[u8], now: OffsetDateTime) -> Option<String> {
+    let m = opencode::map_hook(stdin)?;
+    build_event(
+        opencode::PROVIDER,
+        &m.provider_session_id,
+        m.event_type.as_str(),
+        now,
+        &opencode::CAPABILITIES,
         m.metadata,
     )
 }
@@ -326,6 +349,55 @@ mod tests {
     }
 
     #[test]
+    fn builds_opencode_events_from_the_plugin_message_only() {
+        let now = datetime!(2026-11-06 10:00:00 UTC);
+        let out = build_opencode_event(
+            br#"{"v":1,"event":"permission.asked","sessionId":"ses_1","path":"/secret","prompt":"SECRET"}"#,
+            now,
+        )
+        .expect("opencode");
+        assert!(!out.contains("SECRET") && !out.contains("/secret"));
+        let e = parse_event(&out).expect("valid");
+        assert_eq!(
+            (
+                e.provider.as_str(),
+                e.event_type,
+                e.provider_session_id.as_str()
+            ),
+            ("opencode", agent_core::EventType::NeedsAttention, "ses_1")
+        );
+        // OpenCode's own event shape is not accepted: only the plugin's message is.
+        assert!(
+            build_opencode_event(br#"{"type":"session.idle","data":{"sessionID":"s"}}"#, now)
+                .is_none()
+        );
+        assert!(build_codex_event(br#"{"v":1,"event":"failed","sessionId":"s"}"#, now).is_none());
+    }
+
+    #[test]
+    fn forwarder_accepts_the_opencode_argument_and_writes_nothing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let args = vec![
+            "opencode".to_owned(),
+            "--data-dir".to_owned(),
+            dir.path().to_string_lossy().into_owned(),
+        ];
+        let body = br#"{"v":1,"event":"turn_ended","sessionId":"s"}"#.to_vec();
+        assert_eq!(
+            run(&args, std::io::Cursor::new(body), OffsetDateTime::now_utc()),
+            Outcome::AppNotRunning
+        );
+        assert_eq!(
+            run(
+                &args,
+                std::io::Cursor::new(b"{\"v\":1,\"event\":\"nope\",\"sessionId\":\"s\"}".to_vec()),
+                OffsetDateTime::now_utc()
+            ),
+            Outcome::Ignored
+        );
+    }
+
+    #[test]
     fn forwarder_accepts_the_agent_argument_and_writes_nothing() {
         let dir = tempfile::tempdir().expect("tempdir");
         for (adapter, body) in [
@@ -369,7 +441,7 @@ mod tests {
     #[test]
     fn prompt_is_not_read_without_the_marker() {
         let dir = tempfile::tempdir().expect("tempdir");
-        for adapter in ["codex", "cursor"] {
+        for adapter in ["codex", "cursor", "opencode"] {
             let ctx = prompt_context_for(dir.path(), adapter, b"{}", |_| {
                 panic!("the prompt must not be read without consent")
             });
@@ -393,6 +465,7 @@ mod tests {
         std::fs::write(m.join("claude-code"), b"").expect("marker");
         assert!(prompt_context_for(other.path(), "codex", b"{}", |_| panic!("gate")).is_none());
         assert!(prompt_context_for(other.path(), "cursor", b"{}", |_| panic!("gate")).is_none());
+        assert!(prompt_context_for(other.path(), "opencode", b"{}", |_| panic!("gate")).is_none());
     }
 
     #[test]

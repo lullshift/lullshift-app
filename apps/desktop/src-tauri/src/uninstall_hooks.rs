@@ -1,7 +1,7 @@
 //! `lullshift-desktop --uninstall-hooks`: removes Lullshift's agent hooks without any UI.
 //!
 //! Run by the OS uninstaller (NSIS pre-uninstall hook on Windows, `prerm` in the Linux deb) so
-//! Claude Code, Codex and Cursor are not left calling an executable that no longer exists
+//! Claude Code, Codex, Cursor and OpenCode are not left calling an executable that no longer exists
 //! (ADR-010, S11-T06). It runs the same uninstall functions as **Disconnect** in the app, on the
 //! settings file recorded at install time, so the original file is restored byte for byte when
 //! nothing else changed and otherwise only Lullshift's own entries are removed; the user's own
@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use agent_adapters::claude_code::install::{self as claude, InstallError, UninstallOutcome};
 use agent_adapters::hookfile::InstallRecord as HookRecord;
-use agent_adapters::{claude_code, codex, cursor};
+use agent_adapters::{claude_code, codex, cursor, opencode};
 use local_store::Store;
 use time::OffsetDateTime;
 
@@ -41,6 +41,8 @@ pub struct Report {
     pub claude_code: AgentResult,
     pub codex: AgentResult,
     pub cursor: AgentResult,
+    /// The OpenCode plugin file (experimental, ADR-022): deleted if it is Lullshift's own.
+    pub opencode: AgentResult,
 }
 
 /// Where to look. [`Targets::from_env`] is the real thing; tests pass temp directories.
@@ -51,6 +53,7 @@ pub struct Targets {
     pub claude_default: Option<PathBuf>,
     pub codex_default: Option<PathBuf>,
     pub cursor_default: Option<PathBuf>,
+    pub opencode_default: Option<PathBuf>,
 }
 
 impl Targets {
@@ -60,6 +63,7 @@ impl Targets {
             claude_default: claude::default_settings_path(),
             codex_default: codex::install::default_hooks_path(),
             cursor_default: cursor::install::default_hooks_path(),
+            opencode_default: opencode::install::default_plugin_path(),
         })
     }
 }
@@ -150,10 +154,20 @@ pub fn uninstall_all(t: &Targets) -> Report {
             cursor::install::uninstall(&hook_record(settings, events, record))
         },
     );
+    let opencode = one(
+        &mut store,
+        opencode::ADAPTER_ID,
+        t.opencode_default.as_deref(),
+        Vec::new(),
+        |settings, events, record| {
+            opencode::install::uninstall(&hook_record(settings, events, record))
+        },
+    );
     Report {
         claude_code,
         codex,
         cursor,
+        opencode,
     }
 }
 
@@ -245,6 +259,12 @@ mod tests {
                 claude_default: Some(self.root.join("claude").join("settings.json")),
                 codex_default: Some(self.root.join("codex").join("hooks.json")),
                 cursor_default: Some(self.root.join("cursor").join("hooks.json")),
+                opencode_default: Some(
+                    self.root
+                        .join("opencode")
+                        .join("plugins")
+                        .join(opencode::install::PLUGIN_FILE),
+                ),
             }
         }
         fn exe(&self) -> PathBuf {
@@ -459,6 +479,71 @@ mod tests {
         for id in ["claude-code", "codex", "cursor"] {
             assert!(store.adapter_install(id).unwrap().is_none());
         }
+    }
+
+    fn opencode_cmd(env: &Env) -> opencode::install::PluginCommand {
+        opencode::install::PluginCommand {
+            exe: env.exe(),
+            data_dir: env.targets().data_dir,
+        }
+    }
+
+    #[test]
+    fn removes_the_opencode_plugin_file_with_or_without_a_record() {
+        for with_record in [true, false] {
+            let env = Env::new();
+            let t = env.targets();
+            let file = t.opencode_default.clone().unwrap();
+            let rec = opencode::install::install(&file, &opencode_cmd(&env)).unwrap();
+            assert!(file.is_file());
+            if with_record {
+                let (store, _) = Store::open(&t.data_dir.join(DB_FILE)).unwrap();
+                store
+                    .save_adapter_install(
+                        "opencode",
+                        &serde_json::to_string(&rec).unwrap(),
+                        OffsetDateTime::now_utc(),
+                    )
+                    .unwrap();
+            }
+            let report = uninstall_all(&t);
+            assert!(
+                matches!(report.opencode, AgentResult::Done(_)),
+                "{report:?}"
+            );
+            assert!(!file.exists());
+            if with_record {
+                let (store, _) = Store::open(&t.data_dir.join(DB_FILE)).unwrap();
+                assert!(store.adapter_install("opencode").unwrap().is_none());
+            }
+            // Again: nothing to remove, nothing created.
+            assert_eq!(
+                uninstall_all(&t).opencode,
+                AgentResult::Done(UninstallOutcome::NothingToRemove)
+            );
+        }
+    }
+
+    #[test]
+    fn a_foreign_opencode_plugin_file_is_left_alone() {
+        let env = Env::new();
+        let t = env.targets();
+        let file = t.opencode_default.clone().unwrap();
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, b"export default { id: 'mine', setup() {} }\n").unwrap();
+        let report = uninstall_all(&t);
+        assert_eq!(
+            report.opencode,
+            AgentResult::Done(UninstallOutcome::NothingToRemove)
+        );
+        assert_eq!(
+            fs::read(&file).unwrap(),
+            b"export default { id: 'mine', setup() {} }\n"
+        );
+        // And with nothing there at all, nothing is created.
+        let env = Env::new();
+        uninstall_all(&env.targets());
+        assert!(!env.root.join("opencode").exists());
     }
 
     #[test]

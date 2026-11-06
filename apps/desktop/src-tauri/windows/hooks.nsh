@@ -1,7 +1,7 @@
 ; NSIS installer hooks for Lullshift (S11-T06, S12-T05, ADR-010).
 ;
 ; Before the files are removed, run the app in `--uninstall-hooks` mode: it removes Lullshift's
-; hooks from Claude Code, Codex and Cursor with the same logic as Disconnect (original file
+; hooks from Claude Code, Codex and Cursor, and the OpenCode plugin file, with the same logic as Disconnect (original file
 ; restored when untouched, otherwise only Lullshift's own entries removed, the user's own hooks
 ; kept). It has no UI, writes nothing, always exits 0 and is idempotent.
 ;

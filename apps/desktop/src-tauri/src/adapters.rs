@@ -18,6 +18,7 @@ use time::OffsetDateTime;
 use crate::Core;
 
 pub(crate) mod more;
+pub(crate) mod opencode;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +26,12 @@ pub struct AdapterView {
     status: Status,
     settings_path: Option<String>,
     events: Vec<&'static str>,
+    /// An adapter that is still experimental (OpenCode, ADR-022). The tool shows an
+    /// "Experimental" label.
+    experimental: bool,
+    /// Experimental adapters only: whether an event has arrived since the connection was made.
+    /// `Some(false)` and `None` both show as unknown, never as connected.
+    event_seen: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -71,6 +78,8 @@ fn view(ctx: Option<&Ctx>) -> AdapterView {
         }),
         settings_path: ctx.map(|c| c.settings.to_string_lossy().into_owned()),
         events: HOOKS.iter().map(|(e, _)| *e).collect(),
+        experimental: false,
+        event_seen: None,
     }
 }
 

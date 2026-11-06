@@ -102,6 +102,8 @@ fn view(agent: Agent, c: Option<&Ctx>) -> AdapterView {
         status: c.map_or(Status::SettingsInvalid, status_of),
         settings_path: c.map(|c| c.file.to_string_lossy().into_owned()),
         events: agent.events(),
+        experimental: false,
+        event_seen: None,
     }
 }
 

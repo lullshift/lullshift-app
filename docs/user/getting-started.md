@@ -22,7 +22,7 @@ The sidebar has five views:
 | Sessions | Your agent sessions and their state, such as Working, Needs you, Idle or Ended. Unknown or out-of-date state is labelled as such, never guessed |
 | Activities | Games and breaks (Library), turning activities on and off (Manage), and Marketplaces |
 | Companion | An optional chat with an AI provider using your own key |
-| Integrations | Connecting and disconnecting Claude Code, Codex and Cursor |
+| Integrations | Connecting and disconnecting Claude Code, Codex and Cursor (and OpenCode 2.x, experimental) |
 | Settings | Start with your computer, appearance, notifications and task context |
 
 ## Offline use
