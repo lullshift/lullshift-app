@@ -315,7 +315,7 @@ impl Git {
         self
     }
 
-    fn timeout(&self, class: Class) -> Duration {
+    pub(crate) fn timeout(&self, class: Class) -> Duration {
         match class {
             Class::Network => self.network_timeout,
             Class::Local => self.local_timeout,

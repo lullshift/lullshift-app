@@ -10,6 +10,7 @@
 //! - `builtin`: the built-in Git (decision 28, ADR-023); it also re-runs this whole suite on it.
 
 mod builtin;
+mod builtin_review;
 mod execution;
 mod happy;
 mod images;

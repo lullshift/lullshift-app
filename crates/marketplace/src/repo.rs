@@ -160,6 +160,13 @@ impl Git {
         if builtin && url.scheme() == Scheme::Ssh {
             return Err(GitFailureKind::NeedsSystemGit.into());
         }
+        // The built-in Git never uses a proxy (its HTTP client is built with `proxy(None)`), so
+        // behind a configured proxy it would connect directly: exposing the user's address and
+        // ignoring their setting, even for a name that resolves locally. Installed Git honours
+        // the proxy. Answered before any name lookup (security review MEDIUM-2, ADR-023).
+        if builtin && self.proxy_configured(url) {
+            return Err(GitFailureKind::NeedsSystemGit.into());
+        }
         let mut addrs = Vec::new();
         let pin = match check_destination_with(url, self.resolver())? {
             Destination::Resolved(resolved) => {
@@ -395,7 +402,7 @@ impl Git {
         paths: &[String],
     ) -> Result<Vec<TreeEntry>, Error> {
         if self.backend() == Backend::Builtin {
-            return crate::builtin::ls_paths(repo, commit, paths);
+            return crate::builtin::ls_paths(repo, commit, paths, self.timeout(Class::Local));
         }
         let mut args: Vec<&str> = vec![
             "ls-tree",
@@ -422,7 +429,13 @@ impl Git {
         path: Option<&RelPath>,
     ) -> Result<Vec<TreeEntry>, Error> {
         if self.backend() == Backend::Builtin {
-            return crate::builtin::ls_tree_recursive(repo, commit, path, SMALL_OUTPUT);
+            return crate::builtin::ls_tree_recursive(
+                repo,
+                commit,
+                path,
+                SMALL_OUTPUT,
+                self.timeout(Class::Local),
+            );
         }
         let spec = match path {
             Some(p) => format!("{commit}:{p}", p = p.as_str()),
@@ -467,7 +480,7 @@ impl Git {
             return Ok(Vec::new());
         }
         if self.backend() == Backend::Builtin {
-            return crate::builtin::read_blobs(repo, wanted);
+            return crate::builtin::read_blobs(repo, wanted, self.timeout(Class::Local));
         }
         let total: u64 = wanted.iter().map(|(_, s)| *s).sum();
         let cap = usize::try_from(total)

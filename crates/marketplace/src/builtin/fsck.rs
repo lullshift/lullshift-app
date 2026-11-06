@@ -33,12 +33,22 @@ fn fail() -> Error {
 }
 
 /// Checks `commit` and every tree under it in `repo`.
-pub(crate) fn check_commit(repo: &gix::Repository, commit: ObjectId) -> Result<(), Error> {
+///
+/// `stop` is the fetch's interrupt flag, set at its deadline; the check ends with `Timeout`
+/// then instead of running on.
+pub(crate) fn check_commit(
+    repo: &gix::Repository,
+    commit: ObjectId,
+    stop: &std::sync::atomic::AtomicBool,
+) -> Result<(), Error> {
     let commit = repo.find_commit(commit).map_err(|_| fail())?;
     let tree = commit.decode().map_err(|_| fail())?.tree();
     let mut stack = vec![tree];
     let mut seen = std::collections::HashSet::new();
     while let Some(id) = stack.pop() {
+        if stop.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(GitFailureKind::Timeout.into());
+        }
         if !seen.insert(id) {
             continue;
         }
@@ -130,21 +140,30 @@ fn check_name(name: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-/// `.git` the way Git's fsck sees it on any file system.
-fn is_dotgit(name: &[u8]) -> bool {
-    let lower = name.to_ascii_lowercase();
-    // NTFS: trailing dots and spaces are dropped, and `name:stream` is `name`.
+/// An NTFS name as the file system sees it: `name:stream` is `name`, and trailing dots and
+/// spaces are dropped. `lower` must already be lower case.
+fn ntfs_base(lower: &[u8]) -> &[u8] {
     let base = match lower.iter().position(|b| *b == b':') {
         Some(i) => &lower[..i],
-        None => &lower[..],
+        None => lower,
     };
-    let trimmed = {
-        let mut end = base.len();
-        while end > 0 && matches!(base[end - 1], b'.' | b' ') {
-            end -= 1;
-        }
-        &base[..end]
-    };
+    let mut end = base.len();
+    while end > 0 && matches!(base[end - 1], b'.' | b' ') {
+        end -= 1;
+    }
+    &base[..end]
+}
+
+/// `.git` the way Git's fsck sees it on any file system. NTFS accepts `\` as a separator, so
+/// `.git\config` in one tree entry name is `.git/config` there: every `\`-separated part is
+/// checked (as Git's `is_ntfs_dotgit` does).
+fn is_dotgit(name: &[u8]) -> bool {
+    name.split(|b| *b == b'\\').any(is_dotgit_part)
+}
+
+fn is_dotgit_part(name: &[u8]) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let trimmed = ntfs_base(&lower);
     if trimmed == b".git" || trimmed == b"git~1" {
         return true;
     }
@@ -158,14 +177,19 @@ fn is_dotgit(name: &[u8]) -> bool {
     false
 }
 
+/// `.gitmodules` in any spelling NTFS gives it: the NTFS short names `gitmod~1` and the
+/// `gi7eba~1` to `gi7eba~4` Git's `is_ntfs_dotgitmodules` adds, streams, trailing dots and
+/// spaces, and `\` as a separator.
 fn is_gitmodules(name: &[u8]) -> bool {
-    let lower = name.to_ascii_lowercase();
-    let mut end = lower.len();
-    while end > 0 && matches!(lower[end - 1], b'.' | b' ') {
-        end -= 1;
-    }
-    let trimmed = &lower[..end];
-    trimmed == b".gitmodules" || trimmed == b"gitmod~1"
+    name.split(|b| *b == b'\\').any(|part| {
+        let lower = part.to_ascii_lowercase();
+        let trimmed = ntfs_base(&lower);
+        trimmed == b".gitmodules"
+            || trimmed == b"gitmod~1"
+            || (trimmed.len() == 8
+                && trimmed.starts_with(b"gi7eba~")
+                && matches!(trimmed[7], b'1'..=b'4'))
+    })
 }
 
 #[cfg(test)]
@@ -206,6 +230,62 @@ mod tests {
         assert!(is_gitmodules(b".GITMODULES"));
         assert!(is_gitmodules(b"gitmod~1"));
         assert!(!is_gitmodules(b".gitmodules2"));
+    }
+
+    #[test]
+    fn backslash_is_a_separator_for_ntfs_git_checks() {
+        for bad in [
+            &b".git\\config"[..],
+            b".GIT\\hooks\\pre-commit",
+            b"git~1\\hooks",
+            b"GIT~1\\config",
+            b"x\\.git\\config",
+            b".git.\\config",
+            b".git \\config",
+            b"x\\y\\.git",
+            b".git::$INDEX_ALLOCATION\\x",
+        ] {
+            assert!(
+                check_name(bad).is_err(),
+                "{:?}",
+                String::from_utf8_lossy(bad)
+            );
+        }
+        for good in [&b".github\\x"[..], b"a\\b", b"git~2\\x", b"x.git\\y"] {
+            assert!(
+                check_name(good).is_ok(),
+                "{:?}",
+                String::from_utf8_lossy(good)
+            );
+        }
+    }
+
+    #[test]
+    fn gitmodules_short_names_and_separators() {
+        for bad in [
+            &b"gi7eba~1"[..],
+            b"GI7EBA~2",
+            b"gi7eba~3",
+            b"gi7eba~4",
+            b"gi7eba~4.",
+            b"gi7eba~1:stream",
+            b"x\\gi7eba~2",
+            b"x\\.gitmodules",
+            b".gitmodules ",
+            b"GITMOD~1",
+        ] {
+            assert!(is_gitmodules(bad), "{:?}", String::from_utf8_lossy(bad));
+        }
+        for good in [
+            &b"gi7eba~0"[..],
+            b"gi7eba~5",
+            b"gi7eba~12",
+            b"gi7eba",
+            b"gitmod~2",
+            b".gitmodule",
+        ] {
+            assert!(!is_gitmodules(good), "{:?}", String::from_utf8_lossy(good));
+        }
     }
 
     #[test]

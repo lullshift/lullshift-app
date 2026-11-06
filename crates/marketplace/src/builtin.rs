@@ -23,19 +23,62 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gix::ObjectId;
 use gix::objs::tree::EntryKind;
 
 use crate::error::{Error, GitFailureKind, PackError, RefError};
 use crate::repo::TreeEntry;
-use crate::validate::{Commit, GitRef, GitUrl, RelPath};
+use crate::validate::{Commit, GitRef, GitUrl, PATH_PARTS_MAX, RelPath};
 
 /// The temporary ref a fetch writes; the real one moves only after the object check.
 const INCOMING_REF: &str = "refs/lullshift/incoming";
 /// Largest single object gix may inflate (`gitoxide.objects.allocLimit`), against delta bombs.
-const ALLOC_LIMIT: u64 = crate::git::FETCH_MAX_BYTES;
+/// Lullshift reads files of at most `pack::MAX_FILE_BYTES` (5 MiB), inside packs of at most
+/// `pack::MAX_PACK_BYTES` (20 MiB), plus small trees, so 64 MiB covers any object it needs
+/// while a delta that expands past it fails cleanly instead of using the 200 MiB fetch cap.
+const ALLOC_LIMIT: u64 = 64 * 1024 * 1024;
+/// Threads for gix's pack indexing and delta resolution (`pack.threads`): with the limit above
+/// the peak is about `PACK_THREADS * ALLOC_LIMIT` rather than one share per core.
+const PACK_THREADS: u32 = 2;
+/// Most entries (files, folders and submodules, counted at every visit of a tree) a local read
+/// looks at. A 512-file activity at the deepest allowed path needs at most
+/// `MAX_FILES * PATH_PARTS_MAX` (6144), so only a tree bomb reaches this.
+const MAX_VISITED: usize = 100_000;
+
+/// What a local, in-process read may spend: a deadline matching the runner's local timeout and
+/// a count of entries seen (trees included, every visit), so a tree bomb that Git's own
+/// `ls-tree` would be killed for ends quickly here too.
+struct Guard {
+    deadline: Instant,
+    visited: usize,
+}
+
+impl Guard {
+    fn new(timeout: Duration) -> Self {
+        Self {
+            deadline: Instant::now() + timeout,
+            visited: 0,
+        }
+    }
+
+    fn check_time(&self) -> Result<(), Error> {
+        if Instant::now() >= self.deadline {
+            return Err(GitFailureKind::Timeout.into());
+        }
+        Ok(())
+    }
+
+    /// Counts `n` entries about to be looked at.
+    fn visit(&mut self, n: usize) -> Result<(), Error> {
+        self.visited = self.visited.saturating_add(n);
+        if self.visited > MAX_VISITED {
+            return Err(PackError::TooManyFiles.into());
+        }
+        self.check_time()
+    }
+}
 
 /// Settings for one built-in fetch, taken from the [`crate::Git`] that runs it.
 pub(crate) struct FetchSettings {
@@ -74,7 +117,10 @@ fn open(repo: &Path) -> Result<gix::Repository, Error> {
     let options = gix::open::Options::isolated()
         .open_path_as_is(true)
         .with(gix::sec::Trust::Full)
-        .config_overrides([format!("gitoxide.objects.allocLimit={ALLOC_LIMIT}")]);
+        .config_overrides([
+            format!("gitoxide.objects.allocLimit={ALLOC_LIMIT}"),
+            format!("pack.threads={PACK_THREADS}"),
+        ]);
     gix::open_opts(repo, options).map_err(|_| failed())
 }
 
@@ -119,9 +165,24 @@ pub(crate) fn fetch(
             }
         })
     };
-    let result = fetch_inner(repo_dir, url, r, transport_http, &budget, settings);
+    let mut rejected = Vec::new();
+    let result = fetch_inner(
+        repo_dir,
+        url,
+        r,
+        transport_http,
+        &budget,
+        settings,
+        &mut rejected,
+    );
     done.store(true, Ordering::Relaxed);
     let _ = watchdog.join();
+    // The repository handle (and its memory maps of the pack) is gone now, so the files can be
+    // deleted on Windows too. Objects that failed the check don't stay in the cache, as with
+    // Git's quarantine.
+    for p in rejected {
+        let _ = std::fs::remove_file(p);
+    }
 
     match result {
         Ok(commit) => Ok(commit),
@@ -148,6 +209,7 @@ fn fetch_inner(
     transport_http: http::PinnedHttp,
     budget: &Arc<http::Budget>,
     settings: &FetchSettings,
+    rejected: &mut Vec<std::path::PathBuf>,
 ) -> Result<Commit, Inner> {
     let repo = open(repo_dir).map_err(Inner::Ours)?;
     let source = r.map_or("HEAD", GitRef::as_str);
@@ -186,21 +248,25 @@ fn fetch_inner(
         )),
         gix::remote::fetch::Status::NoPackReceived { .. } => None,
     };
-    let checked = settle(&repo, r, settings.fsck);
+    let checked = settle(&repo, r, settings.fsck, &budget.interrupt);
     if checked.is_err()
         && let Some((data, index, keep)) = new_pack
     {
-        // Objects that failed the check don't stay in the cache, as with Git's quarantine.
-        for p in [data, index, keep].into_iter().flatten() {
-            let _ = std::fs::remove_file(p);
-        }
+        // Deleted by the caller once `repo` is dropped: a file gix may still have mapped
+        // can't be deleted on Windows.
+        rejected.extend([data, index, keep].into_iter().flatten());
     }
     let _ = delete_ref(&repo, INCOMING_REF);
     checked.map_err(Inner::Ours)
 }
 
 /// After a fetch: peel the incoming ref to a commit, check it, then move the fetched ref.
-fn settle(repo: &gix::Repository, r: Option<&GitRef>, fsck_on: bool) -> Result<Commit, Error> {
+fn settle(
+    repo: &gix::Repository,
+    r: Option<&GitRef>,
+    fsck_on: bool,
+    stop: &AtomicBool,
+) -> Result<Commit, Error> {
     let not_found = || Error::Git(GitFailureKind::NotFound);
     let mut incoming = repo
         .try_find_reference(INCOMING_REF)
@@ -215,7 +281,7 @@ fn settle(repo: &gix::Repository, r: Option<&GitRef>, fsck_on: bool) -> Result<C
         return Err(Error::NotACommit);
     }
     if fsck_on {
-        fsck::check_commit(repo, id)?;
+        fsck::check_commit(repo, id, stop)?;
     }
     repo.reference(
         crate::repo::FETCH_REF,
@@ -328,9 +394,13 @@ fn entry(
 fn children(
     repo: &gix::Repository,
     tree: ObjectId,
+    guard: &mut Guard,
 ) -> Result<Vec<(Vec<u8>, EntryKind, ObjectId)>, Error> {
+    guard.check_time()?;
     let tree = repo.find_tree(tree).map_err(|_| PackError::Inconsistent)?;
     let decoded = tree.decode().map_err(|_| PackError::Inconsistent)?;
+    // Every entry is counted, folders included, at every visit of the tree.
+    guard.visit(decoded.entries.len().max(1))?;
     Ok(decoded
         .entries
         .iter()
@@ -346,7 +416,9 @@ pub(crate) fn ls_paths(
     repo_dir: &Path,
     commit: &Commit,
     paths: &[String],
+    timeout: Duration,
 ) -> Result<Vec<TreeEntry>, Error> {
+    let mut guard = Guard::new(timeout);
     let repo = open(repo_dir)?;
     let root = commit_tree(&repo, commit)?;
     let mut out = Vec::new();
@@ -358,13 +430,13 @@ pub(crate) fn ls_paths(
         let mut tree = Some(root);
         for dir in dirs {
             let Some(t) = tree else { break };
-            tree = children(&repo, t)?
+            tree = children(&repo, t, &mut guard)?
                 .into_iter()
                 .find(|(n, k, _)| n.as_slice() == dir.as_bytes() && *k == EntryKind::Tree)
                 .map(|(_, _, oid)| oid);
         }
         let Some(t) = tree else { continue };
-        for (name, kind, oid) in children(&repo, t)? {
+        for (name, kind, oid) in children(&repo, t, &mut guard)? {
             if name.as_slice() == last.as_bytes() {
                 out.push(entry(&repo, kind, oid, path.clone())?);
             }
@@ -381,7 +453,9 @@ pub(crate) fn ls_tree_recursive(
     commit: &Commit,
     path: Option<&RelPath>,
     max_output: usize,
+    timeout: Duration,
 ) -> Result<Vec<TreeEntry>, Error> {
+    let mut guard = Guard::new(timeout);
     let repo = open(repo_dir)?;
     let root = commit_tree(&repo, commit).map_err(|_| PackError::NotFound)?;
     let start = match path {
@@ -389,7 +463,7 @@ pub(crate) fn ls_tree_recursive(
         Some(p) => {
             let mut tree = root;
             for part in p.as_str().split('/') {
-                tree = children(&repo, tree)?
+                tree = children(&repo, tree, &mut guard)?
                     .into_iter()
                     .find(|(n, _, _)| n.as_slice() == part.as_bytes())
                     .filter(|(_, k, _)| *k == EntryKind::Tree)
@@ -402,10 +476,18 @@ pub(crate) fn ls_tree_recursive(
     let mut out = Vec::new();
     let mut printed = 0usize;
     // Depth-first in tree order, as `ls-tree -r` prints.
-    let mut stack: Vec<(ObjectId, String)> = vec![(start, String::new())];
-    while let Some((tree, prefix)) = stack.pop() {
+    let mut stack: Vec<(ObjectId, String, usize)> = vec![(start, String::new(), 0)];
+    while let Some((tree, prefix, depth)) = stack.pop() {
+        // A file under `depth` folders has `depth + 1` path parts.
+        if depth >= PATH_PARTS_MAX {
+            return Err(PackError::BadPath(
+                "(too deep)".to_owned(),
+                crate::error::PathError::TooDeep,
+            )
+            .into());
+        }
         let mut subtrees = Vec::new();
-        for (name, kind, oid) in children(&repo, tree)? {
+        for (name, kind, oid) in children(&repo, tree, &mut guard)? {
             let name = String::from_utf8(name).map_err(|_| {
                 PackError::BadPath(
                     "(not UTF-8)".to_owned(),
@@ -414,7 +496,7 @@ pub(crate) fn ls_tree_recursive(
             })?;
             let full = format!("{prefix}{name}");
             if kind == EntryKind::Tree {
-                subtrees.push((oid, format!("{full}/")));
+                subtrees.push((oid, format!("{full}/"), depth + 1));
                 continue;
             }
             // What the line would cost in `ls-tree -z -l` output.
@@ -434,10 +516,16 @@ pub(crate) fn ls_tree_recursive(
 }
 
 /// Like `cat-file --batch` for blob ids: each must be a blob of exactly the listed size.
-pub(crate) fn read_blobs(repo_dir: &Path, wanted: &[(String, u64)]) -> Result<Vec<Vec<u8>>, Error> {
+pub(crate) fn read_blobs(
+    repo_dir: &Path,
+    wanted: &[(String, u64)],
+    timeout: Duration,
+) -> Result<Vec<Vec<u8>>, Error> {
+    let mut guard = Guard::new(timeout);
     let repo = open(repo_dir)?;
     let mut blobs = Vec::with_capacity(wanted.len());
     for (oid, size) in wanted {
+        guard.visit(1)?;
         let id = ObjectId::from_hex(oid.as_bytes()).map_err(|_| PackError::Inconsistent)?;
         let obj = repo
             .try_find_object(id)
