@@ -32,6 +32,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 26 | 11 | Release packaging | change: 26.3, 26.7, 26.8, 26.12 |
 | 27 | 12 | Sprint 12 build and review choices | change: 27.1, 27.5, 27.6, 27.8 |
 | 28 | 12 | Bundled Git fallback (gix, public https) | change: build it |
+| 29 | 12 | Publish the creator CLI and SDK to npm | change: build it |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -357,3 +358,12 @@ These were taken during Sprint 12, mostly to fix security review findings. Pleas
 - **Hardening:** the same as with installed Git: the address pin, no redirects, object checks and the size cap.
 - **Installed Git comes first** whenever it is available.
 - **Record:** ADR-023.
+
+## 29. Publish the creator CLI and SDK to npm (owner decision, 2026-11-06)
+
+**Owner decision:** publish `@lullshift/cli` and `@lullshift/activity-sdk` to npm, with `@lullshift/agent-protocol`, which the SDK needs. The CLI is not bundled with the desktop installer.
+- **Build:** the packages are compiled to JavaScript before publishing, because Node does not run TypeScript from `node_modules`.
+- **Release:** a manual GitHub workflow publishes with npm provenance. It uses a protected `npm` environment with the owner as required reviewer, and the token is held only as that environment's secret. Nothing is published without the owner's approval.
+- **Owner steps:** register the `@lullshift` scope on npm, create a granular publish token and approve each publish run.
+- **Record:** an amendment to ADR-017.
+- **Assumption, for review:** the published CLI supports Node 22 and newer (the compiled JavaScript doesn't need Node 24's TypeScript support). Development in this repo stays on Node 24.
