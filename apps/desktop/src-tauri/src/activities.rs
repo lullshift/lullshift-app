@@ -34,7 +34,7 @@ use time::OffsetDateTime;
 pub(crate) mod installed;
 
 use crate::Core;
-use installed::{Served, ServedRole};
+use installed::Served;
 use marketplace::data_schema;
 #[cfg(test)]
 use marketplace::manifest::plain;
@@ -109,7 +109,8 @@ struct EngineFile {
 #[serde(rename_all = "camelCase")]
 pub struct ContentError {
     /// `unknown_activity`, `engine_missing`, `engine_unusable`, `data_missing`,
-    /// `data_too_large`, `data_not_json`, `data_invalid` or `internal`.
+    /// `data_too_large`, `data_not_json`, `data_invalid`, `damaged` (an installed pack's files
+    /// changed on disk since its check) or `internal`.
     code: &'static str,
     detail: String,
 }
@@ -120,7 +121,7 @@ impl ContentError {
         self.code
     }
 
-    fn new(code: &'static str, detail: impl Into<String>) -> Self {
+    pub(crate) fn new(code: &'static str, detail: impl Into<String>) -> Self {
         Self {
             code,
             detail: detail.into(),
@@ -523,60 +524,85 @@ fn split_path(path: &str) -> Option<(&str, &str)> {
     ok.then_some((id, file))
 }
 
+/// A file to serve and its content type.
+type FoundFile = (Cow<'static, [u8]>, &'static str);
+
 /// The bytes and content type for a request path, if it names an allowed file of a bundled
 /// activity, or of an installed one in `snap`.
 ///
 /// A pack's path serves its engine's files, and only once the pack's data has passed the
 /// engine's schema; the pack's own files are never served. Engines have no path of their own.
 /// Bundled ids win over installed ones; a disabled bundled activity is not served.
-fn lookup(
+#[cfg(test)]
+fn lookup(snap: Option<&installed::Snapshot>, path: &str) -> Option<FoundFile> {
+    lookup_checked(snap, path).ok().flatten()
+}
+
+/// [`lookup`], except that an installed file which no longer matches its install check is
+/// `Err(activity id)`: nothing is served and the caller marks the activity damaged.
+fn lookup_checked(
     snap: Option<&installed::Snapshot>,
     path: &str,
-) -> Option<(Cow<'static, [u8]>, &'static str)> {
-    let (id, file) = split_path(path)?;
-    let content_type = mime(file)?;
+) -> Result<Option<FoundFile>, String> {
+    let Some((id, file)) = split_path(path) else {
+        return Ok(None);
+    };
+    let Some(content_type) = mime(file) else {
+        return Ok(None);
+    };
     if let Some(activity) = runnable(id) {
         if snap.is_some_and(|s| s.disabled.contains(id)) {
-            return None;
+            return Ok(None);
         }
         let source = match activity.role {
             Role::Pack => {
-                let engine = pack_content(activity).ok()?.0;
+                let Ok((engine, _)) = pack_content(activity) else {
+                    return Ok(None);
+                };
                 if file.starts_with(pack_media::IMAGE_DIR) {
                     // The pack's own pictures, only those its manifest lists, and only once
                     // the pack (images included) passed its check. Never an engine file.
-                    return pack_image(&activity.manifest, file, |p| {
+                    return Ok(pack_image(&activity.manifest, file, |p| {
                         activity
                             .dir
                             .get_file(activity.dir.path().join(p))
                             .map(|f| Cow::Borrowed(f.contents()))
-                    });
+                    }));
                 }
                 engine
             }
             _ => activity,
         };
-        let found = source.dir.get_file(source.dir.path().join(file))?;
-        return Some((Cow::Borrowed(found.contents()), content_type));
+        let found = source.dir.get_file(source.dir.path().join(file));
+        return Ok(found.map(|f| (Cow::Borrowed(f.contents()), content_type)));
     }
-    snap?.served.get(id)?.file(file, content_type)
+    let Some(served) = snap.and_then(|s| s.served.get(id)) else {
+        return Ok(None);
+    };
+    // An installed file (a pack's picture included) is read and hashed again now.
+    served.file(file, content_type).map_err(|_| id.to_owned())
 }
 
-/// A listed pack picture with its content type (`image/png` or `image/webp`, from the checked
-/// path; the bytes were checked to match it). Anything not listed is not served.
+/// The content type of a picture the manifest lists (`image/png` or `image/webp`, from the
+/// checked path; the bytes were checked to match it), or None if it isn't listed.
+pub(crate) fn listed_image_type(manifest: &Manifest, file: &str) -> Option<&'static str> {
+    if !manifest.images.iter().any(|p| p == file) {
+        return None;
+    }
+    match file.rsplit_once('.')?.1 {
+        "png" => Some("image/png"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+/// A listed pack picture with its content type. Anything not listed is not served.
 fn pack_image(
     manifest: &Manifest,
     file: &str,
     read: impl FnOnce(&str) -> Option<Cow<'static, [u8]>>,
 ) -> Option<(Cow<'static, [u8]>, &'static str)> {
-    if !manifest.images.iter().any(|p| p == file) {
-        return None;
-    }
-    let content_type = match file.rsplit_once('.')?.1 {
-        "png" => "image/png",
-        "webp" => "image/webp",
-        _ => return None,
-    };
+    let content_type = listed_image_type(manifest, file)?;
     Some((read(file)?, content_type))
 }
 
@@ -584,9 +610,19 @@ fn pack_image(
 /// Without the app state (before setup finishes) only bundled activities can be served.
 pub fn serve(core: Option<&Core>, request: &tauri::http::Request<Vec<u8>>) -> Response<Vec<u8>> {
     let snap = core.and_then(|c| c.library.snapshot(c).ok());
-    let found = (request.method() == tauri::http::Method::GET)
-        .then(|| lookup(snap.as_deref(), request.uri().path()))
-        .flatten();
+    let found = if request.method() == tauri::http::Method::GET {
+        match lookup_checked(snap.as_deref(), request.uri().path()) {
+            Ok(found) => found,
+            Err(damaged) => {
+                if let Some(core) = core {
+                    installed::mark_damaged(core, &damaged);
+                }
+                None
+            }
+        }
+    } else {
+        None
+    };
     let (status, body, content_type) = match found {
         Some((bytes, ct)) => (StatusCode::OK, bytes.into_owned(), ct),
         None => (
@@ -816,18 +852,25 @@ pub async fn activity_content(
         .map_err(|_| ContentError::new("internal", "the check didn't finish"))?
 }
 
-/// A bundled pack's checked data, or an installed pack's data (checked when it was verified and
-/// kept in memory, so nothing changed on disk afterwards reaches the engine).
+/// A bundled pack's checked data, or an installed pack's data, read and hashed again now and
+/// checked against its engine's schema (so nothing changed on disk since the install check
+/// reaches the engine; a changed file marks the activity damaged).
 pub(crate) fn content_for_core(core: &Core, id: &str) -> Result<Value, ContentError> {
     match find(core, id, true) {
         Ok(Found::Bundled(a)) => match a.role {
             Role::Pack => pack_content(a).map(|(_, data)| data.clone()),
             _ => Ok(Value::Null),
         },
-        Ok(Found::Installed(s)) => Ok(match &s.role {
-            ServedRole::Pack { data, .. } => data.clone(),
-            ServedRole::App => Value::Null,
-        }),
+        Ok(Found::Installed(s)) => match s.pack_data() {
+            Ok(data) => data,
+            Err(_) => {
+                installed::mark_damaged(core, id);
+                Err(ContentError::new(
+                    "damaged",
+                    "this activity's files changed on disk; reinstall it",
+                ))
+            }
+        },
         Err(code) if code == "unknown_activity" => Err(ContentError::new("unknown_activity", "")),
         Err(_) => Err(ContentError::new("internal", "the check didn't finish")),
     }
@@ -851,23 +894,33 @@ pub async fn activity_preview(
     id: String,
 ) -> Result<Option<String>, String> {
     let core = Arc::clone(&core);
-    blocking(move || {
-        Ok(match find(&core, &id, false)? {
-            Found::Bundled(a) => a.manifest.preview.as_deref().and_then(preview_data_url(a)),
-            Found::Installed(s) => {
-                let content_type = s
-                    .manifest
-                    .preview
-                    .as_deref()
-                    .and_then(mime)
-                    .filter(|t| t.starts_with("image/"));
-                content_type
-                    .zip(s.preview_bytes(PREVIEW_MAX))
-                    .map(|(t, bytes)| format!("data:{t};base64,{}", base64(&bytes)))
+    blocking(move || preview_for_core(&core, &id)).await
+}
+
+/// [`activity_preview`] without Tauri. An installed activity's image is read and hashed again
+/// now; one that no longer matches is not shown and marks the activity damaged.
+pub(crate) fn preview_for_core(core: &Core, id: &str) -> Result<Option<String>, String> {
+    Ok(match find(core, id, false)? {
+        Found::Bundled(a) => a.manifest.preview.as_deref().and_then(preview_data_url(a)),
+        Found::Installed(s) => {
+            let content_type = s
+                .manifest
+                .preview
+                .as_deref()
+                .and_then(mime)
+                .filter(|t| t.starts_with("image/"));
+            let Some(t) = content_type else {
+                return Ok(None);
+            };
+            match s.preview_bytes(PREVIEW_MAX) {
+                Ok(bytes) => bytes.map(|b| format!("data:{t};base64,{}", base64(&b))),
+                Err(_) => {
+                    installed::mark_damaged(core, id);
+                    None
+                }
             }
-        })
+        }
     })
-    .await
 }
 
 fn preview_data_url(a: &Activity) -> impl Fn(&str) -> Option<String> + '_ {

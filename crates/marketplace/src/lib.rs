@@ -38,8 +38,8 @@ pub use gate::third_party_code_allowed;
 pub use git::{Git, classify_failure};
 pub use index::{EntrySource, IndexEntry, MarketplaceIndex, parse_index};
 pub use install::{
-    Installed, InstalledSummary, UpdateDiff, VerifyError, diff_update, install, install_dir,
-    remove_install, verified_files, verify_install,
+    Installed, InstalledSummary, UpdateDiff, VerifiedHashes, VerifyError, diff_update, install,
+    install_dir, remove_install, verified_hashes, verify_install,
 };
 pub use pack::{AvailableEngine, InstallPreview, Kind, PackFile, PrepareRequest, PreparedPack};
 pub use repo::{MarketplaceRef, ResolvedSource};

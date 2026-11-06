@@ -901,7 +901,7 @@ fn change_into(
     let _ = std::fs::create_dir_all(&final_dir);
     let _ = std::fs::rename(&repo, final_dir.join("repo.git"));
     let _ = std::fs::rename(staging.join(SIDECAR), final_dir.join(SIDECAR));
-    refresh_library(core, id, false);
+    refresh_library(core);
     let rec = active_market(core, id)?;
     Ok(AddressChangedDto {
         marketplace: market_dto(core, &rec),
@@ -1128,9 +1128,8 @@ fn record_of(pending: &Pending) -> NewInstalledActivity {
 }
 
 /// Rebuilds what the library shows after an install, update, uninstall or switch.
-fn refresh_library(core: &Core, activity_id: &str, forget_checks: bool) {
-    core.library
-        .invalidate(forget_checks.then_some(activity_id));
+fn refresh_library(core: &Core) {
+    core.library.invalidate();
     let _ = core.library.snapshot(core);
 }
 
@@ -1175,7 +1174,7 @@ pub fn install_pending(core: &Core, token: &str, now: Instant) -> Res<()> {
         let _ = remove_install(&root, &p.activity_id, &p.commit);
         return Err(e);
     }
-    refresh_library(core, &p.activity_id, true);
+    refresh_library(core);
     Ok(())
 }
 
@@ -1282,7 +1281,7 @@ pub fn update_pending(core: &Core, token: &str, now: Instant) -> Res<()> {
     }
     // The old commit's folder goes only after the record points at the new one.
     let _ = remove_install(&root, &p.activity_id, &current.commit_sha);
-    refresh_library(core, &p.activity_id, true);
+    refresh_library(core);
     Ok(())
 }
 
@@ -1305,7 +1304,7 @@ pub fn uninstall(core: &Core, activity_id: &str, delete_saved_state: bool) -> Re
     }
     let root = install_root(core);
     let removed = remove_install(&root, activity_id, &rec.commit_sha);
-    refresh_library(core, activity_id, true);
+    refresh_library(core);
     // Leftovers of an interrupted update, if any.
     if let Ok(dir) = marketplace::install_dir(&root, activity_id, &rec.commit_sha)
         && let Some(parent) = dir.parent()
@@ -1325,7 +1324,7 @@ pub fn set_enabled(core: &Core, activity_id: &str, enabled: bool) -> Res<()> {
     let now = OffsetDateTime::now_utc();
     if bundled_listed().iter().any(|(m, _)| m.id == activity_id) {
         with_store(core, |s| s.set_builtin_disabled(activity_id, !enabled, now))?;
-        refresh_library(core, activity_id, false);
+        refresh_library(core);
         return Ok(());
     }
     if shadowed_by_bundled(activity_id) {
@@ -1351,7 +1350,7 @@ pub fn set_enabled(core: &Core, activity_id: &str, enabled: bool) -> Res<()> {
         }
     }
     with_store(core, |s| s.set_installed_enabled(activity_id, enabled, now))?;
-    refresh_library(core, activity_id, false);
+    refresh_library(core);
     Ok(())
 }
 

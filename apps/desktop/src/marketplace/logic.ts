@@ -199,7 +199,7 @@ export function looksPrivate(value: string): boolean {
 
 export function problemText(problem: ManageProblem): string {
   return problem === "tampered"
-    ? "Its files changed after install, so Lullshift won't run it. Uninstall it, or install it again from its marketplace."
+    ? "Its files changed on disk after install, so Lullshift turned it off and won't run it. Install it again from its marketplace, or uninstall it."
     : "The engine it needs isn't available in this version of Lullshift, so it can't run.";
 }
 

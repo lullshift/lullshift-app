@@ -445,8 +445,7 @@ fn refresh_then_update_shows_a_permission_diff_and_keeps_the_enabled_flag() {
     assert!(!listed_ids(&env).contains(&FACTS.to_owned()));
     set_enabled(&env.core, FACTS, true).expect("enable");
     assert!(listed_ids(&env).contains(&FACTS.to_owned()));
-    // Only the new commit is cached as verified.
-    assert_eq!(env.core.library.cached_checks(), 1);
+    assert!(activities::content_for_core(&env.core, FACTS).is_ok());
 }
 
 #[test]
@@ -611,11 +610,6 @@ fn uninstall_keeps_saved_state_unless_asked() {
         request(&env, &format!("/{FACTS}/index.html")).status(),
         StatusCode::NOT_FOUND
     );
-    assert_eq!(
-        env.core.library.cached_checks(),
-        0,
-        "its checks are forgotten"
-    );
     assert!(
         with_store(&env.core, |s| s.snapshot(FACTS))
             .expect("get")
@@ -670,20 +664,26 @@ fn bundled_activities_cannot_be_uninstalled() {
 // ---- tampering ---------------------------------------------------------------------------
 
 #[test]
-fn a_tampered_install_is_excluded_disabled_and_reported() {
+fn a_file_changed_after_the_check_is_refused_on_the_next_load_and_shown_damaged() {
     let env = Env::new();
     let (_, commit) = installed(&env);
     assert!(listed_ids(&env).contains(&FACTS.to_owned()));
-    assert_eq!(env.core.library.cached_checks(), 1);
-    // Listing again reuses the cached check.
-    assert!(listed_ids(&env).contains(&FACTS.to_owned()));
-    assert_eq!(env.core.library.cached_checks(), 1);
+    let original = activities::content_for_core(&env.core, FACTS).expect("content");
+    // Loading twice reads and hashes twice; nothing changed, so both agree.
+    assert_eq!(
+        activities::content_for_core(&env.core, FACTS).expect("again"),
+        original
+    );
 
-    // Someone edits the installed data. A new session verifies it again.
+    // Someone edits the installed data while the snapshot still lists it. The very next load
+    // reads the file again, sees it no longer matches, and hands the engine nothing.
     let deck = env.install_dir(FACTS, &commit).join("deck.json");
+    let good = std::fs::read(&deck).expect("read");
     std::fs::write(&deck, r#"{"title":"Evil","cards":[{"front":"x"}]}"#).expect("tamper");
-    env.core.library.restart();
+    let err = activities::content_for_core(&env.core, FACTS).unwrap_err();
+    assert_eq!(err.code(), "damaged");
 
+    // It is turned off and shown as damaged; nothing of it is listed or served any more.
     assert!(!listed_ids(&env).contains(&FACTS.to_owned()));
     assert_eq!(
         request(&env, &format!("/{FACTS}/index.html")).status(),
@@ -702,16 +702,40 @@ fn a_tampered_install_is_excluded_disabled_and_reported() {
         .expect("store")
         .expect("record");
     assert!(!rec.enabled, "disabled in the store too");
-    assert_eq!(
-        env.core.library.cached_checks(),
-        0,
-        "a mismatch is never cached"
-    );
-    // It can't be turned back on while it differs, but it can be removed.
+    // It can't be turned back on while it differs.
     assert_eq!(err_kind(set_enabled(&env.core, FACTS, true)), "tampered");
     assert!(!listed_ids(&env).contains(&FACTS.to_owned()));
+
+    // Once the original bytes are back it verifies again, but stays off until turned on.
+    std::fs::write(&deck, good).expect("restore");
+    set_enabled(&env.core, FACTS, true).expect("enable");
+    assert_eq!(
+        activities::content_for_core(&env.core, FACTS).expect("content"),
+        original
+    );
     uninstall(&env.core, FACTS, false).expect("uninstall");
     assert!(!env.install_dir(FACTS, &commit).exists());
+}
+
+#[test]
+fn a_same_length_change_is_caught_by_the_hash_not_only_the_size() {
+    let env = Env::new();
+    let (_, commit) = installed(&env);
+    let deck = env.install_dir(FACTS, &commit).join("deck.json");
+    let mut bytes = std::fs::read(&deck).expect("read");
+    let at = bytes
+        .iter()
+        .position(|b| b.is_ascii_lowercase())
+        .expect("letter");
+    bytes[at] = if bytes[at] == b'a' { b'b' } else { b'a' };
+    std::fs::write(&deck, &bytes).expect("tamper");
+    assert_eq!(
+        activities::content_for_core(&env.core, FACTS)
+            .unwrap_err()
+            .code(),
+        "damaged"
+    );
+    assert_eq!(manage_item(&env, FACTS).problem, Some("tampered"));
 }
 
 #[test]
@@ -720,11 +744,11 @@ fn an_extra_or_missing_file_is_also_tampering() {
     let (_, commit) = installed(&env);
     let dir = env.install_dir(FACTS, &commit);
     std::fs::write(dir.join("extra.md"), "x").expect("extra");
-    env.core.library.restart();
+    env.core.library.invalidate();
     assert_eq!(manage_item(&env, FACTS).problem, Some("tampered"));
     std::fs::remove_file(dir.join("extra.md")).expect("rm");
     std::fs::remove_file(dir.join("README.md")).expect("rm");
-    env.core.library.restart();
+    env.core.library.invalidate();
     assert_eq!(manage_item(&env, FACTS).problem, Some("tampered"));
 }
 
@@ -847,22 +871,6 @@ fn tokens_expire_and_expired_reviews_install_nothing() {
         env.core.market.pending.lock().expect("lock").len(),
         MAX_PENDING
     );
-}
-
-#[test]
-fn the_pack_check_cache_is_keyed_by_commit_and_digest() {
-    // After an update the old commit's entry is gone and only the new one is kept (see
-    // `refresh_then_update_...`); here, other ids' entries are independent.
-    let env = Env::new();
-    installed(&env);
-    assert_eq!(env.core.library.cached_checks(), 1);
-    env.core.library.invalidate(Some("com.example.other"));
-    assert_eq!(env.core.library.cached_checks(), 1);
-    env.core.library.invalidate(Some(FACTS));
-    assert_eq!(env.core.library.cached_checks(), 0);
-    // Rebuilt on demand.
-    assert!(listed_ids(&env).contains(&FACTS.to_owned()));
-    assert_eq!(env.core.library.cached_checks(), 1);
 }
 
 #[test]
@@ -1085,7 +1093,7 @@ fn state_of_unknown_origin_is_announced_in_the_review() {
 }
 
 #[test]
-fn a_preview_image_is_served_from_the_verified_bytes_not_the_disk() {
+fn a_preview_image_swapped_after_the_check_is_never_shown() {
     let env = Env::new();
     let repo = env.repo("market");
     write_facts(&repo, "1.0.0", &[]);
@@ -1114,22 +1122,32 @@ fn a_preview_image_is_served_from_the_verified_bytes_not_the_disk() {
             .expect("snapshot")
             .served
             .get(FACTS)
-            .and_then(|s| s.preview_bytes(activities::PREVIEW_MAX))
+            .map(|s| s.preview_bytes(activities::PREVIEW_MAX))
     };
-    assert_eq!(served(&env).as_deref(), Some(b"ORIGINAL-IMAGE".as_slice()));
+    assert_eq!(
+        served(&env),
+        Some(Ok(Some(b"ORIGINAL-IMAGE".to_vec()))),
+        "read and hashed now"
+    );
 
-    // The file is swapped after the check: the session keeps serving what was verified.
+    // The file is swapped (same length) after the snapshot's check: the next read hashes it
+    // again and refuses it.
     std::fs::write(
         env.install_dir(FACTS, &commit).join("preview.png"),
-        "SWAPPED-IMAGE",
+        "SWAPPED-IMAGE!",
     )
     .expect("swap");
-    assert_eq!(served(&env).as_deref(), Some(b"ORIGINAL-IMAGE".as_slice()));
+    assert!(matches!(served(&env), Some(Err(_))));
 
-    // A new session verifies again, finds the change, and serves nothing.
-    env.core.library.restart();
-    assert_eq!(served(&env), None);
-    assert_eq!(manage_item(&env, FACTS).problem, Some("tampered"));
+    // The command that shows it marks the activity damaged and returns no image.
+    assert_eq!(
+        activities::preview_for_core(&env.core, FACTS).expect("preview"),
+        None
+    );
+    assert_eq!(served(&env), None, "no longer served");
+    let item = manage_item(&env, FACTS);
+    assert_eq!(item.problem, Some("tampered"));
+    assert!(!item.enabled);
 }
 
 // ---- pictures in installed packs (S12-T11) ------------------------------------------------
@@ -1210,6 +1228,38 @@ fn an_installed_pack_serves_its_listed_pictures_and_nothing_else() {
             "{path}"
         );
     }
+}
+
+#[test]
+fn a_picture_changed_on_disk_after_the_check_is_refused_and_the_pack_shown_damaged() {
+    // Decision 18.5: a listed picture is read and hashed again on every request.
+    let env = Env::new();
+    let repo = pictures_repo(&env, "pictures", HEXAGON);
+    add(&env.core, &repo.url()).expect("add");
+    let p = preview_install(&env.core, MARKET, PICTURES).expect("preview");
+    install_pending(&env.core, &p.token, Instant::now()).expect("install");
+    let path = format!("/{PICTURES}/images/shape.png");
+    assert_eq!(request(&env, &path).status(), StatusCode::OK);
+
+    // Same length, one byte changed, after the snapshot's check.
+    let rec = with_store(&env.core, |s| s.installed_activity(PICTURES))
+        .expect("store")
+        .expect("record");
+    let file = env
+        .install_dir(PICTURES, &rec.commit_sha)
+        .join("images/shape.png");
+    let mut bytes = std::fs::read(&file).expect("read");
+    let last = bytes.len() - 1;
+    bytes[last] ^= 0xFF;
+    std::fs::write(&file, &bytes).expect("tamper");
+
+    let refused = request(&env, &path);
+    assert_eq!(refused.status(), StatusCode::NOT_FOUND);
+    assert_ne!(refused.body().as_slice(), bytes.as_slice());
+    let item = manage_item(&env, PICTURES);
+    assert_eq!(item.problem, Some("tampered"));
+    assert!(!item.enabled);
+    assert!(!listed_ids(&env).contains(&PICTURES.to_owned()));
 }
 
 #[test]

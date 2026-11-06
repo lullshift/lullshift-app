@@ -2,16 +2,18 @@
 //! (ADR-015). Installs live at `<install root>/<activity id>/<commit>/` and are never run from
 //! the cache.
 
+use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 use crate::error::{Error, PackError};
 use crate::manifest::valid_id;
-use crate::pack::{InstallPreview, Kind, MAX_FILES, PreparedPack, pack_digest};
+use crate::pack::{InstallPreview, Kind, MAX_FILES, PreparedPack, digest_of_hashes, pack_digest};
 use crate::validate::{Commit, windows_reserved};
 
 /// A pack written to disk.
@@ -126,18 +128,67 @@ fn write_all(tmp: &Path, pack: &PreparedPack) -> Result<(), Error> {
 /// isn't a plain file or folder (links, devices) makes it unreadable; extra, missing or changed
 /// files make it a mismatch. Serve an installed activity only when this is `Ok`.
 pub fn verify_install(dir: &Path, expected: &str) -> Result<(), VerifyError> {
-    verified_files(dir, expected).map(|_| ())
+    verified_hashes(dir, expected).map(|_| ())
 }
 
-/// Like [`verify_install`], but returns the bytes that were hashed, as `(relative path, bytes)`.
-/// Callers use these bytes, never a second read of the folder, so a file swapped on disk after
-/// the check is not served (security review L4).
-pub fn verified_files(dir: &Path, expected: &str) -> Result<Vec<(String, Vec<u8>)>, VerifyError> {
-    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-    collect(dir, "", &mut files, 0)?;
-    let digest = pack_digest(files.iter().map(|(p, b)| (p.as_str(), b.as_slice())));
+/// The length and SHA-256 of one installed file, taken while the whole folder matched the digest
+/// recorded at install.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FileHash {
+    len: u64,
+    sha256: [u8; 32],
+}
+
+/// Every file of a verified install by relative path, with its length and hash. Holds no file
+/// content (decision 18.5): each file is read again, and hashed again, every time it is used,
+/// and only bytes that still match are returned.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct VerifiedHashes(BTreeMap<String, FileHash>);
+
+impl VerifiedHashes {
+    /// True if `rel` is one of the install's files.
+    pub fn contains(&self, rel: &str) -> bool {
+        self.0.contains_key(rel)
+    }
+
+    /// Reads `rel` from `dir` now and returns its bytes only if they still have the length and
+    /// hash recorded at verification. `Ok(None)`: not a file of this install, or larger than
+    /// `max`. `Err(Mismatch)`: it changed (or became a link or folder); `Err(Unreadable)`: it
+    /// can't be read. The bytes returned are the bytes hashed, never a second read.
+    pub fn read(&self, dir: &Path, rel: &str, max: usize) -> Result<Option<Vec<u8>>, VerifyError> {
+        let Some(want) = self.0.get(rel) else {
+            return Ok(None);
+        };
+        if usize::try_from(want.len).map_or(true, |l| l > max) {
+            return Ok(None);
+        }
+        let path = dir.join(rel);
+        // symlink_metadata: a link put in its place is never followed.
+        let meta = fs::symlink_metadata(&path).map_err(|_| VerifyError::Unreadable)?;
+        if !meta.is_file() || meta.len() != want.len {
+            return Err(VerifyError::Mismatch);
+        }
+        let mut bytes = Vec::with_capacity(usize::try_from(want.len).unwrap_or(0));
+        fs::File::open(&path)
+            .and_then(|f| f.take(want.len.saturating_add(1)).read_to_end(&mut bytes))
+            .map_err(|_| VerifyError::Unreadable)?;
+        let got: [u8; 32] = Sha256::digest(&bytes).into();
+        if bytes.len() as u64 != want.len || got != want.sha256 {
+            return Err(VerifyError::Mismatch);
+        }
+        Ok(Some(bytes))
+    }
+}
+
+/// Reads and hashes every file of an installed folder, one at a time, and returns their hashes
+/// if the folder matches `expected` (the digest recorded at install). No file content is kept.
+pub fn verified_hashes(dir: &Path, expected: &str) -> Result<VerifiedHashes, VerifyError> {
+    let mut files: BTreeMap<String, FileHash> = BTreeMap::new();
+    let mut total = 0_u64;
+    collect(dir, "", &mut files, &mut total, 0)?;
+    let digest = digest_of_hashes(files.iter().map(|(p, h)| (p.as_str(), h.len, &h.sha256)));
     if digest == expected {
-        Ok(files)
+        Ok(VerifiedHashes(files))
     } else {
         Err(VerifyError::Mismatch)
     }
@@ -146,7 +197,8 @@ pub fn verified_files(dir: &Path, expected: &str) -> Result<Vec<(String, Vec<u8>
 fn collect(
     dir: &Path,
     prefix: &str,
-    out: &mut Vec<(String, Vec<u8>)>,
+    out: &mut BTreeMap<String, FileHash>,
+    total: &mut u64,
     depth: usize,
 ) -> Result<(), VerifyError> {
     if depth > 8 {
@@ -167,19 +219,23 @@ fn collect(
             format!("{prefix}/{name}")
         };
         if meta.is_dir() {
-            collect(&entry.path(), &rel, out, depth + 1)?;
+            collect(&entry.path(), &rel, out, total, depth + 1)?;
         } else if meta.is_file() {
-            let held: u64 = out.iter().map(|(_, b)| b.len() as u64).sum();
             if out.len() >= MAX_FILES
                 || meta.len() > crate::pack::MAX_FILE_BYTES
-                || held + meta.len() > crate::pack::MAX_PACK_BYTES
+                || *total + meta.len() > crate::pack::MAX_PACK_BYTES
             {
                 return Err(VerifyError::Mismatch);
             }
-            out.push((
+            let bytes = fs::read(entry.path()).map_err(|_| VerifyError::Unreadable)?;
+            *total += bytes.len() as u64;
+            out.insert(
                 rel,
-                fs::read(entry.path()).map_err(|_| VerifyError::Unreadable)?,
-            ));
+                FileHash {
+                    len: bytes.len() as u64,
+                    sha256: Sha256::digest(&bytes).into(),
+                },
+            );
         } else {
             return Err(VerifyError::Unreadable);
         }

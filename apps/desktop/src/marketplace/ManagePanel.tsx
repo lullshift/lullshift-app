@@ -134,7 +134,7 @@ export function ManagePanel({ onChanged }: Props) {
                 {item.problem && (
                   <Banner tone="attention">
                     <strong>
-                      {item.problem === "tampered" ? "Changed after install. " : "Engine missing. "}
+                      {item.problem === "tampered" ? "Damaged, reinstall it. " : "Engine missing. "}
                     </strong>
                     {problemText(item.problem)}
                   </Banner>

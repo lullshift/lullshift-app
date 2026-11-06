@@ -193,16 +193,28 @@ pub(crate) fn check_listing(entries: &[TreeEntry]) -> Result<Vec<Listed>, PackEr
 /// SHA-256 over the canonical file list: files sorted by path, each as path, length and the
 /// SHA-256 of its bytes. Any change to any file, a missing file or an extra file changes it.
 pub fn pack_digest<'a>(files: impl IntoIterator<Item = (&'a str, &'a [u8])>) -> String {
-    let mut list: Vec<(&str, &[u8])> = files.into_iter().collect();
+    let hashed: Vec<(&str, u64, [u8; 32])> = files
+        .into_iter()
+        .map(|(p, b)| (p, b.len() as u64, Sha256::digest(b).into()))
+        .collect();
+    digest_of_hashes(hashed.iter().map(|(p, l, h)| (*p, *l, h)))
+}
+
+/// [`pack_digest`] from each file's length and SHA-256, so a whole install can be checked
+/// without keeping its bytes.
+pub(crate) fn digest_of_hashes<'a>(
+    files: impl IntoIterator<Item = (&'a str, u64, &'a [u8; 32])>,
+) -> String {
+    let mut list: Vec<(&str, u64, &[u8; 32])> = files.into_iter().collect();
     list.sort_by(|a, b| a.0.cmp(b.0));
     let mut h = Sha256::new();
     h.update(b"lullshift-pack-digest-v1\n");
-    for (path, bytes) in list {
+    for (path, len, file_hash) in list {
         h.update(path.as_bytes());
         h.update([0]);
-        h.update(bytes.len().to_string().as_bytes());
+        h.update(len.to_string().as_bytes());
         h.update([0]);
-        h.update(hex(&Sha256::digest(bytes)).as_bytes());
+        h.update(hex(file_hash).as_bytes());
         h.update(b"\n");
     }
     hex(&h.finalize())

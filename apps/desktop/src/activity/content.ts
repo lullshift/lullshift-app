@@ -59,6 +59,12 @@ export function describeContentError(error: unknown, engine: string | null): Con
         message: "This pack has a picture that didn't pass Lullshift's checks, so it didn't start.",
         detail,
       };
+    case "damaged":
+      return {
+        message:
+          "This pack's files changed on disk since it was installed, so Lullshift turned it off. Reinstall it to play again.",
+        detail: "",
+      };
     case "data_missing":
     case "data_not_json":
     case "data_too_large":

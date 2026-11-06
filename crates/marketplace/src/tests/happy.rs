@@ -6,7 +6,7 @@ use crate::Installed;
 use crate::index::{EntrySource, IndexEntry};
 use crate::install::{
     InstalledSummary, VerifyError, diff_update, install, install_dir, remove_install,
-    verify_install,
+    verified_hashes, verify_install,
 };
 use crate::pack::{Kind, PrepareRequest};
 use crate::repo::MarketplaceRef;
@@ -245,6 +245,86 @@ fn the_digest_catches_tampering() {
     );
     std::fs::remove_dir_all(&dir).expect("rm");
     assert_eq!(verify_install(&dir, &digest), Err(VerifyError::Unreadable));
+}
+
+#[test]
+fn each_read_rehashes_the_file_and_refuses_one_that_changed_since_the_check() {
+    // Decision 18.5: nothing is kept in memory but hashes; every use reads and hashes again.
+    let env = Env::new();
+    let (src, _) = market_repo(&env, "1.0.0", &[]);
+    let pack = pipeline(&env, &src, ID, false).expect("prepare");
+    let installed = install(&env.install_root(), &pack).expect("install");
+    let (dir, digest) = (installed.dir, installed.digest);
+    let hashes = verified_hashes(&dir, &digest).expect("verified");
+    let deck = std::fs::read(dir.join("deck.json")).expect("read");
+    assert!(hashes.contains("deck.json") && hashes.contains("manifest.json"));
+    assert!(!hashes.contains("../deck.json") && !hashes.contains("nope.json"));
+    assert_eq!(
+        hashes.read(&dir, "deck.json", 1 << 20).expect("read"),
+        Some(deck.clone())
+    );
+    // Not one of its files, or larger than the caller allows: nothing, and not an error.
+    assert_eq!(hashes.read(&dir, "nope.json", 1 << 20), Ok(None));
+    assert_eq!(hashes.read(&dir, "deck.json", 3), Ok(None));
+
+    // Same length, different bytes: refused.
+    let mut same_len = deck.clone();
+    same_len[0] ^= 0x20;
+    std::fs::write(dir.join("deck.json"), &same_len).expect("tamper");
+    assert_eq!(
+        hashes.read(&dir, "deck.json", 1 << 20),
+        Err(VerifyError::Mismatch)
+    );
+    // Longer: refused.
+    let mut longer = deck.clone();
+    longer.extend_from_slice(b"  ");
+    std::fs::write(dir.join("deck.json"), &longer).expect("tamper");
+    assert_eq!(
+        hashes.read(&dir, "deck.json", 1 << 20),
+        Err(VerifyError::Mismatch)
+    );
+    // Replaced by a folder: refused; removed: unreadable.
+    std::fs::remove_file(dir.join("deck.json")).expect("rm");
+    std::fs::create_dir(dir.join("deck.json")).expect("folder");
+    assert_eq!(
+        hashes.read(&dir, "deck.json", 1 << 20),
+        Err(VerifyError::Mismatch)
+    );
+    std::fs::remove_dir(dir.join("deck.json")).expect("rm folder");
+    assert_eq!(
+        hashes.read(&dir, "deck.json", 1 << 20),
+        Err(VerifyError::Unreadable)
+    );
+    // Restored: served again.
+    std::fs::write(dir.join("deck.json"), &deck).expect("restore");
+    assert_eq!(
+        hashes.read(&dir, "deck.json", 1 << 20).expect("read"),
+        Some(deck)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_swapped_in_after_the_check_is_refused_on_read() {
+    let env = Env::new();
+    let (src, _) = market_repo(&env, "1.0.0", &[]);
+    let pack = pipeline(&env, &src, ID, false).expect("prepare");
+    let installed = install(&env.install_root(), &pack).expect("install");
+    let hashes = verified_hashes(&installed.dir, &installed.digest).expect("verified");
+    let deck = installed.dir.join("deck.json");
+    let copy = installed
+        .dir
+        .parent()
+        .expect("parent")
+        .join("deck-copy.json");
+    std::fs::copy(&deck, &copy).expect("copy");
+    std::fs::remove_file(&deck).expect("rm");
+    std::os::unix::fs::symlink(&copy, &deck).expect("link");
+    assert_eq!(
+        hashes.read(&installed.dir, "deck.json", 1 << 20),
+        Err(VerifyError::Mismatch),
+        "even a link to identical bytes is refused"
+    );
 }
 
 #[cfg(unix)]

@@ -4,30 +4,33 @@
 //!
 //! - which bundled activities the user disabled,
 //! - which installed activities are enabled, still match their install digest and can run on a
-//!   bundled engine, with a pack's checked data held in memory,
+//!   bundled engine,
 //! - a [`ManageItem`] for every bundled and installed activity, disabled or broken ones included.
 //!
 //! An installed activity is never read from the marketplace cache: only from
-//! `<app data>/installed/<id>/<commit>/`, and only after `verify_install` agreed with the digest
-//! recorded at install. The check is cached per `(id, commit, digest)` for the session; the cache
-//! entries of an activity are dropped when it is installed, updated or uninstalled
-//! ([`Library::invalidate`]). A digest mismatch is never cached, disables the activity in the
-//! store and is reported as `tampered`.
+//! `<app data>/installed/<id>/<commit>/`. Building a snapshot reads and hashes every installed
+//! file against the digest recorded at install and keeps only the per-file hashes, never file
+//! content (decision 18.5). Every later use (the manifest, a pack's data, its preview, an app's
+//! files) reads the file again and hashes it again; bytes that no longer match are never served,
+//! the activity is turned off and shown as damaged (`tampered`), and the snapshot is rebuilt.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 use local_store::{ActivityKind, InstalledActivity};
 use marketplace::manifest::{Manifest, parse_manifest};
-use marketplace::{VerifyError, install_dir, third_party_code_allowed, verified_files};
+use marketplace::{
+    VerifiedHashes, VerifyError, install_dir, third_party_code_allowed, verified_hashes,
+};
 use serde::Serialize;
 use serde_json::Value;
 use time::OffsetDateTime;
 
 use super::{
-    Activity, DATA_MAX, Role, catalog, check_images, find_engine, pack_image, validate_data,
+    Activity, ContentError, DATA_MAX, Role, catalog, check_images, find_engine, listed_image_type,
+    validate_data,
 };
 use crate::Core;
 
@@ -43,23 +46,22 @@ pub(crate) enum ServedRole {
     /// A sandboxed web app with its own files in `dir`. (Unreachable in this release: code from
     /// third-party marketplaces cannot be installed.)
     App,
-    /// A content pack: the bundled engine's files, plus the pack's data, checked against the
-    /// engine's schema.
+    /// A content pack: the bundled engine's files, plus the pack's data file, read, re-hashed
+    /// and checked against the engine's schema on every load.
     Pack {
         engine: &'static Activity,
-        data: Value,
+        data_path: String,
     },
 }
 
 /// One installed activity that may be shown and served.
 pub(crate) struct Served {
     pub manifest: Manifest,
-    /// Bytes that were hashed by the install check, and the only bytes ever served from this
-    /// install (a file swapped on disk afterwards is never read; review L4). An app keeps all of
-    /// its files (at most 20 MiB, and apps from third parties cannot be installed in this
-    /// release); a pack keeps only its preview image and the pictures its manifest lists (S12-T11).
-    /// Held for the session with the check.
-    pub verified: BTreeMap<String, Vec<u8>>,
+    /// The install folder, and the length and hash of each of its files from the snapshot's
+    /// check. No file content is held (pictures included); [`VerifiedHashes::read`] reads and
+    /// hashes again on every use.
+    dir: PathBuf,
+    hashes: VerifiedHashes,
     pub commit: String,
     pub marketplace_id: String,
     pub role: ServedRole,
@@ -113,25 +115,19 @@ pub(crate) struct Snapshot {
     pub manage: Vec<ManageItem>,
 }
 
-type Key = (String, String, String);
-
-/// A checked install, remembered for the session.
-#[derive(Clone)]
+/// A checked install.
 struct Evaluated {
     name: String,
     version: String,
     outcome: Result<Arc<Served>, Problem>,
 }
 
-/// The session state: the current snapshot and the verification cache.
+/// The session state: the current snapshot. Nothing else is remembered between builds.
 #[derive(Default)]
 pub(crate) struct Library {
     /// Bumped by every invalidation, so a snapshot built from older data is never kept.
     generation: AtomicU64,
     snapshot: RwLock<Option<Arc<Snapshot>>>,
-    /// `(id, commit, digest)` -> result of the digest and pack-data checks. Mismatches are
-    /// never stored here.
-    checked: Mutex<HashMap<Key, Evaluated>>,
 }
 
 impl Library {
@@ -141,7 +137,7 @@ impl Library {
             return Ok(s);
         }
         let started = self.generation.load(Ordering::SeqCst);
-        let built = Arc::new(build(core, self)?);
+        let built = Arc::new(build(core)?);
         if self.generation.load(Ordering::SeqCst) == started
             && let Ok(mut slot) = self.snapshot.write()
         {
@@ -155,37 +151,26 @@ impl Library {
         self.snapshot.read().ok().and_then(|s| s.clone())
     }
 
-    /// Drops the snapshot and, for `activity_id`, its cached verification (install, update and
-    /// uninstall call this); with `None` only the snapshot goes (enable, disable).
-    pub(crate) fn invalidate(&self, activity_id: Option<&str>) {
+    /// Drops the snapshot, so the next use rebuilds it and checks every install again (install,
+    /// update, uninstall, enable, disable, and a file found damaged while serving).
+    pub(crate) fn invalidate(&self) {
         self.generation.fetch_add(1, Ordering::SeqCst);
-        if let Some(id) = activity_id
-            && let Ok(mut cache) = self.checked.lock()
-        {
-            cache.retain(|(cached, _, _), _| cached != id);
-        }
         if let Ok(mut slot) = self.snapshot.write() {
             *slot = None;
         }
     }
+}
 
-    /// Forgets every verification, as a fresh session would. For tests.
-    #[cfg(test)]
-    pub(crate) fn restart(&self) {
-        self.generation.fetch_add(1, Ordering::SeqCst);
-        if let Ok(mut cache) = self.checked.lock() {
-            cache.clear();
-        }
-        if let Ok(mut slot) = self.snapshot.write() {
-            *slot = None;
-        }
+/// A file of an installed activity no longer matches what was checked: it is turned off in the
+/// store and the snapshot is dropped, so the next build shows it as damaged (`tampered`) until
+/// it is reinstalled.
+pub(crate) fn mark_damaged(core: &Core, activity_id: &str) {
+    if let Ok(guard) = core.store.lock()
+        && let Some(store) = guard.as_ref()
+    {
+        let _ = store.set_installed_enabled(activity_id, false, OffsetDateTime::now_utc());
     }
-
-    /// How many verifications are cached. For tests.
-    #[cfg(test)]
-    pub(crate) fn cached_checks(&self) -> usize {
-        self.checked.lock().map_or(0, |c| c.len())
-    }
+    core.library.invalidate();
 }
 
 /// The install root, `<app data>/installed`.
@@ -207,12 +192,10 @@ fn catalog_has(id: &str) -> bool {
     catalog().contains_key(id)
 }
 
-/// The manifest among the bytes the install check hashed.
-fn verified_manifest(files: &[(String, Vec<u8>)]) -> Option<Manifest> {
-    let (_, bytes) = files
-        .iter()
-        .find(|(p, b)| p == "manifest.json" && b.len() <= MANIFEST_MAX)?;
-    parse_manifest(std::str::from_utf8(bytes).ok()?)
+/// The manifest, read and hashed again against the check.
+fn verified_manifest(dir: &Path, hashes: &VerifiedHashes) -> Option<Manifest> {
+    let bytes = hashes.read(dir, "manifest.json", MANIFEST_MAX).ok()??;
+    parse_manifest(std::str::from_utf8(&bytes).ok()?)
 }
 
 fn read_manifest(dir: &Path) -> Option<Manifest> {
@@ -220,8 +203,8 @@ fn read_manifest(dir: &Path) -> Option<Manifest> {
     parse_manifest(std::str::from_utf8(&bytes).ok()?)
 }
 
-/// Checks one install: digest, manifest, and for a pack its engine and data.
-fn evaluate(core: &Core, lib: &Library, rec: &InstalledActivity) -> Evaluated {
+/// Checks one install: digest, manifest, and for a pack its engine and data. Reads every file.
+fn evaluate(core: &Core, rec: &InstalledActivity) -> Evaluated {
     let fallback = |outcome| Evaluated {
         name: rec.activity_id.clone(),
         version: rec.manifest_version.clone(),
@@ -238,16 +221,8 @@ fn evaluate(core: &Core, lib: &Library, rec: &InstalledActivity) -> Evaluated {
     let Ok(dir) = install_dir(&install_root(core), &rec.activity_id, &rec.commit_sha) else {
         return fallback(Err(Problem::Tampered));
     };
-    let key = (
-        rec.activity_id.clone(),
-        rec.commit_sha.clone(),
-        rec.digest.clone(),
-    );
-    if let Some(hit) = lib.checked.lock().ok().and_then(|c| c.get(&key).cloned()) {
-        return hit;
-    }
-    let files = match verified_files(&dir, &rec.digest) {
-        Ok(files) => files,
+    let hashes = match verified_hashes(&dir, &rec.digest) {
+        Ok(hashes) => hashes,
         Err(VerifyError::Unreadable | VerifyError::Mismatch) => {
             let name = read_manifest(&dir).map_or_else(|| rec.activity_id.clone(), |m| m.name);
             return Evaluated {
@@ -257,7 +232,7 @@ fn evaluate(core: &Core, lib: &Library, rec: &InstalledActivity) -> Evaluated {
             };
         }
     };
-    let Some(manifest) = verified_manifest(&files).filter(|m| {
+    let Some(manifest) = verified_manifest(&dir, &hashes).filter(|m| {
         m.id == rec.activity_id && m.kind == rec.kind.as_str() && m.engine == rec.engine
     }) else {
         return fallback(Err(Problem::Tampered));
@@ -266,62 +241,66 @@ fn evaluate(core: &Core, lib: &Library, rec: &InstalledActivity) -> Evaluated {
     let version = manifest.version.clone();
     let role = match rec.kind {
         ActivityKind::App => Ok(ServedRole::App),
-        ActivityKind::Content => pack_role(&manifest, &files),
+        ActivityKind::Content => pack_role(&manifest, &dir, &hashes),
     };
     let outcome = role.map(|role| {
-        let verified: BTreeMap<String, Vec<u8>> = match role {
-            ServedRole::App => files.into_iter().collect(),
-            ServedRole::Pack { .. } => files
-                .into_iter()
-                .filter(|(p, _)| {
-                    manifest.preview.as_deref() == Some(p.as_str()) || manifest.images.contains(p)
-                })
-                .collect(),
-        };
         Arc::new(Served {
             manifest,
-            verified,
+            dir,
+            hashes,
             commit: rec.commit_sha.clone(),
             marketplace_id: rec.marketplace_id.clone(),
             role,
         })
     });
-    let evaluated = Evaluated {
+    Evaluated {
         name,
         version,
         outcome,
-    };
-    if let Ok(mut cache) = lib.checked.lock() {
-        cache.insert(key, evaluated.clone());
     }
-    evaluated
 }
 
 /// A pack's engine (must be bundled and usable) and its data, checked against the engine's
 /// schema exactly as for a bundled pack.
-fn pack_role(manifest: &Manifest, files: &[(String, Vec<u8>)]) -> Result<ServedRole, Problem> {
+fn pack_role(
+    manifest: &Manifest,
+    dir: &Path,
+    hashes: &VerifiedHashes,
+) -> Result<ServedRole, Problem> {
     let reference = manifest.engine.as_deref().unwrap_or_default();
     let (engine, schema) = find_engine(reference).map_err(|_| Problem::MissingEngine)?;
     let data_path = manifest.data.as_deref().unwrap_or_default();
-    let bytes = files
-        .iter()
-        .find(|(p, b)| p == data_path && b.len() <= DATA_MAX + 1)
-        .map(|(_, b)| b.as_slice())
+    let bytes = hashes
+        .read(dir, data_path, DATA_MAX + 1)
+        .map_err(|_| Problem::Tampered)?
         .ok_or(Problem::MissingEngine)?;
-    let data = validate_data(schema, data_path, bytes).map_err(|_| Problem::MissingEngine)?;
-    // Pictures were checked at install; check them again on the bytes that were hashed, so a
-    // pack installed by an older release or under older rules can't serve one that fails now.
+    let data = validate_data(schema, data_path, &bytes).map_err(|_| Problem::MissingEngine)?;
+    // Pictures were checked at install; check them again here, so a pack installed by an older
+    // release or under older rules can't serve one that fails now. They are read and hashed
+    // like every other file, and read and hashed again each time one is served.
+    let mut pictures: Vec<(String, Vec<u8>)> = Vec::with_capacity(manifest.images.len());
+    for path in &manifest.images {
+        if let Some(b) = hashes
+            .read(dir, path, FILE_MAX)
+            .map_err(|_| Problem::Tampered)?
+        {
+            pictures.push((path.clone(), b));
+        }
+    }
     check_images(manifest, &data, |path| {
-        files
+        pictures
             .iter()
             .find(|(p, _)| p == path)
             .map(|(_, b)| b.as_slice())
     })
     .map_err(|_| Problem::MissingEngine)?;
-    Ok(ServedRole::Pack { engine, data })
+    Ok(ServedRole::Pack {
+        engine,
+        data_path: data_path.to_owned(),
+    })
 }
 
-fn build(core: &Core, lib: &Library) -> Result<Snapshot, String> {
+fn build(core: &Core) -> Result<Snapshot, String> {
     let (disabled, records, notes) = {
         let guard = core.store.lock().map_err(|_| "internal")?;
         let store = guard.as_ref().ok_or("store_unavailable")?;
@@ -364,7 +343,7 @@ fn build(core: &Core, lib: &Library) -> Result<Snapshot, String> {
         .collect();
     for rec in &records {
         let shadowed = catalog_has(&rec.activity_id);
-        let evaluated = evaluate(core, lib, rec);
+        let evaluated = evaluate(core, rec);
         let problem = evaluated.outcome.as_ref().err().copied();
         let mut enabled = rec.enabled && !shadowed;
         // A copy that changed on disk stops running now and stays off until it verifies again.
@@ -404,7 +383,7 @@ pub(crate) fn verify_for_enable(core: &Core, rec: &InstalledActivity) -> Result<
     if catalog_has(&rec.activity_id) {
         return Err(Problem::Tampered);
     }
-    evaluate(core, &core.library, rec).outcome.map(|_| ())
+    evaluate(core, rec).outcome.map(|_| ())
 }
 
 /// Whether a manifest declares the storage permission.
@@ -425,39 +404,59 @@ impl Served {
     }
 
     /// The bytes and content type of a file this activity serves at `/<id>/<file>`. A pack
-    /// serves its engine's files, plus the pictures its manifest lists under `images/` (the
-    /// checked, hashed bytes; never an engine file there); an app serves regular files from its
-    /// install folder.
+    /// serves its engine's files, plus the pictures its manifest lists under `images/` (never an
+    /// engine file there); an app serves its own install files. Installed files (pictures
+    /// included) are read and hashed again now. `Err` means one no longer matches its install
+    /// check: serve nothing and [`mark_damaged`].
     pub(crate) fn file(
         &self,
         file: &str,
         content_type: &'static str,
-    ) -> Option<(std::borrow::Cow<'static, [u8]>, &'static str)> {
+    ) -> Result<Option<(std::borrow::Cow<'static, [u8]>, &'static str)>, VerifyError> {
         match &self.role {
             ServedRole::Pack { .. } if file.starts_with(pack_media::IMAGE_DIR) => {
-                pack_image(&self.manifest, file, |p| {
-                    self.verified
-                        .get(p)
-                        .map(|b| std::borrow::Cow::Owned(b.clone()))
-                })
+                let Some(image_type) = listed_image_type(&self.manifest, file) else {
+                    return Ok(None);
+                };
+                Ok(self
+                    .hashes
+                    .read(&self.dir, file, FILE_MAX)?
+                    .map(|b| (std::borrow::Cow::Owned(b), image_type)))
             }
-            ServedRole::Pack { engine, .. } => engine
+            ServedRole::Pack { engine, .. } => Ok(engine
                 .dir
                 .get_file(engine.dir.path().join(file))
-                .map(|f| (std::borrow::Cow::Borrowed(f.contents()), content_type)),
-            ServedRole::App => self
-                .verified
-                .get(file)
-                .filter(|b| b.len() <= FILE_MAX)
-                .map(|b| (std::borrow::Cow::Owned(b.clone()), content_type)),
+                .map(|f| (std::borrow::Cow::Borrowed(f.contents()), content_type))),
+            ServedRole::App => Ok(self
+                .hashes
+                .read(&self.dir, file, FILE_MAX)?
+                .map(|b| (std::borrow::Cow::Owned(b), content_type))),
         }
     }
 
-    /// The preview image bytes, if the manifest names one (always the activity's own file).
-    pub(crate) fn preview_bytes(&self, max: usize) -> Option<Vec<u8>> {
-        self.verified
-            .get(self.manifest.preview.as_deref()?)
-            .filter(|b| b.len() <= max)
-            .cloned()
+    /// The preview image bytes, if the manifest names one (always the activity's own file),
+    /// read and hashed again now.
+    pub(crate) fn preview_bytes(&self, max: usize) -> Result<Option<Vec<u8>>, VerifyError> {
+        match self.manifest.preview.as_deref() {
+            Some(rel) => self.hashes.read(&self.dir, rel, max),
+            None => Ok(None),
+        }
+    }
+
+    /// What the activity gets as `init.content`: null for an app; for a pack, its data file read
+    /// and hashed again now, then checked against its engine's schema. The outer `Err` means the
+    /// file no longer matches the install check.
+    pub(crate) fn pack_data(&self) -> Result<Result<Value, ContentError>, VerifyError> {
+        let ServedRole::Pack { data_path, .. } = &self.role else {
+            return Ok(Ok(Value::Null));
+        };
+        let Some(bytes) = self.hashes.read(&self.dir, data_path, DATA_MAX + 1)? else {
+            return Ok(Err(ContentError::new(
+                "data_missing",
+                format!("{data_path} is missing"),
+            )));
+        };
+        let reference = self.manifest.engine.as_deref().unwrap_or_default();
+        Ok(find_engine(reference).and_then(|(_, schema)| validate_data(schema, data_path, &bytes)))
     }
 }

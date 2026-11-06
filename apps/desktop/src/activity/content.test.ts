@@ -82,6 +82,7 @@ describe("describeContentError", () => {
       "data_not_json",
       "data_too_large",
       "image_invalid",
+      "damaged",
       "unknown_activity",
       "internal",
     ]) {
@@ -89,6 +90,12 @@ describe("describeContentError", () => {
       expect(p.message, code).toMatch(/^This pack/);
       expect(p.message, code).not.toMatch(/error|exception|undefined|null/i);
     }
+  });
+
+  it("tells the user to reinstall a pack whose files changed on disk", () => {
+    const p = describeContentError({ code: "damaged", detail: "x" }, null);
+    expect(p.message).toMatch(/changed on disk/);
+    expect(p.message).toMatch(/Reinstall/);
   });
 
   it("keeps the detail short", () => {
