@@ -11,6 +11,7 @@ Build games and activities for Lullshift and share them from a Git repository. E
 | [CLI reference](cli.md) | `create`, `validate`, `simulate`, `dev`, `pack`, `marketplace init` |
 | [Sandbox rules](sandbox.md) | What an activity can't do, and why |
 | [Publishing a marketplace](publishing-a-marketplace.md) | `.lullshift/marketplace.json`, pinning and review |
+| [Using an AI tool](ai-tools.md) | Creator skills for Claude Code, Codex, Cursor and OpenCode |
 
 ## Three kinds of activity
 
@@ -45,8 +46,8 @@ Describe, generate, preview (`dev`), simulate, validate, pack, then publish to a
 
 Generated code is untrusted, whichever tool made it. The sandbox and the CLI checks decide, not the generator.
 
-- **Claude Code:** use the `/activity-creator` skill (`.claude/skills/activity-creator/SKILL.md`) and `/marketplace-publishing` for marketplace repositories.
-- **Other tools:** give them `creator/ACTIVITY_CREATOR_PROMPT.md`, `packages/activity-sdk/README.md` and `reference/ACTIVITY_MANIFEST_V1.schema.json`. See `creator/TOOL_COMPATIBILITY.md`.
+- **Claude Code, Codex, Cursor and OpenCode:** use the `activity-creator` skill, and `marketplace-publishing` for marketplace repositories. Both live in `.agents/skills/`. See [Using an AI tool](ai-tools.md) for how each tool finds and runs them.
+- **Other tools:** give them `creator/ACTIVITY_CREATOR_PROMPT.md`, `packages/activity-sdk/README.md` and `reference/ACTIVITY_MANIFEST_V1.schema.json`.
 
 The tool, or you, must run `validate` and `simulate` and read the real output. Don't treat an activity as done until both pass.
 

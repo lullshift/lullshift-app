@@ -294,7 +294,7 @@ Every invocation is hardened:
 - **Kits** (`packages/activity-kits/*`): optional; see §6.5.
 - **CLI** (`tools/lullshift-cli`): `create` (scaffold app or content pack from templates), `dev` (local preview with the host bridge emulated), `simulate`, `validate` (same validator as the app, incl. engine data schemas), `pack` (deterministic `.lullpack`). There is **no `publish`**: publishing is pushing to a Git repository. An optional `lullshift marketplace init` scaffolds `.lullshift/marketplace.json`. These are planned commands, not existing ones.
 - **Simulator** drives an activity through agent states and host events: `working`, `needs_attention`, `completed`, `failed`, `cancelled`, duplicate and out-of-order events, forced pause, close, crash and resume-from-snapshot.
-- **AI-assisted creation:** provider-independent prompts in `creator/`; Claude Code skill `.claude/skills/activity-creator`. Generated code is untrusted (no unrestricted fs, network or Tauri IPC). All tooling works offline with no account.
+- **AI-assisted creation:** provider-independent prompts in `creator/`; creator skills in `.agents/skills/` (Agent Skills format, read by Codex, Cursor and OpenCode; `.claude/skills/` holds pointers for Claude Code). Generated code is untrusted (no unrestricted fs, network or Tauri IPC). All tooling works offline with no account.
 
 ## 9. Context and local persistence
 

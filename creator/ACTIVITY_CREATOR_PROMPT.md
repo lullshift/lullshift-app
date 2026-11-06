@@ -1,6 +1,6 @@
 # Universal Lullshift Activity Generator Prompt
 
-Use this prompt with Claude Code, Codex, Cursor or another coding LLM. The official Claude Code skill is `.claude/skills/activity-creator/SKILL.md`. Give the tool `packages/activity-sdk/README.md` and `reference/ACTIVITY_MANIFEST_V1.schema.json`.
+Use this prompt with Claude Code, Codex, Cursor or another coding LLM. Tools with Agent Skills support (Claude Code, Codex, Cursor, OpenCode) should use the `activity-creator` skill in `.agents/skills/` instead; see `creator/TOOL_COMPATIBILITY.md`. Give the tool `packages/activity-sdk/README.md` and `reference/ACTIVITY_MANIFEST_V1.schema.json`.
 
 > You are building a third-party **Lullshift activity**: a small static web page that runs in a sandbox. Follow `packages/activity-sdk/README.md` and `reference/ACTIVITY_MANIFEST_V1.schema.json`.
 >
