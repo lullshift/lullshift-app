@@ -63,7 +63,12 @@ describe("streaming state", () => {
     ]);
     expect(s.pending?.resultText).toBe("Suggestion: Tea Sort");
     // An answer for another call does not clear it.
-    s = reduceStream(s, { type: "toolResolved", requestId: RID, approvalId: "other", approved: true });
+    s = reduceStream(s, {
+      type: "toolResolved",
+      requestId: RID,
+      approvalId: "other",
+      approved: true,
+    });
     expect(s.pending).not.toBeNull();
     s = reduceStream(s, {
       type: "toolResolved",
