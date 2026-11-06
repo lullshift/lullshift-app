@@ -23,6 +23,12 @@ pub const HOOKS: &[(&str, Option<&str>)] = &[
     ("afterAgentResponse", None),
     ("stop", None),
     ("sessionEnd", None),
+    // Added after the adapter's first version (owner decision 23.2b). Cursor documents none of
+    // these three as able to block. Older installs have only the first six, which shows as
+    // "partly installed" until the user connects again.
+    ("postToolUseFailure", None),
+    ("subagentStop", None),
+    ("preCompact", None),
 ];
 
 #[derive(Deserialize)]
@@ -57,16 +63,25 @@ pub fn map_hook(stdin: &[u8]) -> Option<Mapped> {
     };
     let event_type = match input.hook_event_name.as_str() {
         "sessionStart" => EventType::SessionStarted,
-        "beforeSubmitPrompt" | "postToolUse" | "afterAgentResponse" => EventType::Working,
+        // A failed tool call or a finished subagent neither ends nor fails the session; the
+        // agent is still working. Compaction is the agent tidying its own context.
+        "beforeSubmitPrompt" | "postToolUse" | "afterAgentResponse" | "postToolUseFailure"
+        | "subagentStop" | "preCompact" => EventType::Working,
         // `status` is completed, aborted or error. All are the end of a turn; whether the
         // task is done isn't known (the same rule as Claude Code's Stop).
         "stop" => {
             hint("status", &input.status);
             EventType::TurnEnded
         }
+        // `reason` is an enum (completed, aborted, error, window_close, user_close). Only the
+        // word `error` changes the state; `error_message` is not declared, so never held.
         "sessionEnd" => {
             hint("reason", &input.reason);
-            EventType::SessionEnded
+            if input.reason.as_ref().and_then(Value::as_str) == Some("error") {
+                EventType::Failed
+            } else {
+                EventType::SessionEnded
+            }
         }
         _ => return None,
     };
@@ -127,6 +142,26 @@ mod tests {
                 r#""hook_event_name":"sessionEnd","reason":"window_close","final_status":"x","error_message":"SECRET""#,
                 EventType::SessionEnded,
             ),
+            (
+                r#""hook_event_name":"sessionEnd","reason":"completed","final_status":"error","error_message":"SECRET""#,
+                EventType::SessionEnded,
+            ),
+            (
+                r#""hook_event_name":"sessionEnd","reason":"error","final_status":"error","error_message":"SECRET failure text""#,
+                EventType::Failed,
+            ),
+            (
+                r#""hook_event_name":"postToolUseFailure","tool_name":"Shell","error_message":"SECRET","failure_type":"error""#,
+                EventType::Working,
+            ),
+            (
+                r#""hook_event_name":"subagentStop","status":"error","summary":"SECRET""#,
+                EventType::Working,
+            ),
+            (
+                r#""hook_event_name":"preCompact","trigger":"auto","context_usage_percent":91"#,
+                EventType::Working,
+            ),
         ];
         for (body, expect) in cases {
             let m = map(&format!("{{{COMMON},{body}}}")).expect(body);
@@ -148,6 +183,33 @@ mod tests {
         .expect("m");
         assert_eq!(m.metadata["status"], "aborted");
         assert!(!CAPABILITIES.contains(&"attention"));
+        let m = map(&format!(
+            "{{{COMMON},\"hook_event_name\":\"sessionEnd\",\"reason\":\"error\",\"error_message\":\"SECRET\"}}"
+        ))
+        .expect("m");
+        assert_eq!(m.metadata["reason"], "error", "the enum hint is kept");
+    }
+
+    #[test]
+    fn registers_only_hooks_that_cannot_block() {
+        let names: Vec<&str> = HOOKS.iter().map(|(e, _)| *e).collect();
+        for blocking in [
+            "subagentStart",
+            "preToolUse",
+            "beforeShellExecution",
+            "beforeMCPExecution",
+            "beforeReadFile",
+            "beforeTabFileRead",
+        ] {
+            assert!(!names.contains(&blocking), "{blocking} can block");
+        }
+        for name in &names {
+            assert!(
+                map(&format!("{{{COMMON},\"hook_event_name\":\"{name}\"}}")).is_some(),
+                "{name} is registered but not mapped"
+            );
+        }
+        assert_eq!(names.len(), 9);
     }
 
     #[test]
@@ -156,7 +218,7 @@ mod tests {
             "beforeShellExecution",
             "preToolUse",
             "beforeMCPExecution",
-            "subagentStop",
+            "subagentStart",
             "future",
         ] {
             assert!(

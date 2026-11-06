@@ -66,6 +66,9 @@ const HOOK_EVENTS: Record<string, string> = {
   beforeSubmitPrompt: "you send a prompt",
   postToolUse: "it finishes a step",
   afterAgentResponse: "it replies",
+  postToolUseFailure: "a step fails",
+  subagentStop: "a helper agent finishes",
+  preCompact: "it tidies its context",
   stop: "it finishes a turn",
   sessionEnd: "a session ends",
 };

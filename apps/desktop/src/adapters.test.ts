@@ -36,9 +36,20 @@ describe("Codex and Cursor integration text", () => {
   });
 
   it("describes the Codex and Cursor hook events in plain words", () => {
-    expect(hookEventText(["Interrupt", "afterAgentResponse"])).toEqual([
+    expect(
+      hookEventText([
+        "Interrupt",
+        "afterAgentResponse",
+        "postToolUseFailure",
+        "subagentStop",
+        "preCompact",
+      ]),
+    ).toEqual([
       "you stop a turn",
       "it replies",
+      "a step fails",
+      "a helper agent finishes",
+      "it tidies its context",
     ]);
   });
 });

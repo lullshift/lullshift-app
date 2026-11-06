@@ -338,11 +338,17 @@ fn cursor_install_into_an_empty_home_registers_only_non_blocking_events() {
                 "afterAgentResponse",
                 "beforeSubmitPrompt",
                 "postToolUse",
+                "postToolUseFailure",
+                "preCompact",
                 "sessionEnd",
                 "sessionStart",
-                "stop"
+                "stop",
+                "subagentStop"
             ]
         );
+        for blocking in ["subagentStart", "preToolUse", "beforeShellExecution"] {
+            assert!(v["hooks"].get(blocking).is_none(), "{blocking} can block");
+        }
         for (_, h) in cursor_ours(&v) {
             assert!(h["timeout"].as_u64().is_some_and(|t| (1..=5).contains(&t)));
             assert!(h.get("failClosed").is_none(), "never fail closed");
@@ -380,6 +386,72 @@ fn cursor_preserves_user_hooks_backs_up_and_restores_bytes() {
         UninstallOutcome::Restored
     );
     assert_eq!(fs::read_to_string(&e.file).expect("read"), CURSOR_USER);
+}
+
+/// An install made before the three failure/subagent/compaction hooks existed: only the first
+/// six events, with the current command line.
+#[test]
+fn cursor_older_six_hook_install_is_partial_and_connect_upgrades_it() {
+    const OLD: [&str; 6] = [
+        "sessionStart",
+        "beforeSubmitPrompt",
+        "postToolUse",
+        "afterAgentResponse",
+        "stop",
+        "sessionEnd",
+    ];
+    for shell in SHELLS {
+        let e = env(".cursor", Some(CURSOR_USER));
+        let cmd = cursor_cmd(&e);
+        let full =
+            cursor_install::install_for(&e.file, &e.backups, &cmd, None, shell).expect("install");
+        // Rewrite the file as the older version would have left it.
+        let mut v = json(&e.file);
+        let hooks = v["hooks"].as_object_mut().expect("hooks");
+        for added in ["postToolUseFailure", "subagentStop", "preCompact"] {
+            hooks.remove(added);
+        }
+        assert_eq!(cursor_ours(&v).len(), OLD.len());
+        fs::write(&e.file, serde_json::to_vec_pretty(&v).expect("ser")).expect("write");
+        assert_eq!(
+            cursor_install::status_for(&e.file, &cmd, shell),
+            Status::Partial,
+            "an old install shows as partly installed"
+        );
+
+        // Connect again, with the record from the old install.
+        let old_record = cursor_install::InstallRecord {
+            written_sha256: agent_adapters::claude_code::install::sha256_hex(
+                &fs::read(&e.file).expect("read"),
+            ),
+            ..full.clone()
+        };
+        let rec = cursor_install::install_for(&e.file, &e.backups, &cmd, Some(&old_record), shell)
+            .expect("upgrade");
+        assert_eq!(
+            cursor_install::status_for(&e.file, &cmd, shell),
+            Status::Installed
+        );
+        assert_eq!(cursor_ours(&json(&e.file)).len(), cursor::HOOKS.len());
+        assert_eq!(
+            json(&e.file)["hooks"]["stop"].as_array().expect("a").len(),
+            2,
+            "the user's own stop hook is kept, ours is not duplicated"
+        );
+        // And Disconnect still removes everything of ours, including the new three.
+        cursor_install::uninstall(&rec).expect("uninstall");
+        assert!(cursor_ours(&json_or_empty(&e.file)).is_empty());
+        let after = fs::read_to_string(&e.file).expect("read");
+        assert!(!after.contains("postToolUseFailure") && !after.contains("preCompact"));
+    }
+}
+
+fn json_or_empty(p: &Path) -> Value {
+    if p.exists() {
+        json(p)
+    } else {
+        serde_json::json!({"hooks": {}})
+    }
 }
 
 #[test]
