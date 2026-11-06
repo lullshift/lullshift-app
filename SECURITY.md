@@ -23,4 +23,4 @@ Lullshift treats these as security boundaries. Reports about them are especially
 
 ## Known limits
 
-Some limits are already documented and are not new reports: the WebRTC gap in the sandbox (ADR-012), and the text-only check for local network addresses in marketplace URLs (ADR-015). Ways to exploit them beyond what is described are still welcome.
+Some limits are already documented and are not new reports: the remaining WebRTC gaps in the sandbox (ADR-012, "WebRTC is off in the webview"), and the text-only check for local network addresses in marketplace URLs (ADR-015). The remaining WebRTC gaps are local overrides of the webview's arguments, and macOS and Linux not yet tested. Ways to exploit them beyond what is described are still welcome. A way for an activity to use WebRTC despite these settings is a new report.

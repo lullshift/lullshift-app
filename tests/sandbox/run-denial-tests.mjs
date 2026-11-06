@@ -16,14 +16,29 @@
 // session named sandbox-test-<time> that is then ended. It appears in the app's History.
 //
 // Exit code 0 when every check passes. Known gaps (listed in ADR-012) are reported, not failed.
+//
+// WebRTC (S12-T13): besides the probe's own checks, the runner listens on local UDP and TCP
+// ports and asks the activity frame (and a nested frame inside it, and the app page) to reach
+// them through STUN, TURN over TCP and remote ICE candidates. It also watches `netstat` for a
+// TCP connection attempt to a TEST-NET address (192.0.2.1, RFC 5737), which stands in for any
+// non-local host without needing an inbound firewall rule. Any packet or attempt fails the run.
 
 import { spawnSync } from "node:child_process";
+import { createSocket } from "node:dgram";
+import { createServer } from "node:net";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const PORT = 9333;
 const PROBE_ID = "app.lullshift.test.sandbox-probe";
-const KNOWN_GAPS = new Set(["WebRTC peer connection"]);
+// The WebRTC gap of Sprint 03 is closed (S12-T13); keep this list empty unless ADR-012 lists one.
+const KNOWN_GAPS = new Set([]);
 const withAttention = process.argv.includes("--attention");
+// The probe's WebRTC attempts, also evaluated in the app page (S12-T13).
+const RTC_JS = readFileSync(
+  new URL("../../apps/desktop/src-tauri/sandbox-probe/rtc.js", import.meta.url),
+  "utf8",
+);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -182,6 +197,62 @@ for (const r of probe.results) {
   }
 }
 check("activity origin is opaque", probe.origin === "null", probe.origin);
+
+// 1b. WebRTC egress seen from outside (S12-T13): nothing may reach a listener on this machine,
+// and no TCP connection may be attempted to a non-local address.
+{
+  const udp = createSocket("udp4");
+  let udpHits = 0;
+  udp.on("message", () => (udpHits += 1));
+  await new Promise((r) => udp.bind(0, "127.0.0.1", r));
+  let tcpHits = 0;
+  const tcp = createServer((s) => {
+    tcpHits += 1;
+    s.destroy();
+  });
+  await new Promise((r) => tcp.listen(0, "127.0.0.1", r));
+  const FAR = "192.0.2.1";
+  const cfg = JSON.stringify({ udp: udp.address().port, tcp: tcp.address().port, far: FAR });
+  // The same attempt in each realm (rtc.js): STUN and TURN-over-TCP servers, plus remote host
+  // candidates (UDP and passive TCP), for the local listeners and the TEST-NET address.
+  const farAttempts = new Set();
+  // Polls until `pending` settles, plus a second for late attempts. Windows only.
+  const watchNetstat = async (pending) => {
+    let settled = false;
+    void pending.finally(() => (settled = true));
+    if (process.platform !== "win32") return;
+    let until = Infinity;
+    while (Date.now() < until) {
+      if (settled && until === Infinity) until = Date.now() + 1000;
+      const out = spawnSync("netstat", ["-ano", "-p", "tcp"], { encoding: "utf8" }).stdout ?? "";
+      for (const line of out.split(/\r?\n/))
+        if (line.includes(`${FAR}:`)) farAttempts.add(line.trim());
+      await sleep(200);
+    }
+  };
+  const realms = [
+    ["activity frame", () => inFrame(`rtcEgress(window, ${cfg})`)],
+    // A frame nested in the activity, running rtc.js in its own realm (see probe.js).
+    ["nested frame in the activity", () => inFrame(`window.probeNestedEgress(${cfg})`)],
+    ["app page", () => main(`(() => { ${RTC_JS}\n return rtcEgress(window, ${cfg}); })()`)],
+  ];
+  for (const [realm, run] of realms) {
+    udpHits = 0;
+    tcpHits = 0;
+    farAttempts.clear();
+    const attempt = run().catch((e) => `error: ${e.message}`);
+    const [outcome] = await Promise.all([attempt, watchNetstat(attempt)]);
+    await sleep(500);
+    check(
+      `denied: WebRTC egress from the ${realm}`,
+      udpHits === 0 && tcpHits === 0 && farAttempts.size === 0,
+      `${outcome}; local UDP packets ${udpHits}, local TCP connections ${tcpHits}, ` +
+        `TCP attempts to ${FAR}: ${farAttempts.size ? [...farAttempts].join(" | ") : "none"}`,
+    );
+  }
+  udp.close();
+  tcp.close();
+}
 
 // 2. A busy activity must not freeze the app.
 void inFrame(

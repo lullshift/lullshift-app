@@ -18,7 +18,8 @@
         "minWidth": 360,
         "minHeight": 400,
         "label": "main",
-        "visible": false
+        "visible": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --webrtc-ip-handling-policy=disable_non_proxied_udp --force-webrtc-ip-handling-policy=disable_non_proxied_udp --proxy-server=http://127.0.0.1:9 --proxy-bypass-list=<-loopback>;http://tauri.localhost;http://ipc.localhost;http://lullact.localhost;http://localhost:1420"
       }
     ],
     "security": {

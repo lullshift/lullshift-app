@@ -50,6 +50,45 @@ function attemptAsync(name, fn, ms) {
 
 var REMOTE = "https://example.com/";
 
+/** A srcdoc frame nested in the probe that runs rtc.js and nested.js in its own realm. */
+function nestedFrame(onMessage) {
+  var f = document.createElement("iframe");
+  window.addEventListener("message", function (e) {
+    if (e.source === f.contentWindow && e.data && e.data.probeNested) onMessage(e.data, f);
+  });
+  f.srcdoc = '<script src="rtc.js"></script><script src="nested.js"></script>';
+  document.body.appendChild(f);
+  return f;
+}
+
+// For the runner: WebRTC egress from a nested frame's own realm (S12-T13).
+window.probeNestedEgress = function (cfg) {
+  return new Promise(function (resolve) {
+    var ran = false;
+    nestedFrame(function (m, f) {
+      if (m.probeNested === "ready") {
+        ran = true;
+        f.contentWindow.postMessage({ probeEgress: cfg }, "*");
+      } else if (m.probeNested === "egress") {
+        resolve("nested realm: " + m.detail);
+      }
+    });
+    setTimeout(function () {
+      resolve(ran ? "nested realm: no answer" : "nested script did not run");
+    }, 12000);
+  });
+};
+
+function rtcCheck(name, getWindow) {
+  return attemptAsync(
+    name,
+    function (finish) {
+      rtcAttempt(getWindow(), finish);
+    },
+    6000,
+  );
+}
+
 function runChecks() {
   // Informational: whether Tauri's scripts are injected into frames. What matters is whether
   // they work, which the "Tauri command" checks below test.
@@ -308,20 +347,48 @@ function runChecks() {
       },
       3000,
     ),
+    // WebRTC (S12-T13, ADR-012). CSP does not govern WebRTC, so the host turns it off in the
+    // webview itself. Each check tries the same thing from a different script realm: the
+    // activity frame, a nested blank frame, a nested frame that runs its own script (each a fresh
+    // set of constructors), and a worker.
+    rtcCheck("WebRTC peer connection", function () {
+      return window;
+    }),
+    // The parent scripting a nested blank frame's fresh realm directly.
+    rtcCheck("WebRTC in a nested blank frame", function () {
+      var f = document.createElement("iframe");
+      document.body.appendChild(f);
+      return f.contentWindow;
+    }),
     attemptAsync(
-      "WebRTC peer connection",
+      "WebRTC in a nested frame running its own script",
       function (finish) {
-        if (typeof RTCPeerConnection === "undefined") return finish(true, "API absent");
-        var pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.example.com:3478" }] });
-        pc.createDataChannel("x");
-        pc.onicecandidate = function (e) {
-          if (e.candidate) finish(false, "ICE candidate gathered: " + e.candidate.type);
-        };
-        pc.createOffer().then(function (o) {
-          return pc.setLocalDescription(o);
+        var api = "?";
+        nestedFrame(function (m) {
+          if (m.probeNested === "ready") api = m.api;
+          if (m.probeNested === "attempt") {
+            finish(m.blocked, "RTCPeerConnection " + api + "; " + m.detail);
+          }
         });
       },
-      4000,
+      8000,
+    ),
+    attemptAsync(
+      "WebRTC in a worker",
+      function (finish) {
+        var w = new Worker(
+          URL.createObjectURL(
+            new Blob(["postMessage(typeof RTCPeerConnection + ' ' + typeof RTCDataChannel)"]),
+          ),
+        );
+        w.onmessage = function (e) {
+          finish(String(e.data).indexOf("function") !== 0, "worker sees: " + e.data);
+        };
+        w.onerror = function () {
+          finish(true, "worker did not run");
+        };
+      },
+      3000,
     ),
     attemptAsync(
       "forged host message (wrong nonce)",
