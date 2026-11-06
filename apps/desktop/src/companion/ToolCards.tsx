@@ -30,7 +30,7 @@ export function ToolApprovalCard({ pending, busy, onDecide }: ApprovalProps) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     ref.current?.focus();
-  }, [pending.callId]);
+  }, [pending.approvalId]);
   return (
     <section
       ref={ref}

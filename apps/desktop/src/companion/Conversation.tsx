@@ -265,7 +265,7 @@ export function Conversation({
     if (!stream || !pending) return;
     setDeciding(true);
     try {
-      await companionToolDecision(stream.requestId, pending.callId, approve);
+      await companionToolDecision(stream.requestId, pending.approvalId, approve);
       setLive(approve ? "Lookup approved and sent." : "Lookup declined.");
     } catch (err) {
       setLive(errorText(toCommandError(err), host));

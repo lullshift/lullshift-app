@@ -76,6 +76,9 @@ pub struct Decoder {
     // OpenAI: tool calls by index.
     calls: BTreeMap<u64, PartialCall>,
     emitted_calls: usize,
+    /// Provider call ids seen in this reply. A repeat is malformed: two calls with one id
+    /// would make the answers ambiguous.
+    seen_ids: std::collections::HashSet<String>,
     finished: bool,
     done: bool,
 }
@@ -87,6 +90,7 @@ impl Decoder {
             blocks: BTreeMap::new(),
             calls: BTreeMap::new(),
             emitted_calls: 0,
+            seen_ids: std::collections::HashSet::new(),
             finished: false,
             done: false,
         }
@@ -111,6 +115,7 @@ impl Decoder {
             || c.name.is_empty()
             || c.name.len() > 64
             || c.args.len() > MAX_ARGUMENT_BYTES
+            || !self.seen_ids.insert(c.id.clone())
         {
             return Err(bad());
         }
@@ -366,6 +371,34 @@ mod tests {
             name: "suggest_break".into(),
             arguments: "{\"available_minutes\": 5}".into(),
         })));
+    }
+
+    #[test]
+    fn duplicate_call_ids_in_one_reply_are_malformed() {
+        let e = run(
+            ProviderKind::Anthropic,
+            &[
+                r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"dup","name":"suggest_break","input":{}}}"#,
+                r#"{"type":"content_block_stop","index":0}"#,
+                r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"dup","name":"suggest_break","input":{}}}"#,
+                r#"{"type":"content_block_stop","index":1}"#,
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(e.kind, ErrorKind::InvalidResponse);
+        let call = |i: u32, id: &str| {
+            format!(
+                r#"{{"choices":[{{"index":0,"delta":{{"tool_calls":[{{"index":{i},"id":"{id}","type":"function","function":{{"name":"suggest_break","arguments":"{{}}"}}}}]}},"finish_reason":null}}]}}"#
+            )
+        };
+        let fin = r#"{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
+        let (a, b) = (call(0, "same"), call(1, "same"));
+        let e = run(ProviderKind::OpenAi, &[a.as_str(), b.as_str(), fin]).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::InvalidResponse);
+        // Different ids are fine.
+        let (c, d) = (call(0, "one"), call(1, "two"));
+        let ok = run(ProviderKind::OpenAi, &[c.as_str(), d.as_str(), fin]).unwrap();
+        assert_eq!(ok.iter().filter(|p| matches!(p, Piece::Tool(_))).count(), 2);
     }
 
     #[test]

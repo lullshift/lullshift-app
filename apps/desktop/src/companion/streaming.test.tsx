@@ -53,7 +53,7 @@ describe("streaming state", () => {
       {
         type: "toolRequest",
         requestId: RID,
-        callId: "call_1",
+        approvalId: "call_1",
         tool: "suggest_break",
         label: "Suggest a break",
         arguments: "{}",
@@ -63,12 +63,12 @@ describe("streaming state", () => {
     ]);
     expect(s.pending?.resultText).toBe("Suggestion: Tea Sort");
     // An answer for another call does not clear it.
-    s = reduceStream(s, { type: "toolResolved", requestId: RID, callId: "other", approved: true });
+    s = reduceStream(s, { type: "toolResolved", requestId: RID, approvalId: "other", approved: true });
     expect(s.pending).not.toBeNull();
     s = reduceStream(s, {
       type: "toolResolved",
       requestId: RID,
-      callId: "call_1",
+      approvalId: "call_1",
       approved: false,
     });
     expect(s.pending).toBeNull();
@@ -130,7 +130,7 @@ describe("remembered context choice", () => {
 
 describe("lookup approval rendering", () => {
   const pending = {
-    callId: "call_1",
+    approvalId: "call_1",
     tool: "session_overview",
     label: "Session overview",
     arguments: "{}",

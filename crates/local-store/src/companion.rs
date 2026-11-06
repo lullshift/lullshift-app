@@ -8,6 +8,10 @@ use time::OffsetDateTime;
 
 use crate::{Result, Store, StoreError, fmt_ts};
 
+/// What a cleared lookup result is replaced with.
+pub const CLEARED_RESULT_TEXT: &str =
+    "This lookup's text was removed when its task text was turned off or deleted.";
+
 pub const MAX_MESSAGE_CHARS: usize = 20_000;
 pub const MAX_ATTACHED_CHARS: usize = 60_000;
 pub const MAX_THREAD_TITLE_CHARS: usize = 120;
@@ -476,6 +480,36 @@ impl Store {
         booked_output: i64,
         now: OffsetDateTime,
     ) -> Result<CompanionMessage> {
+        self.companion_complete_send_if(
+            user_message,
+            reply,
+            input_tokens,
+            output_tokens,
+            booked_input,
+            booked_output,
+            now,
+            &|| true,
+        )?
+        .ok_or(StoreError::NotFound)
+    }
+
+    /// Like [`Self::companion_complete_send_booked`], but `proceed` is asked inside the
+    /// transaction, before anything is written: if it says no, nothing is stored (the user
+    /// message stays as it was, no reply, no usage) and `None` comes back. A cancelled request
+    /// passes its token check here so that a worker which was past an earlier check cannot book
+    /// a reply after the user already sent a newer message.
+    #[allow(clippy::too_many_arguments)]
+    pub fn companion_complete_send_if(
+        &mut self,
+        user_message: i64,
+        reply: &str,
+        input_tokens: i64,
+        output_tokens: i64,
+        booked_input: i64,
+        booked_output: i64,
+        now: OffsetDateTime,
+        proceed: &dyn Fn() -> bool,
+    ) -> Result<Option<CompanionMessage>> {
         let ts = fmt_ts(now)?;
         let tx = self.conn.transaction()?;
         let (thread, profile, model, host): (i64, Option<String>, Option<String>, Option<String>) =
@@ -487,6 +521,9 @@ impl Store {
             )
             .optional()?
             .ok_or(StoreError::NotFound)?;
+        if !proceed() {
+            return Ok(None);
+        }
         tx.execute(
             "UPDATE companion_messages SET status = 'sent', error_kind = NULL, error_message = NULL,
                input_tokens = ?2, output_tokens = ?3 WHERE id = ?1",
@@ -513,7 +550,7 @@ impl Store {
             msg_row,
         )?;
         tx.commit()?;
-        Ok(out)
+        Ok(Some(out))
     }
 
     /// Stores a lookup the user approved or declined, for a user message of this thread.
@@ -540,6 +577,41 @@ impl Store {
             )
             .map_err(check_invalid)?;
         Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Replaces the stored text of session overview lookups with a fixed note, because that text
+    /// can carry a session label taken from captured task text. Called when task-text capture is
+    /// turned off, when captured text is deleted, and (with `before`) when retention passes. The
+    /// rows stay, so the conversation still shows that a lookup happened. Returns how many rows
+    /// were cleared.
+    pub fn companion_clear_overview_results(
+        &self,
+        before: Option<OffsetDateTime>,
+    ) -> Result<usize> {
+        let n = match before {
+            Some(t) => self.conn.execute(
+                "UPDATE companion_tool_calls SET result_text = ?1
+                 WHERE tool = 'session_overview' AND result_text <> ?1
+                   AND unixepoch(created_utc) < ?2",
+                params![CLEARED_RESULT_TEXT, t.unix_timestamp()],
+            )?,
+            None => self.conn.execute(
+                "UPDATE companion_tool_calls SET result_text = ?1
+                 WHERE tool = 'session_overview' AND result_text <> ?1",
+                [CLEARED_RESULT_TEXT],
+            )?,
+        };
+        Ok(n)
+    }
+
+    /// Removes the context text attached to earlier messages that came from session summaries
+    /// (which can hold captured task text). The messages and their own text stay.
+    pub fn companion_clear_attached_session_context(&self) -> Result<usize> {
+        Ok(self.conn.execute(
+            "UPDATE companion_messages SET attached_context = NULL
+             WHERE attached_context IS NOT NULL AND scope_kind = 'sessionSummary'",
+            [],
+        )?)
     }
 
     /// Every lookup recorded in a thread, oldest first.

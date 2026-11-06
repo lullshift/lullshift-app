@@ -399,12 +399,10 @@ pub fn purge_now(core: &Core) -> Option<usize> {
     let guard = core.store.lock().ok()?;
     let store = guard.as_ref()?;
     let prefs = ContextPrefs::from_stored(store.preference(CONTEXT_PREFS_KEY).ok()?.as_deref());
-    store
-        .purge_events_before(retention_cutoff(
-            OffsetDateTime::now_utc(),
-            prefs.retention_days,
-        ))
-        .ok()
+    let cutoff = retention_cutoff(OffsetDateTime::now_utc(), prefs.retention_days);
+    // Companion lookup results that outlived the retention period go with the events.
+    let _ = store.companion_clear_overview_results(Some(cutoff));
+    store.purge_events_before(cutoff).ok()
 }
 
 /// Purges now and then every hour, on a background thread that ends with the process.
@@ -1071,7 +1069,17 @@ pub async fn clear_captured_context(
     session_id: String,
 ) -> Result<(), String> {
     let core = Arc::clone(&core);
-    blocking(move || with_store(&core, |s| s.clear_captured(&provider, &session_id))).await?;
+    blocking(move || {
+        with_store(&core, |s| {
+            s.clear_captured(&provider, &session_id)?;
+            // Which Companion lookups mentioned this session is not recorded, so all stored
+            // overview text and attached session summaries are cleared.
+            s.companion_clear_overview_results(None)?;
+            s.companion_clear_attached_session_context()?;
+            Ok(())
+        })
+    })
+    .await?;
     notify_changed(&app);
     Ok(())
 }
@@ -1079,7 +1087,15 @@ pub async fn clear_captured_context(
 #[tauri::command]
 pub async fn clear_all_captured_context(app: AppHandle, core: CoreState<'_>) -> Result<(), String> {
     let core = Arc::clone(&core);
-    blocking(move || with_store(&core, |s| s.clear_all_captured())).await?;
+    blocking(move || {
+        with_store(&core, |s| {
+            s.clear_all_captured()?;
+            s.companion_clear_overview_results(None)?;
+            s.companion_clear_attached_session_context()?;
+            Ok(())
+        })
+    })
+    .await?;
     notify_changed(&app);
     Ok(())
 }
@@ -1232,6 +1248,17 @@ pub fn apply_prefs(
     if create(data_dir, prefs).is_err() {
         restore();
         return Err("internal");
+    }
+    // Capture was turned off for some tool: Companion text derived from captured task text
+    // (approved session overview results, session summaries attached to messages) goes too.
+    // Best effort: the setting itself has already been saved and the markers are in step.
+    if previous
+        .capture
+        .iter()
+        .any(|(adapter, on)| *on && !prefs.capture_on(adapter))
+    {
+        let _ = store.companion_clear_overview_results(None);
+        let _ = store.companion_clear_attached_session_context();
     }
     Ok(())
 }
@@ -1413,6 +1440,103 @@ mod tests {
             marker_path(dir.path(), P),
             dir.path().join("context-capture").join("claude-code"),
             "the path the forwarder checks"
+        );
+    }
+
+    /// L2: stored Companion lookup text that came from captured task text is cleared when the
+    /// capture that produced it is turned off, and not when something else changes.
+    #[test]
+    fn turning_capture_off_clears_companion_overview_text() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut store = Store::open_in_memory().expect("open");
+        store
+            .companion_save_profile(
+                &local_store::CompanionProfile {
+                    id: "p".into(),
+                    kind: "openaiCompatible".into(),
+                    label: "P".into(),
+                    base_url: "http://localhost:11434/v1".into(),
+                    model: "m".into(),
+                    monthly_token_budget: None,
+                    is_default: true,
+                },
+                T0,
+            )
+            .expect("profile");
+        let thread = store.companion_new_thread(None, T0).expect("thread");
+        let mut ids = Vec::new();
+        for (scope, ctx) in [("sessionSummary", Some("SECRET-INTENT")), ("none", None)] {
+            ids.push(
+                store
+                    .companion_add_user_message(
+                        &local_store::NewUserMessage {
+                            thread_id: thread.id,
+                            text: "hi",
+                            attached_context: ctx,
+                            scope_kind: scope,
+                            profile_id: "p",
+                            model: "m",
+                            host: "localhost:11434",
+                        },
+                        T0,
+                    )
+                    .expect("message"),
+            );
+        }
+        store
+            .companion_add_tool_call(
+                &local_store::NewToolCall {
+                    message_id: ids[1],
+                    round: 1,
+                    tool: "session_overview",
+                    arguments: "{}",
+                    result_text: "claude-code, working, label SECRET-PROMPT-LINE",
+                    status: "approved",
+                    card_activity_id: None,
+                    card_name: None,
+                    card_minutes: None,
+                    host: "localhost:11434",
+                },
+                T0,
+            )
+            .expect("tool call");
+        let texts = |store: &Store| -> (String, Option<String>) {
+            (
+                store.companion_tool_calls(thread.id).expect("calls")[0]
+                    .result_text
+                    .clone(),
+                store.companion_messages(thread.id).expect("msgs")[0]
+                    .attached_context
+                    .clone(),
+            )
+        };
+        let on = capture_on_prefs();
+        apply_prefs(&store, dir.path(), &on, remove_markers, create_markers).expect("on");
+        // Turning capture on, or changing retention while it stays on, clears nothing.
+        let longer = ContextPrefs {
+            retention_days: 90,
+            ..capture_on_prefs()
+        };
+        apply_prefs(&store, dir.path(), &longer, remove_markers, create_markers).expect("same");
+        let (result, attached) = texts(&store);
+        assert!(result.contains("SECRET-PROMPT-LINE"));
+        assert_eq!(attached.as_deref(), Some("SECRET-INTENT"));
+        // Turning it off clears both.
+        apply_prefs(
+            &store,
+            dir.path(),
+            &ContextPrefs::default(),
+            remove_markers,
+            create_markers,
+        )
+        .expect("off");
+        let (result, attached) = texts(&store);
+        assert_eq!(result, local_store::CLEARED_RESULT_TEXT);
+        assert_eq!(attached, None);
+        assert_eq!(
+            store.companion_messages(thread.id).expect("msgs")[0].text,
+            "hi",
+            "the user's own message stays"
         );
     }
 

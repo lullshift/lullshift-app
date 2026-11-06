@@ -411,7 +411,7 @@ export function shouldMountCompanion(view: string, openedBefore: boolean): boole
 // ---------- Streaming ----------
 
 export interface PendingTool {
-  callId: string;
+  approvalId: string;
   tool: string;
   label: string;
   arguments: string;
@@ -455,7 +455,7 @@ export function reduceStream(s: StreamState, e: StreamEvent): StreamState {
       return {
         ...s,
         pending: {
-          callId: e.callId,
+          approvalId: e.approvalId,
           tool: e.tool,
           label: e.label,
           arguments: e.arguments,
@@ -467,7 +467,7 @@ export function reduceStream(s: StreamState, e: StreamEvent): StreamState {
       return { ...s, skipped: [...s.skipped, e.text] };
     case "toolResolved": {
       // Only the lookup that is waiting can be resolved.
-      if (s.pending?.callId !== e.callId) return s;
+      if (s.pending?.approvalId !== e.approvalId) return s;
       return {
         ...s,
         pending: null,

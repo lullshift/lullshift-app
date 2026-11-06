@@ -76,9 +76,11 @@ struct Active {
 type BusyMap = Arc<Mutex<HashMap<i64, Active>>>;
 type ApprovalMap = Arc<Mutex<HashMap<String, Approval>>>;
 
-/// A lookup waiting for the user's decision, by request id.
+/// A lookup waiting for the user's decision, by request id. `approval_id` is made here for each
+/// card and sent only to the UI; provider call ids are never used to match an answer, so a stale
+/// or repeated Approve cannot resolve another card.
 struct Approval {
-    call_id: String,
+    approval_id: String,
     tx: mpsc::Sender<bool>,
 }
 
@@ -145,26 +147,34 @@ impl CompanionState {
     /// Cancels the request on `thread` and frees the thread at once (S12-T15). Whatever the old
     /// worker still delivers is discarded by the request itself, which checks its token.
     fn cancel(&self, thread: i64) {
+        // The token is cancelled while the busy map is still locked: a new request on this
+        // thread can only begin after that, so the old worker's store check (below, in
+        // `deliver`) always sees the cancel before the new user message can exist.
         let removed = match self.active.lock() {
-            Ok(mut m) => m.remove(&thread),
+            Ok(mut m) => {
+                let a = m.remove(&thread);
+                if let Some(a) = &a {
+                    a.token.cancel();
+                }
+                a
+            }
             Err(_) => None,
         };
-        if let Some(a) = removed {
-            a.token.cancel();
-            if let Ok(mut ap) = self.approvals.lock() {
-                ap.remove(&a.request_id);
-            }
+        if let Some(a) = removed
+            && let Ok(mut ap) = self.approvals.lock()
+        {
+            ap.remove(&a.request_id);
         }
     }
 
     /// Records the user's answer to a waiting lookup. False if nothing matches (already answered,
     /// cancelled, or another call).
-    fn decide(&self, request_id: &str, call_id: &str, approve: bool) -> bool {
+    fn decide(&self, request_id: &str, approval_id: &str, approve: bool) -> bool {
         let Ok(mut ap) = self.approvals.lock() else {
             return false;
         };
         match ap.get(request_id) {
-            Some(a) if a.call_id == call_id => {}
+            Some(a) if a.approval_id == approval_id => {}
             _ => return false,
         }
         ap.remove(request_id)
@@ -421,7 +431,7 @@ pub enum StreamEvent {
     /// until the UI answers with `companion_tool_decision`.
     ToolRequest {
         request_id: String,
-        call_id: String,
+        approval_id: String,
         tool: String,
         label: String,
         arguments: String,
@@ -436,7 +446,7 @@ pub enum StreamEvent {
     },
     ToolResolved {
         request_id: String,
-        call_id: String,
+        approval_id: String,
         approved: bool,
     },
 }
@@ -594,6 +604,17 @@ fn profile_dto(core: &Core, p: CompanionProfile) -> ProviderProfileDto {
 pub fn profiles(core: &Core) -> Res<Vec<ProviderProfileDto>> {
     let list = with_store(core, |s| s.companion_profiles())?;
     Ok(list.into_iter().map(|p| profile_dto(core, p)).collect())
+}
+
+/// A fresh unguessable id for one approval card.
+fn new_approval_id() -> Res<String> {
+    let mut buf = [0u8; 16];
+    getrandom::fill(&mut buf).map_err(|_| CommandError::internal())?;
+    let mut id = String::from("a-");
+    for b in buf {
+        id.push_str(&format!("{b:02x}"));
+    }
+    Ok(id)
 }
 
 fn new_profile_id() -> Res<String> {
@@ -1149,6 +1170,7 @@ impl Turn<'_> {
                 }
             };
             *used += 1;
+            let approval_id = new_approval_id().map_err(|_| CompanionError::internal())?;
             let lookup = lookups::run(self.core, &request, OffsetDateTime::now_utc())
                 .map_err(|_| CompanionError::internal())?;
             let text = clean_result(&lookup.text);
@@ -1165,14 +1187,14 @@ impl Turn<'_> {
                 ap.insert(
                     self.request_id.to_owned(),
                     Approval {
-                        call_id: call.id.clone(),
+                        approval_id: approval_id.clone(),
                         tx,
                     },
                 );
             }
             (self.emit)(StreamEvent::ToolRequest {
                 request_id: self.request_id.to_owned(),
-                call_id: call.id.clone(),
+                approval_id: approval_id.clone(),
                 tool: tool.as_str().to_owned(),
                 label: tool.label().to_owned(),
                 arguments: clean_result(&call.arguments),
@@ -1208,7 +1230,7 @@ impl Turn<'_> {
             .map_err(|_| CompanionError::internal())?;
             (self.emit)(StreamEvent::ToolResolved {
                 request_id: self.request_id.to_owned(),
-                call_id: call.id.clone(),
+                approval_id: approval_id.clone(),
                 approved,
             });
             results.push(sent);
@@ -1325,8 +1347,11 @@ fn deliver(
                         );
                         break CompanionError::invalid_response();
                     }
+                    // The token is asked again inside the store transaction, which runs under
+                    // the store lock: a cancel that came after the check above, followed by a
+                    // newer message, can no longer let this reply land after that message.
                     let done = with_store(core, |s| {
-                        s.companion_complete_send_booked(
+                        s.companion_complete_send_if(
                             user_message,
                             &reply.text,
                             total_in,
@@ -1334,10 +1359,22 @@ fn deliver(
                             reply.input_tokens,
                             reply.output_tokens,
                             OffsetDateTime::now_utc(),
+                            &|| !guard.token().is_cancelled(),
                         )
                     });
                     return match done {
-                        Ok(m) => Ok(m.into()),
+                        Ok(Some(m)) => Ok(m.into()),
+                        Ok(None) => {
+                            // Cancelled at the last moment: the reply is dropped, its cost kept.
+                            book(
+                                core,
+                                &prepared.profile.id,
+                                reply.input_tokens,
+                                reply.output_tokens,
+                            );
+                            fail_message(core, user_message, &CompanionError::cancelled());
+                            Err(CompanionError::cancelled().into())
+                        }
                         Err(e) => {
                             book(
                                 core,
@@ -1471,9 +1508,9 @@ pub fn cancel(core: &Core, thread_id: i64) {
     core.companion.cancel(thread_id);
 }
 
-pub fn tool_decision(core: &Core, request_id: &str, call_id: &str, approve: bool) -> Res<()> {
+pub fn tool_decision(core: &Core, request_id: &str, approval_id: &str, approve: bool) -> Res<()> {
     check_request_id(request_id)?;
-    if core.companion.decide(request_id, call_id, approve) {
+    if core.companion.decide(request_id, approval_id, approve) {
         Ok(())
     } else {
         Err(CompanionError::not_found("That lookup is no longer waiting.").into())
@@ -1627,10 +1664,10 @@ fn channel_emitter(
 pub async fn companion_tool_decision(
     core: CoreState<'_>,
     request_id: String,
-    call_id: String,
+    approval_id: String,
     approve: bool,
 ) -> Res<()> {
-    tool_decision(&core, &request_id, &call_id, approve)
+    tool_decision(&core, &request_id, &approval_id, approve)
 }
 
 #[tauri::command]
