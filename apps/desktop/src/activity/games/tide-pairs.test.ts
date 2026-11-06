@@ -36,6 +36,11 @@ interface Logic {
   settle(s: State): State;
   restore(raw: unknown): State | null;
   snapshot(s: State): State;
+  pileSpecs(s: State): {
+    id: string;
+    name: string;
+    cards: { id: string; suit: string; rank: number; faceUp: boolean }[];
+  }[];
 }
 const L = (globalThis as unknown as { TidePairsLogic: Logic }).TidePairsLogic;
 
@@ -195,5 +200,53 @@ describe("TidePairsLogic saved state", () => {
     expect(bad({ open: [99] })).toBeNull();
     expect(bad({ turns: -2 })).toBeNull();
     expect(bad({ turns: 1.5 })).toBeNull();
+  });
+});
+
+describe("TidePairsLogic on the card kit table", () => {
+  const kit = (
+    globalThis as unknown as {
+      LullshiftKits: {
+        card: {
+          Table: new (
+            p: unknown,
+            o: unknown,
+          ) => { piles: unknown[]; focus: { pile: number }; navigate(a: string): boolean };
+        };
+      };
+    }
+  ).LullshiftKits.card;
+
+  it("makes one single-card pile per slot with unique card ids", () => {
+    for (const pairs of [8, 12]) {
+      const s = L.deal(4, pairs);
+      const piles = L.pileSpecs(s);
+      expect(piles).toHaveLength(pairs * 2);
+      expect(new Set(piles.map((p) => p.cards[0]!.id)).size).toBe(pairs * 2);
+      expect(piles.every((p) => p.cards.length === 1)).toBe(true);
+      expect(piles.map((p) => p.cards[0]!.suit)).toEqual(
+        s.order.map((_, i) => L.SYMBOLS[s.order[i]!]),
+      );
+      // the kit accepts the piles
+      expect(() => new kit.Table(piles, { columns: pairs === 8 ? 4 : 6 })).not.toThrow();
+    }
+  });
+
+  it("follows face-up state and moves like a grid with columns", () => {
+    let s = L.deal(4, 8);
+    s = L.flip(s, 5).state;
+    expect(L.pileSpecs(s)[5]!.cards[0]!.faceUp).toBe(true);
+    expect(L.pileSpecs(s)[4]!.cards[0]!.faceUp).toBe(false);
+    const t = new kit.Table(L.pileSpecs(s), { columns: 4 });
+    expect(t.navigate("down")).toBe(true);
+    expect(t.focus.pile).toBe(4);
+    expect(t.navigate("end")).toBe(true);
+    expect(t.focus.pile).toBe(7);
+    expect(t.navigate("right")).toBe(false);
+  });
+
+  it("keeps saved-state compatibility (restore accepts a snapshot)", () => {
+    const s = L.flip(L.deal(9, 12, "daily"), 3).state;
+    expect(L.restore(JSON.parse(JSON.stringify(L.snapshot(s))))).toEqual(s);
   });
 });

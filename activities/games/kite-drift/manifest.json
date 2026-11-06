@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "app",
   "id": "app.lullshift.games.kite-drift",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Kite Drift",
   "description": "A one-button glide. Hold to lift a kite, let go to sink, and drift through the wide gaps between soft cloud banks. A bump never ends the game.",
   "author": "Lullshift",
@@ -21,7 +21,7 @@
     "goal": "Fly through as many gaps between cloud banks as you can and build a long streak. There is no death screen.",
     "howToPlay": [
       "Hold Space, the Up arrow or the big on-screen button to lift the kite.",
-      "Release to let it sink slowly. Speed is capped so it always stays gentle.",
+      "Release to let it sink slowly. Speed is capped so it always stays gentle. Pace sets how fast the sky scrolls: slow, normal or brisk. You can change it at any time.",
       "Steer through the wide gap in each cloud bank. Each gap you pass adds to your streak.",
       "If you touch a cloud the kite is bumped to the middle of the gap and your streak starts over. Flying simply goes on."
     ],
@@ -29,7 +29,7 @@
       { "keys": "Space / Up arrow", "action": "Hold to lift the kite" },
       { "keys": "Enter / Space", "action": "Start or resume after the Ready prompt" },
       { "keys": "Escape", "action": "Pause" },
-      { "keys": "Tab", "action": "Reach the Hold to lift button and New flight" }
+      { "keys": "Tab", "action": "Reach the Hold to lift button, New flight and Pace" }
     ],
     "tips": [
       "Short taps give small lifts; holding gives steady climbs.",

@@ -205,7 +205,12 @@
     $("linked").textContent = "Linked " + linked + " of " + k;
     $("covered").textContent = full ? "Full garden" : "Covered " + cov + " of " + total;
     $("undo").disabled = game.history.length === 0;
-    $("size").value = String(size);
+    $("size").textContent = "Size: " + size + " x " + size;
+    var nextSize = L.SIZES[(L.SIZES.indexOf(size) + 1) % L.SIZES.length];
+    $("size").setAttribute(
+      "aria-label",
+      "Size: " + size + " by " + size + ". Press to switch to " + nextSize + " by " + nextSize,
+    );
     var best = $("best");
     if (game.mode === "daily" && bestToday !== null) {
       best.hidden = false;
@@ -472,11 +477,6 @@
     save();
   }
 
-  function chosenSize() {
-    var n = parseInt($("size").value, 10);
-    return L.isSize(n) ? n : size;
-  }
-
   function setup(init) {
     document.documentElement.setAttribute("data-theme", init.theme === "dark" ? "dark" : "light");
     if (init.reducedMotion) document.documentElement.classList.add("reduced");
@@ -490,15 +490,15 @@
     $("undo").addEventListener("click", undoMove);
     $("restart").addEventListener("click", restart);
     $("daily").addEventListener("click", function () {
-      var s = chosenSize();
+      var s = size;
       newPuzzle(L.dateSeed(new Date(), s), "daily", s, "Today's " + s + " by " + s + " garden.");
     });
     $("fresh").addEventListener("click", function () {
-      var s = chosenSize();
+      var s = size;
       newPuzzle(K.randomSeed(), "random", s, "A new " + s + " by " + s + " garden.");
     });
-    $("size").addEventListener("change", function () {
-      var s = chosenSize();
+    $("size").addEventListener("click", function () {
+      var s = L.SIZES[(L.SIZES.indexOf(size) + 1) % L.SIZES.length];
       newPuzzle(L.dateSeed(new Date(), s), "daily", s, "Today's " + s + " by " + s + " garden.");
     });
 

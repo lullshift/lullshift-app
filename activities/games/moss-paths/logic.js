@@ -3,6 +3,7 @@
 (function (root) {
   "use strict";
   var SIZE = 6;
+  var SIZES = [4, 6, 8];
   var N = 1;
   var E = 2;
   var S = 4;
@@ -55,15 +56,23 @@
     return out;
   }
 
-  // False when turning the tile changes nothing (a cross).
+  // False when turning the tile changes nothing (a cross). Turning is still allowed: it counts as
+  // a move and can be undone; this only tells the game to say so.
   function canRotate(mask) {
     return rotate(mask, true) !== mask;
   }
 
-  function dateSeed(d) {
+  function isSize(n) {
+    return SIZES.indexOf(n) !== -1;
+  }
+
+  // Today's seed. Salted so Moss Paths gets its own garden for the day, and each size its own.
+  // The 6 by 6 seed is the same as before sizes existed.
+  function dateSeed(d, size) {
     var ymd = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
-    // Salted so Moss Paths gets its own garden for the day.
-    return (Math.imul(ymd, 2654435761) ^ 0x4d6f7373) >>> 0;
+    var seed = (Math.imul(ymd, 2654435761) ^ 0x4d6f7373) >>> 0;
+    if (isSize(size) && size !== SIZE) seed = (seed ^ Math.imul(size, 0x9e3779b1)) >>> 0;
+    return seed;
   }
 
   function isMask(v) {
@@ -184,6 +193,8 @@
 
   root.MossLogic = {
     SIZE: SIZE,
+    SIZES: SIZES,
+    isSize: isSize,
     N: N,
     E: E,
     S: S,

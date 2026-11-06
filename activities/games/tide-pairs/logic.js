@@ -177,6 +177,25 @@
     };
   }
 
+  // The board as card-kit piles for `Table`/`bindTable`: one pile per slot, holding that slot's
+  // single card. The card's face-up flag follows the game state. Ids are s0, s1, ... and the
+  // second card of a symbol has rank 2, so every card id is unique.
+  function pileSpecs(s) {
+    var cols = COLUMNS[s.pairs];
+    var seen = {};
+    var piles = [];
+    for (var i = 0; i < s.order.length; i++) {
+      var sym = SYMBOLS[s.order[i]];
+      seen[sym] = (seen[sym] || 0) + 1;
+      piles.push({
+        id: "s" + i,
+        name: "Row " + (Math.floor(i / cols) + 1) + ", column " + ((i % cols) + 1),
+        cards: [{ id: "c" + i, suit: sym, rank: seen[sym], faceUp: isUp(s, i), name: sym }],
+      });
+    }
+    return piles;
+  }
+
   function snapshot(s) {
     return copyState(s);
   }
@@ -196,6 +215,7 @@
     flip: flip,
     settle: settle,
     restore: restore,
+    pileSpecs: pileSpecs,
     snapshot: snapshot,
   };
 })(globalThis);

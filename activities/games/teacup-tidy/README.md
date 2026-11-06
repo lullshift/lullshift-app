@@ -1,4 +1,4 @@
-# Tea Sort
+# Teacup Tidy
 
 Eight cups on a shelf, six teas. Pour the top layers between cups until every cup holds a single tea. Colours also differ by pattern and letter, so you never need to rely on colour alone. No timer. A puzzle each day, or a new one whenever you like.
 
@@ -13,7 +13,7 @@ An original game bundled with Lullshift, built on the grid kit (ADR-019).
 
 ## Files
 
-- `logic.js`: the rules and puzzle generator, with no DOM access; unit-tested in `apps/desktop/src/activity/games/tea-sort.test.ts`.
+- `logic.js`: the rules and puzzle generator, with no DOM access; unit-tested in `apps/desktop/src/activity/games/teacup-tidy.test.ts`.
 - `main.js`, `index.html`, `style.css`: the shelf, controls and bridge wiring.
 - `lullshift-grid-kit-v1.js` and `lullshift-bridge-v1.js`: copies of the SDK files; don't edit them here.
 - `manifest.json` and `preview.svg`: the activity manifest and its preview picture.
@@ -23,8 +23,8 @@ An original game bundled with Lullshift, built on the grid kit (ADR-019).
 From the repository root:
 
 ```bash
-pnpm lullshift validate activities/games/tea-sort
-pnpm lullshift simulate activities/games/tea-sort
+pnpm lullshift validate activities/games/teacup-tidy
+pnpm lullshift simulate activities/games/teacup-tidy
 ```
 
 ## License and assets

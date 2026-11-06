@@ -140,6 +140,51 @@ describe("table keyboard focus and pick-up-and-place", () => {
     expect(t.focus.pile).toBe(0);
   });
 
+  it("moves focus over a grid of piles when columns is set", () => {
+    const piles = Array.from({ length: 7 }, (_, i) => ({ id: `p${i}`, name: `Pile ${i + 1}` }));
+    const t = new Table(piles, { columns: 3 });
+    const at = () => t.focus.pile;
+    expect(at()).toBe(0);
+    expect(t.navigate("left")).toBe(false);
+    expect(t.navigate("up")).toBe(false);
+    expect(t.navigate("right")).toBe(true);
+    expect(t.navigate("right")).toBe(true);
+    expect(at()).toBe(2);
+    expect(t.navigate("right")).toBe(false); // stays inside the row
+    expect(t.navigate("down")).toBe(true);
+    expect(at()).toBe(5);
+    expect(t.navigate("down")).toBe(false); // pile 8 does not exist
+    expect(t.navigate("home")).toBe(true);
+    expect(at()).toBe(3);
+    expect(t.navigate("end")).toBe(true);
+    expect(at()).toBe(5);
+    expect(t.navigate("pageDown")).toBe(false); // 5 is the bottom of column 2
+    expect(t.navigate("pageUp")).toBe(true);
+    expect(at()).toBe(2);
+    expect(t.navigate("last")).toBe(true);
+    expect(at()).toBe(6);
+    expect(t.navigate("right")).toBe(false); // last pile of a short final row
+    expect(t.navigate("end")).toBe(false);
+    expect(t.navigate("pageUp")).toBe(true);
+    expect(at()).toBe(0);
+    expect(t.navigate("pageDown")).toBe(true);
+    expect(at()).toBe(6);
+    expect(t.navigate("first")).toBe(true);
+    expect(at()).toBe(0);
+  });
+
+  it("ignores a columns value that is not a whole number in range", () => {
+    const piles = [
+      { id: "a", name: "A" },
+      { id: "b", name: "B" },
+    ];
+    for (const columns of [0, 1.5, Number.NaN, 101]) {
+      const t = new Table(piles, { columns });
+      expect(t.navigate("right")).toBe(true);
+      expect(t.navigate("down")).toBe(false);
+    }
+  });
+
   it("picks up and places with activate", () => {
     const t = table();
     t.focus = { pile: 1, card: 0 };

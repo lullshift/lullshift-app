@@ -19,6 +19,7 @@ interface State {
   seed: number;
   rng: number;
   reduced: boolean;
+  length: number;
   time: number;
   timeLeft: number;
   jarX: number;
@@ -34,9 +35,12 @@ interface Logic {
   JAR_W: number;
   JAR_TOP: number;
   ROUND_SECONDS: number;
-  create(seed: number, reduced: boolean): State;
+  LENGTHS: number[];
+  isLength(n: number): boolean;
+  nextLength(n: number): number;
+  create(seed: number, reduced: boolean, length?: number): State;
   step(s: State, dt: number, dir: number): number;
-  restart(s: State, seed: number): State;
+  restart(s: State, seed: number, length?: number): State;
   snapshot(s: State): State;
   validate(raw: unknown): State | null;
 }
@@ -197,5 +201,90 @@ describe("FireflyLogic", () => {
     expect(L.validate({ ...good, jarX: Number.NaN })).toBeNull();
     expect(L.validate({ ...good, flies: [{ x: 1 }] })).toBeNull();
     expect(L.validate({ ...good, flies: new Array(500).fill(0) })).toBeNull();
+  });
+});
+
+describe("Firefly Catch round lengths", () => {
+  const run = (s: State, seconds: number) => {
+    for (let i = 0; i < seconds * 60; i++) L.step(s, 1 / 60, 0);
+  };
+
+  it("cycles 60, 90, 180 and untimed", () => {
+    expect(L.LENGTHS).toEqual([60, 90, 180, 0]);
+    expect(L.nextLength(60)).toBe(90);
+    expect(L.nextLength(90)).toBe(180);
+    expect(L.nextLength(180)).toBe(0);
+    expect(L.nextLength(0)).toBe(60);
+    expect(L.create(1, false).length).toBe(90);
+    expect(L.create(1, false, 7).length).toBe(90);
+  });
+
+  it("a timed round ends after its own length", () => {
+    for (const len of [60, 180]) {
+      const s = L.create(3, false, len);
+      expect(s.timeLeft).toBe(len);
+      run(s, len - 1);
+      expect(s.over).toBe(false);
+      run(s, 2);
+      expect(s.over).toBe(true);
+      expect(s.timeLeft).toBe(0);
+    }
+  });
+
+  it("an untimed round never ends and keeps no best", () => {
+    const s = L.create(3, false, 0);
+    run(s, 400);
+    expect(s.over).toBe(false);
+    expect(s.timeLeft).toBe(0);
+    // catch one directly
+    s.flies = [
+      {
+        x0: s.jarX,
+        x: s.jarX,
+        y: L.JAR_TOP + 1,
+        t: 0,
+        vy: 0,
+        vx: 0,
+        amp: 0,
+        freq: 1,
+        phase: 0,
+        away: false,
+      },
+    ];
+    expect(L.step(s, 1 / 60, 0)).toBe(1);
+    expect(s.caught).toBeGreaterThan(0);
+    expect(s.best).toBe(0);
+    const back = L.validate(JSON.parse(JSON.stringify(s)));
+    expect(back).toEqual(s);
+  });
+
+  it("restart keeps the best only for the same length", () => {
+    const s = L.create(4, false, 60);
+    s.best = 7;
+    expect(L.restart(s, 5).best).toBe(7);
+    expect(L.restart(s, 5, 60).best).toBe(7);
+    const other = L.restart(s, 5, 180);
+    expect(other.best).toBe(0);
+    expect(other.length).toBe(180);
+    expect(other.timeLeft).toBe(180);
+    expect(L.restart(s, 5, 0).length).toBe(0);
+  });
+
+  it("restores older saves without a length as 90-second rounds", () => {
+    const s = L.create(9, false);
+    const old = JSON.parse(JSON.stringify(s)) as Record<string, unknown>;
+    delete old.length;
+    const back = L.validate(old);
+    expect(back).not.toBeNull();
+    expect(back?.length).toBe(90);
+    expect(back).toEqual(s);
+  });
+
+  it("rejects an unknown length and a time left beyond the length", () => {
+    const s = L.create(9, false, 60);
+    expect(L.validate({ ...s, length: 45 })).toBeNull();
+    expect(L.validate({ ...s, length: "60" })).toBeNull();
+    expect(L.validate({ ...s, timeLeft: 61 })).toBeNull();
+    expect(L.validate({ ...L.create(9, false, 0), best: 3 })).toBeNull();
   });
 });

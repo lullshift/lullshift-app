@@ -4,9 +4,9 @@
   var K = window.LullshiftKits.grid;
   var SIZE = L.SIZE;
   var TOTAL = SIZE * SIZE;
-  var grid = new K.Grid(SIZE, SIZE, 0);
+  var grid = null;
   var view = null;
-  var game = null; // { seed, mode, src, start, history, moves, solved }
+  var game = null; // { seed, mode, size, src, start, history, moves, solved }
   var wet = [];
   var lastShift = false;
   var bestToday = null;
@@ -23,11 +23,41 @@
     for (var i = 0; i < TOTAL; i++) grid.set(i % SIZE, Math.floor(i / SIZE), cells[i]);
   }
 
-  function startGarden(seed, mode) {
-    var g = L.generate(seed, SIZE);
+  // (Re)builds the grid model and its view for a garden size.
+  function buildBoard(size) {
+    SIZE = size;
+    TOTAL = size * size;
+    if (view) view.destroy();
+    grid = new K.Grid(size, size, 0);
+    $("grid").setAttribute("data-size", String(size));
+    $("grid").style.setProperty("--n", String(size));
+    view = K.bindGrid($("grid"), grid, {
+      name: "Moss Paths garden, " + size + " by " + size,
+      label: label,
+      className: classes,
+      onActivate: function (x, y) {
+        turnTile(x, y, !lastShift);
+      },
+      onMove: function () {
+        save();
+      },
+      onAction: function (action) {
+        if (action === "undo") {
+          undoMove();
+          return true;
+        }
+        return false;
+      },
+    });
+  }
+
+  function startGarden(seed, mode, size) {
+    if (size !== SIZE || !grid) buildBoard(size);
+    var g = L.generate(seed, size);
     game = {
       seed: seed,
       mode: mode,
+      size: size,
       src: g.src,
       start: g.cells.slice(),
       history: [],
@@ -44,6 +74,7 @@
           v: 1,
           seed: game.seed,
           mode: game.mode,
+          size: SIZE,
           src: game.src,
           start: game.start,
           cells: cellsNow(),
@@ -54,28 +85,37 @@
       : undefined;
   }
 
-  function maskList(v) {
-    return Array.isArray(v) && v.length === TOTAL && v.every(L.isMask);
+  // Saves from before sizes existed have no size: they are 6 by 6.
+  function savedSize(r) {
+    return r && r.size === undefined ? 6 : r && r.size;
+  }
+
+  function maskList(v, total) {
+    return Array.isArray(v) && v.length === total && v.every(L.isMask);
   }
 
   function validState(r) {
-    return (
+    var size = savedSize(r);
+    return !!(
       r &&
       r.v === 1 &&
+      L.isSize(size) &&
       Number.isInteger(r.seed) &&
       Number.isInteger(r.src) &&
       r.src >= 0 &&
-      r.src < TOTAL &&
-      maskList(r.start) &&
-      maskList(r.cells) &&
+      r.src < size * size &&
+      maskList(r.start, size * size) &&
+      maskList(r.cells, size * size) &&
       Array.isArray(r.history)
     );
   }
 
   function restoreGarden(r) {
+    buildBoard(savedSize(r));
     game = {
       seed: r.seed,
       mode: r.mode === "daily" ? "daily" : "random",
+      size: SIZE,
       src: r.src,
       start: r.start.slice(),
       history: r.history
@@ -96,7 +136,7 @@
     var i = y * SIZE + x;
     var open = L.openings(mask);
     var text = "Row " + (y + 1) + ", column " + (x + 1) + ", " + L.pieceType(mask);
-    if (i === game.src) text += " at the spring";
+    if (game && i === game.src) text += " at the spring";
     text += ", open " + open.join(" and ");
     text += wet[i] ? ", watered" : ", dry";
     return text;
@@ -110,7 +150,7 @@
     if (mask & L.S) out.push("s");
     if (mask & L.W) out.push("w");
     if (wet[i]) out.push("wet");
-    if (i === game.src) out.push("spring");
+    if (game && i === game.src) out.push("spring");
     return out.join(" ");
   }
 
@@ -118,6 +158,10 @@
     var n = 0;
     for (var i = 0; i < wet.length; i++) if (wet[i]) n += 1;
     return n;
+  }
+
+  function nextSize() {
+    return L.SIZES[(L.SIZES.indexOf(SIZE) + 1) % L.SIZES.length];
   }
 
   function setMessage(text) {
@@ -134,6 +178,12 @@
     view.render();
     $("moves").textContent = "Moves: " + game.moves;
     $("wet").textContent = "Watered " + count + " of " + TOTAL;
+    var next = nextSize();
+    $("size").textContent = "Size: " + SIZE + " x " + SIZE;
+    $("size").setAttribute(
+      "aria-label",
+      "Size: " + SIZE + " by " + SIZE + ". Press to switch to " + next + " by " + next,
+    );
     $("undo").disabled = game.history.length === 0 || game.solved;
     var best = $("best");
     if (game.mode === "daily" && bestToday !== null) {
@@ -156,8 +206,9 @@
     LullshiftBridge.autosave(snapshot());
   }
 
+  // 6 by 6 keeps the key it always had; other sizes include the size.
   function bestKey() {
-    return "best-" + game.seed;
+    return SIZE === 6 ? "best-" + game.seed : "best-" + SIZE + "-" + game.seed;
   }
 
   function loadBest() {
@@ -198,10 +249,7 @@
     if (game.solved) return;
     var i = y * SIZE + x;
     var mask = grid.cells[i];
-    if (!L.canRotate(mask)) {
-      setMessage("This crossing already fits every way.");
-      return;
-    }
+    var crossing = !L.canRotate(mask);
     grid.set(x, y, L.rotate(mask, cw));
     game.history = L.pushMove(game.history, i, cw);
     game.moves += 1;
@@ -211,6 +259,14 @@
       recordBest();
       setMessage("Every bed is watered in " + movesText(game.moves) + ". Well done.");
       render();
+    } else if (crossing) {
+      setMessage(
+        "Crossing turned. It looks the same from every side. Watered " +
+          wateredNow() +
+          " of " +
+          TOTAL +
+          ".",
+      );
     } else {
       setMessage("Watered " + wateredNow() + " of " + TOTAL + ".");
     }
@@ -238,8 +294,8 @@
     save();
   }
 
-  function newGarden(seed, mode, text) {
-    startGarden(seed, mode);
+  function newGarden(seed, mode, text, size) {
+    startGarden(seed, mode, size || SIZE);
     setMessage(text);
     loadBest();
     render();
@@ -256,27 +312,8 @@
 
     var restored = validState(init.restore);
     if (restored) restoreGarden(init.restore);
-    else startGarden(L.dateSeed(new Date()), "daily");
+    else startGarden(L.dateSeed(new Date(), 6), "daily", 6);
     wet = L.watered(cellsNow(), SIZE, game.src);
-
-    view = K.bindGrid($("grid"), grid, {
-      name: "Moss Paths garden, " + SIZE + " by " + SIZE,
-      label: label,
-      className: classes,
-      onActivate: function (x, y) {
-        turnTile(x, y, !lastShift);
-      },
-      onMove: function () {
-        save();
-      },
-      onAction: function (action) {
-        if (action === "undo") {
-          undoMove();
-          return true;
-        }
-        return false;
-      },
-    });
 
     // Shift+Enter, Shift+Space and Shift+click turn counter-clockwise; this runs before the
     // button's own click handler.
@@ -297,10 +334,18 @@
     $("undo").addEventListener("click", undoMove);
     $("restart").addEventListener("click", restart);
     $("daily").addEventListener("click", function () {
-      newGarden(L.dateSeed(new Date()), "daily", "Today's garden.");
+      newGarden(L.dateSeed(new Date(), SIZE), "daily", "Today's garden.");
     });
     $("fresh").addEventListener("click", function () {
       newGarden(randomSeed(), "random", "A new garden.");
+    });
+    $("size").addEventListener("click", function () {
+      var n = nextSize();
+      if (game.mode === "daily") {
+        newGarden(L.dateSeed(new Date(), n), "daily", "Today's " + n + " by " + n + " garden.", n);
+      } else {
+        newGarden(randomSeed(), "random", "A new " + n + " by " + n + " garden.", n);
+      }
     });
 
     if (restored) {

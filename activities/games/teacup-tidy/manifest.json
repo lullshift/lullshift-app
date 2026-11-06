@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "kind": "app",
-  "id": "app.lullshift.games.tea-sort",
-  "version": "0.1.0",
-  "name": "Tea Sort",
+  "id": "app.lullshift.games.teacup-tidy",
+  "version": "0.2.0",
+  "name": "Teacup Tidy",
   "description": "Eight cups, six teas. Pour the top layers between cups until every cup holds a single tea. Colours also differ by pattern and letter. A puzzle each day, or a new one whenever you like.",
   "author": "Lullshift",
   "license": "Apache-2.0",

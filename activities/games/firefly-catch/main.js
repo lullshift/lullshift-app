@@ -28,28 +28,56 @@
     return Math.ceil(state.timeLeft);
   }
 
+  function lengthName(length) {
+    return length === 0 ? "untimed" : length + " seconds";
+  }
+
+  function lengthButton(length) {
+    return length === 0 ? "Untimed" : length + " s";
+  }
+
   function updateText(force) {
-    var status =
-      "Caught " + state.caught + ". Best " + state.best + ". Time left " + secondsLeft() + ".";
+    var timed = state.length > 0;
+    var status = timed
+      ? "Caught " + state.caught + ". Best " + state.best + ". Time left " + secondsLeft() + "."
+      : "Caught " + state.caught + ". Untimed.";
     if (status !== lastStatus) {
       lastStatus = status;
       $("status").textContent = status;
     }
-    var key = state.caught + "|" + state.best + "|" + secondsLeft();
+    var key = state.caught + "|" + state.best + "|" + secondsLeft() + "|" + state.length;
     if (force || key !== lastSummary) {
       lastSummary = key;
-      LullshiftBridge.summary([
-        { label: "Caught", value: state.caught },
-        { label: "Best", value: state.best },
-        { label: "Time left", value: secondsLeft() + " s" },
-      ]);
+      var items = [{ label: "Caught", value: state.caught }];
+      if (timed) {
+        items.push({ label: "Best", value: state.best });
+        items.push({ label: "Time left", value: secondsLeft() + " s" });
+      } else {
+        items.push({ label: "Round", value: "Untimed" });
+      }
+      LullshiftBridge.summary(items);
     }
     $("again").textContent = state.over ? "Play again" : "New round";
+    $("length").textContent = "Length: " + lengthButton(state.length);
+    var next = L.nextLength(state.length);
+    $("length").setAttribute(
+      "aria-label",
+      "Round length: " + lengthName(state.length) + ". Press to switch to " + lengthName(next),
+    );
+    $("lede").textContent =
+      "Slide the jar under the drifting fireflies. " +
+      (timed ? "A calm " + state.length + " seconds." : "No clock; stop whenever you like.");
+  }
+
+  // The best score is kept per round length (90 s keeps the key it always had). Untimed: none.
+  function bestKey(length) {
+    return length === 90 ? "best" : "best-" + length;
   }
 
   function saveBest() {
+    if (state.length === 0) return;
     try {
-      LullshiftBridge.storage.set("best", state.best).then(
+      LullshiftBridge.storage.set(bestKey(state.length), state.best).then(
         function () {},
         function () {},
       );
@@ -59,11 +87,13 @@
   }
 
   function loadBest() {
+    if (state.length === 0) return;
+    var length = state.length;
     try {
-      LullshiftBridge.storage.get("best").then(
+      LullshiftBridge.storage.get(bestKey(length)).then(
         function (v) {
           var n = parseInt(v, 10);
-          if (Number.isFinite(n) && n > state.best && n <= 100000) {
+          if (state.length === length && Number.isFinite(n) && n > state.best && n <= 100000) {
             state.best = n;
             updateText(true);
           }
@@ -238,10 +268,11 @@
     });
   }
 
-  function newRound() {
-    state = L.restart(state, A.randomSeed());
+  function newRound(length) {
+    state = L.restart(state, A.randomSeed(), length);
     lastStatus = "";
     say(state.best > 0 ? "New round." : "");
+    loadBest();
     updateText(true);
     render();
     if (session) session.saveNow();
@@ -252,7 +283,7 @@
     document.documentElement.setAttribute("data-theme", info.theme === "dark" ? "dark" : "light");
     document.documentElement.classList.toggle("reduced", reduced);
     var restored = L.validate(info.restore);
-    state = restored || L.create(A.randomSeed(), reduced);
+    state = restored || L.create(A.randomSeed(), reduced, 90);
     loadBest();
     updateText(true);
     render();
@@ -276,6 +307,13 @@
 
   holdButton("left", "left");
   holdButton("right", "right");
-  $("again").addEventListener("click", newRound);
+  $("again").addEventListener("click", function () {
+    newRound(state.length);
+  });
+  $("length").addEventListener("click", function () {
+    var next = L.nextLength(state.length);
+    newRound(next);
+    say("New round: " + lengthName(next) + ".");
+  });
   canvas.focus();
 })();

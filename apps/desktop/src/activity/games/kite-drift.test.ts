@@ -12,6 +12,7 @@ interface State {
   seed: number;
   rng: number;
   reduced: boolean;
+  pace: string;
   time: number;
   scroll: number;
   y: number;
@@ -33,7 +34,11 @@ interface Logic {
   MAX_SHIFT: number;
   VMIN: number;
   VMAX: number;
-  create(seed: number, reduced: boolean): State;
+  PACES: string[];
+  PACE_SCROLL: Record<string, number>;
+  isPace(p: string): boolean;
+  nextPace(p: string): string;
+  create(seed: number, reduced: boolean, pace?: string): State;
   step(s: State, dt: number, hold: boolean): { passed: number; bumped: number };
   restart(s: State, seed: number): State;
   snapshot(s: State): State;
@@ -183,5 +188,58 @@ describe("KiteLogic", () => {
     expect(L.validate({ ...good, streak: 5, bestStreak: 2 })).toBeNull();
     expect(L.validate({ ...good, clouds: [] })).toBeNull();
     expect(L.validate({ ...good, clouds: [{ x: 1, gapY: 0, done: false }] })).toBeNull();
+  });
+});
+
+describe("Kite Drift pace", () => {
+  it("cycles slow, normal, brisk", () => {
+    expect(L.PACES).toEqual(["slow", "normal", "brisk"]);
+    expect(L.nextPace("slow")).toBe("normal");
+    expect(L.nextPace("normal")).toBe("brisk");
+    expect(L.nextPace("brisk")).toBe("slow");
+    expect(L.create(1, false).pace).toBe("normal");
+    expect(L.create(1, false, "nope").pace).toBe("normal");
+  });
+
+  it("scrolls at a speed set by the pace and nothing else changes in the layout", () => {
+    const distance = (pace: string) => {
+      const s = L.create(8, false, pace);
+      for (let i = 0; i < 60; i++) L.step(s, 1 / 60, false);
+      return s.scroll;
+    };
+    const slow = distance("slow");
+    const normal = distance("normal");
+    const brisk = distance("brisk");
+    expect(slow).toBeLessThan(normal);
+    expect(normal).toBeLessThan(brisk);
+    expect(normal).toBeCloseTo(60, 5);
+    expect(L.create(8, false, "slow").clouds).toEqual(L.create(8, false, "brisk").clouds);
+  });
+
+  it("the next gap stays reachable even at the brisk pace", () => {
+    const maxClimb = L.MAX_SHIFT;
+    const seconds = L.SPACING / L.PACE_SCROLL.brisk!;
+    // lift acceleration 240 px/s^2 up to 100 px/s: easily more than a 90 px change in the time
+    expect(100 * seconds - 100).toBeGreaterThan(maxClimb);
+  });
+
+  it("a flight keeps its pace on restart and never ends on a bump", () => {
+    for (const pace of L.PACES) {
+      let s = L.create(3, false, pace);
+      for (let i = 0; i < 60 * 60; i++) L.step(s, 1 / 60, i % 90 < 30);
+      expect(s.gaps + s.clouds.length).toBeGreaterThan(0);
+      s = L.restart(s, 4);
+      expect(s.pace).toBe(pace);
+    }
+  });
+
+  it("round-trips pace and restores older saves without one as normal", () => {
+    const s = L.create(6, false, "brisk");
+    for (let i = 0; i < 100; i++) L.step(s, 1 / 60, true);
+    expect(L.validate(JSON.parse(JSON.stringify(s)))).toEqual(s);
+    const old = JSON.parse(JSON.stringify(L.create(6, false))) as Record<string, unknown>;
+    delete old.pace;
+    expect(L.validate(old)?.pace).toBe("normal");
+    expect(L.validate({ ...s, pace: "warp" })).toBeNull();
   });
 });

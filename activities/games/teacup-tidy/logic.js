@@ -1,4 +1,4 @@
-// Pure game logic for Tea Sort. No DOM access. Attaches its API to globalThis.TeaLogic.
+// Pure game logic for Teacup Tidy. No DOM access. Attaches its API to globalThis.TeaLogic.
 // A cup is an array of colour numbers (1..COLOURS), bottom first. Cups hold at most CAP layers.
 (function (root) {
   "use strict";

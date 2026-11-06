@@ -31,6 +31,7 @@ interface Logic {
   adjacent(a: number, b: number, wrap?: boolean): boolean;
   deal(seed: number, wrap?: boolean): State;
   layOut(order: number[], seed: number, wrap?: boolean): State;
+  shuffledOrder(rng: unknown): number[];
   canPlay(s: State, ridge: number): boolean;
   apply(s: State, move: number): State | null;
   undo(s: State): State | null;
@@ -66,31 +67,44 @@ describe("RidgeWalkLogic deal", () => {
     }
   });
 
-  it("only hands out deals that can be cleared, and the solution replays to a win", () => {
-    for (const seed of [9, 10, 12, 17]) {
+  it("deals instantly: the deal is the seed's own shuffle, with no solver check", () => {
+    const rng = (
+      globalThis as unknown as { LullshiftKits: { card: { createRng(n: number): unknown } } }
+    ).LullshiftKits.card.createRng;
+    expect(typeof rng).toBe("function");
+    const t = Date.now();
+    for (let seed = 1; seed <= 200; seed++) L.deal(seed);
+    expect(Date.now() - t).toBeLessThan(1000);
+    const s = L.deal(9);
+    expect(s).toEqual(L.layOut(L.shuffledOrder(rng(9)), 9));
+  });
+
+  it("the solver still finds a winning line when one exists", () => {
+    let found = 0;
+    for (let seed = 1; seed <= 6; seed++) {
       const s = L.deal(seed);
       const solution = L.solve(s);
-      expect(solution).not.toBeNull();
+      if (!solution) continue;
+      found += 1;
       let cur: State | null = s;
-      for (const m of solution as number[]) {
-        cur = L.apply(cur as State, m);
-        expect(cur).not.toBeNull();
-      }
+      for (const m of solution) cur = L.apply(cur as State, m);
       expect(L.isWon(cur as State)).toBe(true);
-      expect(L.cardsLeft(cur as State)).toBe(0);
     }
+    expect(found).toBeGreaterThan(0);
   });
 });
 
 describe("RidgeWalkLogic rules", () => {
-  it("adjacent is one step up or down, no wrap unless asked", () => {
+  it("adjacent is one step up or down, and King wraps to Ace", () => {
     expect(L.adjacent(5, 6)).toBe(true);
     expect(L.adjacent(6, 5)).toBe(true);
     expect(L.adjacent(5, 7)).toBe(false);
     expect(L.adjacent(5, 5)).toBe(false);
-    expect(L.adjacent(13, 1)).toBe(false);
-    expect(L.adjacent(1, 13)).toBe(false);
-    expect(L.adjacent(13, 1, true)).toBe(true);
+    expect(L.adjacent(13, 1)).toBe(true);
+    expect(L.adjacent(1, 13)).toBe(true);
+    expect(L.adjacent(13, 1, false)).toBe(false);
+    expect(L.adjacent(13, 12)).toBe(true);
+    expect(L.adjacent(13, 2)).toBe(false);
   });
 
   // A hand-built layout: ridge 0 top is a 6, ridge 1 top is a King, path card is a 5.
@@ -125,13 +139,17 @@ describe("RidgeWalkLogic rules", () => {
     expect(JSON.stringify(s)).toBe(copy);
   });
 
-  it("King and Ace do not connect", () => {
+  it("a King can follow an Ace and an Ace a King", () => {
     const s = handmade();
+    expect(s.wrap).toBe(true);
     s.path = [c(1)];
     s.ridges[1] = [c(13)];
-    expect(L.canPlay(s, 1)).toBe(false);
-    s.wrap = true;
     expect(L.canPlay(s, 1)).toBe(true);
+    s.path = [c(13)];
+    s.ridges[1] = [c(1)];
+    expect(L.canPlay(s, 1)).toBe(true);
+    s.wrap = false;
+    expect(L.canPlay(s, 1)).toBe(false);
   });
 
   it("flips the next stock card onto the path, and refuses when the stock is empty", () => {
@@ -165,9 +183,11 @@ describe("RidgeWalkLogic rules", () => {
 
   it("undo reverses plays and flips, all the way back to the deal", () => {
     const start = L.deal(9);
-    const solution = L.solve(start) as number[];
     let cur = start;
-    for (const m of solution.slice(0, 12)) cur = L.apply(cur, m) as State;
+    for (let i = 0; i < 12; i++) {
+      const m = i % 4 === 3 ? L.FLIP : [0, 1, 2, 3, 4, 5, 6].find((r) => L.canPlay(cur, r));
+      cur = L.apply(cur, m === undefined ? L.FLIP : m) as State;
+    }
     expect(cur.moves).toHaveLength(12);
     while (cur.moves.length) cur = L.undo(cur) as State;
     expect(cur).toEqual(start);
@@ -178,9 +198,14 @@ describe("RidgeWalkLogic rules", () => {
 describe("RidgeWalkLogic saved state", () => {
   it("survives a JSON round trip mid-game and restores exactly", () => {
     const start = L.deal(10);
-    const solution = L.solve(start) as number[];
     let cur = start;
-    for (const m of solution.slice(0, 20)) cur = L.apply(cur, m) as State;
+    for (let i = 0; i < 20; i++) {
+      const m = [0, 1, 2, 3, 4, 5, 6].find((r) => L.canPlay(cur, r));
+      const next = L.apply(cur, m === undefined ? L.FLIP : m);
+      if (!next) break;
+      cur = next;
+    }
+    expect(cur.moves.length).toBeGreaterThan(0);
     const back = L.restore(JSON.parse(JSON.stringify(L.snapshot(cur))));
     expect(back).toEqual(cur);
   });

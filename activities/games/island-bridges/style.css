@@ -73,27 +73,6 @@ h1 {
 .stat[hidden] {
   display: none;
 }
-.options {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.options label {
-  color: var(--muted);
-}
-.options select {
-  font: inherit;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 6px 10px;
-  min-height: 40px;
-}
-.options select:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
-}
 .sea {
   --cols: 7;
   display: grid;

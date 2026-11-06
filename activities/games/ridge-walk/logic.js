@@ -7,10 +7,11 @@
 //
 // Rules: 35 cards are dealt face up into 7 ridges of 5. One more card starts the path and
 // the other 16 are the stock. The top (last) card of a ridge can be played onto the path
-// when its rank is exactly one higher or one lower than the path's top card. Ranks do not
-// wrap from King to Ace unless the `wrap` option is passed (the game never turns it on).
+// when its rank is exactly one higher or one lower than the path's top card. Ranks wrap: a
+// King can be followed by an Ace and an Ace by a King (`wrap` is true unless a test passes false).
 // The player may also flip the next stock card onto the path at any time.
-// Every deal handed out by `deal` is checked by a solver, so it can always be cleared.
+// A deal is just the seed's shuffle, so it is instant. It is not checked to be clearable;
+// `solve` is kept for tests and tools.
 (function (root) {
   "use strict";
   var RIDGES = 7;
@@ -21,7 +22,6 @@
   var RANK_TEXT = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
   var RANK_NAMES = ["Ace", "2", "3", "4", "5", "6", "7", "8", "9", "10", "Jack", "Queen", "King"];
   var SOLVER_NODE_LIMIT = 30000;
-  var MAX_DEAL_ATTEMPTS = 60;
 
   function kit() {
     return root.LullshiftKits.card;
@@ -53,7 +53,7 @@
   // True when a card of rank `a` can be played on a card of rank `b`.
   function adjacent(a, b, wrap) {
     var d = Math.abs(a - b);
-    return d === 1 || (wrap === true && d === 12);
+    return d === 1 || (wrap !== false && d === 12);
   }
 
   function copyState(s) {
@@ -65,7 +65,7 @@
       stock: s.stock.slice(),
       path: s.path.slice(),
       moves: s.moves.slice(),
-      wrap: s.wrap === true,
+      wrap: s.wrap !== false,
     };
   }
 
@@ -82,7 +82,7 @@
       path: [order[used]],
       stock: order.slice(used + 1),
       moves: [],
-      wrap: wrap === true,
+      wrap: wrap !== false,
     };
   }
 
@@ -210,17 +210,9 @@
     return path !== null && dfs(path, cardsLeft(s)) ? moves.slice() : null;
   }
 
-  // The deal for a seed: always the same, always clearable. Returns the starting state.
-  // Tries the seed's own shuffle first, then further shuffles from the same generator.
+  // The deal for a seed: always the same, and instant (no solver run). Returns the starting state.
   function deal(seed, wrap) {
-    var rng = kit().createRng(seed);
-    var first = null;
-    for (var attempt = 0; attempt < MAX_DEAL_ATTEMPTS; attempt++) {
-      var s = layOut(shuffledOrder(rng), seed, wrap);
-      if (first === null) first = s;
-      if (solve(s) !== null) return s;
-    }
-    return first; // practically unreachable; keeps the game playable
+    return layOut(shuffledOrder(kit().createRng(seed)), seed, wrap);
   }
 
   // Checks a saved state: well-formed, with every card of the deck exactly once, and a move
@@ -233,8 +225,9 @@
       var m = raw.moves[i];
       if (!Number.isInteger(m) || m < 0 || m > FLIP) return null;
     }
-    var wrap = raw.wrap === true;
-    var s = deal(raw.seed, wrap);
+    // Older saves (before the wrap rule) were dealt with a solver check and may not replay;
+    // those fail the layout check below and the game starts a fresh deal.
+    var s = deal(raw.seed);
     for (var j = 0; j < raw.moves.length; j++) {
       s = apply(s, raw.moves[j]);
       if (s === null) return null;

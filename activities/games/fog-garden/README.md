@@ -6,10 +6,10 @@ An original game bundled with Lullshift, built on the grid kit (ADR-019).
 
 ## How to play
 
-1. Reveal any tile to begin. The first tile is always safe, and so are the tiles around it.
+1. Reveal any tile to begin. The first tile you open is never a bramble, and neither are the tiles around it, so it always opens up an area.
 2. A number tells you how many brambles are in the tiles around it. A blank tile has none, so its neighbours clear on their own.
 3. Use the numbers to work out which tiles are safe and which hide brambles. Mark the ones you are sure of so you do not reveal them by accident.
-4. If you reveal a bramble the fog simply closes in. Try again keeps the same field, New field gives a different one, and Today's field is the same for everyone today.
+4. If you reveal a bramble the fog simply closes in. Try again keeps the same field, New field gives a different one, and Today's field is the same for everyone today, with the middle already clear. Size cycles 7 by 7 (8 brambles), 9 by 9 (12) and 12 by 12 (24) and deals a new field.
 
 ## Files
 

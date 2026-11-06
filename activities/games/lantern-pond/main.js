@@ -1,10 +1,13 @@
+// Lantern Pond: a lights-out puzzle on the grid kit (ADR-019). The kit supplies the grid model,
+// the keyboard navigation and the ARIA grid; the rules stay in logic.js.
 (function () {
   "use strict";
   var L = globalThis.LanternLogic;
+  var K = window.LullshiftKits.grid;
   var SIZE = L.SIZE;
   var state = null;
-  var cells = [];
-  var focusIndex = 0;
+  var grid = new K.Grid(SIZE, SIZE, false);
+  var view = null;
   var bestToday = null;
 
   function $(id) {
@@ -28,7 +31,8 @@
       Array.isArray(r.board) &&
       r.board.length === L.CELLS &&
       Array.isArray(r.history) &&
-      typeof r.seed === "number"
+      typeof r.seed === "number" &&
+      Number.isFinite(r.seed)
     );
   }
 
@@ -49,36 +53,35 @@
     };
   }
 
-  function label(i) {
-    var r = Math.floor(i / SIZE) + 1;
-    var c = (i % SIZE) + 1;
-    return "Lantern row " + r + ", column " + c + ", " + (state.board[i] ? "lit" : "unlit");
+  function label(lit, x, y) {
+    return "Lantern row " + (y + 1) + ", column " + (x + 1) + ", " + (lit ? "lit" : "unlit");
   }
 
   function buildGrid() {
-    var grid = $("grid");
-    grid.textContent = "";
-    cells = [];
-    for (var r = 0; r < SIZE; r++) {
-      var row = document.createElement("div");
-      row.className = "row";
-      row.setAttribute("role", "row");
-      for (var c = 0; c < SIZE; c++) {
-        var i = r * SIZE + c;
-        var cell = document.createElement("div");
-        cell.className = "cell";
-        cell.setAttribute("role", "gridcell");
-        var b = document.createElement("button");
-        b.type = "button";
-        b.className = "lantern";
-        b.dataset.index = String(i);
-        b.tabIndex = i === focusIndex ? 0 : -1;
-        cell.appendChild(b);
-        row.appendChild(cell);
-        cells.push(b);
-      }
-      grid.appendChild(row);
-    }
+    view = K.bindGrid($("grid"), grid, {
+      name: "Lantern pond, " + SIZE + " by " + SIZE,
+      label: label,
+      text: function (lit) {
+        return lit ? "●" : "○";
+      },
+      className: function () {
+        return "lantern";
+      },
+      pressed: function (lit) {
+        return lit;
+      },
+      onActivate: function (x, y) {
+        pressCell(y * SIZE + x);
+      },
+      onMove: save,
+      onAction: function (action) {
+        if (action === "undo") {
+          undoMove();
+          return true;
+        }
+        return false;
+      },
+    });
   }
 
   function setMessage(text) {
@@ -86,14 +89,8 @@
   }
 
   function render() {
-    for (var i = 0; i < L.CELLS; i++) {
-      var b = cells[i];
-      var lit = state.board[i];
-      b.setAttribute("aria-pressed", lit ? "true" : "false");
-      b.setAttribute("aria-label", label(i));
-      b.textContent = lit ? "●" : "○";
-      b.tabIndex = i === focusIndex ? 0 : -1;
-    }
+    for (var i = 0; i < L.CELLS; i++) grid.set(i % SIZE, Math.floor(i / SIZE), state.board[i]);
+    view.render();
     $("moves").textContent = "Moves: " + state.moves;
     $("undo").disabled = state.history.length === 0 || state.solved;
     var best = $("best");
@@ -132,6 +129,7 @@
           seed: state.seed,
           mode: state.mode,
           solved: state.solved,
+          cursor: { x: grid.cursor.x, y: grid.cursor.y },
         }
       : undefined;
   }
@@ -178,7 +176,7 @@
     state.board = L.press(state.board, i);
     state.history = L.pushMove(state.history, i);
     state.moves += 1;
-    focusIndex = i;
+    grid.setCursor(i % SIZE, Math.floor(i / SIZE));
     if (L.isSolved(state.board)) {
       state.solved = true;
       recordBest();
@@ -215,54 +213,32 @@
 
   function startPond(seed, mode) {
     state = newState(seed, mode);
-    focusIndex = 0;
+    grid.setCursor(0, 0);
     setMessage(mode === "daily" ? "Today's pond." : "A new pond.");
     loadBest();
     render();
     save();
   }
 
-  function onGridKey(e) {
-    var t = e.target;
-    if (!t || !t.dataset || t.dataset.index === undefined) return;
-    var i = Number(t.dataset.index);
-    var r = Math.floor(i / SIZE);
-    var c = i % SIZE;
-    var next = null;
-    if (e.key === "ArrowRight") next = r * SIZE + Math.min(SIZE - 1, c + 1);
-    else if (e.key === "ArrowLeft") next = r * SIZE + Math.max(0, c - 1);
-    else if (e.key === "ArrowDown") next = Math.min(SIZE - 1, r + 1) * SIZE + c;
-    else if (e.key === "ArrowUp") next = Math.max(0, r - 1) * SIZE + c;
-    else if (e.key === "Home") next = r * SIZE;
-    else if (e.key === "End") next = r * SIZE + SIZE - 1;
-    if (next === null) return;
-    e.preventDefault();
-    cells[focusIndex].tabIndex = -1;
-    focusIndex = next;
-    cells[next].tabIndex = 0;
-    cells[next].focus();
-  }
-
   function setup(init) {
     document.documentElement.setAttribute("data-theme", init.theme === "dark" ? "dark" : "light");
     if (init.reducedMotion) document.documentElement.classList.add("reduced");
     buildGrid();
-    $("grid").addEventListener("keydown", onGridKey);
-    $("grid").addEventListener("click", function (e) {
-      var b = e.target.closest ? e.target.closest("button.lantern") : null;
-      if (b) pressCell(Number(b.dataset.index));
-    });
     $("undo").addEventListener("click", undoMove);
     $("restart").addEventListener("click", restart);
     $("daily").addEventListener("click", function () {
       startPond(L.dateSeed(new Date()), "daily");
     });
     $("fresh").addEventListener("click", function () {
-      startPond(Math.floor(Math.random() * 2147483647) + 1, "random");
+      startPond(K.randomSeed(), "random");
     });
 
     if (validState(init.restore)) {
       state = restoreState(init.restore);
+      var cur = init.restore.cursor;
+      if (cur && K.isIntIn(cur.x, 0, SIZE - 1) && K.isIntIn(cur.y, 0, SIZE - 1)) {
+        grid.setCursor(cur.x, cur.y);
+      }
       loadBest();
       if (state.solved) {
         setMessage("Pond lit in " + state.moves + (state.moves === 1 ? " move." : " moves."));

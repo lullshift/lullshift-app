@@ -6,7 +6,11 @@
   var H = 300;
   var KITE_X = 110; // screen x of the kite; the world scrolls past it
   var KITE_R = 10;
-  var SCROLL = 60; // px per second
+  var SCROLL = 60; // px per second at the normal pace
+  // Pace changes only how fast the sky scrolls past; gap spacing and height limits are the same,
+  // so every gap stays reachable (the largest change takes about a second of lift).
+  var PACES = ["slow", "normal", "brisk"];
+  var PACE_SCROLL = { slow: 44, normal: SCROLL, brisk: 80 };
   var BANK_W = 46;
   var SPACING = 230;
   var GAP_H = 130;
@@ -41,12 +45,21 @@
     });
   }
 
-  function create(seed, reduced) {
+  function isPace(p) {
+    return PACES.indexOf(p) !== -1;
+  }
+
+  function nextPace(pace) {
+    return PACES[(PACES.indexOf(pace) + 1) % PACES.length];
+  }
+
+  function create(seed, reduced, pace) {
     var s = {
       version: 1,
       seed: seed >>> 0,
       rng: seed >>> 0,
       reduced: !!reduced,
+      pace: isPace(pace) ? pace : "normal",
       time: 0,
       scroll: 0,
       y: H / 2,
@@ -65,7 +78,7 @@
   function step(state, dt, hold) {
     var out = { passed: 0, bumped: 0 };
     state.time += dt;
-    state.scroll += SCROLL * dt;
+    state.scroll += (PACE_SCROLL[state.pace] || SCROLL) * dt;
     state.vy += (hold ? LIFT : SINK) * dt;
     state.vy = Math.min(VMAX, Math.max(VMIN, state.vy));
     state.y += state.vy * dt;
@@ -117,9 +130,9 @@
     return out;
   }
 
-  // A fresh flight keeping the best streak.
+  // A fresh flight keeping the best streak and the pace.
   function restart(state, seed) {
-    var n = create(seed, state.reduced);
+    var n = create(seed, state.reduced, state.pace);
     n.bestStreak = state.bestStreak;
     return n;
   }
@@ -145,6 +158,9 @@
     if (!num(raw.y, 0, H) || !num(raw.vy, VMIN, VMAX) || !num(raw.bump, 0, 5)) return null;
     if (!count(raw.gaps) || !count(raw.streak) || !count(raw.bestStreak)) return null;
     if (raw.bestStreak < raw.streak) return null;
+    // Saves from before pace existed have no pace: they are the normal pace.
+    var pace = raw.pace === undefined ? "normal" : raw.pace;
+    if (!isPace(pace)) return null;
     var clouds = [];
     for (var i = 0; i < raw.clouds.length; i++) {
       var c = raw.clouds[i];
@@ -157,6 +173,7 @@
       seed: raw.seed,
       rng: raw.rng,
       reduced: raw.reduced === true,
+      pace: pace,
       time: raw.time,
       scroll: raw.scroll,
       y: raw.y,
@@ -180,6 +197,10 @@
     MAX_SHIFT: MAX_SHIFT,
     VMIN: VMIN,
     VMAX: VMAX,
+    PACES: PACES,
+    PACE_SCROLL: PACE_SCROLL,
+    isPace: isPace,
+    nextPace: nextPace,
     create: create,
     step: step,
     restart: restart,

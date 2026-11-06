@@ -25,7 +25,9 @@ interface Logic {
   openings(mask: number): string[];
   canRotate(mask: number): boolean;
   isMask(v: unknown): boolean;
-  dateSeed(d: Date): number;
+  dateSeed(d: Date, size?: number): number;
+  SIZES: number[];
+  isSize(n: number): boolean;
   watered(cells: number[], size: number, src: number): boolean[];
   wateredCount(cells: number[], size: number, src: number): number;
   isSolved(cells: number[], size: number, src: number): boolean;
@@ -161,5 +163,43 @@ describe("MossLogic", () => {
     expect(back.cells.every(L.isMask)).toBe(true);
     expect(L.isMask(16)).toBe(false);
     expect(L.isMask(1.5)).toBe(false);
+  });
+});
+
+describe("Moss Paths sizes and crossings", () => {
+  it("offers 4, 6 and 8", () => {
+    expect(L.SIZES).toEqual([4, 6, 8]);
+    expect(L.isSize(6)).toBe(true);
+    expect(L.isSize(5)).toBe(false);
+  });
+
+  it("generates a solvable, unsolved garden at every size", () => {
+    for (const size of L.SIZES) {
+      for (let seed = 1; seed <= 25; seed++) {
+        const g = L.generate(seed, size);
+        expect(g.cells).toHaveLength(size * size);
+        expect(L.isSolved(g.solution, size, g.src)).toBe(true);
+        expect(L.isSolved(g.cells, size, g.src)).toBe(false);
+      }
+    }
+  });
+
+  it("keys the daily garden by size and keeps the 6 by 6 seed", () => {
+    const d = new Date(2026, 10, 6);
+    const seeds = L.SIZES.map((n) => L.dateSeed(d, n));
+    expect(new Set(seeds).size).toBe(3);
+    expect(L.dateSeed(d, 6)).toBe(L.dateSeed(d));
+    for (const n of L.SIZES)
+      expect(L.dateSeed(d, n)).toBe(L.dateSeed(new Date(2026, 10, 6, 20), n));
+  });
+
+  it("a crossing can be turned: it stays a crossing, counts as a move and undoes", () => {
+    const cells = [15, 5, 5, 5];
+    const turned = L.turn(cells, 0, true);
+    expect(turned).toEqual(cells);
+    const history = L.pushMove([], 0, true);
+    expect(history).toHaveLength(1);
+    expect(L.undo(turned, history)).toEqual({ cells, history: [] });
+    expect(L.pieceType(L.rotate(15, false))).toBe("cross");
   });
 });

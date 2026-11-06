@@ -155,6 +155,14 @@ export interface TableOptions {
   revealAfterMove?: boolean;
   /** Undo steps kept (default 100). */
   historyLimit?: number;
+  /**
+   * Lay the piles out as a grid with this many columns (a whole number from 1 to 100), the way a
+   * memory-pairs board does: up and down move between rows, left and right stay inside the row,
+   * Home and End go to the row's ends, PageUp and PageDown to the column's top and bottom. Without
+   * it, piles are one line: left and right move between piles and up and down between cards. The
+   * game still lays the piles out in its own CSS.
+   */
+  columns?: number;
 }
 
 export interface TableState {
@@ -276,6 +284,8 @@ export class Table {
   navigate(action: KeyAction): boolean {
     const { pile, card } = this.focus;
     const len = (this.piles[pile] as Pile).cards.length;
+    const cols = this.options.columns;
+    if (isIntIn(cols, 1, CARD_LIMITS.piles)) return this.navigateGrid(action, pile, cols);
     switch (action) {
       case "left":
         return this.focusPile(pile - 1);
@@ -421,6 +431,38 @@ export class Table {
 
   private topIndex(pile: number): number {
     return ((this.piles[pile] as Pile).cards.length || 0) - 1;
+  }
+
+  private navigateGrid(action: KeyAction, pile: number, cols: number): boolean {
+    const last = this.piles.length - 1;
+    const rowStart = pile - (pile % cols);
+    switch (action) {
+      case "left":
+        return pile % cols === 0 ? false : this.focusPile(pile - 1);
+      case "right":
+        return pile % cols === cols - 1 || pile === last ? false : this.focusPile(pile + 1);
+      case "up":
+        return this.focusPile(pile - cols);
+      case "down":
+        return this.focusPile(pile + cols);
+      case "home":
+        return this.focusPile(rowStart);
+      case "end":
+        return this.focusPile(Math.min(last, rowStart + cols - 1));
+      case "first":
+        return this.focusPile(0);
+      case "last":
+        return this.focusPile(last);
+      case "pageUp":
+        return this.focusPile(pile % cols);
+      case "pageDown": {
+        let bottom = pile % cols;
+        while (bottom + cols <= last) bottom += cols;
+        return this.focusPile(bottom);
+      }
+      default:
+        return false;
+    }
   }
 
   private focusPile(pile: number): boolean {

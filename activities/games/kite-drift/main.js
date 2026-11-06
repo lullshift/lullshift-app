@@ -24,8 +24,17 @@
     $("message").textContent = text;
   }
 
+  function cap(word) {
+    return word.charAt(0).toUpperCase() + word.slice(1);
+  }
+
   function updateText(force) {
     $("status").textContent = "Gaps " + state.gaps + ". Best streak " + state.bestStreak + ".";
+    $("pace").textContent = "Pace: " + cap(state.pace);
+    $("pace").setAttribute(
+      "aria-label",
+      "Pace: " + state.pace + ". Press to switch to " + L.nextPace(state.pace),
+    );
     var key = state.gaps + "|" + state.bestStreak;
     if (force || key !== lastSummary) {
       lastSummary = key;
@@ -185,6 +194,13 @@
     if (session) session.saveNow();
   }
 
+  function changePace() {
+    state.pace = L.nextPace(state.pace);
+    say("Pace: " + state.pace + ".");
+    updateText(true);
+    if (session) session.saveNow();
+  }
+
   function setup(info) {
     reduced = !!info.reducedMotion;
     document.documentElement.setAttribute("data-theme", info.theme === "dark" ? "dark" : "light");
@@ -212,5 +228,6 @@
 
   bindHold();
   $("again").addEventListener("click", newFlight);
+  $("pace").addEventListener("click", changePace);
   canvas.focus();
 })();

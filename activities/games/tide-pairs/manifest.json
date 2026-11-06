@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "app",
   "id": "app.lullshift.games.tide-pairs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Tide Pairs",
   "description": "A gentle memory game of sea creatures and shells. Turn two cards at a time and find every matching pair. A new deal each day, or as many as you like.",
   "author": "Lullshift",

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "app",
   "id": "app.lullshift.games.lantern-pond",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Lantern Pond",
   "description": "Lanterns float on a quiet night pond. Pressing one flips it and the lanterns beside it. Light every lantern in as few presses as you like. A new pond each day, or as many fresh ones as you want.",
   "author": "Lullshift",
@@ -36,11 +36,15 @@
       },
       {
         "keys": "Home / End",
-        "action": "Jump to the start or end of the row"
+        "action": "Jump to the start or end of the row (Ctrl+Home and Ctrl+End jump to the corners)"
       },
       {
         "keys": "Enter / Space",
         "action": "Press the lantern"
+      },
+      {
+        "keys": "Ctrl+Z",
+        "action": "Undo the last press"
       },
       {
         "keys": "Tab",

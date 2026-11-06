@@ -103,6 +103,7 @@ h1 {
   background: var(--tile);
   cursor: pointer;
   overflow: hidden;
+  white-space: nowrap;
   transition:
     background-color 0.2s ease,
     border-color 0.2s ease;
@@ -125,28 +126,31 @@ h1 {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
-.shape {
+/* The shape is drawn by the face-up card's ::before; its name is the button's own text. */
+.kit-pile {
+  display: block;
+}
+.tile::before {
+  content: none;
+}
+.tile[class*="s-"]::before {
+  content: "";
   display: block;
   width: 58%;
   height: 58%;
   background: var(--shape-color, #888);
 }
-.cols-4 .shape {
+.cols-4 .tile[class*="s-"]::before {
   width: 52%;
   height: 52%;
-}
-.caption {
-  display: block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: clip;
-  white-space: nowrap;
 }
 .cols-4 .tile {
   font-size: 0.85rem;
 }
 .s-starfish {
   --shape-color: #e8803c;
+}
+.tile.s-starfish::before {
   clip-path: polygon(
     50% 0,
     62% 36%,
@@ -162,28 +166,40 @@ h1 {
 }
 .s-conch {
   --shape-color: #d98e73;
+}
+.tile.s-conch::before {
   border-radius: 50% 50% 50% 8%;
 }
 .s-crab {
   --shape-color: #d9453d;
+}
+.tile.s-crab::before {
   border-radius: 40% 40% 20% 20%;
   height: 40%;
 }
 .s-jellyfish {
   --shape-color: #9b6fe0;
+}
+.tile.s-jellyfish::before {
   border-radius: 50% 50% 12% 12%;
 }
 .s-seahorse {
   --shape-color: #c99a14;
+}
+.tile.s-seahorse::before {
   border-radius: 40%;
   width: 28%;
 }
 .s-clam {
   --shape-color: #7f86a6;
+}
+.tile.s-clam::before {
   clip-path: polygon(0 100%, 14% 22%, 86% 22%, 100% 100%);
 }
 .s-urchin {
   --shape-color: #6f64a8;
+}
+.tile.s-urchin::before {
   clip-path: polygon(
     50% 0,
     60% 26%,
@@ -205,22 +221,32 @@ h1 {
 }
 .s-octopus {
   --shape-color: #d9568f;
+}
+.tile.s-octopus::before {
   border-radius: 50%;
 }
 .s-turtle {
   --shape-color: #3f9a70;
+}
+.tile.s-turtle::before {
   clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%);
 }
 .s-dolphin {
   --shape-color: #3f86c0;
+}
+.tile.s-dolphin::before {
   clip-path: polygon(50% 5%, 100% 95%, 0 95%);
 }
 .s-angelfish {
   --shape-color: #25a3a3;
+}
+.tile.s-angelfish::before {
   clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
 }
 .s-coral {
   --shape-color: #d9614a;
+}
+.tile.s-coral::before {
   clip-path: polygon(
     35% 0,
     65% 0,

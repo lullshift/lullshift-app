@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "app",
   "id": "app.lullshift.games.moss-paths",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Moss Paths",
   "description": "A quiet garden of stream tiles. Turn each tile until water from the spring reaches every bed. A garden each day that remembers your best, or a new one whenever you like.",
   "author": "Lullshift",
@@ -17,25 +17,25 @@
   "runtime": "isolated-web-v1",
   "interruptibility": { "pause": true, "resume": true, "persistState": true },
   "help": {
-    "summary": "A 6 by 6 garden where every tile holds a piece of stream: an end, a straight, a bend, a tee or a crossing. Turning tiles joins the streams into one network.",
-    "goal": "Water every bed. Tiles joined to the spring turn blue, and you win when all 36 are blue. There is no timer, and fewer moves is only a bonus.",
+    "summary": "A garden (4 by 4, 6 by 6 or 8 by 8) where every tile holds a piece of stream: an end, a straight, a bend, a tee or a crossing. Turning tiles joins the streams into one network.",
+    "goal": "Water every bed. Tiles joined to the spring turn blue, and you win when every tile is blue. There is no timer, and fewer moves is only a bonus.",
     "howToPlay": [
       "Find the spring, the tile with the ring in the middle.",
       "Turn a tile a quarter turn so its stream lines up with its neighbours. Water only passes where two tiles open toward each other.",
       "Watch the Watered count grow until every tile is blue.",
-      "Today's garden is the same for everyone today and remembers your best. New garden deals a fresh one. Restart tangles the same garden again, and Undo takes back your last turn."
+      "Today's garden is the same for everyone today and remembers your best. New garden deals a fresh one. Restart tangles the same garden again, and Undo takes back your last turn. Size switches between 4 by 4, 6 by 6 and 8 by 8 and deals that size's garden."
     ],
     "controls": [
       { "keys": "Arrow keys", "action": "Move between tiles" },
       { "keys": "Enter / Space", "action": "Turn the tile clockwise" },
       { "keys": "Shift+Enter or R", "action": "Turn the tile counter-clockwise" },
       { "keys": "Ctrl+Z", "action": "Undo the last turn" },
-      { "keys": "Tab", "action": "Reach Undo, Restart and the garden buttons" }
+      { "keys": "Tab", "action": "Reach Undo, Restart, the garden buttons and Size" }
     ],
     "tips": [
       "Start from the spring and work outward, one tile at a time.",
       "Ends and bends in the corners and along the edges can only point inward, so fix those first.",
-      "A crossing already fits every way and never needs turning.",
+      "A crossing looks the same from every side, so turning it changes nothing. It still counts as a move, and Undo takes it back.",
       "You can stop at any time. Your garden is saved and waits for you."
     ]
   },
