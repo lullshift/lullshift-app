@@ -25,6 +25,11 @@ const steps = [
   { name: "format", cmd: "pnpm", args: ["format:check"] },
   { name: "unit tests (ts)", cmd: "pnpm", args: ["test"] },
   {
+    name: "npm publish guard (unit tests)",
+    cmd: "node",
+    args: ["--test", "scripts/npm-publish-guard.test.mjs"],
+  },
+  {
     name: "npm packages (build, pack, inspect)",
     cmd: "node",
     args: ["scripts/check-npm-packages.mjs"],

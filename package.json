@@ -24,7 +24,7 @@
     "desktop:dev": "pnpm --filter @lullshift/desktop tauri dev --config src-tauri/tauri.dev.conf.json",
     "desktop:build": "pnpm --filter @lullshift/desktop build",
     "lullshift": "node tools/lullshift-cli/src/main.ts",
-    "npm:check": "node scripts/check-npm-packages.mjs"
+    "npm:check": "node --test scripts/npm-publish-guard.test.mjs && node scripts/check-npm-packages.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
