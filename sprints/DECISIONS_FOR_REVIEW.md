@@ -33,6 +33,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 27 | 12 | Sprint 12 build and review choices | change: 27.1, 27.5, 27.6, 27.8 |
 | 28 | 12 | Bundled Git fallback (gix, public https) | change: build it |
 | 29 | 12 | Publish the creator CLI and SDK to npm | change: build it |
+| 30 | 12 | Wording in PRD and CLAUDE.md after 27.5 | open |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -367,3 +368,12 @@ These were taken during Sprint 12, mostly to fix security review findings. Pleas
 - **Owner steps:** register the `@lullshift` scope on npm, create a granular publish token and approve each publish run.
 - **Record:** an amendment to ADR-017.
 - **Assumption, for review:** the published CLI supports Node 22 and newer (the compiled JavaScript doesn't need Node 24's TypeScript support). Development in this repo stays on Node 24.
+
+## 30. Wording in the PRD and CLAUDE.md after decision 27.5 (open, for the owner)
+
+Decision 27.5 opened third-party code activities on every platform after a warning and consent. Two documents I may not change on my own still say otherwise or say nothing:
+
+- **`docs/PRODUCT_REQUIREMENTS.md` line 252** says the sandbox "must be proven per OS before code activities are installable". It is now out of date. Suggested change: "Third-party code activities are installable on every platform after the review shows a risk warning and the user ticks a consent box, at each install and each update that changes the code. The per-OS sandbox proof is still run, and its result is shown in the warning."
+- **`CLAUDE.md`, under "Activities and creators"**, suggested new line: "Third-party code activities (`kind: app` from non-built-in marketplaces) are installable on all platforms only after the review's risk warning and explicit consent at each install and each code-changing update (owner decision 27.5, ADR-015 amendment). The backend must refuse them without `acceptCodeRisk: true`. Never weaken the sandbox, CSP, WebRTC block or permissions model to make third-party code work, and never describe the sandbox as guaranteed."
+
+**Question for the owner:** apply both changes as written, change the wording, or leave them?
