@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "app",
   "id": "app.lullshift.games.island-bridges",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Island Bridges",
   "description": "A quiet sea of numbered islands. Join them with bridges until every island has its number and the whole archipelago is connected. A sea each day that remembers your best, or a new one whenever you like.",
   "author": "Lullshift",

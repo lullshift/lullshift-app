@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "kind": "app",
   "id": "app.lullshift.games.firefly-catch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Firefly Catch",
-  "description": "A dusk meadow, a glass jar and slow glowing fireflies. Slide the jar to catch them for a calm 90 seconds. Missed ones just fly away.",
+  "description": "A dusk meadow, a glass jar and slow glowing fireflies. Slide the jar to catch them for a calm round of 60, 90 or 180 seconds, or with no clock. Missed ones just fly away.",
   "author": "Lullshift",
   "license": "Apache-2.0",
   "category": "arcade",
@@ -18,19 +18,19 @@
   "interruptibility": { "pause": true, "resume": true, "persistState": true },
   "help": {
     "summary": "Fireflies drift slowly down a dusk meadow. Slide a glass jar along the bottom to catch them.",
-    "goal": "Catch as many fireflies as you like in a calm round of 90 seconds. There are no lives and no game over; missed fireflies just fly away.",
+    "goal": "Catch as many fireflies as you like in a calm round of 60, 90 or 180 seconds, or with no clock at all. There are no lives and no game over; missed fireflies just fly away.",
     "howToPlay": [
       "Move the jar left and right under a drifting firefly.",
       "A firefly that drifts into the jar mouth is caught.",
-      "After 90 seconds of play the round ends and shows how many you caught. Pausing stops the clock.",
-      "Press Play again for a new round. Your best is remembered."
+      "When the round time is up the round ends and shows how many you caught. Pausing stops the clock. Untimed rounds never end by themselves.",
+      "Press Play again for a new round. Length switches between 60, 90 and 180 seconds and untimed, and starts a new round. Your best is remembered for each timed length; untimed rounds keep no best."
     ],
     "controls": [
       { "keys": "Left / Right arrow keys", "action": "Move the jar" },
       { "keys": "A / D", "action": "Move the jar" },
       { "keys": "Enter / Space", "action": "Start or resume after the Ready prompt" },
       { "keys": "Escape", "action": "Pause" },
-      { "keys": "Tab", "action": "Reach the on-screen Left, Right and New round buttons" }
+      { "keys": "Tab", "action": "Reach the on-screen Left, Right, New round and Length buttons" }
     ],
     "tips": [
       "Sit under a firefly early and let it drift into the jar.",

@@ -10,24 +10,28 @@ interface Game {
   revealed: number[];
   marks: number[];
   status: "playing" | "hit" | "won";
+  size?: number;
 }
 interface Logic {
   SIZE: number;
   CELLS: number;
   BRAMBLES: number;
-  neighbours(i: number): number[];
-  placeBrambles(seed: number, safe: number): number[];
-  countAround(brambles: number[], i: number): number;
+  neighbours(i: number, size?: number): number[];
+  placeBrambles(seed: number, safe: number, size?: number): number[];
+  countAround(brambles: number[], i: number, size?: number): number;
   CENTRE: number;
-  newGame(seed: number): Game;
-  dailyGame(seed: number): Game;
+  newGame(seed: number, size?: number): Game;
+  dailyGame(seed: number, size?: number): Game;
   reveal(g: Game, i: number): { game: Game; changed: boolean };
   toggleMark(g: Game, i: number): { game: Game; changed: boolean };
   tryAgain(g: Game): Game;
   isWon(g: Game): boolean;
   bramblesLeft(g: Game): number;
   revealedCount(g: Game): number;
-  safeTotal(): number;
+  safeTotal(size?: number): number;
+  SIZES: { size: number; brambles: number }[];
+  bramblesFor(size: number): number;
+  centreOf(size: number): number;
   validate(r: unknown): Game | null;
 }
 const L = (globalThis as unknown as { FogLogic: Logic }).FogLogic;
@@ -202,5 +206,74 @@ describe("Fog Garden daily field", () => {
     expect(again.brambles).toEqual(a.brambles);
     expect(again.revealed).toEqual(a.revealed);
     expect(L.validate(JSON.parse(JSON.stringify(a)))).toEqual(a);
+  });
+});
+
+describe("Fog Garden sizes", () => {
+  it("offers three sizes with calm bramble counts", () => {
+    expect(L.SIZES).toEqual([
+      { size: 7, brambles: 8 },
+      { size: 9, brambles: 12 },
+      { size: 12, brambles: 24 },
+    ]);
+  });
+
+  it("places the right number of brambles and keeps the first tile and its ring clear", () => {
+    for (const { size, brambles } of L.SIZES) {
+      for (let seed = 1; seed <= 60; seed++) {
+        const safe = (seed * 13) % (size * size);
+        const b = L.placeBrambles(seed, safe, size);
+        expect(b).toHaveLength(size * size);
+        expect(sum(b)).toBe(brambles);
+        expect(b[safe]).toBe(0);
+        for (const n of L.neighbours(safe, size)) expect(b[n]).toBe(0);
+      }
+    }
+  });
+
+  it("the first reveal is safe and opens an area at every size", () => {
+    for (const { size } of L.SIZES) {
+      for (let seed = 1; seed <= 40; seed++) {
+        for (const i of [0, size - 1, size * size - 1, Math.floor(size / 2) * size + 3]) {
+          const g = L.reveal(L.newGame(seed, size), i).game;
+          expect(g.status).toBe("playing");
+          expect((g.brambles as number[])[i]).toBe(0);
+          expect(g.revealed.filter(Boolean).length).toBeGreaterThan(1);
+        }
+      }
+    }
+  });
+
+  it("every size is winnable by revealing only safe tiles and counts are right", () => {
+    for (const { size, brambles } of L.SIZES) {
+      let g = L.reveal(L.newGame(5, size), 0).game;
+      const b = g.brambles as number[];
+      for (let i = 0; i < size * size; i++) if (!b[i]) g = L.reveal(g, i).game;
+      expect(g.status).toBe("won");
+      expect(L.safeTotal(size)).toBe(size * size - brambles);
+      expect(L.revealedCount(g)).toBe(size * size - brambles);
+      expect(L.bramblesLeft(L.newGame(5, size))).toBe(brambles);
+    }
+  });
+
+  it("daily field opens the centre at each size and is stable", () => {
+    for (const { size } of L.SIZES) {
+      const a = L.dailyGame(20261106, size);
+      expect(a).toEqual(L.dailyGame(20261106, size));
+      expect(a.first).toBe(L.centreOf(size));
+      expect(a.revealed[L.centreOf(size)]).toBe(1);
+      expect(L.validate(JSON.parse(JSON.stringify(a)))).toEqual(a);
+      expect(L.tryAgain(a).revealed).toEqual(a.revealed);
+    }
+  });
+
+  it("restores older saves without a size as 9 by 9, and rejects bad sizes", () => {
+    const g = L.reveal(L.newGame(99), 12).game;
+    const old = JSON.parse(JSON.stringify(g)) as Record<string, unknown>;
+    delete old.size;
+    expect(L.validate(old)?.size).toBe(9);
+    expect(L.validate({ ...g, size: 8 })).toBeNull();
+    expect(L.validate({ ...g, size: 7 })).toBeNull(); // arrays are 81 long
+    expect(L.validate({ ...g, size: "9" })).toBeNull();
   });
 });

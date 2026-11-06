@@ -600,9 +600,9 @@
       }
     },
     {
-      "id": "app.lullshift.games.tea-sort",
+      "id": "app.lullshift.games.teacup-tidy",
       "source": {
-        "path": "activities/games/tea-sort"
+        "path": "activities/games/teacup-tidy"
       }
     },
     {

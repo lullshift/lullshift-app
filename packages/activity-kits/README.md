@@ -127,7 +127,7 @@ buildDeck({ suits?, ranks?, copies? }): Card[]    // default 52 cards, face down
 customDeck([{ suit, rank, id?, name? }]): Card[]  // your own set; ids must be unique
 shuffleDeck(cards, rng): Card[]
 cardLabel(card), rankName(rank), suitColor(suit), isCard(value)
-new Table(piles: { id, name, cards? }[], { canMove?(move, table), revealAfterMove?, historyLimit? })
+new Table(piles: { id, name, cards? }[], { canMove?(move, table), revealAfterMove?, historyLimit?, columns? })
 table.piles, table.pile(id), table.top(id)
 table.canMove(from, to, count = 1), table.move(from, to, count = 1): boolean
 table.deal(from, to, count, faceUp): number       // ignores rules
@@ -138,6 +138,8 @@ table.selection, table.activate(): "selected" | "moved" | "rejected" | "cleared"
 table.snapshot(): TableState, table.restore(state): boolean
 bindTable(container, table, options): { render(), focus(), destroy() }
 ```
+
+`columns` (1 to 100) treats the piles as a grid for the keyboard, as a memory-pairs board does: Up and Down change row, Left and Right stay in the row, Home and End go to the row's ends, PageUp and PageDown to the column's ends. Lay the piles out in your own CSS (`.kit-pile` is one pile). Without it, piles are one line.
 
 Your rules go in `canMove`. The table already checks that the cards exist, are face up and change piles. `activate()` is pick-up-and-place: the first press picks up the focused card and those on top of it, the second press tries to put them on the focused pile.
 

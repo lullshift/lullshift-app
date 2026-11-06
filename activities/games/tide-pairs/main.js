@@ -4,8 +4,8 @@
   var K = globalThis.LullshiftKits.card;
   var PAUSE_MS = 900;
   var state = null;
-  var tiles = [];
-  var focusIndex = 0;
+  var table = null; // a card-kit Table: one pile per slot, one card in each
+  var view = null; // its bindTable binding
   var reduced = false;
   var timer = null;
   var best = null; // fewest turns for the current size, if known
@@ -27,53 +27,54 @@
     return name.charAt(0).toUpperCase() + name.slice(1);
   }
 
-  function slotLabel(i) {
-    var c = cols();
-    var base = "Card row " + (Math.floor(i / c) + 1) + ", column " + ((i % c) + 1) + ", ";
+  function slotIndex(pile) {
+    return Number(pile.id.slice(1));
+  }
+
+  function slotLabel(card, pile) {
+    var i = slotIndex(pile);
+    var base = "Card " + pile.name + ", ";
     if (!L.isUp(state, i)) return base + "face down";
     return base + L.symbolAt(state, i) + (state.matched[i] ? ", matched" : ", face up");
   }
 
+  // Builds the table and its binding for the current game, with the cursor on the first shell.
   function buildBoard() {
-    var board = $("board");
-    board.textContent = "";
-    tiles = [];
+    if (view) view.destroy();
     var c = cols();
     var rows = (state.pairs * 2) / c;
+    var board = $("board");
     board.className = "board cols-" + c;
-    board.setAttribute("aria-label", "Tide pairs, " + rows + " by " + c);
-    if (focusIndex >= state.pairs * 2) focusIndex = 0;
-    for (var i = 0; i < state.pairs * 2; i++) {
-      var b = document.createElement("button");
-      b.type = "button";
-      b.dataset.index = String(i);
-      tiles.push(b);
-      board.appendChild(b);
+    table = new K.Table(L.pileSpecs(state), { columns: c });
+    table.focus = { pile: 0, card: 0 };
+    view = K.bindTable(board, table, {
+      name: "Tide pairs, " + rows + " by " + c,
+      label: slotLabel,
+      text: function (card, pile) {
+        return L.isUp(state, slotIndex(pile)) ? card.suit : "";
+      },
+      className: function (card, pile) {
+        var i = slotIndex(pile);
+        if (!L.isUp(state, i)) return "tile down";
+        return "tile s-" + card.suit + (state.matched[i] ? " matched" : " up");
+      },
+      onActivate: function (pileId) {
+        pressTile(Number(pileId.slice(1)));
+        return true;
+      },
+    });
+  }
+
+  // Copies the game state onto the table's cards, then redraws.
+  function syncTable() {
+    for (var i = 0; i < table.piles.length; i++) {
+      table.piles[i].cards[0].faceUp = L.isUp(state, i);
     }
+    view.render();
   }
 
   function render() {
-    for (var i = 0; i < tiles.length; i++) {
-      var b = tiles[i];
-      var up = L.isUp(state, i);
-      var matched = state.matched[i];
-      b.className = "tile " + (up ? (matched ? "matched" : "up") : "down");
-      b.setAttribute("aria-label", slotLabel(i));
-      b.tabIndex = i === focusIndex ? 0 : -1;
-      b.textContent = "";
-      if (up) {
-        var name = L.symbolAt(state, i);
-        var shape = document.createElement("span");
-        shape.className = "shape s-" + name;
-        shape.setAttribute("aria-hidden", "true");
-        var cap = document.createElement("span");
-        cap.className = "caption";
-        cap.setAttribute("aria-hidden", "true");
-        cap.textContent = name;
-        b.appendChild(shape);
-        b.appendChild(cap);
-      }
-    }
+    syncTable();
     var found = L.pairsFound(state);
     $("pairs").textContent = "Pairs: " + found + " of " + state.pairs;
     $("turns").textContent = "Turns: " + state.turns;
@@ -185,7 +186,7 @@
     var r = L.flip(state, i);
     if (r.result === "ignored") return;
     state = r.state;
-    focusIndex = i;
+    table.focus = { pile: i, card: 0 };
     var name = title(L.symbolAt(state, i));
     if (r.result === "first") {
       setMessage(name + ". Now find its pair.");
@@ -215,7 +216,6 @@
   function startGame(seed, pairs, mode, text) {
     clearTimer();
     state = L.deal(seed, pairs, mode);
-    focusIndex = 0;
     lastReport = "";
     buildBoard();
     setMessage(text);
@@ -224,42 +224,10 @@
     save();
   }
 
-  function onBoardKey(e) {
-    var t = e.target;
-    if (!t || !t.dataset || t.dataset.index === undefined) return;
-    var action = K.keyAction(e);
-    if (!action) return;
-    var c = cols();
-    var n = state.pairs * 2;
-    var i = Number(t.dataset.index);
-    var r = Math.floor(i / c);
-    var col = i % c;
-    var next = null;
-    if (action === "right") next = r * c + Math.min(c - 1, col + 1);
-    else if (action === "left") next = r * c + Math.max(0, col - 1);
-    else if (action === "down") next = Math.min(n / c - 1, r + 1) * c + col;
-    else if (action === "up") next = Math.max(0, r - 1) * c + col;
-    else if (action === "home") next = r * c;
-    else if (action === "end") next = r * c + c - 1;
-    else if (action === "first") next = 0;
-    else if (action === "last") next = n - 1;
-    if (next === null) return;
-    e.preventDefault();
-    tiles[focusIndex].tabIndex = -1;
-    focusIndex = next;
-    tiles[next].tabIndex = 0;
-    tiles[next].focus();
-  }
-
   function setup(init) {
     document.documentElement.setAttribute("data-theme", init.theme === "dark" ? "dark" : "light");
     reduced = init.reducedMotion === true;
     if (reduced) document.documentElement.classList.add("reduced");
-    $("board").addEventListener("keydown", onBoardKey);
-    $("board").addEventListener("click", function (e) {
-      var b = e.target.closest ? e.target.closest("button.tile") : null;
-      if (b) pressTile(Number(b.dataset.index));
-    });
     $("daily").addEventListener("click", function () {
       startGame(
         L.dailySeed(new Date()),

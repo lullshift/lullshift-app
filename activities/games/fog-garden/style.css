@@ -97,11 +97,23 @@ h1 {
 }
 .kit-row {
   display: grid;
-  grid-template-columns: repeat(9, 1fr);
+  grid-template-columns: repeat(var(--n, 9), 1fr);
   gap: 3px;
 }
 .kit-gridcell {
   display: block;
+}
+.field[data-size="12"] {
+  gap: 2px;
+  padding: 6px;
+}
+.field[data-size="12"] .kit-row {
+  gap: 2px;
+}
+.field[data-size="12"] .kit-cell {
+  min-height: 22px;
+  font-size: 0.8rem;
+  border-width: 1px;
 }
 .kit-cell {
   width: 100%;

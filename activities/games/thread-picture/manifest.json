@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "app",
   "id": "app.lullshift.games.thread-picture",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Thread Picture",
   "description": "A picture-by-numbers puzzle. Number clues tell you which cells to thread; fill them and a small picture appears. A puzzle each day that remembers your best, or a new one whenever you like.",
   "author": "Lullshift",

@@ -7,7 +7,7 @@ An original game bundled with Lullshift, built on the arcade kit (ADR-019).
 ## How to play
 
 1. Hold Space, the Up arrow or the big on-screen button to lift the kite.
-2. Release to let it sink slowly. Speed is capped so it always stays gentle.
+2. Release to let it sink slowly. Speed is capped so it always stays gentle. Pace sets how fast the sky scrolls: slow, normal or brisk.
 3. Steer through the wide gap in each cloud bank. Each gap you pass adds to your streak.
 4. If you touch a cloud the kite is bumped to the middle of the gap and your streak starts over. Flying simply goes on.
 

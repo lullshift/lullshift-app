@@ -506,6 +506,8 @@
     navigate(action) {
       const { pile, card } = this.focus;
       const len = this.piles[pile].cards.length;
+      const cols = this.options.columns;
+      if (isIntIn(cols, 1, CARD_LIMITS.piles)) return this.navigateGrid(action, pile, cols);
       switch (action) {
         case "left":
           return this.focusPile(pile - 1);
@@ -652,6 +654,38 @@
 
     topIndex(pile) {
       return (this.piles[pile].cards.length || 0) - 1;
+    }
+
+    navigateGrid(action, pile, cols) {
+      const last = this.piles.length - 1;
+      const rowStart = pile - (pile % cols);
+      switch (action) {
+        case "left":
+          return pile % cols === 0 ? false : this.focusPile(pile - 1);
+        case "right":
+          return pile % cols === cols - 1 || pile === last ? false : this.focusPile(pile + 1);
+        case "up":
+          return this.focusPile(pile - cols);
+        case "down":
+          return this.focusPile(pile + cols);
+        case "home":
+          return this.focusPile(rowStart);
+        case "end":
+          return this.focusPile(Math.min(last, rowStart + cols - 1));
+        case "first":
+          return this.focusPile(0);
+        case "last":
+          return this.focusPile(last);
+        case "pageUp":
+          return this.focusPile(pile % cols);
+        case "pageDown": {
+          let bottom = pile % cols;
+          while (bottom + cols <= last) bottom += cols;
+          return this.focusPile(bottom);
+        }
+        default:
+          return false;
+      }
     }
 
     focusPile(pile) {

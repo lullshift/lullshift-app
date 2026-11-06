@@ -8,7 +8,9 @@
   var JAR_H = 40;
   var JAR_TOP = H - 50; // y of the jar mouth
   var JAR_SPEED = 170; // px per second
-  var ROUND_SECONDS = 90;
+  var ROUND_SECONDS = 90; // the default round length
+  // Round lengths in seconds; 0 means untimed (no end, still no lives, no best score).
+  var LENGTHS = [60, 90, 180, 0];
   var MAX_FIREFLIES = 40;
 
   // mulberry32 whose whole state is the number stored in state.rng.
@@ -23,15 +25,21 @@
     return lo + (hi - lo) * nextRandom(state);
   }
 
-  // reduced: straight lines, slower, no curves.
-  function create(seed, reduced) {
+  function isLength(n) {
+    return LENGTHS.indexOf(n) !== -1;
+  }
+
+  // reduced: straight lines, slower, no curves. length: 60, 90, 180 or 0 for untimed.
+  function create(seed, reduced, length) {
+    var len = isLength(length) ? length : ROUND_SECONDS;
     return {
       version: 1,
       seed: seed >>> 0,
       rng: seed >>> 0,
       reduced: !!reduced,
+      length: len,
       time: 0,
-      timeLeft: ROUND_SECONDS,
+      timeLeft: len,
       jarX: W / 2,
       caught: 0,
       best: 0,
@@ -66,7 +74,7 @@
   function step(state, dt, dir) {
     if (state.over) return 0;
     state.time += dt;
-    state.timeLeft = Math.max(0, state.timeLeft - dt);
+    if (state.length > 0) state.timeLeft = Math.max(0, state.timeLeft - dt);
     state.jarX += (dir < 0 ? -1 : dir > 0 ? 1 : 0) * JAR_SPEED * dt;
     state.jarX = Math.min(W - JAR_W / 2, Math.max(JAR_W / 2, state.jarX));
 
@@ -102,16 +110,24 @@
     }
     state.flies = keep;
     state.caught += caught;
-    if (state.caught > state.best) state.best = state.caught;
-    if (state.timeLeft <= 0) state.over = true;
+    // An untimed round keeps no best score.
+    if (state.length > 0 && state.caught > state.best) state.best = state.caught;
+    if (state.length > 0 && state.timeLeft <= 0) state.over = true;
     return caught;
   }
 
-  // A fresh round keeping the best score.
-  function restart(state, seed) {
-    var n = create(seed, state.reduced);
-    n.best = state.best;
+  // A fresh round. The best score is kept when the round length stays the same; a different
+  // length starts at 0 (the game loads that length's best from storage).
+  function restart(state, seed, length) {
+    var len = length === undefined ? state.length : length;
+    var n = create(seed, state.reduced, len);
+    if (n.length === state.length) n.best = state.best;
     return n;
+  }
+
+  // The next length in the cycle 60, 90, 180, untimed.
+  function nextLength(length) {
+    return LENGTHS[(LENGTHS.indexOf(length) + 1) % LENGTHS.length];
   }
 
   function snapshot(state) {
@@ -127,10 +143,15 @@
     if (!raw || typeof raw !== "object" || raw.version !== 1) return null;
     if (!Array.isArray(raw.flies) || raw.flies.length > MAX_FIREFLIES) return null;
     if (!num(raw.seed, 0, 4294967295) || !num(raw.rng, 0, 4294967295)) return null;
-    if (!num(raw.time, 0, 1e6) || !num(raw.timeLeft, 0, ROUND_SECONDS)) return null;
+    // Saves from before round lengths existed have no length: they are 90-second rounds.
+    var length = raw.length === undefined ? ROUND_SECONDS : raw.length;
+    if (!isLength(length)) return null;
+    if (!num(raw.time, 0, 1e6) || !num(raw.timeLeft, 0, length)) return null;
     if (!num(raw.jarX, 0, W) || !num(raw.spawnIn, -10, 10)) return null;
     if (!Number.isInteger(raw.caught) || raw.caught < 0 || raw.caught > 100000) return null;
-    if (!Number.isInteger(raw.best) || raw.best < raw.caught || raw.best > 100000) return null;
+    if (!Number.isInteger(raw.best) || raw.best > 100000) return null;
+    if (length > 0 && raw.best < raw.caught) return null;
+    if (length === 0 && raw.best !== 0) return null;
     var flies = [];
     for (var i = 0; i < raw.flies.length; i++) {
       var f = raw.flies[i];
@@ -166,12 +187,13 @@
       seed: raw.seed,
       rng: raw.rng,
       reduced: raw.reduced === true,
+      length: length,
       time: raw.time,
       timeLeft: raw.timeLeft,
       jarX: raw.jarX,
       caught: raw.caught,
       best: raw.best,
-      over: raw.over === true || raw.timeLeft <= 0,
+      over: length > 0 && (raw.over === true || raw.timeLeft <= 0),
       spawnIn: raw.spawnIn,
       flies: flies,
     };
@@ -185,6 +207,9 @@
     JAR_TOP: JAR_TOP,
     JAR_SPEED: JAR_SPEED,
     ROUND_SECONDS: ROUND_SECONDS,
+    LENGTHS: LENGTHS,
+    isLength: isLength,
+    nextLength: nextLength,
     create: create,
     step: step,
     restart: restart,

@@ -1,7 +1,7 @@
-// Tea Sort rules: generation, solvability, pouring, undo, win detection and state round-trips.
+// Teacup Tidy rules: generation, solvability, pouring, undo, win detection and state round-trips.
 /// <reference types="node" />
 import { describe, expect, it } from "vitest";
-import "../../../../../activities/games/tea-sort/logic.js";
+import "../../../../../activities/games/teacup-tidy/logic.js";
 
 type Cups = number[][];
 interface Logic {

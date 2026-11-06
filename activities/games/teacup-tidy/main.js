@@ -281,10 +281,10 @@
 
     var restored = validState(init.restore);
     if (restored) restorePuzzle(init.restore);
-    else startPuzzle(K.dailySeed(new Date(), "tea-sort"), "daily");
+    else startPuzzle(K.dailySeed(new Date(), "teacup-tidy"), "daily");
 
     view = K.bindGrid($("grid"), grid, {
-      name: "Tea Sort, " + CUPS + " cups of " + CAP + " layers",
+      name: "Teacup Tidy, " + CUPS + " cups of " + CAP + " layers",
       label: label,
       text: cellText,
       className: classes,
@@ -312,7 +312,7 @@
     $("undo").addEventListener("click", undoMove);
     $("restart").addEventListener("click", restart);
     $("daily").addEventListener("click", function () {
-      newPuzzle(K.dailySeed(new Date(), "tea-sort"), "daily", "Today's puzzle.");
+      newPuzzle(K.dailySeed(new Date(), "teacup-tidy"), "daily", "Today's puzzle.");
     });
     $("fresh").addEventListener("click", function () {
       newPuzzle(K.randomSeed(), "random", "A new puzzle.");

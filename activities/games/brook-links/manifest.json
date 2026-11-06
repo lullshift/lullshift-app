@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "app",
   "id": "app.lullshift.games.brook-links",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Brook Links",
   "description": "A quiet garden of paired stones. Draw a stream between each matching pair without crossing. A garden each day that remembers your best, or a new one whenever you like.",
   "author": "Lullshift",
@@ -23,7 +23,7 @@
       "Find two stones with the same letter and colour. Each pair is one stream.",
       "Start on a stone and draw toward its partner, one cell at a time. A stream cannot pass through another stream or another colour's stone.",
       "Streams that run out of room can be pulled back and redrawn. Take your time: every garden has a way to link all pairs, and one that also fills every cell.",
-      "Today's garden is the same for everyone today and remembers your best. New garden deals a fresh one. Restart clears the streams, and Undo takes back your last stroke. Pick a size with Size."
+      "Today's garden is the same for everyone today and remembers your best. New garden deals a fresh one. Restart clears the streams, and Undo takes back your last stroke. Size cycles through 5 by 5, 6 by 6 and 7 by 7."
     ],
     "controls": [
       {

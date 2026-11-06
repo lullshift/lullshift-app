@@ -197,6 +197,14 @@ declare namespace LullshiftKits {
       revealAfterMove?: boolean;
       /** Undo steps kept (default 100). */
       historyLimit?: number;
+      /**
+       * Lay the piles out as a grid with this many columns (a whole number from 1 to 100), the way a
+       * memory-pairs board does: up and down move between rows, left and right stay inside the row,
+       * Home and End go to the row's ends, PageUp and PageDown to the column's top and bottom. Without
+       * it, piles are one line: left and right move between piles and up and down between cards. The
+       * game still lays the piles out in its own CSS.
+       */
+      columns?: number;
     }
     export interface TableState {
       piles: {
@@ -255,6 +263,7 @@ declare namespace LullshiftKits {
       private load;
       private validCards;
       private topIndex;
+      private navigateGrid;
       private focusPile;
       private focusCard;
       private clampFocus;
