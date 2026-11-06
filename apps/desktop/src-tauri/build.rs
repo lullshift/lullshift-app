@@ -23,6 +23,7 @@ fn main() {
             "marketplace_add",
             "marketplace_remove",
             "marketplace_refresh",
+            "marketplace_change_address",
             "marketplace_entries",
             "marketplace_preview_install",
             "marketplace_install",

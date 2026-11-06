@@ -203,6 +203,29 @@ export function problemText(problem: ManageProblem): string {
     : "The engine it needs isn't available in this version of Lullshift, so it can't run.";
 }
 
+export const NOT_FOUND_AT_NEW_ADDRESS_TEXT =
+  "Its marketplace moved, and this version wasn't found at the new address. It keeps working as installed, with your saved progress; it may not get updates.";
+
+/** The summary after a change of address. */
+export function addressChangedText(id: string, notFound: string[]): string {
+  const name = truncate(id, 60);
+  if (notFound.length === 0) {
+    return `${name} now uses its new address. Installed activities keep their versions and saved progress.`;
+  }
+  const list = notFound.map((a) => truncate(a, 60)).join(", ");
+  return `${name} now uses its new address. Not found there, so kept exactly as installed: ${list}.`;
+}
+
+/** What the change-address dialog may submit: a checked, different address. */
+export function changeAddressCheck(current: string, raw: string): UrlCheck {
+  const c = checkGitInput(raw);
+  if (!c.ok) return c;
+  if (c.value === current) {
+    return { ok: false, reason: "That is already this marketplace's address." };
+  }
+  return c;
+}
+
 export function manageSubtitle(item: ManageItem): string {
   const source = item.builtin ? "Built in" : `From ${truncate(item.marketplaceId, 40)}`;
   const version = item.version ? `version ${truncate(item.version, 20)}` : null;

@@ -18,14 +18,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use local_store::{
-    ActivityKind, BUILTIN_MARKETPLACE_ID, InstalledActivity, MarketplaceRecord,
+    ActivityKind, AddressChange, BUILTIN_MARKETPLACE_ID, InstalledActivity, MarketplaceRecord,
     NewInstalledActivity, SavedState, StoreError,
 };
 use marketplace::manifest::{parse_manifest, plain};
 use marketplace::validate::{check_marketplace_name, windows_reserved};
 use marketplace::{
-    Commit, EntrySource, Error, Git, GitFailureKind, GitUrl, IndexError, InstalledSummary, Kind,
-    MarketplaceRef, PackError, PrepareRequest, PreparedPack, UrlError, diff_update, install,
+    Commit, EntrySource, Error, Git, GitFailureKind, GitRef, GitUrl, IndexError, InstalledSummary,
+    Kind, MarketplaceRef, PackError, PrepareRequest, PreparedPack, UrlError, diff_update, install,
     remove_install,
 };
 use serde::Serialize;
@@ -673,17 +673,19 @@ fn add_from(
     }) {
         // AlreadyExists is either "already added" or, for a name that was removed while its
         // installs stayed, "that name is tied to another address" (review M1).
-        let active = with_store(core, |s| s.marketplace(&id))
-            .ok()
-            .flatten()
-            .is_some();
-        return Err(if e.kind == "alreadyExists" && !active {
-            CommandError::new(
+        let active = with_store(core, |s| s.marketplace(&id)).ok().flatten();
+        return Err(match active {
+            _ if e.kind != "alreadyExists" => e,
+            // Already added from another address: moving it is an explicit step (18.4).
+            Some(rec) if rec.url != url.display() => CommandError::new(
                 "alreadyExists",
-                "A marketplace with this name was removed earlier, and activities installed from it still come from a different address. Uninstall them first, or add it again from its original address.",
-            )
-        } else {
-            e
+                "A marketplace with this name is already added from a different address. To move it to this address, use Change address on it.",
+            ),
+            Some(_) => e,
+            None => CommandError::new(
+                "alreadyExists",
+                "A marketplace with this name was removed earlier, and activities installed from it still come from a different address. Uninstall them first, or add it again from its original address and then use Change address.",
+            ),
         });
     }
     if let Err(e) = with_store(core, |s| s.record_fetch(&id, &commit_text, now)) {
@@ -775,6 +777,136 @@ pub fn refresh_confirming(core: &Core, id: &str, confirm_private: bool) -> Res<M
     }
     let rec = active_market(core, id)?;
     Ok(market_dto(core, &rec))
+}
+
+/// What a change of address did.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddressChangedDto {
+    marketplace: MarketplaceDto,
+    /// Installed activities whose pinned commit wasn't found at the new address. They stay as
+    /// they are (files, pin, saved progress) and are marked in Manage.
+    not_found: Vec<String>,
+}
+
+/// Moves a marketplace to an address the user typed and confirmed after seeing the old and new
+/// ones (decision 18.4). Network, only because the user asked:
+///
+/// 1. The new address is fetched into a staging cache with every usual check (private hosts,
+///    resolved addresses, redirects reported, size cap). Its index must use the same name, so
+///    a change can't swap in a different marketplace.
+/// 2. Each commit that an install from this marketplace's own repository is pinned to is looked
+///    up at the new address. Found: the install now names the new address as its source.
+///    Missing: it stays exactly as it is, with a "not found at the new address" note.
+///    A network or access failure stops the change and nothing is changed.
+/// 3. The store is updated in one transaction, then the new cache replaces the old one.
+///
+/// Installed files, pins, enabled state and saved progress are never touched.
+pub fn change_address(core: &Core, id: &str, new_url: &GitUrl) -> Res<AddressChangedDto> {
+    if id == BUILTIN_MARKETPLACE_ID {
+        return Err(StoreError::BuiltinProtected.into());
+    }
+    let rec = active_market(core, id)?;
+    let old_url = git_url_of(core, &rec)?;
+    if old_url.display() == new_url.display()
+        && old_url.private_confirmed() == new_url.private_confirmed()
+    {
+        return Err(CommandError::new(
+            "invalidUrl",
+            "That is already this marketplace's address.",
+        ));
+    }
+    let _guard = begin(core, id)?;
+    let git = git(core)?;
+    let root = markets_dir(core);
+    let staging = root.join(format!(".changing-{}", random_hex(8)?));
+    let result = change_into(core, &git, &rec, new_url, &staging);
+    let _ = std::fs::remove_dir_all(&staging);
+    result
+}
+
+fn change_into(
+    core: &Core,
+    git: &Git,
+    rec: &MarketplaceRecord,
+    new_url: &GitUrl,
+    staging: &Path,
+) -> Res<AddressChangedDto> {
+    let id = rec.id.as_str();
+    let repo = staging.join("repo.git");
+    let commit = git.fetch(&repo, new_url, None)?;
+    let index = git.read_index(&repo, &commit, false)?;
+    if index.name != id {
+        return Err(CommandError::new(
+            "invalidIndex",
+            "The repository at the new address is a different marketplace (it has another name), so the address wasn't changed.",
+        ));
+    }
+
+    // Installs from the marketplace's own repository; external sources don't move with it.
+    let installs: Vec<InstalledActivity> = with_store(core, |s| s.installed_activities())?
+        .into_iter()
+        .filter(|i| i.marketplace_id == id && i.source_url == rec.url)
+        .collect();
+    let mut found = Vec::new();
+    let mut not_found = Vec::new();
+    let mut checked: Vec<(String, bool)> = Vec::new();
+    for (n, install) in installs.iter().enumerate() {
+        let exists = match checked.iter().find(|(c, _)| *c == install.commit_sha) {
+            Some((_, e)) => *e,
+            None => {
+                let pin = Commit::parse(&install.commit_sha).ok_or_else(CommandError::internal)?;
+                let probe = staging.join(format!("pin-{n}")).join("repo.git");
+                let exists = match git.fetch(&probe, new_url, Some(&GitRef::Commit(pin))) {
+                    Ok(_) => true,
+                    Err(Error::Git(GitFailureKind::NotFound) | Error::NotACommit) => false,
+                    Err(e) => return Err(e.into()),
+                };
+                let _ = std::fs::remove_dir_all(staging.join(format!("pin-{n}")));
+                checked.push((install.commit_sha.clone(), exists));
+                exists
+            }
+        };
+        if exists {
+            found.push(install.activity_id.clone());
+        } else {
+            not_found.push(install.activity_id.clone());
+        }
+    }
+
+    write_sidecar(
+        staging,
+        &Sidecar {
+            git_url: Some(new_url.as_str().to_owned()),
+            description: index.description.clone(),
+            owner: index.owner.clone(),
+        },
+    )?;
+    let commit_text = commit.to_string();
+    with_store(core, |s| {
+        s.change_marketplace_address(&AddressChange {
+            id,
+            new_url: new_url.display(),
+            private_host: new_url.private_confirmed(),
+            commit: &commit_text,
+            found: &found,
+            missing: &not_found,
+            at: OffsetDateTime::now_utc(),
+        })
+    })?;
+    // The new cache replaces the old one. If this fails the store already points at the new
+    // address and the next Refresh fetches it again; the old cache is only a cache.
+    let final_dir = cache_dir(core, id);
+    let _ = std::fs::remove_dir_all(&final_dir);
+    let _ = std::fs::create_dir_all(&final_dir);
+    let _ = std::fs::rename(&repo, final_dir.join("repo.git"));
+    let _ = std::fs::rename(staging.join(SIDECAR), final_dir.join(SIDECAR));
+    refresh_library(core, id, false);
+    let rec = active_market(core, id)?;
+    Ok(AddressChangedDto {
+        marketplace: market_dto(core, &rec),
+        not_found,
+    })
 }
 
 /// The entries of a marketplace as of its last fetch. No network.
@@ -1276,6 +1408,17 @@ pub async fn marketplace_refresh(
         refresh_confirming(c, &id, confirm_private.unwrap_or(false))
     })
     .await
+}
+
+#[tauri::command]
+pub async fn marketplace_change_address(
+    core: tauri::State<'_, Arc<Core>>,
+    id: String,
+    url: String,
+    confirm_private: Option<bool>,
+) -> Res<AddressChangedDto> {
+    let url = user_url(&url, confirm_private.unwrap_or(false))?;
+    run(&core, move |c| change_address(c, &id, &url)).await
 }
 
 #[tauri::command]

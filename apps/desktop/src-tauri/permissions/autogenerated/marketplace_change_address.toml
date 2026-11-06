@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-marketplace-change-address"
+description = "Enables the marketplace_change_address command without any pre-configured scope."
+commands.allow = ["marketplace_change_address"]
+
+[[permission]]
+identifier = "deny-marketplace-change-address"
+description = "Denies the marketplace_change_address command without any pre-configured scope."
+commands.deny = ["marketplace_change_address"]

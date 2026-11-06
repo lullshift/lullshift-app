@@ -22,45 +22,14 @@ import {
   errorText,
   fetchedLine,
   kindLabel,
+  addressChangedText,
   looksPrivate,
-  PRIVATE_HOST_LABEL,
-  PRIVATE_HOST_NOTE,
   PRIVATE_HOST_TEXT,
   truncate,
   UNAVAILABLE_TEXT,
 } from "./logic";
-
-/** The explicit "on my own computer or network" confirmation (decision 17). Never pre-ticked. */
-export function PrivateHostBox({
-  id,
-  checked,
-  disabled,
-  onChange,
-}: {
-  id: string;
-  checked: boolean;
-  disabled: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <div className="mk-private">
-      <label className="mk-check" htmlFor={id}>
-        <input
-          id={id}
-          type="checkbox"
-          checked={checked}
-          disabled={disabled}
-          aria-describedby={`${id}-note`}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <span>{PRIVATE_HOST_LABEL}</span>
-      </label>
-      <p id={`${id}-note`} className="field-note">
-        {PRIVATE_HOST_NOTE}
-      </p>
-    </div>
-  );
-}
+import { ChangeAddressDialog, type ChangeAddressRequest } from "./ChangeAddressDialog";
+import { PrivateHostBox } from "./PrivateHostBox";
 import { ReviewDialog, type ReviewRequest } from "./ReviewDialog";
 
 type ListState =
@@ -107,6 +76,7 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
   const [live, setLive] = useState("");
   const [removing, setRemoving] = useState<Marketplace | null>(null);
   const [review, setReview] = useState<ReviewRequest | null>(null);
+  const [changing, setChanging] = useState<ChangeAddressRequest | null>(null);
 
   const say = useCallback((tone: "success" | "danger", text: string) => {
     setMessage({ tone, text });
@@ -257,6 +227,20 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
             >
               Dismiss
             </button>
+            {moved.context !== "add" && list.status === "ready" && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy !== null}
+                onClick={() => {
+                  const m = list.list.find((x) => x.id === moved.context);
+                  if (m) setChanging({ id: m.id, current: m.url, proposed: moved.to.url });
+                  setMoved(null);
+                }}
+              >
+                {moved.to.sameHost ? "Use the new address" : "Review in Change address"}
+              </button>
+            )}
             {moved.context === "add" && moved.to.sameHost && (
               <button
                 type="button"
@@ -267,7 +251,7 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
                 Use the new address
               </button>
             )}
-            {!moved.to.sameHost && (
+            {moved.context === "add" && !moved.to.sameHost && (
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -414,6 +398,15 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
                       type="button"
                       className="btn btn-quiet"
                       disabled={busy !== null}
+                      onClick={() => setChanging({ id: m.id, current: m.url, proposed: "" })}
+                    >
+                      Change address
+                      <span className="visually-hidden"> of {truncate(m.id, 60)}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-quiet"
+                      disabled={busy !== null}
                       onClick={() => setRemoving(m)}
                     >
                       Remove
@@ -554,6 +547,18 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
             your saved progress.
           </p>
         }
+      />
+
+      <ChangeAddressDialog
+        request={changing}
+        onClose={() => setChanging(null)}
+        onDone={(result) => {
+          setChanging(null);
+          say("success", addressChangedText(result.marketplace.id, result.notFound));
+          void loadList();
+          if (selected === result.marketplace.id) void loadEntries(result.marketplace.id);
+          onChanged();
+        }}
       />
 
       <ReviewDialog

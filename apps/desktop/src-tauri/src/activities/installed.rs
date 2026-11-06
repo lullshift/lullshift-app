@@ -99,6 +99,9 @@ pub(crate) struct ManageItem {
     pub version: String,
     /// `tampered`, `missingEngine` or null.
     pub problem: Option<&'static str>,
+    /// `notFoundAtNewAddress` when the marketplace moved and this install's pinned commit wasn't
+    /// at the new address (decision 18.4); it still runs as installed. Null otherwise.
+    pub source_note: Option<&'static str>,
 }
 
 /// Everything the host needs to answer list, info, content and serve requests.
@@ -319,14 +322,23 @@ fn pack_role(manifest: &Manifest, files: &[(String, Vec<u8>)]) -> Result<ServedR
 }
 
 fn build(core: &Core, lib: &Library) -> Result<Snapshot, String> {
-    let (disabled, records) = {
+    let (disabled, records, notes) = {
         let guard = core.store.lock().map_err(|_| "internal")?;
         let store = guard.as_ref().ok_or("store_unavailable")?;
         let disabled = store.disabled_builtins().map_err(|_| "store_unavailable")?;
         let records = store
             .installed_activities()
             .map_err(|_| "store_unavailable")?;
-        (disabled, records)
+        let notes = store
+            .install_source_notes()
+            .map_err(|_| "store_unavailable")?;
+        (disabled, records, notes)
+    };
+    let note_of = |id: &str| {
+        notes
+            .iter()
+            .find(|(a, n)| a == id && n == "notFoundAtNewAddress")
+            .map(|_| "notFoundAtNewAddress")
     };
     let disabled: HashSet<String> = disabled.into_iter().collect();
     let mut served = BTreeMap::new();
@@ -347,6 +359,7 @@ fn build(core: &Core, lib: &Library) -> Result<Snapshot, String> {
             commit: None,
             version: a.manifest.version.clone(),
             problem: None,
+            source_note: None,
         })
         .collect();
     for rec in &records {
@@ -376,6 +389,7 @@ fn build(core: &Core, lib: &Library) -> Result<Snapshot, String> {
             commit: Some(rec.commit_sha.clone()),
             version: evaluated.version,
             problem: problem.map(Problem::as_str),
+            source_note: note_of(&rec.activity_id),
         });
     }
     Ok(Snapshot {

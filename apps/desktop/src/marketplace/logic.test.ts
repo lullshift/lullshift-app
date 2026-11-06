@@ -6,8 +6,10 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 import * as api from "./api";
 import type { ErrorKind, ManageItem, MarketplaceEntry, UpdatePreview } from "./api";
 import {
+  addressChangedText,
   canCheckUpdate,
   canInstall,
+  changeAddressCheck,
   checkGitInput,
   entryStatus,
   entryTitle,
@@ -153,6 +155,35 @@ describe("checkGitInput", () => {
   });
 });
 
+describe("change address", () => {
+  it("needs a valid address that differs from the current one", () => {
+    const now = "https://github.com/acme/market";
+    expect(changeAddressCheck(now, now)).toMatchObject({ ok: false });
+    expect(changeAddressCheck(now, "acme/market")).toMatchObject({ ok: false });
+    expect(changeAddressCheck(now, "https://u:t@github.com/a/b")).toMatchObject({ ok: false });
+    expect(changeAddressCheck(now, "team/market")).toMatchObject({
+      ok: true,
+      value: "https://github.com/team/market",
+    });
+  });
+  it("says what happened, naming installs that stayed as they were", () => {
+    expect(addressChangedText("acme", [])).toMatch(/keep their versions and saved progress/);
+    expect(addressChangedText("acme", ["com.acme.a", "com.acme.b"])).toMatch(
+      /kept exactly as installed: com\.acme\.a, com\.acme\.b\.$/,
+    );
+  });
+  it("sends the contract's argument names", async () => {
+    invoke.mockReset();
+    invoke.mockResolvedValue({ marketplace: {}, notFound: [] });
+    await api.marketplaceChangeAddress("acme", "https://git.example.com/a/b");
+    expect(invoke).toHaveBeenCalledWith("marketplace_change_address", {
+      id: "acme",
+      url: "https://git.example.com/a/b",
+      confirmPrivate: false,
+    });
+  });
+});
+
 describe("looksPrivate", () => {
   it("flags addresses on this computer or a private network, like the backend", () => {
     for (const url of [
@@ -269,6 +300,7 @@ describe("manage helpers", () => {
     commit: COMMIT,
     version: "1.0.0",
     problem: null,
+    sourceNote: null,
     ...over,
   });
   it("offers update checks only for installed, untampered items", () => {

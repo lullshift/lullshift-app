@@ -25,6 +25,7 @@
     "allow-marketplace-add",
     "allow-marketplace-remove",
     "allow-marketplace-refresh",
+    "allow-marketplace-change-address",
     "allow-marketplace-entries",
     "allow-marketplace-preview-install",
     "allow-marketplace-install",

@@ -2,8 +2,8 @@
 //! typed API over it.
 
 use local_store::{
-    ActivityKind, BUILTIN_MARKETPLACE_ID, MIGRATIONS, NewInstalledActivity, Store, StoreError,
-    latest_version, migrate,
+    ActivityKind, AddressChange, BUILTIN_MARKETPLACE_ID, MIGRATIONS, NewInstalledActivity,
+    SavedState, Store, StoreError, latest_version, migrate,
 };
 use rusqlite::Connection;
 use time::OffsetDateTime;
@@ -39,7 +39,7 @@ fn invalid<T: std::fmt::Debug>(r: Result<T, StoreError>) {
 
 #[test]
 fn latest_is_8_and_fresh_install_has_builtin_row() {
-    assert_eq!(latest_version(), 11);
+    assert_eq!(latest_version(), 12);
     let (s, report) =
         Store::open(&tempfile::tempdir().expect("dir").path().join("l.db")).expect("open");
     assert_eq!(
@@ -383,6 +383,203 @@ fn private_host_column_only_takes_0_or_1() {
         [],
     );
     assert!(bad.is_err());
+}
+
+// ---- Sprint 12: changing a marketplace's address (decision 18.4) and migration 0012 ------
+
+fn local_install(id: &str, market: &str, url: &str, sha: &str) -> NewInstalledActivity {
+    NewInstalledActivity {
+        source_url: url.to_owned(),
+        commit_sha: sha.to_owned(),
+        ..install(id, market)
+    }
+}
+
+#[test]
+fn changing_the_address_keeps_pins_marks_missing_commits_and_moves_owned_state() {
+    let mut s = Store::open_in_memory().expect("store");
+    let old = "https://git.example.com/acme/market";
+    let new = "https://git.example.com/team/market";
+    s.add_marketplace("acme", old, T0).expect("add");
+    s.add_marketplace("other", "https://other.example/o/m", T0)
+        .expect("add other");
+    s.put_installed_activity(&local_install("com.acme.a", "acme", old, SHA_A), T0)
+        .expect("a");
+    s.put_installed_activity(&local_install("com.acme.b", "acme", old, SHA_B), T0)
+        .expect("b");
+    s.put_installed_activity(
+        &local_install(
+            "com.acme.ext",
+            "acme",
+            "https://elsewhere.example/x/y",
+            SHA_A,
+        ),
+        T0,
+    )
+    .expect("external source");
+    s.put_installed_activity(&local_install("com.other.c", "other", old, SHA_A), T0)
+        .expect("other marketplace");
+    // Kept state of an uninstalled activity from the old address.
+    with_state(&mut s, "com.acme.gone");
+    s.put_installed_activity(&local_install("com.acme.gone", "acme", old, SHA_A), T0)
+        .expect("gone");
+    s.remove_installed_activity("com.acme.gone", T0)
+        .expect("uninstall keeping state");
+
+    let found = vec!["com.acme.a".to_owned()];
+    let missing = vec!["com.acme.b".to_owned()];
+    s.change_marketplace_address(&AddressChange {
+        id: "acme",
+        new_url: new,
+        private_host: false,
+        commit: SHA_B,
+        found: &found,
+        missing: &missing,
+        at: T1,
+    })
+    .expect("change");
+
+    let m = s.marketplace("acme").expect("get").expect("row");
+    assert_eq!(m.url, new);
+    assert_eq!(m.last_fetched_commit.as_deref(), Some(SHA_B));
+    assert_eq!(m.last_fetched_at, Some(T1));
+
+    let a = s.installed_activity("com.acme.a").expect("a").expect("a");
+    assert_eq!((a.source_url.as_str(), a.commit_sha.as_str()), (new, SHA_A));
+    let b = s.installed_activity("com.acme.b").expect("b").expect("b");
+    assert_eq!((b.source_url.as_str(), b.commit_sha.as_str()), (old, SHA_B));
+    assert!(b.enabled, "a missing commit doesn't turn anything off");
+    assert_eq!(
+        s.install_source_notes().expect("notes"),
+        [("com.acme.b".to_owned(), "notFoundAtNewAddress".to_owned())]
+    );
+    let ext = s.installed_activity("com.acme.ext").expect("e").expect("e");
+    assert_eq!(ext.source_url, "https://elsewhere.example/x/y");
+    let c = s.installed_activity("com.other.c").expect("c").expect("c");
+    assert_eq!(c.source_url, old, "other marketplaces are untouched");
+
+    // Saved progress kept from the old address still belongs to this marketplace.
+    assert_eq!(
+        s.saved_state_for("com.acme.gone", "acme", new)
+            .expect("state"),
+        SavedState::Own
+    );
+
+    // Updating the noted install clears the note.
+    s.put_installed_activity(&local_install("com.acme.b", "acme", new, SHA_A), T1)
+        .expect("update");
+    assert!(s.install_source_notes().expect("notes").is_empty());
+}
+
+#[test]
+fn changing_the_address_refuses_unknown_builtin_and_credential_urls() {
+    let mut s = Store::open_in_memory().expect("store");
+    s.add_marketplace("acme", "https://git.example.com/a/m", T0)
+        .expect("add");
+    let change = |id: &'static str, url: &'static str| AddressChange {
+        id,
+        new_url: url,
+        private_host: false,
+        commit: SHA_A,
+        found: &[],
+        missing: &[],
+        at: T1,
+    };
+    assert!(matches!(
+        s.change_marketplace_address(&change("lullshift", "https://x.example/a/b")),
+        Err(StoreError::NotFound)
+    ));
+    assert!(matches!(
+        s.change_marketplace_address(&change("nope", "https://x.example/a/b")),
+        Err(StoreError::NotFound)
+    ));
+    invalid(s.change_marketplace_address(&change("acme", "https://u:pw@x.example/a/b")));
+    assert_eq!(
+        s.marketplace("acme").expect("get").expect("row").url,
+        "https://git.example.com/a/m"
+    );
+}
+
+#[test]
+fn version_11_database_upgrades_to_12_and_keeps_installs_without_notes() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("open raw");
+        migrate(&conn, &MIGRATIONS[..11], None).expect("v11");
+        conn.execute(
+            "INSERT INTO marketplaces (id, url, added_at, builtin)
+             VALUES ('acme', 'https://github.com/acme/market', '2026-11-05T10:00:00Z', 0)",
+            [],
+        )
+        .expect("row");
+        conn.execute(
+            &format!(
+                "INSERT INTO installed_activities (activity_id, marketplace_id, source_url,
+                   source_path, commit_sha, manifest_version, kind, engine, permissions, digest,
+                   size_bytes, installed_at, updated_at)
+                 VALUES ('com.acme.a', 'acme', 'https://github.com/acme/market', 'p', '{SHA_A}',
+                   '1.0.0', 'content', 'engine.trivia@1', '[]', '{DIGEST}', 1,
+                   '2026-11-05T10:00:00Z', '2026-11-05T10:00:00Z')"
+            ),
+            [],
+        )
+        .expect("install");
+    }
+    let (s, report) = Store::open(&path).expect("upgrade");
+    assert_eq!(report.from_version, 11);
+    assert!(report.backup.is_some());
+    assert!(s.installed_activity("com.acme.a").expect("get").is_some());
+    assert!(s.install_source_notes().expect("notes").is_empty());
+}
+
+#[test]
+fn failed_version_12_migration_rolls_back_to_11() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("open raw");
+        migrate(&conn, &MIGRATIONS[..11], None).expect("v11");
+        conn.execute(
+            "ALTER TABLE installed_activities ADD COLUMN source_note INTEGER",
+            [],
+        )
+        .expect("clash");
+    }
+    assert!(matches!(
+        Store::open(&path),
+        Err(StoreError::Migration { version: 12, .. })
+    ));
+    let conn = Connection::open(&path).expect("reopen raw");
+    let v: i64 = conn
+        .query_row("SELECT max(version) FROM schema_version", [], |r| r.get(0))
+        .expect("version");
+    assert_eq!(v, 11, "left at the last good version");
+}
+
+#[test]
+fn source_note_only_takes_the_known_value() {
+    let (_d, conn) = raw_db();
+    conn.execute(
+        "INSERT INTO marketplaces (id, url, added_at, builtin)
+         VALUES ('acme', 'https://a.example/b', '2026-11-05T10:00:00Z', 0)",
+        [],
+    )
+    .expect("market");
+    let insert = |note: &str| {
+        conn.execute(
+            &format!(
+                "INSERT INTO installed_activities (activity_id, marketplace_id, source_url,
+                   source_path, commit_sha, manifest_version, kind, permissions, digest,
+                   size_bytes, installed_at, updated_at, source_note)
+                 VALUES ('a.{note}', 'acme', 'https://a.example/b', '', '{SHA_A}', '1.0.0',
+                   'app', '[]', '{DIGEST}', 1, 't', 't', '{note}')"
+            ),
+            [],
+        )
+    };
+    assert!(insert("notFoundAtNewAddress").is_ok());
+    assert!(insert("whatever").is_err());
 }
 
 // ---- API: marketplaces -----------------------------------------------------------------

@@ -13,6 +13,7 @@ import {
   canCheckUpdate,
   errorText,
   manageSubtitle,
+  NOT_FOUND_AT_NEW_ADDRESS_TEXT,
   problemText,
   truncate,
   UNAVAILABLE_TEXT,
@@ -136,6 +137,12 @@ export function ManagePanel({ onChanged }: Props) {
                       {item.problem === "tampered" ? "Changed after install. " : "Engine missing. "}
                     </strong>
                     {problemText(item.problem)}
+                  </Banner>
+                )}
+                {item.sourceNote === "notFoundAtNewAddress" && (
+                  <Banner tone="info">
+                    <strong>Not found at the new address. </strong>
+                    {NOT_FOUND_AT_NEW_ADDRESS_TEXT}
                   </Banner>
                 )}
                 {!item.builtin && (

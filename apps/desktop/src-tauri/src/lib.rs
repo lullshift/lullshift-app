@@ -569,6 +569,7 @@ pub fn run() {
             market::marketplace_add,
             market::marketplace_remove,
             market::marketplace_refresh,
+            market::marketplace_change_address,
             market::marketplace_entries,
             market::marketplace_preview_install,
             market::marketplace_install,

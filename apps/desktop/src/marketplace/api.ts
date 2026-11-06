@@ -178,6 +178,15 @@ export interface ManageItem {
   commit: string | null;
   version: string;
   problem: ManageProblem | null;
+  /** Its marketplace moved and this pinned version wasn't found at the new address. */
+  sourceNote: "notFoundAtNewAddress" | null;
+}
+
+/** The result of a confirmed change of address. */
+export interface AddressChanged {
+  marketplace: Marketplace;
+  /** Ids of installs whose pinned commit wasn't at the new address; they stay as installed. */
+  notFound: string[];
 }
 
 export const marketplaceList = () => call<Marketplace[]>("marketplace_list");
@@ -188,6 +197,9 @@ export const marketplaceRemove = (id: string) => call<null>("marketplace_remove"
 /** `confirmPrivate`: the user ticked the private-network box after a `privateHost` answer. */
 export const marketplaceRefresh = (id: string, confirmPrivate = false) =>
   call<Marketplace>("marketplace_refresh", { id, confirmPrivate });
+/** Moves a marketplace to `url` after the user saw both addresses and confirmed. */
+export const marketplaceChangeAddress = (id: string, url: string, confirmPrivate = false) =>
+  call<AddressChanged>("marketplace_change_address", { id, url, confirmPrivate });
 export const marketplaceEntries = (id: string) =>
   call<MarketplaceEntry[]>("marketplace_entries", { id });
 export const marketplacePreviewInstall = (marketplaceId: string, activityId: string) =>

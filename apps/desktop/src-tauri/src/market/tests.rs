@@ -1340,6 +1340,159 @@ fn a_confirmed_marketplace_records_it_and_later_fetches_carry_it() {
     );
 }
 
+// ---- Sprint 12: Change address (decision 18.4) --------------------------------------------
+
+/// A full copy of `repo` at `name` (same history, so the same commits exist there).
+fn copy_of(env: &Env, repo: &Repo, name: &str) -> Repo {
+    let dir = env.root.join(name);
+    let out = Command::new("git")
+        .args(["clone", "--quiet", "--no-hardlinks"])
+        .arg(&repo.dir)
+        .arg(&dir)
+        .env("GIT_CONFIG_GLOBAL", &repo.config)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .expect("clone");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    Repo {
+        dir,
+        config: repo.config.clone(),
+    }
+}
+
+#[test]
+fn change_address_keeps_pins_and_progress_and_moves_installs_whose_commit_is_there() {
+    let env = Env::new();
+    let (repo, commit) = installed(&env);
+    with_store(&env.core, |s| {
+        s.set_activity_value(FACTS, "best", "7", 4096)
+    })
+    .expect("progress");
+    let moved = copy_of(&env, &repo, "moved");
+    let changed = change_address(&env.core, MARKET, &moved.url()).expect("change");
+    assert!(changed.not_found.is_empty());
+    assert_eq!(changed.marketplace.url, moved.url().display());
+
+    let rec = with_store(&env.core, |s| s.installed_activity(FACTS))
+        .expect("store")
+        .expect("still installed");
+    assert_eq!(rec.commit_sha, commit, "the pin is unchanged");
+    assert_eq!(rec.source_url, moved.url().display());
+    assert_eq!(
+        with_store(&env.core, |s| s.activity_value(FACTS, "best")).expect("value"),
+        Some("7".to_owned()),
+        "saved progress is untouched"
+    );
+    assert!(listed_ids(&env).contains(&FACTS.to_owned()));
+    assert_eq!(manage_item(&env, FACTS).source_note, None);
+    // The next Refresh uses the new address, and so do entries.
+    refresh(&env.core, MARKET).expect("refresh from the new address");
+    assert!(
+        entries(&env.core, MARKET)
+            .expect("entries")
+            .iter()
+            .any(|e| e.activity_id == FACTS)
+    );
+    // The old repository can disappear.
+    std::fs::remove_dir_all(&repo.dir).expect("delete old");
+    refresh(&env.core, MARKET).expect("still refreshes");
+}
+
+#[test]
+fn a_pinned_commit_missing_at_the_new_address_leaves_the_install_as_is_with_a_note() {
+    let env = Env::new();
+    let (_repo, commit) = installed(&env);
+    // Same marketplace name, unrelated history: the pinned commit isn't there.
+    let (fresh, _) = {
+        let r = env.repo("fresh");
+        write_facts(&r, "1.0.1", &[]);
+        r.write(
+            ".lullshift/marketplace.json",
+            &json!({
+                "schemaVersion": 1, "name": MARKET,
+                "activities": [{"id": FACTS, "source": {"path": "packs/facts"}}]
+            })
+            .to_string(),
+        );
+        let c = r.commit();
+        (r, c)
+    };
+    let changed = change_address(&env.core, MARKET, &fresh.url()).expect("change");
+    assert_eq!(changed.not_found, [FACTS]);
+    let rec = with_store(&env.core, |s| s.installed_activity(FACTS))
+        .expect("store")
+        .expect("kept");
+    assert_eq!(rec.commit_sha, commit);
+    assert_ne!(
+        rec.source_url,
+        fresh.url().display(),
+        "its source is still the old one"
+    );
+    assert_eq!(
+        manage_item(&env, FACTS).source_note,
+        Some("notFoundAtNewAddress")
+    );
+    assert!(
+        listed_ids(&env).contains(&FACTS.to_owned()),
+        "it still runs"
+    );
+    // An update from the new address clears the note.
+    let p = preview_update(&env.core, FACTS).expect("update preview");
+    update_pending(&env.core, &p.preview.token, Instant::now()).expect("update");
+    assert_eq!(manage_item(&env, FACTS).source_note, None);
+}
+
+#[test]
+fn change_address_refuses_another_marketplace_the_same_address_and_the_builtin_one() {
+    let env = Env::new();
+    let (repo, commit) = installed(&env);
+    let other = env.repo("other");
+    other.write(
+        ".lullshift/marketplace.json",
+        &json!({"schemaVersion": 1, "name": "someone-else", "activities": []}).to_string(),
+    );
+    other.commit();
+    let err = change_address(&env.core, MARKET, &other.url()).expect_err("other name");
+    assert_eq!(err.kind, "invalidIndex");
+    let rec = active_market(&env.core, MARKET).expect("rec");
+    assert_eq!(rec.url, repo.url().display(), "nothing changed");
+    assert_eq!(rec.last_fetched_commit.as_deref(), Some(commit.as_str()));
+    assert!(
+        !std::fs::read_dir(env.core.app_dir.join("marketplaces"))
+            .expect("dir")
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().starts_with(".changing-")),
+        "no staging folder is left behind"
+    );
+
+    assert_eq!(
+        err_kind(change_address(&env.core, MARKET, &repo.url())),
+        "invalidUrl"
+    );
+    assert_eq!(
+        err_kind(change_address(&env.core, BUILTIN_ID, &other.url())),
+        "builtinProtected"
+    );
+    assert_eq!(
+        err_kind(change_address(&env.core, "missing", &other.url())),
+        "notFound"
+    );
+}
+
+#[test]
+fn adding_a_known_name_from_another_address_points_at_change_address() {
+    let env = Env::new();
+    let (repo, _) = added(&env);
+    let copy = copy_of(&env, &repo, "copy");
+    let err = add(&env.core, &copy.url()).expect_err("same name");
+    assert_eq!(err.kind, "alreadyExists");
+    assert!(err.message.contains("Change address"), "{}", err.message);
+}
+
 // ---- Sprint 12: redirects are reported, never followed (decision 18.1) -------------------
 
 #[test]

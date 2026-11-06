@@ -15,7 +15,7 @@ mod context;
 mod marketplaces;
 
 pub use marketplaces::{
-    ActivityKind, BUILTIN_MARKETPLACE_ID, InstalledActivity, MAX_ACTIVITY_ID_CHARS,
+    ActivityKind, AddressChange, BUILTIN_MARKETPLACE_ID, InstalledActivity, MAX_ACTIVITY_ID_CHARS,
     MAX_MARKETPLACE_ID_CHARS, MAX_PATH_CHARS, MAX_URL_CHARS, MarketplaceRecord,
     NewInstalledActivity, SavedState,
 };
@@ -88,6 +88,10 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 11,
         sql: include_str!("../migrations/0011_marketplace_private_host.sql"),
+    },
+    Migration {
+        version: 12,
+        sql: include_str!("../migrations/0012_install_source_note.sql"),
     },
 ];
 

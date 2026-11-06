@@ -298,6 +298,22 @@ fn decode_install(raw: RawInstall) -> Result<InstalledActivity> {
     })
 }
 
+/// A confirmed change of a marketplace's address, for [`Store::change_marketplace_address`].
+#[derive(Debug, Clone, Copy)]
+pub struct AddressChange<'a> {
+    pub id: &'a str,
+    /// Display form, no userinfo.
+    pub new_url: &'a str,
+    pub private_host: bool,
+    /// The commit fetched from the new address.
+    pub commit: &'a str,
+    /// Installs whose pinned commit exists at the new address.
+    pub found: &'a [String],
+    /// Installs whose pinned commit wasn't found there.
+    pub missing: &'a [String],
+    pub at: OffsetDateTime,
+}
+
 /// Kept saved state for an activity id that has no install record, as seen by an install.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SavedState {
@@ -498,6 +514,69 @@ impl Store {
         Ok(())
     }
 
+    /// Moves an active marketplace to a new address the user confirmed (decision 18.4), in one
+    /// transaction:
+    ///
+    /// - the marketplace gets the new URL, its private-network answer and the commit fetched
+    ///   from the new address;
+    /// - installs in `found` (their pinned commit exists at the new address) now name the new
+    ///   address as their source and lose any earlier note; installs in `missing` keep their
+    ///   source and get the `notFoundAtNewAddress` note. Pins, files and enabled state are
+    ///   untouched;
+    /// - kept saved state recorded as belonging to the old address follows the marketplace.
+    pub fn change_marketplace_address(&mut self, c: &AddressChange<'_>) -> Result<()> {
+        check_url(c.new_url)?;
+        check_commit(c.commit)?;
+        let at = fmt_ts(c.at)?;
+        let tx = self.conn.transaction()?;
+        let old: Option<String> = tx
+            .query_row(
+                "SELECT url FROM marketplaces WHERE id = ?1 AND removed_at IS NULL AND builtin = 0",
+                [c.id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(old) = old else {
+            return Err(StoreError::NotFound);
+        };
+        tx.execute(
+            "UPDATE marketplaces SET url = ?2, private_host = ?3, last_fetched_commit = ?4,
+               last_fetched_at = ?5 WHERE id = ?1",
+            params![c.id, c.new_url, i64::from(c.private_host), c.commit, at],
+        )?;
+        for id in c.found {
+            tx.execute(
+                "UPDATE installed_activities SET source_url = ?3, source_note = NULL
+                 WHERE activity_id = ?1 AND marketplace_id = ?2",
+                params![id, c.id, c.new_url],
+            )?;
+        }
+        for id in c.missing {
+            tx.execute(
+                "UPDATE installed_activities SET source_note = 'notFoundAtNewAddress'
+                 WHERE activity_id = ?1 AND marketplace_id = ?2",
+                params![id, c.id],
+            )?;
+        }
+        tx.execute(
+            "UPDATE activity_state_owner SET source_url = ?3
+             WHERE marketplace_id = ?1 AND source_url = ?2",
+            params![c.id, old, c.new_url],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// `(activity id, note)` for installs that carry a note, sorted by id.
+    pub fn install_source_notes(&self) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT activity_id, source_note FROM installed_activities
+             WHERE source_note IS NOT NULL ORDER BY activity_id",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// Records that the user confirmed an active marketplace as being on their own computer or
     /// network (decision 18.8: a name that now resolves to a private address).
     pub fn set_marketplace_private(&self, id: &str, private_host: bool) -> Result<()> {
@@ -552,7 +631,7 @@ impl Store {
                    manifest_version = excluded.manifest_version, kind = excluded.kind,
                    engine = excluded.engine, permissions = excluded.permissions,
                    digest = excluded.digest, size_bytes = excluded.size_bytes,
-                   updated_at = excluded.updated_at",
+                   updated_at = excluded.updated_at, source_note = NULL",
                 params![
                     a.activity_id,
                     a.marketplace_id,
