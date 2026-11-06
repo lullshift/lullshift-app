@@ -33,7 +33,7 @@ Writes a small working activity into `<folder>`, then validates it.
 lullshift validate <folder> [--engines <folder>]...
 ```
 
-Checks the manifest against the schema, the files present, the bridge and kit copies, the help and preview, sandbox rules it can see in the code, and, for content packs, the data against the engine's schema. Bundled engines in `activities/engines` are found automatically; `--engines` adds more folders. Treat warnings as failures before you publish.
+Checks the manifest against the schema, the files present, the bridge and kit copies, the help and preview, sandbox rules it can see in the code, and, for content packs, the data against the engine's schema and every picture listed in `images` (type, size, still, no metadata; PNG pixel data is fully checked, WebP structure only, so the app may still refuse a damaged WebP). Bundled engines in `activities/engines` are found automatically; `--engines` adds more folders. Treat warnings as failures before you publish.
 
 ```bash
 pnpm lullshift validate activities/games/fog-garden

@@ -18,7 +18,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const rel = (p) => path.relative(root, p).replaceAll("\\", "/");
 const DATA_MAX = 256 * 1024;
 
-// Keep in step with ASSERTIONS and ANNOTATIONS in apps/desktop/src-tauri/src/data_schema.rs.
+// Keep in step with ASSERTIONS and ANNOTATIONS in crates/marketplace/src/data_schema.rs.
 const HOST_KEYWORDS = new Set([
   "type", "enum", "const", "properties", "required", "additionalProperties", "minProperties",
   "maxProperties", "items", "minItems", "maxItems", "uniqueItems", "minLength", "maxLength",
@@ -65,8 +65,10 @@ function lintSchema(node, at, file, isRoot = true, shape = true) {
   }
   for (const k of Object.keys(node)) {
     if (!HOST_KEYWORDS.has(k)) report(file, `${at} uses "${k}", which the app's check doesn't support`);
-    if ((k === "$schema" || k === "$id") && !isRoot) report(file, `${at} sets ${k} below the top`);
+    if ((k === "$schema" || k === "$id" || k === "$defs") && !isRoot) report(file, `${at} sets ${k} below the top`);
   }
+  if (isRoot && node.$id !== undefined && !String(node.$id).startsWith("urn:"))
+    report(file, `${at} $id must be a urn: name`);
   const types = shape ? [node.type].flat() : [];
   if (types.includes("object") && node.additionalProperties !== false)
     report(file, `${at} is an object without "additionalProperties": false`);
@@ -86,6 +88,41 @@ function lintSchema(node, at, file, isRoot = true, shape = true) {
   for (const key of ["allOf", "anyOf", "oneOf"]) {
     (node[key] ?? []).forEach((sub, i) => lintSchema(sub, `${at}/${key}/${i}`, file, false, false));
   }
+} // prettier-ignore
+
+// Same limit as MAX_UNFOLDED in data_schema.rs: the app refuses larger schemas because its
+// validator (the jsonschema crate) has no work budget of its own.
+const MAX_UNFOLDED = 2000;
+
+/**
+ * The schema's size with every `$ref` replaced by its target (plus enum, const and required
+ * entries), as `unfolded_size` in data_schema.rs measures it. Throws on a `$ref` cycle.
+ */
+function unfoldedSize(root, node, memo = new Map(), visiting = new Set()) {
+  if (memo.has(node)) return memo.get(node);
+  if (!node || typeof node !== "object" || Array.isArray(node)) return 1;
+  if (visiting.has(node)) throw new Error("refers to itself in a loop, which the app doesn't support");
+  visiting.add(node);
+  const valueSize = (v) =>
+    Array.isArray(v) ? 1 + v.reduce((s, x) => s + valueSize(x), 0)
+    : v && typeof v === "object" ? 1 + Object.values(v).reduce((s, x) => s + valueSize(x), 0)
+    : 1;
+  const resolve = (r) =>
+    r === "#" ? root : typeof r === "string" && r.startsWith("#/$defs/") ? root.$defs?.[r.slice(8)] : undefined;
+  let total = 1;
+  for (const [k, v] of Object.entries(node)) {
+    if (k === "properties") for (const sub of Object.values(v ?? {})) total += unfoldedSize(root, sub, memo, visiting);
+    else if (["additionalProperties", "items", "not", "if", "then", "else"].includes(k)) total += unfoldedSize(root, v, memo, visiting);
+    else if (["allOf", "anyOf", "oneOf"].includes(k)) for (const sub of v ?? []) total += unfoldedSize(root, sub, memo, visiting);
+    else if (k === "$ref") { const t = resolve(v); if (t !== undefined) total += unfoldedSize(root, t, memo, visiting); }
+    else if (k === "enum") total += (v ?? []).reduce((s, x) => s + valueSize(x), 0);
+    else if (k === "const") total += valueSize(v);
+    else if (k === "required") total += (v ?? []).length;
+    if (total > MAX_UNFOLDED) break;
+  }
+  visiting.delete(node);
+  memo.set(node, total);
+  return total;
 } // prettier-ignore
 
 // --- Engines and their fixtures.
@@ -121,6 +158,11 @@ for (const dir of subdirs(path.join(root, "activities/engines"))) {
   try {
     const schema = readJson(schemaFile);
     lintSchema(schema, "#", rel(schemaFile));
+    if (unfoldedSize(schema, schema) > MAX_UNFOLDED)
+      report(
+        rel(schemaFile),
+        `is too large for the app to check (more than ${MAX_UNFOLDED} parts once its references are expanded)`,
+      );
     validate = createAjv({ allErrors: true }).compile(schema);
   } catch (err) {
     report(rel(schemaFile), `can't be used: ${err.message}`);

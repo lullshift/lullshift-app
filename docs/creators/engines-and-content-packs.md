@@ -7,9 +7,28 @@ A **content pack** is data with no code. It names a bundled **engine**, and the 
 - `manifest.json` with `"kind": "content"`, `"engine": "<id>@<major>"` and `"data": "<file>.json"`
 - the data file, at most 256 KiB, valid against the engine's `data.schema.json`
 - a preview image (png, jpg, jpeg, webp or svg, at most 256 KiB)
+- optional pictures for the engine to show, listed in `images` (see below)
 - optional notes: `.md` or `.txt` files
 
 Nothing else. `validate` refuses any HTML, JavaScript, CSS or other file, and so does the app's installer. Packs still need `help` in the manifest.
+
+## Pictures
+
+A pack can carry still pictures for an engine that shows them (today: Quick Quiz). List each one in the manifest:
+
+```json
+"images": ["images/hexagon.png", "images/pentagon.webp"]
+```
+
+- PNG or WebP only, directly in the pack's `images/` folder. Names use lowercase letters, digits and dashes (`images/rainy-street.png`). No SVG, GIF or JPEG, and no subfolders.
+- At most 20 pictures, each at most 512 KiB and at most 2048 × 2048 pixels.
+- Still pictures only: animated PNG or WebP is refused. So are pictures carrying text chunks, EXIF or XMP metadata, colour profiles or time stamps. Export without metadata (most editors have a "strip metadata" or "export for web" option).
+- Every picture in `images/` must be listed, and every `images/...` path in the data must be listed. An unlisted picture is refused, not ignored.
+- Every picture needs alt text in the data that says what it shows, and the question or step must make sense from the alt text alone. Players may not see the picture.
+
+The app checks each picture before installing the pack and again before starting it: the bytes must really be a PNG or WebP (a renamed SVG or web page is refused), and the whole picture is decoded. A pack with a picture that fails doesn't install or start. Pictures are served only to the pack's own engine, with a fixed content type; nothing else in the pack is served. `validate` makes the same checks, except that it checks WebP files' structure without decoding them, so the app may still refuse a damaged WebP.
+
+See `content/quiz/quiz-shapes-and-sides` for an example.
 
 ## How the app runs a pack
 
@@ -28,7 +47,7 @@ All are `major` 1. Each schema is in `activities/engines/<folder>/data.schema.js
 | `lullshift.cards@1` Calm Cards | `calm-cards` | `title*`, `intro`, `cards*` (1 to 60: `front*`, `back`) | `content/calm-cards/desk-stretches` |
 | `lullshift.movement@1` Movement Routine | `movement` | `title*`, `intro`, `moves*` (1 to 20: `name*`, `steps*`, `seconds` or `reps`, `side`, `position`), `restSeconds`, `closing`, `wayOut*` | `content/movement/move-ankles-and-feet-seated` |
 | `lullshift.pause@1` Guided Pause | `pause` | `title*`, `intro`, `steps*` (1 to 12: `text*`, `seconds*` 5 to 120, `look`), `closing` | `content/pause/pause-eye-rest` |
-| `lullshift.quiz@1` Quick Quiz | `quiz` | `title*`, `intro`, `shuffle`, `questions*` (1 to 40: `prompt*`, `choices*` 2 to 5, `answer*` index, `explanation*`) | `content/quiz/quiz-everyday-materials` |
+| `lullshift.quiz@1` Quick Quiz | `quiz` | `title*`, `intro`, `shuffle`, `questions*` (1 to 40: `prompt*`, `choices*` 2 to 5, `answer*` index, `explanation*`, `image` with `src*` and `alt*`) | `content/quiz/quiz-everyday-materials` |
 | `lullshift.reflection@1` Reflection Prompts | `reflection` | `title*`, `intro`, `allowNotes`, `prompts*` (1 to 30: `text*`, `followUp`) | `content/reflection/reflect-end-of-day` |
 | `lullshift.teaser@1` Brain Teasers | `teaser` | `title*`, `intro`, `teasers*` (1 to 40: `question*`, `hint`, `answer*`, `explanation*`, `kind`) | `content/teaser/teasers-gentle-logic` |
 | `lullshift.toy@1` Creative Toy | `toy` | `title*`, `intro`, `palette*` (2 to 8 named colours), `mode*` (ripples, mosaic, stars or threads), `symmetry`, `brushSize`, `background` | `content/toy/toy-dusk-ripples` |

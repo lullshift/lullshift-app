@@ -4,8 +4,10 @@
 //! - `execution`: hooks, filters and option injection must never run anything.
 //! - `happy`: installs, updates and digest checks that must work.
 //! - `limits`: the fetch size cap and Git's own object check (security review M2, L3).
+//! - `images`: pictures in content packs (S12-T11).
 
 mod execution;
 mod happy;
+mod images;
 mod limits;
 mod malicious;

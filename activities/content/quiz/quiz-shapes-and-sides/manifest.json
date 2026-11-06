@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "app.lullshift.content.quiz-shapes-and-sides",
+  "version": "0.1.0",
+  "name": "Shapes and Sides",
+  "description": "Eight picture questions about flat shapes: their sides, corners and names.",
+  "author": "Lullshift",
+  "license": "Apache-2.0",
+  "category": "interactive",
+  "tags": ["quiz", "shapes", "pictures"],
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "0.2.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "lullshift.quiz@1",
+  "data": "quiz.json",
+  "images": [
+    "images/hexagon.png",
+    "images/triangle.png",
+    "images/circles-and-squares.webp",
+    "images/pentagon.webp",
+    "images/turned-square.png",
+    "images/octagon.png",
+    "images/circle.png",
+    "images/rectangle.webp"
+  ],
+  "help": {
+    "summary": "Eight multiple-choice questions about flat shapes, each with a simple picture, shown on Quick Quiz.",
+    "goal": "Just for fun. Answer a few or all eight; your score is shown only to you.",
+    "howToPlay": [
+      "Look at the picture, or read its description, and choose an answer.",
+      "You will see the right answer and a short explanation.",
+      "Press Next question to carry on, or stop whenever you like.",
+      "At the end, Play again gives a fresh shuffle."
+    ],
+    "tips": [
+      "Every picture has a description that screen readers announce, so each question can be answered without seeing it."
+    ]
+  },
+  "preview": "preview.svg"
+}

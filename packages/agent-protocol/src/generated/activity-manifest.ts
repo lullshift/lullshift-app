@@ -56,6 +56,13 @@ export type ActivityManifestV1 = {
   data?: string;
   help?: Help;
   /**
+   * Content packs only: pictures the engine may show (ADR-016, Sprint 12). Each is a PNG or WebP file directly in the pack's images/ folder, at most 512 KiB and 2048 x 2048 pixels, still (not animated) and without metadata or a colour profile. The pack's data refers to an image by this exact path, with alt text. The host checks and decodes every image before it is installed or served.
+   *
+   * @minItems 1
+   * @maxItems 20
+   */
+  images?: string[];
+  /**
    * Relative path to a preview image (PNG, JPEG, WebP or SVG, at most 256 KiB), shown on the activity card and the paused view. The host shows it only as an image.
    */
   preview?: string;

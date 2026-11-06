@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "kind": "content",
+  "id": "dev.lullshift.breathing.box",
+  "version": "1.0.0",
+  "name": "Box breathing",
+  "category": "break",
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "1.0.0",
+  "permissions": [],
+  "offline": true,
+  "engine": "dev.lullshift.engines.breathing@1",
+  "data": "data/box.json",
+  "images": ["images/a.png", "images/a.png"]
+}

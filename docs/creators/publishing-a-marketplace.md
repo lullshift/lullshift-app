@@ -73,7 +73,7 @@ The app reads files straight from Git objects and refuses packs that break these
 - symlinks, submodules, executable files and Git LFS pointers;
 - non-ASCII file names, or names that differ only by case;
 - more than 512 files, files over 5 MiB, or more than 20 MiB per pack;
-- for content packs: anything besides the manifest, the data file (at most 256 KiB), the preview image (at most 256 KiB) and `.md`/`.txt` notes.
+- for content packs: anything besides the manifest, the data file (at most 256 KiB), the preview image (at most 256 KiB), `.md`/`.txt` notes and the pictures listed in `images` (PNG or WebP in `images/`, at most 20, each at most 512 KiB and 2048 × 2048 pixels, still, without metadata; see [Engines and content packs](engines-and-content-packs.md#pictures)).
 
 Never commit secrets. Lullshift ignores Git hooks, filters and LFS in your repository.
 

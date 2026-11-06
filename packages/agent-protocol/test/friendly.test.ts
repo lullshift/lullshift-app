@@ -38,6 +38,7 @@ describe("friendlyErrors", () => {
     expect(dataPath("/cards/3/front")).toBe("cards[3].front");
     expect(dataPath("/a~1b/x y")).toBe('["a/b"]["x y"]');
     expect(dataPath("/we\u202eird")).toBe('["we?ird"]');
+    expect(dataPath("/two\u2028lines\u2029")).toBe('["two?lines?"]');
   });
 
   it("says what is wrong, where, in plain words", () => {

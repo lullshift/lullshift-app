@@ -1,6 +1,6 @@
 {
   "title": "Notice Five Things",
-  "intro": "A small game of noticing. There are no right answers, just look and listen around you.",
+  "intro": "A small game of noticing. There are no right answers. Notice in whatever way suits you.",
   "steps": [
     {
       "text": "Quietly name five things you can see from where you sit.",
@@ -8,7 +8,7 @@
       "look": "eyes"
     },
     {
-      "text": "Listen for four sounds, near or far. Even the quiet hum counts.",
+      "text": "Notice four sounds near or far, or four small movements you can see, like a leaf, a screen or your own breath.",
       "seconds": 25,
       "look": "window"
     },

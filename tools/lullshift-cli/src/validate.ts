@@ -12,6 +12,7 @@ import {
 } from "@lullshift/agent-protocol";
 import { CODE_TYPES, LIMITS, listFiles, type FileEntry } from "./files.ts";
 import { KIT_NAMES } from "./create.ts";
+import { IMAGE_LIMITS, checkImage, imageReferences } from "./images.ts";
 import { BRIDGE_PATH, ENGINES_DIR, KITS_DIR } from "./paths.ts";
 
 export interface Engine {
@@ -206,6 +207,16 @@ function checkApp(report: Report, has: (rel: string) => FileEntry | undefined) {
       report.warnings.push(`${f.rel} differs from the SDK's copy; replace it`);
     }
   }
+  // For a pack, the app serves `images/` from the pack, never from its engine (S12-T11).
+  if (has("engine.json")) {
+    for (const f of report.files) {
+      if (f.rel.startsWith("images/")) {
+        report.errors.push(
+          `${f.rel}: an engine can't use an images/ folder; packs' pictures are served there`,
+        );
+      }
+    }
+  }
   for (const f of report.files) {
     if (f.rel === BRIDGE_FILE) continue;
     if (f.ext === "html") checkHtml(f, readFileSync(f.abs, "utf8"), report);
@@ -250,21 +261,42 @@ function checkContent(
   extraEngines: string[],
 ) {
   const m = report.manifest!;
+  const images = new Set(m.images ?? []);
   for (const f of report.files) {
     if (CODE_TYPES.has(f.ext)) {
       report.errors.push(`${f.rel}: content packs can't contain code`);
+    } else if (f.rel.startsWith("images/") && !images.has(f.rel)) {
+      // Only listed pictures are checked and served (ADR-016 amendment, S12-T11).
+      report.errors.push(
+        `${f.rel}: isn't listed in "images" in manifest.json, so the app would refuse the pack`,
+      );
     } else if (
       f.rel !== "manifest.json" &&
       f.rel !== m.data &&
       f.rel !== m.preview &&
+      !images.has(f.rel) &&
       !PACK_NOTE_TYPES.has(f.ext)
     ) {
-      // v1 packs are data plus a preview (ADR-016): the host serves only the engine's files,
-      // so any other media would never reach the player.
+      // Packs are data, a preview, listed pictures and notes (ADR-016): the host serves only
+      // the engine's files and the pack's listed pictures, so anything else never reaches the
+      // player.
       report.errors.push(
-        `${f.rel}: content packs hold only manifest.json, their data file, a preview image and notes (.md, .txt)`,
+        `${f.rel}: content packs hold only manifest.json, their data file, a preview image, pictures listed in "images" and notes (.md, .txt)`,
       );
     }
+  }
+  for (const image of images) {
+    const f = has(image);
+    if (!f) {
+      report.errors.push(`${image} is listed in "images" but is missing`);
+      continue;
+    }
+    if (f.bytes > IMAGE_LIMITS.bytes) {
+      report.errors.push(`${image} is over 512 KiB`);
+      continue;
+    }
+    const r = checkImage(image, readFileSync(f.abs));
+    if (!r.ok) report.errors.push(`${image} ${r.why}`);
   }
   const ref = ENGINE_REF.exec(m.engine ?? "");
   const dataFile = m.data ? has(m.data) : undefined;
@@ -284,6 +316,14 @@ function checkContent(
     return;
   }
   report.data = data;
+  // Every picture the data names must be listed, so the app can check it before the pack starts.
+  for (const ref of new Set(imageReferences(data))) {
+    if (!images.has(ref)) {
+      report.errors.push(
+        `${m.data} names ${JSON.stringify(ref.slice(0, 80))}, which isn't listed in "images" in manifest.json`,
+      );
+    }
+  }
   const engine = ref ? findEngines(extraEngines).get(`${ref[1]}@${ref[2]}`) : undefined;
   if (!engine) {
     report.errors.push(

@@ -123,6 +123,18 @@
     "help": {
       "$ref": "#/$defs/help"
     },
+    "images": {
+      "description": "Content packs only: pictures the engine may show (ADR-016, Sprint 12). Each is a PNG or WebP file directly in the pack's images/ folder, at most 512 KiB and 2048 x 2048 pixels, still (not animated) and without metadata or a colour profile. The pack's data refers to an image by this exact path, with alt text. The host checks and decodes every image before it is installed or served.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 80,
+        "pattern": "^images/[a-z0-9][a-z0-9-]{0,63}\\.(?:png|webp)$"
+      }
+    },
     "preview": {
       "description": "Relative path to a preview image (PNG, JPEG, WebP or SVG, at most 256 KiB), shown on the activity card and the paused view. The host shows it only as an image.",
       "type": "string",
@@ -144,7 +156,8 @@
         "required": ["entrypoint", "runtime", "interruptibility"],
         "properties": {
           "engine": false,
-          "data": false
+          "data": false,
+          "images": false
         }
       }
     },

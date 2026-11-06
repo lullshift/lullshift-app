@@ -19,6 +19,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 companion = { path = "../../../crates/companion" }
 marketplace = { path = "../../../crates/marketplace" }
+pack-media = { path = "../../../crates/pack-media" }
 agent-adapters.workspace = true
 agent-core.workspace = true
 agent-ipc.workspace = true

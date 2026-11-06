@@ -1,0 +1,87 @@
+{
+  "title": "Shapes and Sides",
+  "intro": "Eight small questions about flat shapes, each with a picture. Take your time.",
+  "shuffle": true,
+  "questions": [
+    {
+      "prompt": "Bees build honeycomb cells in the shape shown. What is this shape called?",
+      "image": {
+        "src": "images/hexagon.png",
+        "alt": "An orange flat shape with six straight sides of equal length and six equal corners."
+      },
+      "choices": ["Pentagon", "Hexagon", "Octagon", "Square"],
+      "answer": 1,
+      "explanation": "A hexagon has six sides. Hexagons fit together with no gaps, which is one reason honeycomb uses them."
+    },
+    {
+      "prompt": "How many corners does the shape in the picture have?",
+      "image": {
+        "src": "images/triangle.png",
+        "alt": "A teal flat shape with three straight sides of equal length, pointing upwards."
+      },
+      "choices": ["Two", "Three", "Four", "Five"],
+      "answer": 1,
+      "explanation": "It is a triangle. A flat shape with straight sides always has as many corners as sides, so three."
+    },
+    {
+      "prompt": "How many circles are in the picture?",
+      "image": {
+        "src": "images/circles-and-squares.webp",
+        "alt": "Five shapes spread out on a light background: three purple circles and two green squares."
+      },
+      "choices": ["Two", "Three", "Four", "Five"],
+      "answer": 1,
+      "explanation": "There are three circles and two squares, five shapes in all."
+    },
+    {
+      "prompt": "What is the name of a flat shape with as many sides as the one in the picture?",
+      "image": {
+        "src": "images/pentagon.webp",
+        "alt": "A green flat shape with five straight sides of equal length, with one corner pointing up."
+      },
+      "choices": ["Pentagon", "Hexagon", "Rectangle", "Triangle"],
+      "answer": 0,
+      "explanation": "Five sides make a pentagon. The name comes from the Greek word for five."
+    },
+    {
+      "prompt": "The square in the picture has been turned so that it stands on one corner. Is it still a square?",
+      "image": {
+        "src": "images/turned-square.png",
+        "alt": "A purple shape with four equal sides and four right angles, turned so that one corner points straight down."
+      },
+      "choices": ["Yes, it is still a square", "No, it has become a different shape"],
+      "answer": 0,
+      "explanation": "Turning a shape does not change its sides or angles. A square standing on a corner is still a square."
+    },
+    {
+      "prompt": "How many sides does the shape in the picture have?",
+      "image": {
+        "src": "images/octagon.png",
+        "alt": "A teal flat shape with eight straight sides of equal length, like a circle made of short straight edges."
+      },
+      "choices": ["Six", "Seven", "Eight", "Nine"],
+      "answer": 2,
+      "explanation": "It is an octagon, with eight sides. The name comes from the Greek word for eight."
+    },
+    {
+      "prompt": "How many straight sides does the shape in the picture have?",
+      "image": {
+        "src": "images/circle.png",
+        "alt": "A green round shape with one smooth curved edge and no corners."
+      },
+      "choices": ["None", "One", "Two", "Four"],
+      "answer": 0,
+      "explanation": "It is a circle. Its edge is one smooth curve, so it has no straight sides and no corners."
+    },
+    {
+      "prompt": "The shape in the picture has four right angles, but two of its sides are longer than the other two. What is it called?",
+      "image": {
+        "src": "images/rectangle.webp",
+        "alt": "An orange flat shape with four right angles, much wider than it is tall: two long sides on the top and bottom, two short sides on the left and right."
+      },
+      "choices": ["Square", "Triangle", "Rectangle", "Pentagon"],
+      "answer": 2,
+      "explanation": "A rectangle has four right angles. A square is a special rectangle whose four sides are all the same length."
+    }
+  ]
+}

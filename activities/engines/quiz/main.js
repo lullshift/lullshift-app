@@ -12,6 +12,9 @@
     intro: document.getElementById("intro"),
     progress: document.getElementById("progress"),
     card: document.getElementById("card"),
+    figure: document.getElementById("figure"),
+    picture: document.getElementById("picture"),
+    missing: document.getElementById("missing"),
     prompt: document.getElementById("prompt"),
     choices: document.getElementById("choices"),
     feedback: document.getElementById("feedback"),
@@ -79,6 +82,31 @@
     }
   }
 
+  // The question's picture, if it has one. The path is the pack's own file, which the host
+  // serves beside this page after checking it; the alt text carries the same information.
+  function renderPicture(q) {
+    var img = q ? L.imageOf(q) : null;
+    if (!img) {
+      el.figure.hidden = true;
+      el.picture.removeAttribute("src");
+      el.picture.alt = "";
+      return;
+    }
+    el.figure.hidden = false;
+    el.missing.hidden = true;
+    el.picture.hidden = false;
+    el.picture.alt = img.alt;
+    if (el.picture.getAttribute("src") !== img.src) el.picture.setAttribute("src", img.src);
+  }
+
+  // A picture that can't be shown is replaced by its alt text, so the question still works.
+  el.picture.addEventListener("error", function () {
+    if (!el.picture.getAttribute("src")) return;
+    el.picture.hidden = true;
+    el.missing.textContent = "Picture not available. It shows: " + el.picture.alt;
+    el.missing.hidden = false;
+  });
+
   function render() {
     el.title.textContent = quiz.title;
     el.intro.hidden = !quiz.intro;
@@ -87,6 +115,7 @@
     if (finished()) {
       var got = L.score(state);
       el.progress.textContent = "All " + total + " questions done";
+      renderPicture(null);
       el.prompt.textContent = "You got " + got + " of " + total + ".";
       el.feedback.textContent =
         L.closing(got, total) + " Only you can see this score, and it is not kept.";
@@ -99,6 +128,7 @@
     var step = steps[state.i];
     var q = quiz.questions[step.q];
     el.progress.textContent = "Question " + (state.i + 1) + " of " + total;
+    renderPicture(q);
     el.prompt.textContent = q.prompt;
     renderChoices();
     if (state.picked !== null) {

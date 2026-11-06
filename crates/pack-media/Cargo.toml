@@ -1,0 +1,22 @@
+[package]
+name = "pack-media"
+description = "Checks for pictures in Lullshift content packs: paths, limits, container walk and full decode (ADR-016)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# Both decoders are image-rs crates with `#![forbid(unsafe_code)]`. Pinned exactly so a decoder
+# change is a deliberate, reviewed bump. `png` is already in the lockfile through Tauri.
+png = "=0.18.1"
+image-webp = "=0.2.4"
+serde_json.workspace = true
+
+[dev-dependencies]
+crc32fast = "1"
+
+[lints]
+workspace = true

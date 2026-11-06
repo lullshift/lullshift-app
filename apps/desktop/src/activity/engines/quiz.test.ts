@@ -36,6 +36,7 @@ interface State {
 interface Logic {
   SAMPLE: Quiz;
   validQuiz(c: unknown): boolean;
+  imageOf(q: unknown): { src: string; alt: string } | null;
   plan(quiz: Quiz, seed: number): Step[];
   correctPosition(quiz: Quiz, steps: Step[], i: number): number;
   initialState(seed: number): State;
@@ -176,6 +177,32 @@ describe("QuizLogic validQuiz", () => {
     expect(L.validQuiz({ title: "T", shuffle: "yes", questions: [q()] })).toBe(false);
     expect(L.validQuiz({ title: "T", questions: [{ ...q(), explanation: "" }] })).toBe(false);
   });
+
+  it("accepts a picture from the pack's images folder, with alt text, and nothing else", () => {
+    const pic = { src: "images/hexagon.png", alt: "A shape with six sides." };
+    const withPic = { title: "T", questions: [{ ...q(), image: pic }] };
+    expect(L.validQuiz(withPic)).toBe(true);
+    expect(validate(withPic)).toBe(true);
+    expect(L.imageOf(withPic.questions[0])).toEqual(pic);
+    expect(L.imageOf(q())).toBeNull();
+    for (const image of [
+      { src: "https://example.com/a.png", alt: "x" },
+      { src: "data:image/png;base64,AAAA", alt: "x" },
+      { src: "//example.com/a.png", alt: "x" },
+      { src: "images/../index.html", alt: "x" },
+      { src: "images/a.svg", alt: "x" },
+      { src: "images/sub/a.png", alt: "x" },
+      { src: "images/a.png", alt: "" },
+      { src: "images/a.png" },
+      { src: "images/a.png", alt: "x", onerror: "alert(1)" },
+      "images/a.png",
+      null,
+    ]) {
+      const quiz = { title: "T", questions: [{ ...q(), image }] };
+      expect(L.validQuiz(quiz), JSON.stringify(image)).toBe(false);
+      expect(validate(quiz), JSON.stringify(image)).toBe(false);
+    }
+  });
 });
 
 describe("lullshift.quiz@1 data schema and fixtures", () => {
@@ -230,8 +257,8 @@ describe("bundled quiz packs", () => {
   const base = join(root, "activities/content/quiz");
   const packs = existsSync(base) ? readdirSync(base) : [];
 
-  it("has seven packs", () => {
-    expect(packs).toHaveLength(7);
+  it("has eight packs", () => {
+    expect(packs).toHaveLength(8);
   });
 
   for (const slug of packs) {

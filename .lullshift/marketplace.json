@@ -251,6 +251,12 @@
       }
     },
     {
+      "id": "app.lullshift.content.quiz-shapes-and-sides",
+      "source": {
+        "path": "activities/content/quiz/quiz-shapes-and-sides"
+      }
+    },
+    {
       "id": "app.lullshift.content.reflect-curiosity",
       "source": {
         "path": "activities/content/reflection/reflect-curiosity"

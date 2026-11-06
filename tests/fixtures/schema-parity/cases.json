@@ -271,5 +271,95 @@
     "schema": { "type": "array", "uniqueItems": true },
     "data": [1, "1", [1]],
     "valid": true
+  },
+  {
+    "name": "plain text: ordinary sentence",
+    "schema": {
+      "type": "string",
+      "maxLength": 50,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "data": "Rest your eyes for a moment.",
+    "valid": true
+  },
+  {
+    "name": "plain text: no-break space and emoji are fine",
+    "schema": {
+      "type": "string",
+      "maxLength": 50,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "data": "Tea\u00a0time \ud83c\udf75",
+    "valid": true
+  },
+  {
+    "name": "plain text: line separator U+2028 is refused",
+    "schema": {
+      "type": "string",
+      "maxLength": 50,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "data": "Two\u2028lines",
+    "valid": false
+  },
+  {
+    "name": "plain text: paragraph separator U+2029 is refused",
+    "schema": {
+      "type": "string",
+      "maxLength": 50,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "data": "Two\u2029paragraphs",
+    "valid": false
+  },
+  {
+    "name": "plain text: next line U+0085 is refused",
+    "schema": {
+      "type": "string",
+      "maxLength": 50,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "data": "Two\u0085lines",
+    "valid": false
+  },
+  {
+    "name": "plain text: line feed is refused",
+    "schema": {
+      "type": "string",
+      "maxLength": 50,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "data": "Two\nlines",
+    "valid": false
+  },
+  {
+    "name": "plain text: right-to-left override is refused",
+    "schema": {
+      "type": "string",
+      "maxLength": 50,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "data": "abc\u202edef",
+    "valid": false
+  },
+  {
+    "name": "plain text: zero-width space is refused",
+    "schema": {
+      "type": "string",
+      "maxLength": 50,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "data": "a\u200bb",
+    "valid": false
+  },
+  {
+    "name": "plain text: narrow no-break space U+202F is fine",
+    "schema": {
+      "type": "string",
+      "maxLength": 50,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+    },
+    "data": "10\u202fkm",
+    "valid": true
   }
 ]

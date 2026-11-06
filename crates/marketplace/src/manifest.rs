@@ -31,6 +31,9 @@ pub struct Manifest {
     pub engine: Option<String>,
     /// Content packs only: the data file, relative to the pack folder.
     pub data: Option<String>,
+    /// Content packs only: pictures the engine may show (`images/<name>.png|webp`, at most 20).
+    #[serde(default)]
+    pub images: Vec<String>,
 }
 
 /// How-to-play help (S05-T07). Plain text only; the UI renders it as text.
@@ -191,6 +194,7 @@ pub fn parse_manifest(json: &str) -> Option<Manifest> {
                 && interruptible
                 && m.engine.is_none()
                 && m.data.is_none()
+                && m.images.is_empty()
         }
         "content" => {
             m.entrypoint.is_none()
@@ -200,6 +204,11 @@ pub fn parse_manifest(json: &str) -> Option<Manifest> {
                 && m.data
                     .as_deref()
                     .is_some_and(|d| valid_rel_path(d, &["json"]))
+                && m.images.len() <= pack_media::MAX_IMAGES
+                && m.images
+                    .iter()
+                    .enumerate()
+                    .all(|(i, p)| pack_media::valid_image_path(p) && !m.images[..i].contains(p))
         }
         _ => false,
     };

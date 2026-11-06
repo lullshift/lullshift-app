@@ -1,6 +1,6 @@
-# Sounds Around You
+# Near and Far
 
-A one-minute pause for listening to the sounds near and far.
+A one-minute pause for noticing what is near and far, by hearing, or by touch and sight.
 
 A content pack for the Guided Pause engine (`lullshift.pause@1`). It holds data only, no code.
 

@@ -25,8 +25,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** The files the harness serves for this activity: its own, or, for a content pack, its engine's. */
 export function servedFiles(report: Report) {
   if (report.manifest?.kind === "content" && report.engine) {
-    // The engine's listing is validated like any activity's before it is served.
-    return { files: listFiles(report.engine.dir).files, content: report.data ?? null };
+    // The engine's listing is validated like any activity's before it is served. Like the app,
+    // `images/` comes from the pack (only its listed, checked pictures), never from the engine.
+    const listed = new Set(report.manifest.images ?? []);
+    const files = [
+      ...listFiles(report.engine.dir).files.filter((f) => !f.rel.startsWith("images/")),
+      ...report.files.filter((f) => listed.has(f.rel)),
+    ];
+    return { files, content: report.data ?? null };
   }
   return { files: report.files, content: null };
 }

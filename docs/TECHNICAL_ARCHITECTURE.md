@@ -170,12 +170,12 @@ There are **no accounts and no hosted identity** (ADR-001). Consequently:
 
 ### 6.2 Activity model (ADR-003)
 
-Three tiers, chosen by the creator: **custom code activity** (any static web app implementing the SDK lifecycle), **code activity on a kit**, and **content pack** (JSON data plus a preview image for a named engine; runs no code; v1 packs carry no other media, ADR-016).
+Three tiers, chosen by the creator: **custom code activity** (any static web app implementing the SDK lifecycle), **code activity on a kit**, and **content pack** (JSON data plus a preview image for a named engine; runs no code; the only other media are optional, listed, checked still PNG/WebP pictures, ADR-016).
 
 **Manifest v1** (`reference/ACTIVITY_MANIFEST_V1.schema.json`) gains `kind: "app" | "content"`:
 
 - `kind: "app"` requires `entrypoint` and `runtime` (`isolated-web-v1`), `sdkVersion`, `permissions` and `interruptibility`.
-- `kind: "content"` requires `engine` (`id@major`, e.g. `com.lullshift.engine.breathing@1`) and `data` (path to the JSON data file within the pack) and **forbids executable files** (no `.js`, `.mjs`, `.wasm`, `.html`, native binaries, scripts). In v1 a pack holds only its manifest, data file (at most 256 KiB), a preview image and `.md`/`.txt` notes (ADR-016).
+- `kind: "content"` requires `engine` (`id@major`, e.g. `com.lullshift.engine.breathing@1`) and `data` (path to the JSON data file within the pack) and **forbids executable files** (no `.js`, `.mjs`, `.wasm`, `.html`, native binaries, scripts). In v1 a pack holds only its manifest, data file (at most 256 KiB), a preview image, `.md`/`.txt` notes and up to 20 still PNG/WebP pictures listed in `images` (each at most 512 KiB and 2048 × 2048 pixels; validated, fully decoded and served only at the pack's own `images/` path; ADR-016 amendment).
 
 Illustrative content pack manifest (an `app` manifest instead carries `entrypoint`, `runtime`, `sdkVersion`, `permissions` and `interruptibility`):
 

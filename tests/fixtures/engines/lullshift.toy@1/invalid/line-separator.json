@@ -1,0 +1,14 @@
+{
+  "title": "Two\u2028lines",
+  "palette": [
+    {
+      "name": "Violet",
+      "color": "#6b4fd8"
+    },
+    {
+      "name": "Coral",
+      "color": "#e07a5f"
+    }
+  ],
+  "mode": "ripples"
+}

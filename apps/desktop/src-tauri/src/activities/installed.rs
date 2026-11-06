@@ -26,7 +26,9 @@ use serde::Serialize;
 use serde_json::Value;
 use time::OffsetDateTime;
 
-use super::{Activity, DATA_MAX, Role, catalog, find_engine, validate_data};
+use super::{
+    Activity, DATA_MAX, Role, catalog, check_images, find_engine, pack_image, validate_data,
+};
 use crate::Core;
 
 /// The id of the built-in marketplace.
@@ -55,7 +57,8 @@ pub(crate) struct Served {
     /// Bytes that were hashed by the install check, and the only bytes ever served from this
     /// install (a file swapped on disk afterwards is never read; review L4). An app keeps all of
     /// its files (at most 20 MiB, and apps from third parties cannot be installed in this
-    /// release); a pack keeps only its preview image. Held for the session with the check.
+    /// release); a pack keeps only its preview image and the pictures its manifest lists (S12-T11).
+    /// Held for the session with the check.
     pub verified: BTreeMap<String, Vec<u8>>,
     pub commit: String,
     pub marketplace_id: String,
@@ -267,7 +270,9 @@ fn evaluate(core: &Core, lib: &Library, rec: &InstalledActivity) -> Evaluated {
             ServedRole::App => files.into_iter().collect(),
             ServedRole::Pack { .. } => files
                 .into_iter()
-                .filter(|(p, _)| manifest.preview.as_deref() == Some(p.as_str()))
+                .filter(|(p, _)| {
+                    manifest.preview.as_deref() == Some(p.as_str()) || manifest.images.contains(p)
+                })
                 .collect(),
         };
         Arc::new(Served {
@@ -301,6 +306,15 @@ fn pack_role(manifest: &Manifest, files: &[(String, Vec<u8>)]) -> Result<ServedR
         .map(|(_, b)| b.as_slice())
         .ok_or(Problem::MissingEngine)?;
     let data = validate_data(schema, data_path, bytes).map_err(|_| Problem::MissingEngine)?;
+    // Pictures were checked at install; check them again on the bytes that were hashed, so a
+    // pack installed by an older release or under older rules can't serve one that fails now.
+    check_images(manifest, &data, |path| {
+        files
+            .iter()
+            .find(|(p, _)| p == path)
+            .map(|(_, b)| b.as_slice())
+    })
+    .map_err(|_| Problem::MissingEngine)?;
     Ok(ServedRole::Pack { engine, data })
 }
 
@@ -396,19 +410,32 @@ impl Served {
         }
     }
 
-    /// The bytes of a file this activity serves at `/<id>/<file>`. A pack serves its engine's
-    /// files, never its own; an app serves regular files from its install folder.
-    pub(crate) fn file(&self, file: &str) -> Option<std::borrow::Cow<'static, [u8]>> {
+    /// The bytes and content type of a file this activity serves at `/<id>/<file>`. A pack
+    /// serves its engine's files, plus the pictures its manifest lists under `images/` (the
+    /// checked, hashed bytes; never an engine file there); an app serves regular files from its
+    /// install folder.
+    pub(crate) fn file(
+        &self,
+        file: &str,
+        content_type: &'static str,
+    ) -> Option<(std::borrow::Cow<'static, [u8]>, &'static str)> {
         match &self.role {
+            ServedRole::Pack { .. } if file.starts_with(pack_media::IMAGE_DIR) => {
+                pack_image(&self.manifest, file, |p| {
+                    self.verified
+                        .get(p)
+                        .map(|b| std::borrow::Cow::Owned(b.clone()))
+                })
+            }
             ServedRole::Pack { engine, .. } => engine
                 .dir
                 .get_file(engine.dir.path().join(file))
-                .map(|f| std::borrow::Cow::Borrowed(f.contents())),
+                .map(|f| (std::borrow::Cow::Borrowed(f.contents()), content_type)),
             ServedRole::App => self
                 .verified
                 .get(file)
                 .filter(|b| b.len() <= FILE_MAX)
-                .map(|b| std::borrow::Cow::Owned(b.clone())),
+                .map(|b| (std::borrow::Cow::Owned(b.clone()), content_type)),
         }
     }
 

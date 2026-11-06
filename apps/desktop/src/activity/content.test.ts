@@ -81,6 +81,7 @@ describe("describeContentError", () => {
       "data_missing",
       "data_not_json",
       "data_too_large",
+      "image_invalid",
       "unknown_activity",
       "internal",
     ]) {
