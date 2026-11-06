@@ -732,3 +732,82 @@ On Windows, use the installed release build (not a debug build): the release app
 **Expected:** auto-play stops while paused and continues from the same card after resume; no cards are turned while paused.
 
 **Result:** \_\_\_
+
+## Sprint 11
+
+### M11-1: First-launch welcome
+
+Use a fresh profile (delete the app data folder, or a new OS user), then start Lullshift.
+
+1. A "Welcome to Lullshift" dialog opens over Sessions. Focus is on **Skip for now**; Tab stays inside the dialog.
+2. Read it: it says there is no account, everything stays on this computer, and it works offline; it names Claude Code's `settings.json`, says a backup is saved first, and says nothing changes until you confirm here and in a system dialog.
+3. Press **Esc**. The dialog closes and focus lands on the Sessions heading. Quit and start again.
+4. Repeat from a fresh profile, but choose **Set up Claude Code**: Integrations opens and nothing has been written yet. Cancel the consent dialog; check `settings.json` is unchanged.
+5. Repeat once more and choose **Try ...** (or **Browse activities**): the Activities library opens.
+
+**Expected:** the welcome never appears again after step 3, 4 or 5 (including after a restart); the suggested activity name matches one in the library; the backup and file path statements match what Connect really does (compare with the consent dialog and the backups folder under the app data directory).
+
+**Result:** \_\_\_
+
+### M11-2: Screen reader pass (NVDA on Windows, VoiceOver on macOS, Orca on Linux if available)
+
+Go through Sessions (Live and History tabs, open a session's detail panel), Activities (Library, Manage, Marketplaces; start, pause, resume and close an activity; open How to play), Companion, Integrations (open and cancel each consent dialog; connect and disconnect with a throwaway settings file), and Settings.
+
+**Expected:** one `main` landmark and a `navigation` landmark named "Main"; each view announces its `h1` when you switch to it; every control has a name (the nav is still named when it shows icons only in a narrow window); dialogs announce their title and trap focus, and Esc closes them; after a dialog or an activity closes, focus is on a sensible control, not the top of the page; status changes (Saving..., Paused, Connected, errors) are announced once without stealing focus; a pill's state is read as text, not only a colour.
+
+**Result:** \_\_\_
+
+### M11-3: Keyboard-only, zoom and reduced motion
+
+1. Unplug the mouse. Reach and operate every action in each view with Tab, Shift+Tab, Enter, Space, arrows and Esc; the focus ring is always visible.
+2. Set the window to 1280x800 and zoom to 200% (Ctrl/Cmd and +): nothing is cut off or overlapped, there is no horizontal scrolling of the page, and the consent dialogs scroll if tall.
+3. Turn on the OS "reduce motion" setting, restart, and open a dialog, switch views and run an activity.
+4. Check form fields and the switches in both the light and dark OS themes.
+
+**Expected:** no keyboard trap (apart from dialogs, which Esc leaves); layout survives 200% with text still readable; reduced motion removes the dialog pop, shimmer and spinner animations; input borders and the off-state switch are clearly visible in both themes.
+
+**Result:** \_\_\_
+
+### M11-4: No network traffic unless you start it
+
+1. Start the app with no marketplaces added and no Companion profile. Turn on the OS firewall log, or capture traffic with Wireshark filtered to the Lullshift process.
+2. Leave it idle for 10 minutes, then play a few games and content packs for 10 more.
+3. Optionally, add a public marketplace and send one Companion message, then stop.
+
+**Expected:** no connections or DNS lookups from Lullshift during steps 1 and 2 (WebView2/OS services such as certificate checks are outside the app and may appear under their own processes). Step 3 shows only the marketplace's Git host and the Companion provider.
+
+**Result:** \_\_\_
+
+### M11-5: Release workflow and installers
+
+1. Run **Release** from the GitHub Actions tab (manual only). Check it creates a draft release with the Windows `.exe`, macOS `.dmg`, Linux `.deb` and AppImage, `SHA256SUMS` and provenance attestations, and nothing else.
+2. Verify one download with `sha256sum -c SHA256SUMS` and `gh attestation verify <file> --repo lullshift/lullshift-app`.
+3. Install each on a clean machine or VM. Note the SmartScreen / Gatekeeper warnings match the release notes.
+
+**Expected:** the workflow never runs on push or PR; all four installers install and launch; checksums and attestations verify.
+
+**Result:** \_\_\_
+
+### M11-6: Uninstalling removes agent hooks
+
+1. Windows: install the `.exe`, connect Claude Code, Codex and Cursor (back up their hook files first), add one hook of your own to each file, then uninstall from Settings > Apps.
+2. Linux: same with the `.deb`, then `sudo apt remove lullshift`. Repeat with a second user account that also connected an agent.
+3. macOS: confirm the user docs tell you to Disconnect before dragging to the Trash.
+4. After uninstalling, run one prompt in each agent.
+
+5. Windows: start an uninstall while Lullshift is running and choose Cancel at the "app is running" prompt; reopen Integrations.
+6. Linux: run `sudo apt remove lullshift` with one user whose home is unreachable (for example an unmounted network home).
+7. On a real draft release, run `gh attestation verify <file> --repo lullshift/lullshift-app --signer-workflow lullshift/lullshift-app/.github/workflows/release.yml --source-ref refs/heads/main`.
+
+**Expected:** Lullshift's hooks are gone, your own hooks are kept, files untouched since install are restored exactly; an in-place update (Windows `/UPDATE`, `apt upgrade`) keeps the hooks; with a hook left behind by hand, Claude Code shows a non-blocking hook error and carries on (record what Codex and Cursor do); after step 5 the agents show as disconnected and can be reconnected; step 6 finishes within about 30 seconds per user; step 7 verifies.
+
+**Result:** \_\_\_
+
+### M11-7: Signed update (blocked until the updater key exists)
+
+1. After the owner steps in `docs/RELEASING.md` section 3, install version N, publish a draft N+1 with `latest.json`, and choose **Check for updates**.
+2. Tamper with one byte of the N+1 installer and repeat.
+
+**Expected:** no check happens until you ask; the genuine update installs; the tampered one is refused.
+
+**Result:** \_\_\_

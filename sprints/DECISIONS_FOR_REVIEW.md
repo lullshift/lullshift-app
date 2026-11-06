@@ -169,3 +169,29 @@ Taken while the product owner was away. Please confirm or change each.
 4. **Size stays a separate `<select>` row** in Thread Picture, Brook Links and Island Bridges. Petal Grid and Stone Slide put a "Size" button in the main controls row instead. This is left inconsistent for now; unifying it is a small follow-up if you want one pattern.
 5. **Name clash not checked.** "Tea Sort" describes a common sort-by-pouring mechanic and may be close to existing app-store titles. No web or store search was done; please check before release, or pick another name (for example "Teacup Tidy").
 6. **Listening prompts** (Pause: Sounds around you and similar) assume hearing; each pack says any step can be skipped. Left as is.
+
+## 25. First-launch welcome (S11-T03)
+
+Taken while the product owner was away. Please confirm or change each.
+
+1. **A one-time welcome dialog** on first launch: no account, local only, works offline. Three choices: Skip for now (focused first; Esc does the same), Try a suggested break activity, Set up Claude Code. Any choice marks it done in the existing UI preferences (no new table).
+2. **Only Claude Code is offered** in the welcome; Codex and Cursor stay in Integrations. "Set up" only opens Integrations, so the existing consent dialogs (exact file path, backup, OS confirmation) still apply.
+3. **Existing installs see it once too** (including yours), since it is pre-release. It is not shown when the preferences can't be read.
+4. **No skip link** was added (five-item nav plus landmarks); consent dialogs have no `aria-describedby` yet. Both are small follow-ups if you want them.
+
+## 26. Release packaging (S11-T01, S11-T06)
+
+Taken while the product owner was away. Please confirm or change each. Details in `docs/RELEASING.md`.
+
+1. **ADR-004 amended** (not a new ADR) for the manual-only release workflow; ADR-018 stays reserved for update signing and key custody.
+2. **Plain `pnpm tauri build`, not tauri-action**, so build jobs stay read-only and only the final job can write the draft release.
+3. **Updater not added yet.** No key exists, so the plugin is not registered and no check can happen. When you add the key, the check must be a manual "Check for updates" button only (a test enforces no background check settings).
+4. **Windows WebView2: `embedBootstrapper`.** If WebView2 is missing, the installer downloads it from Microsoft. Alternative: `offlineInstaller` (+127 MB) for offline installs.
+5. **Windows installs are per-user** (`currentUser`), which the uninstall hook relies on.
+6. **macOS builds are ad-hoc signed** (`signingIdentity "-"`); Gatekeeper still warns. Unsigned is the alternative.
+7. **Uninstall removes hooks** on Windows (NSIS, skipped during in-place updates) and Linux `.deb` (prerm, on remove only, run as each regular user). macOS and AppImage have no uninstaller: Disconnect first. AppImage hooks point at a temporary mount path; the docs could recommend the `.deb` for agent hooks.
+8. **A fresh reinstall over an existing install** removes the hooks (the old uninstaller runs without `/UPDATE`); reconnect afterwards.
+9. **First version number** for the draft release (0.1.0 now) is yours to choose. No MSI or rpm targets.
+10. **SECURITY.md** points reporters to GitHub private vulnerability reporting, which you need to turn on for the repository.
+11. **After the release security review:** the draft-release job only runs from `main`, and the documented provenance check pins the workflow and `refs/heads/main`. The updater signing secret is not passed to builds until the updater is enabled; when it is, keep it in a `release` environment limited to `main` with you as reviewer.
+12. (Decision 25 follow-up) The welcome offers "Set up Claude Code" even when Claude Code is already connected; it then just opens Integrations. Hiding the button in that case is a small follow-up if you want it.
