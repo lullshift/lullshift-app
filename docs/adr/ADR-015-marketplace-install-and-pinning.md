@@ -55,7 +55,14 @@ Every call is an argument vector (never a shell) with:
 
 ### Third-party code
 
-Third-party code activities (`kind: app` from a non-built-in marketplace) can be listed and reviewed but **not installed** on any OS in this release, because the Sprint 03 sandbox proof has an open WebRTC gap on Windows and has not run on macOS or Linux. The gate is one host constant per OS, defaulting to blocked; flipping it is a product-owner decision after the gap is closed. Content packs from third-party marketplaces can be installed.
+Third-party code activities (`kind: app` from a non-built-in marketplace) can be listed and reviewed but **not installed** on any OS in this release. The gate is one host constant per OS, defaulting to blocked; flipping it is a product-owner decision. Content packs from third-party marketplaces can be installed.
+
+**Sprint 12 note (S12-T13):** the Sprint 03 WebRTC gap is closed. WebRTC is turned off for the whole webview on each OS (ADR-012, "WebRTC is off in the webview").
+
+- **Windows:** the full sandbox proof passes, 48 of 48 on 2026-11-06.
+- **macOS and Linux:** the settings are in place, but the proof has not run there.
+
+All three constants stay blocked. Windows can be unblocked by the product owner. macOS and Linux need their proof run first.
 
 ### Built-in marketplace
 

@@ -10,6 +10,7 @@ mod hook_exe;
 mod market;
 mod notify;
 pub mod uninstall_hooks;
+mod webrtc;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -487,6 +488,10 @@ pub fn run() {
             activities::serve(core.as_deref(), &request)
         })
         .setup(|app| {
+            // Before anything can open an activity: WebRTC off in the webview (ADR-012).
+            if let Some(w) = app.get_webview_window("main") {
+                webrtc::disable(&w);
+            }
             let handle = app.handle().clone();
             let (store, store_health) = open_store(&handle);
             let core = Arc::new(Core {

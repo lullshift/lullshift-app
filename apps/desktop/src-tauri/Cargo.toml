@@ -39,6 +39,14 @@ time.workspace = true
 sha2.workspace = true
 zeroize = "1.9"
 
+# WebRTC is turned off in the webview at run time on macOS and Linux (src/webrtc.rs, ADR-012).
+# Both are already in the lockfile through wry; the versions and features match its own.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+
+[target.'cfg(not(any(windows, target_os = "macos")))'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
+
 [dev-dependencies]
 companion = { path = "../../../crates/companion", features = ["test-support"] }
 # `file://` marketplaces for the command tests. Debug builds of tests only (see the crate docs).
@@ -46,5 +54,12 @@ marketplace = { path = "../../../crates/marketplace", features = ["unsafe-test-f
 rusqlite.workspace = true
 tempfile.workspace = true
 
-[lints]
-workspace = true
+# The workspace lints, except that unsafe code is denied rather than forbidden: the macOS part
+# of src/webrtc.rs allows it for a few WebKit messages (ADR-012), and a test fails if any other
+# file does. Keep the rest in step with [workspace.lints] in the root Cargo.toml.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"

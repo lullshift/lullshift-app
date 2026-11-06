@@ -1,6 +1,6 @@
 # ADR-012: Activity sandbox strategy and host bridge protocol
 
-- **Status:** Accepted (Sprint 03)
+- **Status:** Accepted (Sprint 03); amended in Sprint 12 (WebRTC turned off, S12-T13)
 - **Date:** 2026-11-05
 - **Owner:** Implementation lead
 - **Related:** ADR-003 (activity model), ADR-010 (hook installation), `reference/ACTIVITY_MANIFEST_V1.schema.json`, `tests/sandbox/`
@@ -120,16 +120,88 @@ These are optional additions; an older host drops the new message as an unknown 
 | Clipboard, notifications | Denied |
 | Forged messages with a wrong nonce; storage over quota | Dropped / refused |
 | Busy loop, stubborn pause, restore | App responsive (1–10 ms); paused in under 1 s; last good save kept |
-| **WebRTC** | **Gap:** `RTCPeerConnection` exists and gathers host ICE candidates |
+| **WebRTC** | **Gap in Sprint 03:** `RTCPeerConnection` exists and gathers host ICE candidates. Closed in Sprint 12, see below. |
+
+**Windows 11 (26200), WebView2 runtime 156.0.4314.58, 2026-11-06 (Sprint 12): 48 of 48 checks pass with `--attention`, no known gaps.** The six new WebRTC checks are described in the next section.
 
 **macOS (WKWebView) and Linux (WebKitGTK):** not run. No machine was available. Those runs are manual tests M03-4 and M03-5 in `docs/MANUAL_TESTS.md`. The runner uses the Chromium debug protocol, so on those OSes the probe's own results page is the check. WebKit has no out-of-process iframes, so a busy activity may slow the app there. Pause still works because the host removes the frame.
 
+### WebRTC is off in the webview (Sprint 12, S12-T13)
+
+CSP has no directive that governs WebRTC. The CSP3 `webrtc` directive is not shipped by Chromium or WebKit, and Permissions-Policy has no WebRTC feature in either engine. So the engine itself must stop WebRTC, for the whole webview. No page in the app needs WebRTC: the Companion and Git run in Rust, and the app page makes no network requests. The code is in `apps/desktop/src-tauri/src/webrtc.rs`.
+
+**Why not remove `RTCPeerConnection` with script.** Any frame the activity creates is a fresh script realm with its own constructors. On Windows a nested blank frame gets its own opaque origin, so the parent can't script it. But a `srcdoc` frame can load the activity's own scripts (`script-src 'self'` is inherited, and `frame-src` doesn't apply to `srcdoc`) and run WebRTC there. The probe does exactly that, and in the negative control below it opened a data channel. A script-level removal can't reach that realm. Removing the constructors would only hide the API; it can't block the connection.
+
+**Windows (WebView2).** WebView2 has no setting to turn WebRTC off, and Blink has no runtime flag for `RTCPeerConnection`. So the app takes away every route out, with browser arguments in `tauri.conf.json` (`additionalBrowserArgs`; a test keeps them equal to `webrtc::WINDOWS_ARGS`):
+
+- `--webrtc-ip-handling-policy=disable_non_proxied_udp`: WebRTC may use proxied connections only. No UDP, STUN or UDP relay.
+  - This is Edge's name: it maps to the `webrtc.ip_handling_policy` preference. Chromium's own `--force-webrtc-ip-handling-policy` is not in the Edge runtime (156.0.4314.58) at all, which is why the Sprint 03 attempt made no difference. It is still passed, in case a later runtime reads it.
+- `--proxy-server=http://127.0.0.1:9`: the webview's only proxy is a closed local port. WebRTC's remaining TCP connections (ICE-TCP and TURN over TCP) all go through Chromium's proxy-resolving socket, so they fail. A fixed proxy list without `DIRECT` has no fallback.
+- `--proxy-bypass-list=<-loopback>;http://tauri.localhost;http://ipc.localhost;http://lullact.localhost;http://localhost:1420`:
+  - `<-loopback>` removes Chromium's implicit loopback bypass, so WebRTC can't reach this machine either.
+  - The `http://` exceptions keep the app's own hosts (and the dev server) working. Without them the app page did not load.
+  - WebRTC asks the proxy about `https://<host>:<port>` addresses only, so scheme-limited `http://` rules never match it. A test fails if any exception is a bare host, a wildcard or `https://`.
+- wry's default `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection` is repeated, because setting arguments replaces wry's defaults. Chromium keeps only the last `--disable-features`, so there must be just one.
+
+`RTCPeerConnection` still exists on Windows. It gathers no candidates, and nothing reaches the network or this machine.
+
+**macOS (WKWebView).** In `setup`, before anything can open an activity, the app turns off WebKit's `PeerConnectionEnabled` preference: `-[WKPreferences _setPeerConnectionEnabled:NO]` on the main webview's configuration, then reads it back.
+
+- `PeerConnectionEnabled` gates `RTCPeerConnection`, `RTCDataChannel` and the related dictionaries (`EnabledBySetting=PeerConnectionEnabled` in WebKit's IDL).
+- It is a page-level setting, so it covers every frame of the page, nested ones included. Frames created after the change get no constructor.
+- `-[WKWebView configuration]` returns a copy that shares the live `WebPreferences` object (`PageConfiguration::copyDataFrom` copies a `RefPtr`), so the change reaches the running page.
+- It is SPI (`WKPreferencesPrivate.h`, macOS 10.13.4+). The selectors are checked with `respondsToSelector:` first, and failure is recorded and printed with a fixed message.
+- It needs a few Objective-C messages (read the configuration and preferences, check both selectors, set, read back), which are unsafe Rust. The desktop crate therefore denies unsafe code instead of forbidding it, and this one module allows it. A test fails if any other file does.
+
+**Linux (WebKitGTK).** `WebKitSettings:enable-webrtc` is set to false on the main webview and read back. False is already its default since 2.38, and wry doesn't change it; the app's WebKitGTK binding requires 2.38 or later. It is a page setting and covers every frame.
+
+**Evidence (Windows, this machine, 2026-11-06).** The probe now tries WebRTC from four realms:
+
+- the activity frame;
+- a nested blank frame, scripted by the parent;
+- a nested `srcdoc` frame running the activity's own `rtc.js` and `nested.js`;
+- a worker.
+
+Each attempt connects two peer connections with a data channel and a STUN server. The runner also listens on a local UDP and a local TCP port. It asks the activity frame, the nested realm and the app page to reach them through STUN, TURN over TCP and remote ICE candidates. It also watches `netstat` for TCP connection attempts to the TEST-NET address 192.0.2.1, which stands in for any non-local host without needing an inbound firewall rule.
+
+| Run | Data channel (frame / nested realm) | Local UDP packets | Local TCP connections | TCP to 192.0.2.1 |
+|---|---|---|---|---|
+| Before (no arguments) | opened over UDP | 44 | 2 | SYN sent |
+| Only `--webrtc-ip-handling-policy` | none | 0 | 2 | SYN sent |
+| Plus the closed proxy | none | 0 | 2 (loopback bypass) | none |
+| Plus `<-loopback>` without `http://` exceptions | app page did not load | | | |
+| **Shipped arguments** | **none; no candidates** | **0** | **0** | **none** |
+| Negative control: shipped build with `--webrtc-ip-handling-policy=default --no-proxy-server` appended | opened over UDP | 44–48 | 2 | SYN sent |
+
+The full proof with the shipped arguments passes 48 of 48 with `--attention`.
+
+**Sources** (checked 2026-11-06):
+
+- WebView2 environment variables and registry: arguments are appended to the app's own. <https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/webview2-idl>
+- WebView2 browser flags (`--proxy-server`, `--proxy-bypass-list`, `--no-proxy-server`): <https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/webview-features-flags>
+- Chromium port allocator: non-proxied UDP disabled means no UDP, STUN or UDP relay. <https://chromium.googlesource.com/chromium/src/+/main/third_party/blink/renderer/platform/p2p/port_allocator.cc>
+- Chromium P2P TCP sockets go through the proxy-resolving socket factory, with `https://` addresses. <https://chromium.googlesource.com/chromium/src/+/main/services/network/p2p/socket_tcp.cc>
+- Chromium `RTCPeerConnection` IDL (no runtime flag) and the Connection-Allowlist WebRTC block: <https://chromium.googlesource.com/chromium/src/+/main/third_party/blink/renderer/modules/peerconnection/>
+- The switch names in the installed runtime were read from `msedge.dll` (156.0.4314.58).
+- WebKit `PeerConnectionEnabled`: <https://github.com/WebKit/WebKit/blob/main/Source/WTF/Scripts/Preferences/UnifiedWebPreferences.yaml>, `Source/WebCore/Modules/mediastream/RTCPeerConnection.idl`, `Source/WebKit/UIProcess/API/Cocoa/WKPreferencesPrivate.h` and `WKPreferences.mm`.
+- WebKitGTK `enable-webrtc` (since 2.38, default false): <https://webkitgtk.org/reference/webkitgtk/stable/property.Settings.enable-webrtc.html>
+
+**Options considered and not taken:**
+
+- **Chromium's Connection-Allowlist header with WebRTC blocked.** It is an experimental draft behind a feature flag. Blink only drops `addIceCandidate` and ICE servers and reports a failed state; it doesn't filter candidates inside a remote description.
+- **Edge group policies** (`WebRtcIPHandling`, `WebRtcLocalhostIpHandling`). They are machine policies, not the app's to set.
+- **A separate webview.** It is not needed now that WebRTC is off app-wide.
+
+**Remaining gaps:**
+
+- **Local overrides.** Arguments in `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` or in the WebView2 registry policy are appended after the app's. The negative control shows they can undo this (`--no-proxy-server`, or another IP policy). Setting either needs the user's own account, which already controls the app.
+- **Windows depends on Edge keeping `--webrtc-ip-handling-policy`,** and on WebRTC TCP still going through the proxy. Re-run the proof on WebView2 runtime updates, as for Tauri upgrades. The proof fails if either changes.
+- **macOS relies on WebKit SPI.** If it goes away, `webrtc::state()` records the failure. Third-party code stays blocked by its own constant either way.
+- **macOS and Linux have not been run.** The runner needs the Chromium debug protocol. On those OSes, open the probe in a debug build and read its results page: every WebRTC line must say "blocked", with "API absent". Those are manual checks.
+
 ### Known gaps
 
-- **WebRTC.** CSP does not govern WebRTC. An activity can create a peer connection, learn local ICE candidates and, if UDP or a TURN server is reachable, send data out. Chromium's `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` was tried through WebView2 browser arguments and made no measurable difference, so it was not kept.
-  - **Consequence:** until this is closed, only first-party, reviewed activities ship. Bundled activities are reviewed for any use of `RTCPeerConnection`.
-  - Installing third-party code activities from marketplaces (Sprint 08) is **blocked** on closing this gap, or on reviewing each such activity.
-  - **Options:** a separate webview with WebRTC disabled where the platform allows it; a stronger WebView2 policy or flag; or a pre-install static check backed by a runtime check.
+- **WebRTC.** Closed in Sprint 12 on Windows (proof passes in full), and turned off on macOS and Linux with their proof still to run (see "WebRTC is off in the webview" above). Third-party code activities stay blocked on every OS by one constant per OS (ADR-015) until the product owner unblocks an OS whose proof has passed.
 - **Tauri globals in frames** (above): mitigated today, but by behaviour we don't control.
 - **Before third-party code activities (Sprint 08)**, these must also be settled. They were found in the Sprint 03 security review and are harmless while every activity is bundled and reviewed:
   - **Loading another activity.** An activity can navigate its own frame to another activity's page with the same nonce. That page would then run under the first activity's id and storage. The host should pin the frame to the launched activity's path, or serve each activity from its own host name.
@@ -141,4 +213,4 @@ These are optional additions; an older host drops the new message as an unknown 
 
 - Activities are static web pages that talk only through the bridge. The SDK, kits and engines (Sprints 05–07) build on protocol v1. A change that breaks the protocol needs protocol v2 and this ADR updated.
 - Because a pause unloads the page, activities must restore from a snapshot. Timers, audio and animation stop on every pause. That is the point.
-- The debug-only probe and the denial tests are part of the quality gate for any change to the host, the scheme handler, CSPs, capabilities or Tauri versions.
+- The debug-only probe and the denial tests are part of the quality gate for any change to the host, the scheme handler, CSPs, capabilities, the webview's browser arguments, or Tauri or WebView2 runtime versions.

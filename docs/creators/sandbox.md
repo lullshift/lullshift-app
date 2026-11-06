@@ -34,7 +34,11 @@ Every code activity runs in an isolated frame with an opaque origin and a strict
 
 Be aware of these when reviewing activities:
 
-- **WebRTC.** CSP doesn't govern WebRTC. In the Windows test run, `RTCPeerConnection` exists in the frame and gathers local network candidates. Because of this gap, and because the sandbox tests have not yet been run on macOS and Linux, **third-party code activities can't be installed from marketplaces in this release**. Bundled activities are reviewed for any use of `RTCPeerConnection`.
+- **WebRTC.** CSP doesn't govern WebRTC, so the app turns it off in the webview itself:
+  - On macOS and Linux, `RTCPeerConnection` is absent.
+  - On Windows it still exists, but it can't connect to anything, on the network or on this computer.
+
+  Don't use WebRTC. Third-party code activities **can't be installed from marketplaces in this release**: the sandbox tests pass on Windows but have not yet been run on macOS and Linux, and unblocking is the product owner's decision. Bundled activities are reviewed for any use of `RTCPeerConnection`.
 - Other items to settle before third-party code is allowed are listed under "Known gaps" in ADR-012.
 
 ## If you think you need more
