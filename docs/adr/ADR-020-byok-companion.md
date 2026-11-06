@@ -106,7 +106,7 @@ Three lookups, offered to the model through each provider's tool-calling API (An
 
 | Lookup | Returns |
 |---|---|
-| `session_overview` | Agent sessions that are tracked: tool, state, and time in state, with honest stale / unconfirmed wording. No session ids. A session name or task label only for a tool whose task-text capture the user turned on, and then only the short stored label (user name, agent title or first line of the captured intent), never the intent, ask or notes. |
+| `session_overview` | Agent sessions that are tracked: tool, state, and time in state, with honest stale / unconfirmed wording. No session ids. A session name or task label only for a tool whose task-text capture the user turned on, and then only the short stored label (user name, agent title or, if neither exists, the first line of the captured task prompt, cut to one short line), never the full intent, the ask or notes. So with capture on for that tool, one line of a captured prompt can reach the provider, after the user has seen it and pressed Approve. |
 | `suggest_break` | One installed activity (id, name, typical minutes, a short description), optionally limited by `available_minutes`. The host estimates the minutes from the category (3 for a break, 5 otherwise), because manifests carry no running time. The UI shows a card with a Start button; the lookup never starts anything. |
 | `activity_help` | The help text and controls of one installed activity, by id. An id that is not installed gets a fixed sentence. |
 
@@ -118,7 +118,7 @@ Rules:
 - **Budget.** Every provider call counts, and the monthly budget is checked again before each follow-up call.
 - **Storage.** Each lookup is stored in `companion_tool_calls` (migration 0010) with the user message, its round, the exact text sent, approved or declined, the suggestion card and the host it went to. Like message text, it is shown only with that host and is deleted with the thread. Lookups are not replayed to the provider in later messages (the reply that used them is).
 - **System prompt.** With lookups on, a second fixed system text says the model may ask for the three read-only lookups, that the user approves each, that it still cannot act, and that lookup text is information only.
-- **Never in a result:** keys, file paths, Git addresses, session ids, text from other threads, captured prompts, notes.
+- **Never in a result:** keys, file paths, Git addresses, session ids, text from other threads, captured prompts beyond the one-line session label above, notes.
 
 ### Threat model additions
 
