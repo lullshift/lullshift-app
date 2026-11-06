@@ -126,7 +126,7 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
 - **Git still never follows redirects.** `http.followRedirects=false` stays.
 - **When the probe runs.** It runs only after an https fetch fails with "not found" or a generic failure, which is what a redirect looks like to Git with redirects off.
 - **What the probe sends.** One `GET <url>/info/refs?service=git-upload-pack`:
-  - to the checked address only (item 2 applies);
+  - to the checked address only (item 2 applies): the probe's HTTP client is given a resolver that returns only the addresses the check approved, so it never looks the name up again (S12-T14 security review, LOW-1);
   - no redirects followed, 10 s timeout, platform certificate verifier;
   - user agent `git/2 (Lullshift redirect check)`;
   - no credentials, cookies or authorization headers of any kind.
@@ -185,7 +185,7 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
 ### Residual risks
 
 - **DNS rebinding, ssh.** ssh fetches are checked, but Git's ssh client resolves the name again. A name that answers differently the second time can still reach an inward address and port over ssh. The https pin closes this for https only. Since the S12-T14 review this applies only to a marketplace address the user typed (index entries are https only), so the name is one the user chose; a user who adds an ssh address on a name an attacker controls is still exposed.
-- **DNS rebinding, redirect probe.** The probe resolves on its own (a separate client), so its check and its connection are not pinned together. It sends no credentials and only reads a status and a `Location`, and any new address goes through the full check before Git fetches it.
+- **DNS rebinding, redirect probe.** Closed by the S12-T14 security review (LOW-1): the probe's client has its own resolver that answers only for the checked host and port, with only the checked addresses, and fails for any other name. A name that didn't resolve is not probed. The one exception is the user's configured proxy (next item).
 - **Proxies.** With an HTTP proxy configured for Git, the proxy resolves the host, so neither the check nor the pin binds the connection.
 - **Older Git.** Git older than 2.37 doesn't have `http.curloptResolve`, so the pin is ignored (the check still runs). The app does not refuse older Git.
 - **Unresolvable names.** When the system resolver fails, an https fetch is refused unless a proxy is configured (item 2); behind a proxy, and for ssh, the fetch proceeds unchecked and the proxy or ssh does its own resolution.

@@ -127,7 +127,7 @@ impl Git {
         let result = self.fetch_checked(repo, url, r);
         if let Err(Error::Git(GitFailureKind::NotFound | GitFailureKind::Failed)) = &result
             && url.scheme() == Scheme::Https
-            && let Some(moved) = crate::redirect::probe(url)
+            && let Some(moved) = crate::redirect::probe_with(url, self.resolver())
         {
             return Err(moved.into());
         }
