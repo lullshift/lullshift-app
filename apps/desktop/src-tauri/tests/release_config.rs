@@ -77,10 +77,43 @@ fn uninstaller_hooks_are_wired() {
         nsh.contains("$UpdateMode"),
         "hooks must survive an in-place update"
     );
+    // M1: only an in-place update keeps hooks. Every other uninstall removes them: the old
+    // uninstaller of a reinstall runs before the folder page, so a cancelled or relocated
+    // install must not leave hooks pointing at a deleted program.
+    let pre = nsh
+        .split("!macro NSIS_HOOK_PREUNINSTALL")
+        .nth(1)
+        .and_then(|t| t.split("!macroend").next())
+        .expect("PREUNINSTALL macro");
     assert!(
-        nsh.contains("$EXEDIR != $INSTDIR"),
-        "hooks must survive a reinstall (the old uninstaller runs in place, S12-T05)"
+        pre.contains("$UpdateMode <> 1"),
+        "update mode keeps the hooks"
     );
+    assert_eq!(
+        pre.matches("--uninstall-hooks").count(),
+        2,
+        "both branches remove the hooks"
+    );
+    assert!(
+        pre.contains("--uninstall-hooks --keep-records"),
+        "the in-place (reinstall) branch keeps the install records for the restore"
+    );
+    assert!(
+        pre.contains("$EXEDIR == $INSTDIR"),
+        "the in-place test only decides whether the records are kept, never whether hooks are removed"
+    );
+    assert!(
+        !pre.contains("$EXEDIR != $INSTDIR"),
+        "the old rule (keep hooks on reinstall) must not come back"
+    );
+    // A reinstall restores hooks after the install finished, for recorded agents only.
+    let post = nsh
+        .split("!macro NSIS_HOOK_POSTINSTALL")
+        .nth(1)
+        .and_then(|t| t.split("!macroend").next())
+        .expect("POSTINSTALL macro");
+    assert!(post.contains("--repair-recorded-hooks"));
+    assert!(post.contains("ExecWait"));
     assert_eq!(nsis["installMode"], "currentUser");
 
     let prerm = conf["bundle"]["linux"]["deb"]["preRemoveScript"]

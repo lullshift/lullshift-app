@@ -25,5 +25,14 @@ fn main() {
         std::panic::set_hook(Box::new(|_| std::process::exit(0)));
         std::process::exit(lullshift_desktop_lib::uninstall_hooks::run(args));
     }
+    if first
+        .as_ref()
+        .is_some_and(|a| a == lullshift_desktop_lib::repair_hooks::FLAG)
+    {
+        // Installer mode (S12 review M1): after a reinstall finished, put back the hooks the
+        // old uninstaller removed, for agents with a stored install record. No UI, exit 0.
+        std::panic::set_hook(Box::new(|_| std::process::exit(0)));
+        std::process::exit(lullshift_desktop_lib::repair_hooks::run(args));
+    }
     lullshift_desktop_lib::run()
 }

@@ -9,6 +9,7 @@ mod context;
 mod hook_exe;
 mod market;
 mod notify;
+pub mod repair_hooks;
 pub mod uninstall_hooks;
 mod webrtc;
 

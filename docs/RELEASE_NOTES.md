@@ -32,7 +32,7 @@ Check your download against `SHA256SUMS` and its build provenance (see [RELEASIN
 ### Known limits
 
 - App updates: there is no in-app updater yet. Download new versions from the Releases page.
-- macOS and the AppImage have no uninstaller step: choose **Disconnect** for each agent before removing the app. Windows and the `.deb` remove Lullshift's hooks for you (a Windows reinstall over an existing install keeps them). AppImage hooks point at the AppImage file, so keep it in one place; if you move or rename it, choose **Repair connection**.
+- macOS and the AppImage have no uninstaller step: choose **Disconnect** for each agent before removing the app. Windows and the `.deb` remove Lullshift's hooks for you (a Windows reinstall over an existing install puts them back for the agents you had connected, once it has finished). AppImage hooks point at the AppImage file, so keep it in one place; if you move or rename it, choose **Repair connection**.
 - Cursor has no hook for "waiting for you", so Cursor sessions never show as needing you.
 - OpenCode support is experimental and works only with OpenCode 2.x. It is built on OpenCode's source, not documented event payloads, and shows "Unknown" until the first event arrives. Only permission requests count as "needs you".
 - Codex asks you to trust new hooks in `/hooks` before they run.

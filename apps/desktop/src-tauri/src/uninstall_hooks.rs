@@ -7,8 +7,14 @@
 //! nothing else changed and otherwise only Lullshift's own entries are removed; the user's own
 //! hooks stay. It is idempotent, never creates a settings file or a database, leaves a file it
 //! can't parse untouched, writes nothing to stdout or stderr and exits 0 whatever happens (an
-//! uninstaller must not be blocked by it). It takes no input except one optional flag and opens
+//! uninstaller must not be blocked by it). It takes no input except two optional flags and opens
 //! no socket.
+//!
+//! `--keep-records` (S12 review M1) is used when the uninstaller is run in place by a new
+//! setup (a reinstall or upgrade): the hooks are removed as usual, but the install records stay
+//! in the database and a timestamped marker is written, so that `--repair-recorded-hooks`
+//! (`repair_hooks.rs`), run by the new setup after it finished, can put the hooks back for the
+//! adapters the user had connected. Without the flag the records are marked uninstalled.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -24,6 +30,8 @@ const IDENTIFIER: &str = "app.lullshift.desktop";
 const DB_FILE: &str = "lullshift.db";
 /// The flag that selects this mode.
 pub const FLAG: &str = "--uninstall-hooks";
+/// Optional second flag: remove the hooks but keep the install records (see the module docs).
+pub const KEEP_RECORDS_FLAG: &str = "--keep-records";
 
 /// What happened for one agent.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +62,8 @@ pub struct Targets {
     pub codex_default: Option<PathBuf>,
     pub cursor_default: Option<PathBuf>,
     pub opencode_default: Option<PathBuf>,
+    /// Keep the install records and leave a restore marker (see the module docs).
+    pub keep_records: bool,
 }
 
 impl Targets {
@@ -64,12 +74,13 @@ impl Targets {
             codex_default: codex::install::default_hooks_path(),
             cursor_default: cursor::install::default_hooks_path(),
             opencode_default: opencode::install::default_plugin_path(),
+            keep_records: false,
         })
     }
 }
 
 /// The directory Tauri's `app_data_dir()` returns, without needing an app handle.
-fn default_data_dir() -> Option<PathBuf> {
+pub(crate) fn default_data_dir() -> Option<PathBuf> {
     let env = |k: &str| {
         std::env::var_os(k)
             .filter(|v| !v.is_empty())
@@ -89,7 +100,7 @@ fn default_data_dir() -> Option<PathBuf> {
 
 /// The value of `--data-dir`, if given and absolute (a relative one would depend on the working
 /// directory of the uninstaller).
-fn parse_data_dir(args: impl IntoIterator<Item = OsString>) -> Option<PathBuf> {
+pub(crate) fn parse_data_dir(args: impl IntoIterator<Item = OsString>) -> Option<PathBuf> {
     let mut data_dir = None;
     let mut it = args.into_iter();
     while let Some(a) = it.next() {
@@ -103,7 +114,10 @@ fn parse_data_dir(args: impl IntoIterator<Item = OsString>) -> Option<PathBuf> {
 /// Entry point from `main`: `args` are the arguments after the flag. Returns the process exit
 /// code, always 0.
 pub fn run(args: impl IntoIterator<Item = OsString>) -> i32 {
-    if let Some(targets) = Targets::from_env(parse_data_dir(args)) {
+    let args: Vec<OsString> = args.into_iter().collect();
+    let keep_records = args.iter().any(|a| a == KEEP_RECORDS_FLAG);
+    if let Some(mut targets) = Targets::from_env(parse_data_dir(args)) {
+        targets.keep_records = keep_records;
         let _ = uninstall_all(&targets);
     }
     0
@@ -120,8 +134,10 @@ pub fn uninstall_all(t: &Targets) -> Report {
     let mut store = usable
         .then(|| Store::open(&db).ok().map(|(s, _)| s))
         .flatten();
+    let keep = t.keep_records;
     let claude_code = one(
         &mut store,
+        keep,
         claude_code::ADAPTER_ID,
         t.claude_default.as_deref(),
         claude_code::HOOKS.iter().map(|(e, _)| *e).collect(),
@@ -139,6 +155,7 @@ pub fn uninstall_all(t: &Targets) -> Report {
     );
     let codex = one(
         &mut store,
+        keep,
         codex::ADAPTER_ID,
         t.codex_default.as_deref(),
         codex::HOOKS.iter().map(|(e, _)| *e).collect(),
@@ -148,6 +165,7 @@ pub fn uninstall_all(t: &Targets) -> Report {
     );
     let cursor = one(
         &mut store,
+        keep,
         cursor::ADAPTER_ID,
         t.cursor_default.as_deref(),
         cursor::HOOKS.iter().map(|(e, _)| *e).collect(),
@@ -157,6 +175,7 @@ pub fn uninstall_all(t: &Targets) -> Report {
     );
     let opencode = one(
         &mut store,
+        keep,
         opencode::ADAPTER_ID,
         t.opencode_default.as_deref(),
         Vec::new(),
@@ -164,6 +183,9 @@ pub fn uninstall_all(t: &Targets) -> Report {
             opencode::install::uninstall(&hook_record(settings, events, record))
         },
     );
+    if keep && let Some(s) = store.as_ref() {
+        crate::repair_hooks::write_marker_if_records(s, &t.data_dir);
+    }
     Report {
         claude_code,
         codex,
@@ -187,6 +209,7 @@ fn hook_record(settings: &Path, events: Vec<String>, record: Option<HookRecord>)
 
 fn one<R: serde::de::DeserializeOwned + HasSettingsPath>(
     store: &mut Option<Store>,
+    keep_records: bool,
     id: &str,
     default: Option<&Path>,
     events: Vec<&'static str>,
@@ -204,7 +227,7 @@ fn one<R: serde::de::DeserializeOwned + HasSettingsPath>(
     let events = events.into_iter().map(str::to_owned).collect();
     match undo(&settings, events, record) {
         Ok(outcome) => {
-            if let Some(s) = store.as_mut() {
+            if let Some(s) = store.as_mut().filter(|_| !keep_records) {
                 // As in Disconnect: a store problem doesn't undo a finished uninstall.
                 let _ = s.mark_adapter_uninstalled(id);
                 let _ = s.disconnect_provider(id, OffsetDateTime::now_utc());
@@ -221,7 +244,7 @@ fn one<R: serde::de::DeserializeOwned + HasSettingsPath>(
     }
 }
 
-trait HasSettingsPath {
+pub(crate) trait HasSettingsPath {
     fn settings_path(&self) -> &Path;
 }
 impl HasSettingsPath for claude::InstallRecord {
@@ -266,6 +289,7 @@ mod tests {
                         .join("plugins")
                         .join(opencode::install::PLUGIN_FILE),
                 ),
+                keep_records: false,
             }
         }
         fn exe(&self) -> PathBuf {
