@@ -249,17 +249,43 @@ fn codex_refuses_unparseable_and_wrongly_shaped_files() {
 }
 
 #[test]
-fn codex_refuses_paths_that_cannot_be_quoted() {
-    let e = env(".codex", None);
-    let cmd = codex_install::HookCommand {
-        exe: e.dir.path().join("it's").join("lullshift.exe"),
-        data_dir: e.data.clone(),
-    };
-    assert!(matches!(
-        codex_install::install(&e.file, &e.backups, &cmd, None),
-        Err(InstallError::UnsupportedPath)
-    ));
-    assert!(!e.file.exists());
+fn codex_escapes_awkward_paths_and_refuses_control_characters() {
+    for shell in SHELLS {
+        let e = env(".codex", None);
+        let cmd = codex_install::HookCommand {
+            exe: e.dir.path().join("it's $(x) `y`").join("lullshift.exe"),
+            data_dir: e.data.clone(),
+        };
+        let rec = codex_install::install_for(&e.file, &e.backups, &cmd, None, shell)
+            .expect("an apostrophe or $ is escaped, not refused");
+        assert_eq!(
+            codex_install::status_for(&e.file, None, &cmd, shell),
+            Status::Installed
+        );
+        assert_eq!(codex_ours(&json(&e.file)).len(), codex::HOOKS.len());
+        codex_install::uninstall(&rec).expect("uninstall");
+        assert!(
+            !e.file.exists(),
+            "the escaped entries are recognised and removed"
+        );
+    }
+    for bad in ["a\nb", "a\0b", "a\u{2028}b", "a\u{85}b", "a\u{7f}b"] {
+        let e = env(".codex", None);
+        let cmd = codex_install::HookCommand {
+            exe: e.dir.path().join(bad).join("lullshift.exe"),
+            data_dir: e.data.clone(),
+        };
+        for shell in SHELLS {
+            assert!(
+                matches!(
+                    codex_install::install_for(&e.file, &e.backups, &cmd, None, shell),
+                    Err(InstallError::UnsupportedPath)
+                ),
+                "{bad:?}"
+            );
+        }
+        assert!(!e.file.exists(), "nothing is written");
+    }
 }
 
 #[test]
@@ -524,10 +550,36 @@ fn cursor_refuses_unparseable_unknown_version_and_unquotable_paths() {
             Status::SettingsInvalid
         );
     }
-    for odd in ["a$b", "a`b", "a;b", "a\"b", "a&b"] {
+    for odd in [
+        "a$b",
+        "a`b",
+        "a;b",
+        "it's",
+        "a&b",
+        "a\u{2019}b",
+        "a\u{201B}b",
+    ] {
+        for shell in SHELLS {
+            let e = env(".cursor", None);
+            let cmd = cursor_install::HookCommand {
+                exe: e.dir.path().join(odd).join("lullshift.exe"),
+                data_dir: e.data.clone(),
+            };
+            let rec = cursor_install::install_for(&e.file, &e.backups, &cmd, None, shell)
+                .expect("escaped, not refused");
+            assert_eq!(
+                cursor_install::status_for(&e.file, &cmd, shell),
+                Status::Installed,
+                "{odd}"
+            );
+            cursor_install::uninstall(&rec).expect("uninstall");
+            assert!(!e.file.exists(), "{odd}");
+        }
+    }
+    for bad in ["a\nb", "a\0b", "a\u{2029}b", "a\u{85}b"] {
         let e = env(".cursor", None);
         let cmd = cursor_install::HookCommand {
-            exe: e.dir.path().join(odd).join("lullshift.exe"),
+            exe: e.dir.path().join(bad).join("lullshift.exe"),
             data_dir: e.data.clone(),
         };
         for shell in SHELLS {
@@ -536,7 +588,7 @@ fn cursor_refuses_unparseable_unknown_version_and_unquotable_paths() {
                     cursor_install::install_for(&e.file, &e.backups, &cmd, None, shell),
                     Err(InstallError::UnsupportedPath)
                 ),
-                "{odd}"
+                "{bad:?}"
             );
         }
         assert!(!e.file.exists());

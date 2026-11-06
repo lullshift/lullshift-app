@@ -41,44 +41,118 @@ impl Shell {
     }
 }
 
-/// A path may go into a command line only if every character is a letter, a digit or one of a
-/// short list of harmless punctuation marks. Single quotes, double quotes, backticks, `$`, `&`,
-/// `;`, `|`, `<`, `>`, `%`, `!`, `#`, newlines and all other control or quote-like characters
-/// are refused rather than escaped: the path is app-controlled, so refusing is cheap and safe.
-fn path_is_quotable(path: &str) -> bool {
-    !path.is_empty()
-        && path.chars().all(|c| {
-            c.is_alphanumeric()
-                || matches!(
-                    c,
-                    ' ' | '_'
-                        | '-'
-                        | '.'
-                        | '/'
-                        | '\\'
-                        | ':'
-                        | '('
-                        | ')'
-                        | '@'
-                        | '+'
-                        | '='
-                        | ','
-                        | '~'
-                )
-        })
+/// The characters PowerShell treats as a single quote inside a string: the ASCII apostrophe and
+/// the four Unicode look-alikes (U+2018 to U+201B). Inside `'...'` each one must be doubled.
+const fn is_ps_single_quote(c: char) -> bool {
+    matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}')
 }
 
-/// `'<path>'` for both shells: inside single quotes sh and PowerShell take every character
-/// literally, and the allow-list above leaves no way to close the quote.
-fn quote(path: &Path) -> Option<String> {
+/// Characters no shell quoting can carry safely, so the install is refused rather than
+/// escaped: every control character (U+0000 to U+001F including NUL and newlines, U+007F, the
+/// C1 range U+0080 to U+009F with NEL), the Unicode line and paragraph separators, and the
+/// bidirectional controls that can make a command read differently from how it runs.
+fn is_refused_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{2028}'
+                | '\u{2029}'
+                | '\u{061C}'
+                | '\u{200E}'
+                | '\u{200F}'
+                | '\u{202A}'..='\u{202E}'
+                | '\u{2066}'..='\u{2069}'
+        )
+}
+
+/// `text` quoted for one argument of `shell`, or `None` if it is empty or holds a character
+/// that can't be quoted safely (see [`is_refused_char`]). Everything else is escaped, not
+/// refused:
+///
+/// - sh: single quotes make every character literal; an embedded `'` becomes `'\''` (close the
+///   quote, a quoted apostrophe, reopen).
+/// - PowerShell: single quotes make every character literal; an embedded quote character (the
+///   ASCII apostrophe or one of U+2018 to U+201B, all of which PowerShell reads as a quote) is
+///   doubled.
+///
+/// Unlike [`command_line`], this does not require an absolute path; it exists so the quoting
+/// can be tested on arbitrary text.
+pub fn quote_arg(text: &str, shell: Shell) -> Option<String> {
+    if text.is_empty() || text.chars().any(is_refused_char) {
+        return None;
+    }
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('\'');
+    for c in text.chars() {
+        match shell {
+            Shell::Sh if c == '\'' => out.push_str("'\\''"),
+            Shell::PowerShell if is_ps_single_quote(c) => {
+                out.push(c);
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out.push('\'');
+    Some(out)
+}
+
+/// The first quoted token at the start of `s` (which begins with `'`), unescaped, and the text
+/// after its closing quote. Mirrors [`quote_arg`] for the given shell.
+pub fn split_quoted(s: &str, shell: Shell) -> Option<(String, &str)> {
+    let body = s.strip_prefix('\'')?;
+    let mut chars = body.char_indices().peekable();
+    let mut out = String::new();
+    while let Some((i, c)) = chars.next() {
+        match shell {
+            Shell::Sh if c == '\'' => {
+                if body[i..].starts_with("'\\''") {
+                    out.push('\'');
+                    // Skip the backslash, the apostrophe and the reopening quote.
+                    for _ in 0..3 {
+                        chars.next();
+                    }
+                } else {
+                    return Some((out, &body[i + 1..]));
+                }
+            }
+            Shell::PowerShell if is_ps_single_quote(c) => {
+                if chars.peek().is_some_and(|(_, n)| is_ps_single_quote(*n)) {
+                    // A doubled quote is one literal quote.
+                    chars.next();
+                    out.push(c);
+                } else {
+                    return Some((out, &body[i + c.len_utf8()..]));
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    None
+}
+
+/// A quoted absolute path. PowerShell has two more refusals:
+///
+/// - a trailing backslash: when PowerShell hands an argument containing spaces to a native
+///   program it wraps it in double quotes, and the program's parser reads `\"` as an escaped
+///   quote;
+/// - `[` or `]` in the program path: `& 'path'` resolves the path as a wildcard pattern, so an
+///   unbalanced bracket fails to run, and a balanced one (`a[bc]`) can match a different file.
+///   Quoting can't prevent that, so the install is refused. (Arguments are not affected.)
+fn quote(path: &Path, shell: Shell, is_program: bool) -> Option<String> {
     let s = path.to_str()?;
-    (path_is_quotable(s) && path.is_absolute()).then(|| format!("'{s}'"))
+    let ps_unsafe =
+        shell == Shell::PowerShell && (s.ends_with('\\') || (is_program && s.contains(['[', ']'])));
+    if !path.is_absolute() || ps_unsafe {
+        return None;
+    }
+    quote_arg(s, shell)
 }
 
 /// The full hook command: `<exe> hook <adapter> --data-dir <dir>`. `None` if either path can't
 /// be quoted safely. PowerShell needs the call operator to run a quoted path.
 pub fn command_line(exe: &Path, adapter: &str, data_dir: &Path, shell: Shell) -> Option<String> {
-    let (exe, dir) = (quote(exe)?, quote(data_dir)?);
+    let (exe, dir) = (quote(exe, shell, true)?, quote(data_dir, shell, false)?);
     let lead = match shell {
         Shell::Sh => "",
         Shell::PowerShell => "& ",
@@ -87,13 +161,14 @@ pub fn command_line(exe: &Path, adapter: &str, data_dir: &Path, shell: Shell) ->
 }
 
 /// Whether `command` is a command line built by [`command_line`] for `adapter`: a quoted
-/// Lullshift executable followed by `hook <adapter> --data-dir`.
+/// Lullshift executable (escaped for either shell) followed by `hook <adapter> --data-dir`.
+/// The leading `& ` tells the two forms apart.
 pub fn command_is_ours(command: &str, adapter: &str) -> bool {
-    let rest = command.strip_prefix("& ").unwrap_or(command);
-    let Some(rest) = rest.strip_prefix('\'') else {
-        return false;
+    let (rest, shell) = match command.strip_prefix("& ") {
+        Some(r) => (r, Shell::PowerShell),
+        None => (command, Shell::Sh),
     };
-    let Some((exe, tail)) = rest.split_once('\'') else {
+    let Some((exe, tail)) = split_quoted(rest, shell) else {
         return false;
     };
     let name = exe.rsplit(['/', '\\']).next().unwrap_or("");
@@ -393,42 +468,145 @@ mod tests {
         assert!(!command_is_ours(&sh, "codex"));
     }
 
+    /// Small deterministic generator, so a failure reproduces from the seed.
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+    }
+
+    /// Characters shells and path parsers treat specially, quote look-alikes and non-ASCII text.
+    const NASTY: &[char] = &[
+        '\'', '"', '`', '$', ';', '&', '|', '<', '>', '(', ')', '{', '}', '[', ']', '*', '?', '!',
+        '#', '%', '^', '~', '=', '+', ',', '@', ' ', '\\', '/', ':', '-', '_', '.', '\u{2018}',
+        '\u{2019}', '\u{201A}', '\u{201B}', '\u{201C}', '\u{201D}', '\u{FF07}', 'é', 'ß', '日',
+        '本', '😀', '\u{0301}', '\u{200D}', '\u{00A0}', 'a', 'b', 'Z', '0', '9',
+    ];
+
+    /// A random string made mostly of special characters; never empty, never refused.
+    pub(crate) fn random_text(rng_state: &mut u64) -> String {
+        let mut rng = Rng(*rng_state);
+        let len = 1 + rng.below(24);
+        let s: String = (0..len).map(|_| NASTY[rng.below(NASTY.len())]).collect();
+        *rng_state = rng.next();
+        s
+    }
+
     #[test]
-    fn refuses_paths_that_cannot_be_quoted_safely() {
-        for bad in [
-            "it's",
-            "a\"b",
-            "a`b",
-            "a$(x)",
+    fn quoting_round_trips_for_many_random_texts() {
+        let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+        for _ in 0..5000 {
+            let text = random_text(&mut state);
+            for shell in [Shell::Sh, Shell::PowerShell] {
+                let q = quote_arg(&text, shell).expect("quotable");
+                let (back, rest) = split_quoted(&q, shell).expect("parses");
+                assert_eq!(back, text, "{shell:?} {q}");
+                assert_eq!(rest, "", "{shell:?} {q}");
+                // Nothing can follow the closing quote: appended text stays outside.
+                let with_tail = format!("{q} tail");
+                let (_, rest) = split_quoted(&with_tail, shell).expect("parses");
+                assert_eq!(rest, " tail");
+            }
+        }
+    }
+
+    #[test]
+    fn escapes_per_shell() {
+        assert_eq!(quote_arg("it's", Shell::Sh).as_deref(), Some("'it'\\''s'"));
+        assert_eq!(
+            quote_arg("it's", Shell::PowerShell).as_deref(),
+            Some("'it''s'")
+        );
+        for q in ['\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'] {
+            let got = quote_arg(&format!("a{q}b"), Shell::PowerShell).expect("q");
+            assert_eq!(got, format!("'a{q}{q}b'"));
+            // sh has no such look-alikes: they stay literal.
+            assert_eq!(
+                quote_arg(&format!("a{q}b"), Shell::Sh).expect("q"),
+                format!("'a{q}b'")
+            );
+        }
+        assert_eq!(
+            quote_arg("$(id)`x`;&|", Shell::Sh).as_deref(),
+            Some("'$(id)`x`;&|'")
+        );
+    }
+
+    #[test]
+    fn control_and_separator_characters_are_refused() {
+        let mut bad: Vec<char> = (0u32..0x20).filter_map(char::from_u32).collect();
+        bad.extend((0x7Fu32..=0x9F).filter_map(char::from_u32));
+        bad.extend(['\u{2028}', '\u{2029}', '\u{202E}', '\u{2066}', '\u{200F}']);
+        for c in bad {
+            for shell in [Shell::Sh, Shell::PowerShell] {
+                assert!(
+                    quote_arg(&format!("a{c}b"), shell).is_none(),
+                    "{:?}",
+                    c as u32
+                );
+                let dir = p(&format!("{DIR}{}a{c}b", std::path::MAIN_SEPARATOR));
+                assert!(command_line(&p(ABS), "cursor", &dir, shell).is_none());
+                assert!(command_line(&dir, "cursor", &p(DIR), shell).is_none());
+            }
+        }
+        assert!(quote_arg("", Shell::Sh).is_none());
+        assert!(command_line(&p("relative/x"), "cursor", &p(DIR), Shell::Sh).is_none());
+        assert!(command_line(&p(""), "cursor", &p(DIR), Shell::Sh).is_none());
+    }
+
+    #[test]
+    fn awkward_but_legal_paths_are_quoted_and_still_recognised_as_ours() {
+        for odd in [
+            "it's here",
             "a$b",
+            "a`b",
             "a;b",
             "a&b",
             "a|b",
-            "a<b",
-            "a>b",
             "a%PATH%b",
             "a!b",
-            "a#b",
-            "a\nb",
             "a\u{2019}b",
-            "a\u{202e}b",
-            "a\0b",
-            "a*b",
-            "a{b}",
-            "a[b]",
+            "a\u{201B}b",
+            "日本 😀",
+            "a'; rm -rf ~; echo '",
         ] {
-            let dir = p(&format!("{DIR}{}{bad}", std::path::MAIN_SEPARATOR));
-            assert!(
-                command_line(&p(ABS), "cursor", &dir, Shell::Sh).is_none(),
-                "{bad:?}"
-            );
-            assert!(
-                command_line(&dir, "cursor", &p(DIR), Shell::PowerShell).is_none(),
-                "{bad:?}"
-            );
+            let exe = p(&format!(
+                "{DIR}{}{odd}{}lullshift-desktop",
+                std::path::MAIN_SEPARATOR,
+                std::path::MAIN_SEPARATOR
+            ));
+            for shell in [Shell::Sh, Shell::PowerShell] {
+                let c = command_line(&exe, "cursor", &p(DIR), shell).expect("quoted");
+                assert!(command_is_ours(&c, "cursor"), "{c}");
+                assert!(!command_is_ours(&c, "codex"));
+            }
         }
-        assert!(command_line(&p("relative/x"), "cursor", &p(DIR), Shell::Sh).is_none());
-        assert!(command_line(&p(""), "cursor", &p(DIR), Shell::Sh).is_none());
+        // PowerShell reads a program path as a wildcard pattern, so brackets are refused there
+        // (for the program only, and only for PowerShell).
+        let bracket = p(&format!(
+            "{DIR}{}a[bc]{0}lullshift",
+            std::path::MAIN_SEPARATOR
+        ));
+        assert!(command_line(&bracket, "cursor", &p(DIR), Shell::PowerShell).is_none());
+        assert!(command_line(&bracket, "cursor", &p(DIR), Shell::Sh).is_some());
+        assert!(command_line(&p(ABS), "cursor", &bracket, Shell::PowerShell).is_some());
+        // PowerShell hands a trailing backslash to native programs as an escaped quote.
+        assert!(
+            command_line(
+                &p(ABS),
+                "cursor",
+                &p(&format!("{DIR}\\")),
+                Shell::PowerShell
+            )
+            .is_none()
+        );
     }
 
     #[test]

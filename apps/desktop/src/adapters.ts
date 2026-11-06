@@ -146,7 +146,7 @@ export function adapterErrorText(code: string, agent: AgentId = "claude-code"): 
   if (agent === "claude-code") return text;
   const n = AGENT_NAME[agent];
   if (code === "unsupported_path") {
-    return "Lullshift is installed in a folder whose name can't be written safely into a hook command. Nothing was changed.";
+    return "Lullshift is installed in a folder whose name contains a line break or another control character, which can't be written safely into a hook command. Nothing was changed.";
   }
   return text
     .replace("Claude Code settings file", `${n} hooks file`)
