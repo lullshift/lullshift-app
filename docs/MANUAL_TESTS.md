@@ -740,9 +740,9 @@ On Windows, use the installed release build (not a debug build): the release app
 Use a fresh profile (delete the app data folder, or a new OS user), then start Lullshift.
 
 1. A "Welcome to Lullshift" dialog opens over Sessions. Focus is on **Skip for now**; Tab stays inside the dialog.
-2. Read it: it says there is no account, everything stays on this computer, and it works offline; it names Claude Code's `settings.json`, says a backup is saved first, and says nothing changes until you confirm here and in a system dialog.
+2. Read it: it says there is no account, everything stays on this computer, and it works offline; it names Claude Code, Codex and Cursor and their hooks or settings file, says a backup is saved first, and says nothing changes until you confirm here and in a system dialog.
 3. Press **Esc**. The dialog closes and focus lands on the Sessions heading. Quit and start again.
-4. Repeat from a fresh profile, but choose **Set up Claude Code**: Integrations opens and nothing has been written yet. Cancel the consent dialog; check `settings.json` is unchanged.
+4. Repeat from a fresh profile, but choose **Connect an agent**: Integrations opens with every supported agent and nothing has been written yet. Start Connect for one agent, cancel the consent dialog, and check its hook file is unchanged. With every agent already connected, the welcome shows no connect button (S12-T07).
 5. Repeat once more and choose **Try ...** (or **Browse activities**): the Activities library opens.
 
 **Expected:** the welcome never appears again after step 3, 4 or 5 (including after a restart); the suggested activity name matches one in the library; the backup and file path statements match what Connect really does (compare with the consent dialog and the backups folder under the app data directory).
