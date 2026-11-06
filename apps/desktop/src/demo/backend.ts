@@ -156,6 +156,10 @@ function handle(cmd: string, a: Args): unknown {
       return CATALOG.map((x) => activityInfo(x.info.id));
     case "activity_info":
       return activityInfo(a.id);
+    case "activity_launch":
+      return byId(a.id)?.runUrl ?? null;
+    case "activity_launch_end":
+      return null;
     case "activity_preview":
       return byId(a.id)?.previewUrl ?? null;
     case "activity_content":

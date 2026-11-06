@@ -43,6 +43,8 @@ export interface DemoActivity {
   info: ActivityInfo;
   folder: string;
   previewUrl: string | null;
+  /** Where the demo serves the activity (no launch key: the demo has no scheme handler). */
+  runUrl: string;
   content: unknown;
 }
 
@@ -68,6 +70,7 @@ function build(): DemoActivity[] {
       : (m.entrypoint ?? "index.html");
     out.push({
       folder,
+      runUrl: `/demo-activities/${runFolder}/${runEntry}`,
       previewUrl: m.preview ? `/demo-activities/${folder}/${m.preview}` : null,
       content: m.data ? (dataFiles[`${PREFIX}${folder}/${m.data}`] ?? null) : null,
       info: {
@@ -76,7 +79,6 @@ function build(): DemoActivity[] {
         description: m.description,
         category: m.category,
         version: m.version,
-        url: `/demo-activities/${runFolder}/${runEntry}`,
         storage: (m.permissions ?? []).includes("activity.storage"),
         savedUtc: null,
         help: m.help ?? null,
