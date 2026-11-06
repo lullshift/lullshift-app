@@ -4,9 +4,9 @@
 
 use serde::Deserialize;
 
-use crate::error::{Error, IndexError, show};
+use crate::error::{Error, IndexError, UrlError, show};
 use crate::manifest::{text_ok as plain_text_ok, valid_id};
-use crate::validate::{GitRef, GitUrl, RelPath, check_marketplace_name};
+use crate::validate::{GitRef, GitUrl, RelPath, Scheme, check_marketplace_name};
 
 /// Where the index lives in a marketplace repository.
 pub const INDEX_PATH: &str = ".lullshift/marketplace.json";
@@ -148,7 +148,13 @@ pub fn parse_index(bytes: &[u8], builtin: bool) -> Result<MarketplaceIndex, Erro
                         // Only the user can say an address is on their own network, and they
                         // do so for the marketplace they add, never for what its index lists.
                         if u.is_private_host() {
-                            Err(crate::error::UrlError::LocalHost)
+                            Err(UrlError::LocalHost)
+                        } else if u.scheme() != Scheme::Https {
+                            // ssh can't be pinned to the checked addresses: OpenSSH resolves
+                            // the name again, so an index could aim it at an inward host and
+                            // port by DNS rebinding (security review MEDIUM-1). ssh stays for
+                            // marketplace addresses the user types.
+                            Err(UrlError::SourceNotHttps)
                         } else {
                             Ok(u)
                         }

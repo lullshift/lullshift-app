@@ -113,6 +113,10 @@ pub struct Git {
     local_timeout: Duration,
     fetch_cap: u64,
     fsck: bool,
+    /// How host names are looked up before a fetch (the system resolver outside tests).
+    resolve: crate::net::Resolve,
+    /// Tests only: replaces the proxy lookup so the machine's own settings don't matter.
+    proxy_override: Option<bool>,
 }
 
 impl Git {
@@ -152,7 +156,55 @@ impl Git {
             local_timeout: LOCAL_TIMEOUT,
             fetch_cap: FETCH_MAX_BYTES,
             fsck: true,
+            resolve: crate::net::system_resolve,
+            proxy_override: None,
         })
+    }
+
+    /// Replaces the name resolver and the proxy lookup. For tests.
+    #[cfg(test)]
+    pub(crate) fn with_network_for_tests(
+        mut self,
+        resolve: crate::net::Resolve,
+        proxy: Option<bool>,
+    ) -> Self {
+        self.resolve = resolve;
+        self.proxy_override = proxy;
+        self
+    }
+
+    /// The resolver used to check a destination before a fetch.
+    pub(crate) fn resolver(&self) -> crate::net::Resolve {
+        self.resolve
+    }
+
+    /// True if an https fetch of `url` would go through a proxy the user configured: one of
+    /// curl's proxy variables, or `http.proxy` (also per URL) in the user's global Git
+    /// configuration (system configuration is off for every call). A proxy resolves the name
+    /// itself, so the address check and the pin can't apply behind one (ADR-015 amendment).
+    /// A failed lookup counts as "no proxy", which refuses rather than fetching unpinned.
+    pub(crate) fn proxy_configured(&self, url: &crate::validate::GitUrl) -> bool {
+        if let Some(answer) = self.proxy_override {
+            return answer;
+        }
+        if crate::net::env_proxy_configured(|k| std::env::var_os(k)) {
+            return true;
+        }
+        // `--global` so no repository found from the working folder can answer.
+        self.run(
+            None,
+            &[
+                "config",
+                "--global",
+                "--get-urlmatch",
+                "http.proxy",
+                url.as_str(),
+            ],
+            Class::Local,
+            None,
+            SMALL_OUTPUT,
+        )
+        .is_ok_and(|out| out.success() && !out.stdout.trim_ascii().is_empty())
     }
 
     /// Replaces the timeouts. For tests.
@@ -351,6 +403,36 @@ fn find_git() -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+/// Tests only: which `git` subcommands this thread started, so a test can prove a refused fetch
+/// never ran `git fetch`. Each test runs on its own thread, so they don't see each other.
+#[cfg(test)]
+pub(crate) mod spawned {
+    use std::cell::RefCell;
+    use std::process::Command;
+
+    thread_local! {
+        static LOG: RefCell<Vec<Vec<String>>> = const { RefCell::new(Vec::new()) };
+    }
+
+    pub(super) fn record(cmd: &Command) {
+        let args = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        LOG.with(|l| l.borrow_mut().push(args));
+    }
+
+    /// Clears this thread's log.
+    pub fn reset() {
+        LOG.with(|l| l.borrow_mut().clear());
+    }
+
+    /// True if any call this thread started since [`reset`] had `word` as an argument.
+    pub fn any_with(word: &str) -> bool {
+        LOG.with(|l| l.borrow().iter().any(|args| args.iter().any(|a| a == word)))
+    }
+}
+
 fn run_process(
     cmd: &mut Command,
     stdin: Option<Vec<u8>>,
@@ -377,6 +459,8 @@ fn run_process(
         // Its own process group, so the whole tree can be killed.
         cmd.process_group(0);
     }
+    #[cfg(test)]
+    spawned::record(cmd);
     let mut child = cmd.spawn().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             Error::Git(GitFailureKind::GitMissing)

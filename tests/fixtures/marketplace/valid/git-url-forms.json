@@ -15,24 +15,6 @@
       }
     },
     {
-      "id": "com.example.p2",
-      "source": {
-        "git": "ssh://git@host.example.com/o/r.git"
-      }
-    },
-    {
-      "id": "com.example.p3",
-      "source": {
-        "git": "ssh://host.example.com:2222/o/r"
-      }
-    },
-    {
-      "id": "com.example.p4",
-      "source": {
-        "git": "git@github.com:o/r.git"
-      }
-    },
-    {
       "id": "com.example.p5",
       "source": {
         "git": "owner/repo"

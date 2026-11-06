@@ -9,30 +9,69 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use crate::error::UrlError;
 use crate::validate::{GitUrl, Scheme};
 
+/// Looks a host name up. The system resolver in the app; a stub in tests.
+pub type Resolve = fn(&str, u16) -> std::io::Result<Vec<SocketAddr>>;
+
+/// The system resolver (`getaddrinfo`).
+pub fn system_resolve(host: &str, port: u16) -> std::io::Result<Vec<SocketAddr>> {
+    Ok((host, port).to_socket_addrs()?.collect())
+}
+
+/// What [`check_destination`] found out about where a fetch would go.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Destination {
+    /// A `file://` repository (tests only): no network at all.
+    Local,
+    /// The name resolved, and every address it resolved to is allowed. Never empty.
+    Resolved(Vec<SocketAddr>),
+    /// The name didn't resolve here (no network, or only a proxy can resolve it), or resolved
+    /// to nothing. Nothing was checked, so the caller decides: an https fetch without a proxy
+    /// is refused (security review MEDIUM-1), because `git` would resolve the name itself,
+    /// unpinned.
+    Unresolved,
+}
+
 /// Where a fetch may go, checked just before it starts (decisions 17 and 18.8).
 ///
 /// - A private host in the address needs the user's confirmation.
 /// - The host name is resolved with the system resolver; if any address it resolves to can
 ///   never be a Git server the fetch is refused, and if any is private the fetch needs the same
 ///   confirmation as a private address. IPv4 inside IPv6 is judged as IPv4.
-/// - If the name doesn't resolve here (no network, or only a proxy can resolve it), nothing is
-///   refused: `git` will fail honestly, or reach the host through the user's proxy.
+/// - A name that doesn't resolve is [`Destination::Unresolved`].
 ///
-/// Returns the addresses that were checked, so an https fetch can pin them
-/// (`http.curloptResolve`) and `git` doesn't resolve the name again to something else.
-pub fn check_destination(url: &GitUrl) -> Result<Vec<SocketAddr>, UrlError> {
+/// The addresses in [`Destination::Resolved`] are what an https fetch pins
+/// (`http.curloptResolve`) and what the redirect probe connects to, so neither resolves the
+/// name again to something else.
+pub fn check_destination(url: &GitUrl) -> Result<Destination, UrlError> {
+    check_destination_with(url, system_resolve)
+}
+
+/// [`check_destination`] with a given resolver.
+pub fn check_destination_with(url: &GitUrl, resolve: Resolve) -> Result<Destination, UrlError> {
     if url.scheme() == Scheme::File {
-        return Ok(Vec::new());
+        return Ok(Destination::Local);
     }
     if url.is_private_host() && !url.private_confirmed() {
         return Err(UrlError::PrivateNotConfirmed);
     }
-    let Ok(found) = (url.host(), url.effective_port()).to_socket_addrs() else {
-        return Ok(Vec::new());
+    let addrs = match resolve(url.host(), url.effective_port()) {
+        Ok(addrs) if !addrs.is_empty() => addrs,
+        _ => return Ok(Destination::Unresolved),
     };
-    let addrs: Vec<SocketAddr> = found.collect();
     check_addresses(&addrs, url.private_confirmed())?;
-    Ok(addrs)
+    Ok(Destination::Resolved(addrs))
+}
+
+/// The proxy variables curl (and so Git's https transport) reads for an https address. A
+/// proxy resolves the target name itself, so neither the address check nor the pin can bind
+/// the connection behind one (ADR-015 amendment).
+const PROXY_ENV: &[&str] = &["https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"];
+
+/// True if the environment configures a proxy for https. `get` reads one variable.
+pub fn env_proxy_configured(get: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+    PROXY_ENV
+        .iter()
+        .any(|k| get(k).is_some_and(|v| !v.is_empty()))
 }
 
 /// The decision for a list of resolved addresses. Pure, so it is tested without DNS.
@@ -253,8 +292,55 @@ mod tests {
         let url = GitUrl::parse("https://localhost:1/o/r").expect("parse");
         assert_eq!(check_destination(&url), Err(UrlError::PrivateNotConfirmed));
         let confirmed = url.confirm_private();
-        let addrs = check_destination(&confirmed).expect("confirmed");
+        let Destination::Resolved(addrs) = check_destination(&confirmed).expect("confirmed") else {
+            panic!("localhost resolves");
+        };
         assert!(addrs.iter().all(|a| a.ip().is_loopback()), "{addrs:?}");
+    }
+
+    fn unresolvable(_: &str, _: u16) -> std::io::Result<Vec<SocketAddr>> {
+        Err(std::io::ErrorKind::NotFound.into())
+    }
+
+    fn resolves_to_nothing(_: &str, _: u16) -> std::io::Result<Vec<SocketAddr>> {
+        Ok(Vec::new())
+    }
+
+    #[test]
+    fn a_name_that_does_not_resolve_is_reported_unchecked() {
+        let url = GitUrl::parse("https://git.example.com/o/r").expect("parse");
+        assert_eq!(
+            check_destination_with(&url, unresolvable),
+            Ok(Destination::Unresolved)
+        );
+        // An empty answer is not "checked and fine": nothing could be pinned.
+        assert_eq!(
+            check_destination_with(&url, resolves_to_nothing),
+            Ok(Destination::Unresolved)
+        );
+        // The text rule still comes first.
+        let private = GitUrl::parse("https://gitserver/o/r").expect("parse");
+        assert_eq!(
+            check_destination_with(&private, unresolvable),
+            Err(UrlError::PrivateNotConfirmed)
+        );
+    }
+
+    #[test]
+    fn https_proxy_variables_are_recognised() {
+        use std::ffi::OsString;
+        assert!(!env_proxy_configured(|_| None));
+        assert!(!env_proxy_configured(|_| Some(OsString::new())));
+        for name in ["https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"] {
+            assert!(
+                env_proxy_configured(|k| (k == name).then(|| OsString::from("http://p:3128"))),
+                "{name}"
+            );
+        }
+        // http_proxy is for plain http only; curl ignores it for https.
+        assert!(!env_proxy_configured(
+            |k| (k == "http_proxy").then(|| OsString::from("http://p:3128"))
+        ));
     }
 
     #[test]

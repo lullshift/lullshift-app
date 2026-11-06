@@ -46,7 +46,7 @@ A folder in another Git repository:
 }
 ```
 
-- `git` is `https://host/path`, `ssh://host/path`, `git@host:path` or GitHub shorthand `owner/repo`. No passwords or tokens in the address, no IP addresses, `localhost` or local network names. A user can confirm that a whole marketplace lives on their own network, but an entry can never send their app to a private address.
+- `git` is `https://host/path` or GitHub shorthand `owner/repo`. `ssh://` and `git@host:path` are refused for an entry: Lullshift checks where a name resolves and pins an https fetch to those addresses, and ssh can't be pinned. (People can still add a whole marketplace by an ssh address they type themselves.) No passwords or tokens in the address, no IP addresses, `localhost` or local network names. A user can confirm that a whole marketplace lives on their own network, but an entry can never send their app to a private address.
 - `ref` is a tag, branch or commit. Prefer a tag or a commit. Whatever you give, the install is pinned to the commit it resolves to.
 - Paths use `/`, at most 12 parts. Each part starts with a letter, digit or underscore, so `..`, `.git` and hidden folders are impossible.
 - At most 1000 entries.

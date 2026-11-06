@@ -39,7 +39,7 @@ export interface Entry {
       }
     | {
         /**
-         * https://host/path, ssh://[user@]host[:port]/path, git@host:path or GitHub shorthand owner/repo. No userinfo (https allows none; ssh allows a user name only, never a password), no option-looking host, owner or path part, no `..` or `.git` path part (a final `repo.git` is fine), no control characters or whitespace, and no localhost, IP literal or local-network host name.
+         * https://host/path or GitHub shorthand owner/repo. https only: an activity source can't use ssh, because only an https fetch can be pinned to the addresses Lullshift checked (ssh stays available for marketplace addresses the user types). No userinfo, no option-looking host, owner or path part, no `..` or `.git` path part (a final `repo.git` is fine), no control characters or whitespace, and no localhost, IP literal or local-network host name.
          */
         git: string;
         ref?: GitRef;

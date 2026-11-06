@@ -105,7 +105,8 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
 - **Addresses that are never allowed.** IP literals must be canonical dotted quads. These are always refused, confirmed or not (`SpecialAddress`):
   - unspecified, link-local, multicast, broadcast and reserved addresses;
   - the same ranges inside IPv4-mapped, IPv4-compatible, NAT64 and 6to4 IPv6 addresses.
-- **Index entries can't point inward.** An index entry's `git` source may never be private. A marketplace can't use the user's confirmation to send an external fetch onto their network. So the schema's entry URL pattern is unchanged.
+- **Index entries can't point inward.** An index entry's `git` source may never be private. A marketplace can't use the user's confirmation to send an external fetch onto their network. So the schema's entry URL pattern keeps refusing private hosts.
+- **Index entries are https only (S12-T14 security review, MEDIUM-1).** An index entry's `git` source must be `https://` or the `owner/repo` shorthand; `ssh://` and `git@host:path` are refused (`UrlError::SourceNotHttps`). Only an https fetch can be pinned to the checked addresses (item 2); OpenSSH resolves the name again, so an untrusted index could list `ssh://git@rebind.attacker.example:6379/x` and use DNS rebinding to reach an inward host and port. **Schema change:** the `git` pattern in `reference/MARKETPLACE_V1.schema.json` lost its `ssh://` and `git@` alternatives, and the valid fixtures that used them moved to `invalid/`. ssh stays allowed for a marketplace address the user types; its rebinding gap is a residual risk below.
 
 ### 2. Resolved-address check before each fetch (decision 18.8)
 
@@ -114,7 +115,10 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
   - Any never-allowed address refuses the fetch.
   - Any private address refuses it unless the marketplace was confirmed private.
 - **The pin.** For https, the checked addresses are passed to Git as `-c http.curloptResolve=host:port:addr[,addr]` (IPv6 in brackets), so curl connects to what was checked rather than resolving again. A test proves Git 2.53 honours the pin.
-- **When resolution fails.** Nothing is refused and nothing is pinned; Git reports the failure as before. This keeps proxy-only DNS setups working.
+- **When resolution fails (changed by the S12-T14 security review, MEDIUM-1).** A name that doesn't resolve, or resolves to no address, can't be checked or pinned.
+  - **https without a proxy:** the fetch is refused with the `Offline` error ("can't reach the repository") before `git` runs, because curl would otherwise resolve the name itself, unchecked.
+  - **https behind a proxy:** a proxy is configured when `https_proxy`, `HTTPS_PROXY`, `all_proxy` or `ALL_PROXY` is set, or the user's global Git configuration has `http.proxy` (also per URL, read with `git config --global --get-urlmatch`). The proxy resolves the name, so the pin can't apply; the fetch proceeds unpinned as before, so proxy-only DNS setups keep working. A `NO_PROXY` match is not looked at: curl then connects directly and resolves on its own, which fails the same way Lullshift's lookup did unless the two resolvers disagree.
+  - **ssh:** proceeds as before. ssh is never pinned (see residual risks) and may reach the host through the user's own `ProxyCommand` or `ProxyJump`, which Lullshift can't see.
 - **What it does not change.** `http.followRedirects=false` and the rest of the hardened invocation are unchanged.
 
 ### 3. Same-host redirects (decision 18.1)
@@ -180,11 +184,11 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
 
 ### Residual risks
 
-- **DNS rebinding, ssh.** ssh fetches are checked, but Git's ssh client resolves the name again. A name that answers differently the second time can still reach an inward address over ssh. The https pin closes this for https only.
+- **DNS rebinding, ssh.** ssh fetches are checked, but Git's ssh client resolves the name again. A name that answers differently the second time can still reach an inward address and port over ssh. The https pin closes this for https only. Since the S12-T14 review this applies only to a marketplace address the user typed (index entries are https only), so the name is one the user chose; a user who adds an ssh address on a name an attacker controls is still exposed.
 - **DNS rebinding, redirect probe.** The probe resolves on its own (a separate client), so its check and its connection are not pinned together. It sends no credentials and only reads a status and a `Location`, and any new address goes through the full check before Git fetches it.
 - **Proxies.** With an HTTP proxy configured for Git, the proxy resolves the host, so neither the check nor the pin binds the connection.
 - **Older Git.** Git older than 2.37 doesn't have `http.curloptResolve`, so the pin is ignored (the check still runs). The app does not refuse older Git.
-- **Unresolvable names.** When the system resolver fails, the fetch proceeds unchecked (so proxy-only DNS works) and Git does its own resolution.
+- **Unresolvable names.** When the system resolver fails, an https fetch is refused unless a proxy is configured (item 2); behind a proxy, and for ssh, the fetch proceeds unchecked and the proxy or ssh does its own resolution.
 - **Public IP literals.** A public IP literal also needs the private-host confirmation, because it is classed by text before resolution. This is a little stricter than needed.
 - **No plain http.** Plain http stays unsupported, even on a home network.
 - **Re-hashing cost.** Every load re-hashes the files it reads. Packs are at most 20 MiB, so this is milliseconds, but a large installed app would pay it on every file served.
