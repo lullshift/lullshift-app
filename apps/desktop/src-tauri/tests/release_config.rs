@@ -359,3 +359,29 @@ fn release_workflow_is_manual_pinned_and_least_privilege() {
     assert!(wf.contains("--draft"));
     assert!(!wf.contains("--prerelease") && !wf.contains("--latest"));
 }
+
+#[test]
+fn npm_docs_name_the_real_controls() {
+    // Medium 3: the branch `if:` and the guard are defence in depth; the owner must configure the
+    // environment's branch policy and bind the trusted publisher to the `npm` environment.
+    let root = manifest_dir().join("..").join("..").join("..");
+    let releasing = read(&root.join("docs").join("RELEASING.md"));
+    for needle in [
+        "deployment branch policy that allows `main` only",
+        "configured **with environment `npm`**",
+        "for Lullshift it is **mandatory**",
+        "Selected branches and tags",
+        "confirm GitHub refuses the `npm` deployment",
+        "branch ruleset",
+    ] {
+        assert!(releasing.contains(needle), "RELEASING.md: {needle}");
+    }
+    let adr = read(
+        &root
+            .join("docs")
+            .join("adr")
+            .join("ADR-017-creator-cli-and-simulator.md"),
+    );
+    assert!(adr.contains("configured **with environment `npm`**"));
+    assert!(adr.contains("defence in depth only"));
+}
