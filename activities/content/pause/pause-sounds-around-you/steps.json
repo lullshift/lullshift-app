@@ -1,32 +1,32 @@
 {
-  "title": "Sounds around you",
-  "intro": "A short pause for the ears. Skip any step that does not suit you.",
+  "title": "Near and far",
+  "intro": "A short pause for noticing what is around you. Every step can be done by hearing, or by touch and sight. Skip any step that does not suit you.",
   "steps": [
     {
-      "text": "Let your hands rest, and simply listen. Notice the first sound that reaches you.",
+      "text": "Let your hands rest. Notice the first thing that reaches you: a sound, or something you can feel, like your feet on the floor.",
       "seconds": 15,
       "look": "breath"
     },
     {
-      "text": "Find the closest sound. It might be a keyboard, a fan or your own movement.",
+      "text": "Find something close by. It might be the hum of a fan, the keys under your fingers or the weight of your arms.",
       "seconds": 15,
       "look": "hands"
     },
     {
-      "text": "Now find the farthest sound you can. Traffic, birds, a door or a distant voice all count.",
+      "text": "Now find something far away: a distant sound, or the farthest thing you can see from where you sit.",
       "seconds": 20,
       "look": "window"
     },
     {
-      "text": "Listen for any sound that comes and goes. Notice how it fades in and out.",
+      "text": "Notice something that comes and goes: a sound that fades in and out, light that shifts, or air moving on your skin.",
       "seconds": 15,
       "look": "breath"
     },
     {
-      "text": "Listen for the quiet between sounds, then let your attention come back to the room.",
+      "text": "Notice something still: the quiet between sounds, or something in the room that is not moving. Then let your attention come back.",
       "seconds": 15,
       "look": "eyes"
     }
   ],
-  "closing": "That was a short spell of listening. Carry on when you are ready."
+  "closing": "That was a short spell of noticing. Carry on when you are ready."
 }

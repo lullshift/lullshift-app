@@ -3,12 +3,12 @@
   "kind": "content",
   "id": "app.lullshift.content.pause-sounds-around-you",
   "version": "0.1.0",
-  "name": "Sounds Around You",
-  "description": "A one-minute pause for listening to the sounds near and far.",
+  "name": "Near and Far",
+  "description": "A one-minute pause for noticing what is near and far, by hearing, or by touch and sight.",
   "author": "Lullshift",
   "license": "Apache-2.0",
   "category": "break",
-  "tags": ["pause", "listening", "sounds"],
+  "tags": ["pause", "noticing", "senses"],
   "minHostVersion": "0.1.0",
   "sdkVersion": "0.2.0",
   "permissions": [],
@@ -16,15 +16,15 @@
   "engine": "lullshift.pause@1",
   "data": "steps.json",
   "help": {
-    "summary": "A short listening pause of near, far and quiet sounds, on Guided Pause.",
+    "summary": "A short noticing pause of near, far and still things, on Guided Pause.",
     "goal": "There is nothing to finish. Use as many steps as you like.",
     "howToPlay": [
       "Press Begin when you are ready.",
-      "Listen to what each step suggests. It moves on by itself.",
+      "Notice what each step suggests, by hearing, or by touch and sight. It moves on by itself.",
       "Press Next to skip a step or Back to repeat one."
     ],
     "tips": [
-      "Quiet rooms still have sounds, such as a fan or your own clothes moving. Skip any step that does not suit you."
+      "Each step offers a sound or something to feel or see. Use whichever suits you, and skip any step that does not."
     ]
   },
   "preview": "preview.svg"

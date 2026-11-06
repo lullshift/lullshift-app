@@ -4,7 +4,7 @@
   "id": "app.lullshift.content.pause-notice-five",
   "version": "0.1.0",
   "name": "Notice Five Things",
-  "description": "A gentle noticing game: five things you see, four you hear, three you feel, then two colours and a breath.",
+  "description": "A gentle noticing game: five things you see, four sounds or movements, three you feel, then two colours and a breath.",
   "author": "Lullshift",
   "license": "Apache-2.0",
   "category": "break",
