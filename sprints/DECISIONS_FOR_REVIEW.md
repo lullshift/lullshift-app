@@ -30,6 +30,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 24 | 10 | Content review choices | change: 24.4-24.6 |
 | 25 | 11 | First-launch welcome | change |
 | 26 | 11 | Release packaging | change: 26.3, 26.7, 26.8, 26.12 |
+| 27 | 12 | Sprint 12 build and review choices | open |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -320,3 +321,17 @@ Taken while the product owner was away. Please confirm or change each. Details i
 - 26.9: keep 0.1.0 for the first release. No MSI or rpm.
 - 26.10 and 26.11: keep. The owner turns on private vulnerability reporting, and later creates the protected `release` environment.
 - 26.12: change. See item 25.
+
+## 27. Sprint 12: choices made while building the owner's changes
+
+These were taken during Sprint 12, mostly to fix security review findings. Please confirm or change each.
+
+1. **Some Windows profile paths can't connect Codex or Cursor.** In the PowerShell form, Lullshift refuses a path whose UTF-8 bytes include 0x82 or 0x91 to 0x94, for example Cyrillic В, Ђ, Â, Ñ, Ò, Ó or Ô. A host that reads the command in the legacy cp1252 code page would turn those bytes into quote characters. That could break the command, or in a crafted case run something else. Claude Code is unaffected. **Alternative:** convert the path to its ASCII 8.3 short name, where Windows provides one (ADR-021).
+2. **Reinstall restores hooks instead of keeping them** (refines 26.8). Every uninstall except an in-app update removes the hooks. After a reinstall, they are re-applied from the stored install records, but only for agents you connected before and only within an hour. A reinstall after deleting the database restores nothing (ADR-010).
+3. **Index sources must be https.** A marketplace index can no longer list ssh sources for its activities, because ssh can't be pinned against DNS rebinding. You can still type an ssh address for a marketplace yourself (ADR-015).
+4. **No fetch when the name can't be looked up.** If a marketplace name doesn't resolve and no proxy is configured, Lullshift refuses the fetch as offline instead of fetching unchecked. Behind a proxy there is no address check (ADR-015).
+5. **Windows code gate needs a runtime proof.** Third-party code activities now also need WebRTC to be confirmed off at run time. On Windows, the off state is set by browser arguments and can't be read back yet, so Windows stays closed even if its constant is flipped (ADR-012).
+6. **Companion lookups are off by default.** Lookups that are unknown, malformed or over the limit get a fixed sentence without asking you, because there is nothing to approve. On the last round, earlier lookups are replayed as plain text (ADR-020).
+7. **Pack pictures: some WebP trailing data can't be detected.** Trailing bytes inside a lossy VP8 chunk, or up to 8 bytes in a lossless VP8L chunk, can't be detected with the decoder in use. PNG is checked exactly (ADR-016).
+8. **Moss Paths crossings** can be turned. A turn changes nothing visually, but counts as a move, can be undone, and is announced.
+9. **The Welcome's "all connected" check ignores OpenCode**, because OpenCode is experimental.

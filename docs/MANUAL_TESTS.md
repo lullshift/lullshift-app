@@ -967,7 +967,10 @@ Use the keyboard only, and check each game again after an interruption and a res
 3. Rename a GitHub repository you have added as a marketplace, then choose Refresh.
 4. Change address to a mirror that is missing one pinned commit, then update the activity.
 5. Uninstall a pack and keep its progress. Install the same id from another marketplace. Repeat after changing the first marketplace's address.
-6. Run `lullshift validate` on a manifest whose name contains U+2028 or six stacked combining marks.
+6. Run `lullshift validate` on a manifest whose name contains U+2028 or six stacked combining marks, and on a pack whose text has five stacked combining marks or a tag character.
+7. Add or Refresh a marketplace whose index lists an ssh source (`ssh://git@host.example.com/o/r`).
+8. Add an https marketplace on a name that doesn't resolve (for example `name.invalid`), once without a proxy and once with `HTTPS_PROXY` set.
+9. Lock an installed pack's data file (open it exclusively in another program) and start the pack; then release the lock.
 
 **Expected:**
 
@@ -979,7 +982,10 @@ Use the keyboard only, and check each game again after an interruption and a res
   - The review asks what to do with the old progress, with Delete selected and focused.
   - Keep shows a warning.
   - After the address change it still asks.
-- **Step 6:** validation refuses it.
+- **Step 6:** validation refuses both, and reports the field path for the pack.
+- **Step 7:** refused with "an activity's source must be an https:// address or owner/repo".
+- **Step 8:** without a proxy, the offline message. With the proxy, it tries through it.
+- **Step 9:** "couldn't be read just now, try again" appears, Manage shows "Couldn't be read just now." and the activity stays on. Once released, it starts normally.
 
 **Result:** \_\_\_
 
