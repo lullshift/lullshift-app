@@ -100,6 +100,7 @@ fn set_state(state: State) {
     marketplace::set_webrtc_confirmed_off(state == State::Off);
 }
 
+#[cfg_attr(windows, allow(dead_code))] // Windows only asserts; tests still call it.
 fn record(ok: bool) {
     set_state(if ok { State::Off } else { State::Failed });
     if !ok {
