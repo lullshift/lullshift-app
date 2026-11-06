@@ -20,6 +20,8 @@ export type ErrorKind =
   | "builtinProtected"
   | "busy"
   | "tampered"
+  /** An install's file exists but couldn't be read just now (locked by another program). */
+  | "unreadable"
   /** The address is on this computer or a private network and the user hasn't confirmed it. */
   | "privateHost"
   /** The repository's server redirected; Lullshift didn't follow. See `moved`. */
@@ -56,6 +58,7 @@ const KINDS: readonly string[] = [
   "builtinProtected",
   "busy",
   "tampered",
+  "unreadable",
   "privateHost",
   "moved",
   "internal",
@@ -174,7 +177,8 @@ export interface UpdatePreview extends InstallPreview {
   unchanged: boolean;
 }
 
-export type ManageProblem = "tampered" | "missingEngine";
+/** `unreadable`: a file couldn't be read during the last check; it is checked again next time. */
+export type ManageProblem = "tampered" | "missingEngine" | "unreadable";
 
 export interface ManageItem {
   activityId: string;

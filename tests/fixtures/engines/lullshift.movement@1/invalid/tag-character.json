@@ -1,0 +1,11 @@
+{
+  "title": "Badx\udb40\udc41title",
+  "wayOut": "Stop or skip anything that does not suit you.",
+  "moves": [
+    {
+      "name": "Shoulder roll",
+      "steps": ["Lift your shoulders gently.", "Roll them back and down."],
+      "seconds": 30
+    }
+  ]
+}

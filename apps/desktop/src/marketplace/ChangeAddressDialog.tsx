@@ -103,8 +103,9 @@ export function ChangeAddressDialog({ request, onClose, onDone }: Props) {
       description={
         <p>
           Use this when a marketplace moved. Lullshift fetches the new address when you choose
-          Change address and checks that it is the same marketplace. Installed activities keep their
-          versions and saved progress.
+          Change address and checks that it uses the same marketplace name. Installed activities
+          keep their versions and saved progress. If you later install something you removed, you
+          are asked about any progress it left behind.
         </p>
       }
     >

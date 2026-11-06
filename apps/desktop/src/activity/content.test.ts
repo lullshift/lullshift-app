@@ -83,6 +83,7 @@ describe("describeContentError", () => {
       "data_too_large",
       "image_invalid",
       "damaged",
+      "unreadable",
       "unknown_activity",
       "internal",
     ]) {
@@ -96,6 +97,12 @@ describe("describeContentError", () => {
     const p = describeContentError({ code: "damaged", detail: "x" }, null);
     expect(p.message).toMatch(/changed on disk/);
     expect(p.message).toMatch(/Reinstall/);
+  });
+
+  it("asks for a retry, not a reinstall, when files couldn't be read just now", () => {
+    const p = describeContentError({ code: "unreadable", detail: "x" }, null);
+    expect(p.message).toMatch(/try again/);
+    expect(p.message).not.toMatch(/Reinstall|changed on disk/);
   });
 
   it("keeps the detail short", () => {

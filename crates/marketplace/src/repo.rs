@@ -13,7 +13,7 @@ use crate::index::{
     EntrySource, INDEX_MAX_BYTES, INDEX_PATH, IndexEntry, MarketplaceIndex, parse_index,
 };
 use crate::manifest::{Manifest, parse_manifest};
-use crate::net::{check_destination, curl_resolve};
+use crate::net::{Destination, check_destination_with, curl_resolve};
 use crate::validate::{Commit, GitRef, GitUrl, RelPath, Scheme};
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -127,7 +127,7 @@ impl Git {
         let result = self.fetch_checked(repo, url, r);
         if let Err(Error::Git(GitFailureKind::NotFound | GitFailureKind::Failed)) = &result
             && url.scheme() == Scheme::Https
-            && let Some(moved) = crate::redirect::probe(url)
+            && let Some(moved) = crate::redirect::probe_with(url, self.resolver())
         {
             return Err(moved.into());
         }
@@ -143,8 +143,21 @@ impl Git {
         // A private host, or a name that resolves to a private address, is fetched only after
         // the user confirmed it (decisions 17 and 18.8). The checked addresses are pinned for
         // https so Git doesn't resolve the name again to something else.
-        let addrs = check_destination(url)?;
-        let pin = curl_resolve(url, &addrs);
+        let pin = match check_destination_with(url, self.resolver())? {
+            Destination::Resolved(addrs) => curl_resolve(url, &addrs),
+            Destination::Local => None,
+            // Git would resolve the name itself, unchecked and unpinned (security review
+            // MEDIUM-1). Behind a proxy the proxy resolves it and no pin could apply anyway, so
+            // that case keeps working; without one this is the honest "can't reach" answer.
+            // ssh is never pinned (OpenSSH resolves on its own; ADR-015 residual risks) and
+            // keeps working through ssh's own ProxyCommand/ProxyJump setups.
+            Destination::Unresolved => {
+                if url.scheme() == Scheme::Https && !self.proxy_configured(url) {
+                    return Err(GitFailureKind::Offline.into());
+                }
+                None
+            }
+        };
         let pin = pin.as_deref();
         if repo.join("HEAD").is_file() {
             let result = self.fetch_into(repo, url, r, pin);

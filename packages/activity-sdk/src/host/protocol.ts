@@ -38,6 +38,47 @@ export function isPlainText(v: unknown, max: number): v is string {
   return [...v].length <= max;
 }
 
+const HIDDEN_PROBLEM = "contains a line break, tab or invisible character, which isn't allowed";
+const MARKS_PROBLEM = "has more than four combining marks in a row, which isn't allowed";
+const TEXT_PROBLEMS_MAX = 20;
+
+/** `/cards/3/front` → `cards[3].front`, the way schema problems are worded. */
+type PathText = (instancePath: string) => string;
+
+/**
+ * The host's plain-text rule for every string in a content pack's data, values and field names
+ * (security review LOW-2). Engine schemas refuse hidden characters with their `pattern`, but
+ * "more than four combining marks in a row" needs a lookahead the app's pattern check can't
+ * compile, so the host walks the data with its own check after the schema. This mirrors
+ * `crates/marketplace/src/pack_text.rs` word for word; problems read like
+ * `cards[3].front has more than four combining marks in a row, which isn't allowed`.
+ */
+export function packTextProblems(data: unknown, pathText: PathText): string[] {
+  const out: string[] = [];
+  const problem = (s: string) =>
+    NOT_PLAIN.test(s) ? HIDDEN_PROBLEM : LONG_MARK_RUN.test(s) ? MARKS_PROBLEM : null;
+  const say = (pointer: string, message: string) => `${pathText(pointer) || "the data"} ${message}`;
+  const escape = (k: string) => k.replaceAll("~", "~0").replaceAll("/", "~1");
+  const walk = (v: unknown, pointer: string): void => {
+    if (out.length >= TEXT_PROBLEMS_MAX) return;
+    if (typeof v === "string") {
+      const p = problem(v);
+      if (p) out.push(say(pointer, p));
+    } else if (Array.isArray(v)) {
+      v.forEach((item, i) => walk(item, `${pointer}/${i}`));
+    } else if (v !== null && typeof v === "object") {
+      for (const [k, item] of Object.entries(v)) {
+        const at = `${pointer}/${escape(k)}`;
+        const p = problem(k);
+        if (p && out.length < TEXT_PROBLEMS_MAX) out.push(`the field name ${say(at, p)}`);
+        walk(item, at);
+      }
+    }
+  };
+  walk(data, "");
+  return out;
+}
+
 /** One stat in the paused view, such as `{ label: "Moves", value: 12 }`. */
 export interface SummaryItem {
   label: string;

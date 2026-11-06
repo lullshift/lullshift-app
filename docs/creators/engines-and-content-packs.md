@@ -53,7 +53,7 @@ All are `major` 1. Each schema is in `activities/engines/<folder>/data.schema.js
 | `lullshift.toy@1` Creative Toy | `toy` | `title*`, `intro`, `palette*` (2 to 8 named colours), `mode*` (ripples, mosaic, stars or threads), `symmetry`, `brushSize`, `background` | `content/toy/toy-dusk-ripples` |
 | `lullshift.typing@1` Typing Drills | `typing` | `title*`, `intro`, `mode` (accuracy or flow), `lines*` (1 to 40, printable ASCII, at most 120 characters each) | `content/typing/typing-calm-sentences` |
 
-Text fields have length limits and refuse control and invisible formatting characters. The schema is the authority; when this table and a schema disagree, the schema wins. Engines with their own README (breathing, pause, quiz, reflection, teaser, toy, typing) describe play in more detail.
+Text fields have length limits and refuse control and invisible formatting characters (the same set as manifest text: line and paragraph separators, bidirectional controls, zero-width, filler and tag characters). Every text in the data, field names included, may also have at most four combining marks in a row; `lullshift validate` and the app check that after the schema. The schema is the authority; when this table and a schema disagree, the schema wins. Engines with their own README (breathing, pause, quiz, reflection, teaser, toy, typing) describe play in more detail.
 
 Write content in the calm, plain tone of [docs/CONTENT_STYLE_GUIDE.md](../CONTENT_STYLE_GUIDE.md). Breathing, movement and pause packs make no medical or health claims and always offer a way out.
 

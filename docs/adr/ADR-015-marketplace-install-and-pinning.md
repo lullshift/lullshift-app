@@ -104,8 +104,11 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
 - **What stays strict.** No userinfo with a password or token. No `%`, `=` or non-ASCII. No plain `http://`, even on a private host.
 - **Addresses that are never allowed.** IP literals must be canonical dotted quads. These are always refused, confirmed or not (`SpecialAddress`):
   - unspecified, link-local, multicast, broadcast and reserved addresses;
-  - the same ranges inside IPv4-mapped, IPv4-compatible, NAT64 and 6to4 IPv6 addresses.
-- **Index entries can't point inward.** An index entry's `git` source may never be private. A marketplace can't use the user's confirmation to send an external fetch onto their network. So the schema's entry URL pattern is unchanged.
+  - the same ranges inside IPv4-mapped, IPv4-translated (`::ffff:0:a.b.c.d`), IPv4-compatible, NAT64 (`64:ff9b::/96`, and the local-use `64:ff9b:1::/48`, last 32 bits) and 6to4 IPv6 addresses;
+  - since the S12-T14 security review (LOW-3): Teredo `2001::/32` (a tunnel to an arbitrary, possibly private, IPv4 host; no Git server is reached over it), discard-only `100::/64`, and ORCHID/ORCHIDv2 `2001:10::/28`, `2001:20::/28` (identifiers that never appear as network addresses).
+- **Private by range, after resolution.** Besides loopback, RFC 1918, carrier-grade NAT, unique-local and documentation ranges: the rest of the IPv6 IETF protocol assignments `2001::/23` (benchmarking, AMT, AS112, anycast services), mirroring IPv4's `192.0.0.0/24` and `198.18.0.0/15`, and anything in NAT64 local-use `64:ff9b:1::/48` (routed only inside an operator's network, and with a prefix shorter than /96 the IPv4 bits sit elsewhere).
+- **Index entries can't point inward.** An index entry's `git` source may never be private. A marketplace can't use the user's confirmation to send an external fetch onto their network. So the schema's entry URL pattern keeps refusing private hosts.
+- **Index entries are https only (S12-T14 security review, MEDIUM-1).** An index entry's `git` source must be `https://` or the `owner/repo` shorthand; `ssh://` and `git@host:path` are refused (`UrlError::SourceNotHttps`). Only an https fetch can be pinned to the checked addresses (item 2); OpenSSH resolves the name again, so an untrusted index could list `ssh://git@rebind.attacker.example:6379/x` and use DNS rebinding to reach an inward host and port. **Schema change:** the `git` pattern in `reference/MARKETPLACE_V1.schema.json` lost its `ssh://` and `git@` alternatives, and the valid fixtures that used them moved to `invalid/`. ssh stays allowed for a marketplace address the user types; its rebinding gap is a residual risk below.
 
 ### 2. Resolved-address check before each fetch (decision 18.8)
 
@@ -114,7 +117,10 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
   - Any never-allowed address refuses the fetch.
   - Any private address refuses it unless the marketplace was confirmed private.
 - **The pin.** For https, the checked addresses are passed to Git as `-c http.curloptResolve=host:port:addr[,addr]` (IPv6 in brackets), so curl connects to what was checked rather than resolving again. A test proves Git 2.53 honours the pin.
-- **When resolution fails.** Nothing is refused and nothing is pinned; Git reports the failure as before. This keeps proxy-only DNS setups working.
+- **When resolution fails (changed by the S12-T14 security review, MEDIUM-1).** A name that doesn't resolve, or resolves to no address, can't be checked or pinned.
+  - **https without a proxy:** the fetch is refused with the `Offline` error ("can't reach the repository") before `git` runs, because curl would otherwise resolve the name itself, unchecked.
+  - **https behind a proxy:** a proxy is configured when `https_proxy`, `HTTPS_PROXY`, `all_proxy` or `ALL_PROXY` is set, or the user's global Git configuration has `http.proxy` (also per URL, read with `git config --global --get-urlmatch`). The proxy resolves the name, so the pin can't apply; the fetch proceeds unpinned as before, so proxy-only DNS setups keep working. A `NO_PROXY` match is not looked at: curl then connects directly and resolves on its own, which fails the same way Lullshift's lookup did unless the two resolvers disagree.
+  - **ssh:** proceeds as before. ssh is never pinned (see residual risks) and may reach the host through the user's own `ProxyCommand` or `ProxyJump`, which Lullshift can't see.
 - **What it does not change.** `http.followRedirects=false` and the rest of the hardened invocation are unchanged.
 
 ### 3. Same-host redirects (decision 18.1)
@@ -122,7 +128,7 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
 - **Git still never follows redirects.** `http.followRedirects=false` stays.
 - **When the probe runs.** It runs only after an https fetch fails with "not found" or a generic failure, which is what a redirect looks like to Git with redirects off.
 - **What the probe sends.** One `GET <url>/info/refs?service=git-upload-pack`:
-  - to the checked address only (item 2 applies);
+  - to the checked address only (item 2 applies): the probe's HTTP client is given a resolver that returns only the addresses the check approved, so it never looks the name up again (S12-T14 security review, LOW-1);
   - no redirects followed, 10 s timeout, platform certificate verifier;
   - user agent `git/2 (Lullshift redirect check)`;
   - no credentials, cookies or authorization headers of any kind.
@@ -140,7 +146,7 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
   - **Found:** the install's recorded source moves to the new address.
   - **Missing:** the install keeps its old source and gets the note `notFoundAtNewAddress` (`installed_activities.source_note`, migration 0012). Manage shows "Not found at the new address". The activity still runs as installed, and an update clears the note.
   - **Network or other failure:** the change is aborted and nothing is changed.
-- **What is kept.** Installs, pins and saved progress, including the saved-progress owner record, which moves with the source.
+- **What is kept.** Installs, pins and saved progress. A saved-progress owner record moves to the new address only for an install whose pinned commit was found there (S12-T14 security review, MEDIUM-2). Kept progress of an activity that isn't installed stays recorded as the old address's: the new address only shares the index `name`, which doesn't prove the same publisher, so installing that activity from the new address is reviewed as `foreign` and the user is asked (item 6).
 - **Writes.** The store changes in one transaction, then the cache folder is swapped.
 - **Re-adding a removed name.** Re-adding a removed name from a different address still fails with `alreadyExists`, and the message now points at Change address.
 
@@ -154,6 +160,7 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
   - `activity_content` returns `damaged`.
   - The activity is turned off in the store, and the next snapshot shows it as `tampered`. The UI says "Damaged, reinstall it."
 - **Recovery.** Turning it back on re-verifies, so a restored file works again.
+- **A file that can't be read is not a mismatch (S12-T14 security review, INFO-1).** A file or folder that is there but can't be read right now (a virus scanner or backup tool holds it, permissions changed) refuses only that use: `activity_content` returns `unreadable` ("try again"), a served file is a 404, the preview is empty, and Manage shows `unreadable` while it lasts. Nothing is turned off, and a snapshot with such an install isn't kept, so the next use checks again. A missing file or folder, a link, or anything else that isn't a plain file is still a mismatch.
 
 ### 6. Saved progress from another source (decision 18.6)
 
@@ -176,15 +183,15 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
   - agent-core;
   - the agent-protocol schema validators;
   - the SDK.
-- **Activities and engines.** Their own data schemas are not part of this change.
+- **Activities and engines.** Their own data schemas were aligned later by the S12-T14 security review (LOW-2): the engine plain-text pattern is the same hidden-character class, and the combining-mark rule is applied to every string in pack data by the host's own check after the schema. See the ADR-016 amendment.
 
 ### Residual risks
 
-- **DNS rebinding, ssh.** ssh fetches are checked, but Git's ssh client resolves the name again. A name that answers differently the second time can still reach an inward address over ssh. The https pin closes this for https only.
-- **DNS rebinding, redirect probe.** The probe resolves on its own (a separate client), so its check and its connection are not pinned together. It sends no credentials and only reads a status and a `Location`, and any new address goes through the full check before Git fetches it.
-- **Proxies.** With an HTTP proxy configured for Git, the proxy resolves the host, so neither the check nor the pin binds the connection.
+- **DNS rebinding, ssh.** ssh fetches are checked, but Git's ssh client resolves the name again. A name that answers differently the second time can still reach an inward address and port over ssh. The https pin closes this for https only. Since the S12-T14 review this applies only to a marketplace address the user typed (index entries are https only), so the name is one the user chose; a user who adds an ssh address on a name an attacker controls is still exposed.
+- **DNS rebinding, redirect probe.** Closed by the S12-T14 security review (LOW-1): the probe's client has its own resolver that answers only for the checked host and port, with only the checked addresses, and fails for any other name. A name that didn't resolve is not probed. The one exception is the user's configured proxy (next item).
+- **Proxies.** A proxy the user configured resolves target names itself, so the address check, the `http.curloptResolve` pin and the probe's pinned resolver don't apply behind one. This covers Git's proxy (`HTTPS_PROXY`, `https_proxy`, `ALL_PROXY`, `all_proxy`, or `http.proxy` in the user's Git configuration) and the redirect probe's, because ureq reads the proxy environment variables itself; the probe's resolver answers for the proxy's own host so the probe still reaches the proxy. The user's own proxy is trusted as part of their network setup; Lullshift never configures one.
 - **Older Git.** Git older than 2.37 doesn't have `http.curloptResolve`, so the pin is ignored (the check still runs). The app does not refuse older Git.
-- **Unresolvable names.** When the system resolver fails, the fetch proceeds unchecked (so proxy-only DNS works) and Git does its own resolution.
+- **Unresolvable names.** When the system resolver fails, an https fetch is refused unless a proxy is configured (item 2); behind a proxy, and for ssh, the fetch proceeds unchecked and the proxy or ssh does its own resolution.
 - **Public IP literals.** A public IP literal also needs the private-host confirmation, because it is classed by text before resolution. This is a little stricter than needed.
 - **No plain http.** Plain http stays unsupported, even on a home network.
 - **Re-hashing cost.** Every load re-hashes the files it reads. Packs are at most 20 MiB, so this is milliseconds, but a large installed app would pay it on every file served.

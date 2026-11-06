@@ -7,7 +7,8 @@
 //! - one `GET <url>/info/refs?service=git-upload-pack`, the request Git would make;
 //! - redirects off, no credentials, no cookies, a 10-second limit, the body never read;
 //! - the destination is checked first exactly as for a fetch (private hosts, resolved
-//!   addresses), and only https is ever probed;
+//!   addresses), and only https is ever probed; the request connects only to the addresses
+//!   that check approved ([`PinnedResolver`]), and a name that didn't resolve isn't probed;
 //! - a `Location` is used only if it is https and names the same Git endpoint
 //!   (`.../info/refs?service=git-upload-pack`); the rest must pass [`GitUrl::parse`].
 //!
@@ -15,10 +16,14 @@
 //! app asks the user. A move to the same host and port can be accepted in one step; a move to a
 //! different host is shown so the user can add or change the address deliberately.
 
+use std::net::SocketAddr;
 use std::time::Duration;
 
+use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver};
+use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
+
 use crate::error::Error;
-use crate::net::check_destination;
+use crate::net::{Destination, Resolve, check_destination_with, system_resolve};
 use crate::validate::{GitUrl, Scheme};
 
 /// How long the probe may take in all.
@@ -68,19 +73,87 @@ pub fn moved_to(from: &GitUrl, status: u16, location: Option<&str>) -> Option<Mo
 }
 
 /// Asks the server behind `url` whether the repository moved. `None` for anything but https,
-/// for a destination the fetch rules refuse, and for any answer that isn't a usable redirect.
+/// for a destination the fetch rules refuse or that didn't resolve, and for any answer that
+/// isn't a usable redirect. The request goes only to the addresses that were checked
+/// ([`PinnedResolver`]), never to whatever a second lookup of the name returns.
 pub fn probe(url: &GitUrl) -> Option<Moved> {
-    if url.scheme() != Scheme::Https || check_destination(url).is_err() {
+    probe_with(url, system_resolve)
+}
+
+/// [`probe`] with a given resolver for the check.
+pub(crate) fn probe_with(url: &GitUrl, resolve: Resolve) -> Option<Moved> {
+    if url.scheme() != Scheme::Https {
         return None;
     }
-    let (status, location) = ask(&agent(true), &format!("{}{ENDPOINT}", url.as_str()))?;
+    let Ok(Destination::Resolved(addrs)) = check_destination_with(url, resolve) else {
+        return None;
+    };
+    let pin = PinnedResolver::new(url.host(), url.effective_port(), &addrs)?;
+    let (status, location) = ask(&agent(true, pin), &format!("{}{ENDPOINT}", url.as_str()))?;
     moved_to(url, status, location.as_deref())
 }
 
-fn agent(https_only: bool) -> ureq::Agent {
+/// A ureq resolver that answers only for the checked host and port, with only the checked
+/// addresses (security review LOW-1). Any other name fails, except the user's own configured
+/// proxy, which ureq resolves to reach the proxy itself; behind a proxy the proxy resolves the
+/// target and no pin can apply (ADR-015 amendment).
+#[derive(Debug)]
+pub(crate) struct PinnedResolver {
+    host: String,
+    port: u16,
+    addrs: Vec<SocketAddr>,
+}
+
+impl PinnedResolver {
+    /// `None` without any address: there is nothing checked to connect to.
+    pub(crate) fn new(host: &str, port: u16, addrs: &[SocketAddr]) -> Option<Self> {
+        if addrs.is_empty() {
+            return None;
+        }
+        Some(Self {
+            host: host.to_ascii_lowercase(),
+            port,
+            addrs: addrs.to_vec(),
+        })
+    }
+}
+
+impl Resolver for PinnedResolver {
+    fn resolve(
+        &self,
+        uri: &ureq::http::Uri,
+        config: &ureq::config::Config,
+        timeout: NextTimeout,
+    ) -> Result<ResolvedSocketAddrs, ureq::Error> {
+        let host = uri.host().unwrap_or_default().to_ascii_lowercase();
+        let port = uri
+            .port_u16()
+            .unwrap_or(if uri.scheme_str() == Some("http") {
+                80
+            } else {
+                443
+            });
+        if host == self.host && port == self.port {
+            let mut out = self.empty();
+            for a in self.addrs.iter().take(16) {
+                out.push(*a);
+            }
+            return Ok(out);
+        }
+        if config
+            .proxy()
+            .is_some_and(|p| p.host().eq_ignore_ascii_case(&host) && p.port() == port)
+        {
+            return DefaultResolver::default().resolve(uri, config, timeout);
+        }
+        Err(ureq::Error::HostNotFound)
+    }
+}
+
+fn agent(https_only: bool, resolver: PinnedResolver) -> ureq::Agent {
     use ureq::config::Config;
     use ureq::tls::{RootCerts, TlsConfig};
-    Config::builder()
+    let config = Config::builder()
         .http_status_as_error(false)
         .max_redirects(0)
         .max_redirects_will_error(false)
@@ -92,8 +165,8 @@ fn agent(https_only: bool) -> ureq::Agent {
                 .root_certs(RootCerts::PlatformVerifier)
                 .build(),
         )
-        .build()
-        .new_agent()
+        .build();
+    ureq::Agent::with_parts(config, DefaultConnector::default(), resolver)
 }
 
 /// One GET, nothing followed, nothing sent but the request line and ureq's default headers.
@@ -265,7 +338,7 @@ mod tests {
     /// A one-shot plain-http server on loopback that answers a redirect and records what it
     /// received. Plain http only because a test can't present a trusted certificate; the app's
     /// probe is https-only.
-    fn serve_once(answer: &'static str) -> (String, Arc<Mutex<Vec<String>>>) {
+    fn serve_once(answer: &'static str) -> (SocketAddr, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let addr = listener.local_addr().expect("addr");
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -287,15 +360,80 @@ mod tests {
                 let _ = stream.write_all(answer.as_bytes());
             }
         });
-        (format!("http://{addr}"), seen)
+        (addr, seen)
+    }
+
+    const MOVED: &str = "HTTP/1.1 301 Moved Permanently\r\nLocation: /new/r/info/refs?service=git-upload-pack\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+    fn pinned(host: &str, port: u16, addrs: &[SocketAddr]) -> PinnedResolver {
+        PinnedResolver::new(host, port, addrs).expect("addresses")
+    }
+
+    fn requests(seen: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
+        std::thread::sleep(Duration::from_millis(200));
+        seen.lock().expect("log").clone()
+    }
+
+    #[test]
+    fn the_probe_connects_to_the_checked_address_not_a_second_lookup() {
+        // `.invalid` never resolves, so reaching the server proves the pinned address was used.
+        let (addr, seen) = serve_once(MOVED);
+        let port = addr.port();
+        let agent = agent(false, pinned("probe-pin.invalid", port, &[addr]));
+        let answer = ask(
+            &agent,
+            &format!("http://probe-pin.invalid:{port}/o/r{ENDPOINT}"),
+        );
+        assert_eq!(answer.map(|a| a.0), Some(301));
+        assert_eq!(requests(&seen).len(), 1);
+    }
+
+    #[test]
+    fn the_probe_never_reaches_an_address_that_was_not_checked() {
+        let (addr, seen) = serve_once(MOVED);
+        let port = addr.port();
+        // `localhost` would resolve to the listening server. The check approved a different
+        // (closed) address, and only that one is tried.
+        let closed: SocketAddr = "127.0.0.1:1".parse().expect("addr");
+        let agent1 = agent(false, pinned("localhost", port, &[closed]));
+        assert_eq!(
+            ask(&agent1, &format!("http://localhost:{port}/o/r{ENDPOINT}")),
+            None
+        );
+        // A name the check never looked at is not resolved at all.
+        let agent2 = agent(false, pinned("other.example.com", port, &[closed]));
+        assert_eq!(
+            ask(&agent2, &format!("http://localhost:{port}/o/r{ENDPOINT}")),
+            None
+        );
+        assert!(requests(&seen).is_empty(), "nothing reached the server");
+        // There is never a resolver without checked addresses.
+        assert!(PinnedResolver::new("x.example.com", 443, &[]).is_none());
+    }
+
+    #[test]
+    fn a_name_that_resolves_to_an_unconfirmed_private_address_is_never_probed() {
+        static SERVER: std::sync::OnceLock<SocketAddr> = std::sync::OnceLock::new();
+        let (addr, seen) = serve_once(MOVED);
+        SERVER.set(addr).expect("once");
+        fn rebinds_to_server(_: &str, _: u16) -> std::io::Result<Vec<SocketAddr>> {
+            Ok(vec![*SERVER.get().expect("set")])
+        }
+        fn unresolvable(_: &str, _: u16) -> std::io::Result<Vec<SocketAddr>> {
+            Err(std::io::ErrorKind::NotFound.into())
+        }
+        let url = url(&format!("https://rebind.example.com:{}/o/r", addr.port()));
+        assert_eq!(probe_with(&url, rebinds_to_server), None);
+        // A name that doesn't resolve has nothing checked to connect to.
+        assert_eq!(probe_with(&url, unresolvable), None);
+        assert!(requests(&seen).is_empty(), "nothing reached the server");
     }
 
     #[test]
     fn the_probe_reads_location_without_following_or_sending_credentials() {
-        let (base, seen) = serve_once(
-            "HTTP/1.1 301 Moved Permanently\r\nLocation: /new/r/info/refs?service=git-upload-pack\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-        );
-        let answer = ask(&agent(false), &format!("{base}/old/r{ENDPOINT}")).expect("answer");
+        let (addr, seen) = serve_once(MOVED);
+        let agent = agent(false, pinned("127.0.0.1", addr.port(), &[addr]));
+        let answer = ask(&agent, &format!("http://{addr}/old/r{ENDPOINT}")).expect("answer");
         assert_eq!(answer.0, 301);
         assert_eq!(
             answer.1.as_deref(),

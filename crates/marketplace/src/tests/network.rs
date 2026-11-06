@@ -103,6 +103,80 @@ fn a_name_that_resolves_to_loopback_is_refused_until_confirmed() {
 }
 
 #[test]
+fn an_index_can_never_list_an_ssh_source() {
+    // OpenSSH resolves the name again after Lullshift's check, so a rebinding name could send
+    // an ssh fetch to an inward host and port (security review MEDIUM-1). Sources are https.
+    for url in [
+        "ssh://git@rebind.attacker.example:6379/x",
+        "ssh://host.example.com/o/r",
+        "git@github.com:o/r.git",
+    ] {
+        let index = index_json("acme", &[("com.acme.x", json!({ "git": url }))]);
+        let err = parse_index(index.as_bytes(), false).expect_err(url);
+        assert!(
+            err.to_string().contains("must be an https:// address"),
+            "{url}: {err}"
+        );
+    }
+    // https and the GitHub shorthand (which is https) are fine.
+    for url in ["https://git.example.com/o/r", "acme/stretch"] {
+        let index = index_json("acme", &[("com.acme.x", json!({ "git": url }))]);
+        parse_index(index.as_bytes(), false).unwrap_or_else(|e| panic!("{url}: {e}"));
+    }
+    // The user can still type an ssh marketplace address.
+    assert!(GitUrl::parse("git@github.com:o/r.git").is_ok());
+}
+
+fn unresolvable(_: &str, _: u16) -> std::io::Result<Vec<std::net::SocketAddr>> {
+    Err(std::io::ErrorKind::NotFound.into())
+}
+
+#[test]
+fn an_unresolvable_https_name_without_a_proxy_is_refused_before_git_runs() {
+    let env = Env::new();
+    let git = env
+        .git
+        .clone()
+        .with_network_for_tests(unresolvable, Some(false));
+    let repo = env.path("cache/unresolved/repo.git");
+    let url = GitUrl::parse("https://rebind.attacker.example/o/r").expect("parse");
+    crate::git::spawned::reset();
+    let err = git.fetch(&repo, &url, None).expect_err("refused");
+    assert_eq!(err, Error::Git(crate::error::GitFailureKind::Offline));
+    assert!(
+        !crate::git::spawned::any_with("fetch"),
+        "git fetch never started"
+    );
+    assert!(
+        !crate::git::spawned::any_with("init"),
+        "no cache was even created"
+    );
+    assert!(!repo.exists());
+}
+
+#[test]
+fn behind_a_proxy_an_unresolvable_name_is_left_to_the_proxy() {
+    // The proxy resolves the name, so no pin can apply (ADR-015 amendment); the fetch runs
+    // and, with nothing to resolve `.invalid`, fails honestly.
+    let env = Env::new();
+    let git = env
+        .git
+        .clone()
+        .with_network_for_tests(unresolvable, Some(true))
+        .with_timeouts(
+            std::time::Duration::from_secs(20),
+            std::time::Duration::from_secs(10),
+        );
+    let url = GitUrl::parse("https://proxy-check.invalid/o/r").expect("parse");
+    crate::git::spawned::reset();
+    let err = git
+        .fetch(&env.path("cache/proxied/repo.git"), &url, None)
+        .expect_err("nothing to fetch");
+    assert!(err.git_kind().is_some(), "{err}");
+    assert!(crate::git::spawned::any_with("fetch"), "git fetch ran");
+}
+
+#[test]
 fn an_index_can_never_list_a_private_source() {
     for url in [
         "https://localhost/o/r",

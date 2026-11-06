@@ -19,7 +19,7 @@
     {
       "id": "com.example.doodle",
       "source": {
-        "git": "git@github.com:acme/doodle.git",
+        "git": "https://github.com/acme/doodle.git",
         "ref": "3f9c2e1"
       }
     }

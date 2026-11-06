@@ -21,6 +21,7 @@ export {
   SUMMARY_TEXT_MAX,
   VALUE_MAX,
   isPlainText,
+  packTextProblems,
   parseSummary,
   type SummaryItem,
 } from "./host/protocol.ts";

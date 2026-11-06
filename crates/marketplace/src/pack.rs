@@ -425,7 +425,9 @@ impl Git {
             }
             let data: Value = serde_json::from_slice(&file.bytes)
                 .map_err(|_| PackError::DataNotJson(show(data_path)))?;
-            let problems = data_schema::validate(&engine.schema, &data);
+            // The schema, then the host's plain-text rule on every string (security review
+            // LOW-2: the long-mark-run half can't be a schema pattern the app compiles).
+            let problems = crate::pack_text::pack_data_problems(&engine.schema, &data);
             if !problems.is_empty() {
                 let shown = problems
                     .iter()

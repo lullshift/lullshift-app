@@ -1,0 +1,15 @@
+{
+  "title": "Tiny",
+  "palette": [
+    {
+      "name": "Violet",
+      "color": "#6b4fd8"
+    },
+    {
+      "name": "Coral",
+      "color": "#e07a5f"
+    }
+  ],
+  "mode": "ripples",
+  "intro": "Hello\u3164world"
+}

@@ -243,8 +243,74 @@ fn the_digest_catches_tampering() {
         verify_install(&dir, &"0".repeat(64)),
         Err(VerifyError::Mismatch)
     );
+    // A missing folder is a change, not a passing read problem (security review INFO-1).
     std::fs::remove_dir_all(&dir).expect("rm");
+    assert_eq!(verify_install(&dir, &digest), Err(VerifyError::Mismatch));
+}
+
+/// Holds `path` open so no other handle may read it, the way a virus scanner or backup tool
+/// can on Windows. `None` where the platform can't express it.
+#[cfg(windows)]
+fn lock_against_reading(path: &std::path::Path) -> Option<std::fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(path)
+        .ok()
+}
+
+#[cfg(unix)]
+fn lock_against_reading(path: &std::path::Path) -> Option<std::fs::File> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o000)).ok()?;
+    // Root reads anything; then this can't be shown here.
+    if std::fs::read(path).is_ok() {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).ok()?;
+        return None;
+    }
+    // A handle to drop like the Windows lock; permissions are restored by `unlock`.
+    std::fs::File::open(path.parent()?).ok()
+}
+
+fn unlock(path: &std::path::Path, lock: std::fs::File) {
+    drop(lock);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+}
+
+#[test]
+fn a_file_that_cant_be_read_right_now_is_unreadable_not_a_mismatch() {
+    // Security review INFO-1: a locked file is not proof of tampering.
+    let env = Env::new();
+    let (src, _) = market_repo(&env, "1.0.0", &[]);
+    let pack = pipeline(&env, &src, ID, false).expect("prepare");
+    let installed = install(&env.install_root(), &pack).expect("install");
+    let (dir, digest) = (installed.dir, installed.digest);
+    let hashes = verified_hashes(&dir, &digest).expect("verified");
+    let deck = dir.join("deck.json");
+    let Some(lock) = lock_against_reading(&deck) else {
+        eprintln!("skipped: this platform or user can read a locked file");
+        return;
+    };
     assert_eq!(verify_install(&dir, &digest), Err(VerifyError::Unreadable));
+    assert_eq!(
+        hashes.read(&dir, "deck.json", 1 << 20),
+        Err(VerifyError::Unreadable)
+    );
+    unlock(&deck, lock);
+    verify_install(&dir, &digest).expect("readable again");
+    assert!(
+        hashes
+            .read(&dir, "deck.json", 1 << 20)
+            .expect("read")
+            .is_some()
+    );
 }
 
 #[test]
@@ -283,7 +349,7 @@ fn each_read_rehashes_the_file_and_refuses_one_that_changed_since_the_check() {
         hashes.read(&dir, "deck.json", 1 << 20),
         Err(VerifyError::Mismatch)
     );
-    // Replaced by a folder: refused; removed: unreadable.
+    // Replaced by a folder: refused; removed: refused too (a change, not a read problem).
     std::fs::remove_file(dir.join("deck.json")).expect("rm");
     std::fs::create_dir(dir.join("deck.json")).expect("folder");
     assert_eq!(
@@ -293,7 +359,7 @@ fn each_read_rehashes_the_file_and_refuses_one_that_changed_since_the_check() {
     std::fs::remove_dir(dir.join("deck.json")).expect("rm folder");
     assert_eq!(
         hashes.read(&dir, "deck.json", 1 << 20),
-        Err(VerifyError::Unreadable)
+        Err(VerifyError::Mismatch)
     );
     // Restored: served again.
     std::fs::write(dir.join("deck.json"), &deck).expect("restore");
@@ -329,7 +395,7 @@ fn a_link_swapped_in_after_the_check_is_refused_on_read() {
 
 #[cfg(unix)]
 #[test]
-fn a_link_planted_in_an_install_is_unreadable() {
+fn a_link_planted_in_an_install_is_a_mismatch() {
     let env = Env::new();
     let (src, _) = market_repo(&env, "1.0.0", &[]);
     let pack = pipeline(&env, &src, ID, false).expect("prepare");
@@ -337,7 +403,7 @@ fn a_link_planted_in_an_install_is_unreadable() {
     std::os::unix::fs::symlink("/etc/passwd", installed.dir.join("link.txt")).expect("link");
     assert_eq!(
         verify_install(&installed.dir, &installed.digest),
-        Err(VerifyError::Unreadable)
+        Err(VerifyError::Mismatch)
     );
 }
 

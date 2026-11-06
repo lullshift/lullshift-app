@@ -65,6 +65,12 @@ export function describeContentError(error: unknown, engine: string | null): Con
           "This pack's files changed on disk since it was installed, so Lullshift turned it off. Reinstall it to play again.",
         detail: "",
       };
+    case "unreadable":
+      return {
+        message:
+          "This pack's files couldn't be read just now. Another program, such as a virus scanner, may be using them. Nothing was changed; try again in a moment.",
+        detail: "",
+      };
     case "data_missing":
     case "data_not_json":
     case "data_too_large":

@@ -12,11 +12,29 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAjv, friendlyErrors } from "../../packages/agent-protocol/src/index.ts";
+import { createAjv, dataPath, friendlyErrors } from "../../packages/agent-protocol/src/index.ts";
+import { packTextProblems } from "../../packages/activity-sdk/src/host/protocol.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const rel = (p) => path.relative(root, p).replaceAll("\\", "/");
 const DATA_MAX = 256 * 1024;
+
+/**
+ * Pack-data problems exactly as the app finds them: the engine schema, then the host's
+ * plain-text rule on every string (security review LOW-2; crates/marketplace/src/pack_text.rs).
+ */
+function dataProblems(validate, data, file) {
+  const out = validate(data) ? [] : friendlyErrors(validate.errors, file);
+  for (const line of packTextProblems(data, dataPath)) {
+    const shown = file ? `${file}: ${line}` : line;
+    if (!out.includes(shown)) out.push(shown);
+  }
+  return out;
+}
+
+// The shared plain-text pattern starts like this (friendly.ts and data_schema.rs detect it so).
+const PLAIN_PREFIX = "^[^\\u0000-\\u001F";
+const plainPatterns = new Map(); // pattern -> first schema file using it
 
 // Keep in step with ASSERTIONS and ANNOTATIONS in crates/marketplace/src/data_schema.rs.
 const HOST_KEYWORDS = new Set([
@@ -164,6 +182,14 @@ for (const dir of subdirs(path.join(root, "activities/engines"))) {
         `is too large for the app to check (more than ${MAX_UNFOLDED} parts once its references are expanded)`,
       );
     validate = createAjv({ allErrors: true }).compile(schema);
+    (function collect(v) {
+      if (Array.isArray(v)) v.forEach(collect);
+      else if (v && typeof v === "object") {
+        if (typeof v.pattern === "string" && v.pattern.startsWith(PLAIN_PREFIX))
+          if (!plainPatterns.has(v.pattern)) plainPatterns.set(v.pattern, rel(schemaFile));
+        Object.values(v).forEach(collect);
+      }
+    })(schema);
   } catch (err) {
     report(rel(schemaFile), `can't be used: ${err.message}`);
     continue;
@@ -185,10 +211,7 @@ for (const dir of subdirs(path.join(root, "activities/engines"))) {
       report(rel(file), `isn't valid JSON (${err.message})`);
       continue;
     }
-    if (!validate(data)) {
-      for (const line of friendlyErrors(validate.errors))
-        report(rel(file), `should pass but ${line}`);
-    }
+    for (const line of dataProblems(validate, data)) report(rel(file), `should pass but ${line}`);
   }
   for (const file of invalid) {
     fixtureCount += 1;
@@ -198,7 +221,8 @@ for (const dir of subdirs(path.join(root, "activities/engines"))) {
     } catch {
       continue; // Not JSON at all: certainly invalid.
     }
-    if (validate(data)) report(rel(file), "should fail validation but passes");
+    if (!dataProblems(validate, data).length)
+      report(rel(file), "should fail validation but passes");
   }
 }
 
@@ -239,10 +263,35 @@ for (const engineDir of subdirs(path.join(root, "activities/content"))) {
       report(where, `${m.data} isn't valid JSON (${err.message})`);
       continue;
     }
-    if (!engine.validate(data)) {
-      for (const line of friendlyErrors(engine.validate.errors, m.data)) report(where, line);
+    for (const line of dataProblems(engine.validate, data, m.data)) report(where, line);
+  }
+}
+
+// --- Every engine's plain-text pattern against the shared plain-text corpus (decision 18.7,
+// security review LOW-2). The pattern must refuse every hidden character; with the text walk,
+// pattern and walk together must agree with the host on every case.
+const plainCorpusFile = path.join(root, "tests/fixtures/plain-text/cases.json");
+let plainCount = 0;
+try {
+  const { cases } = readJson(plainCorpusFile);
+  if (!plainPatterns.size) report("activities/engines", "no engine uses the plain-text pattern");
+  for (const [pattern, file] of plainPatterns) {
+    const check = createAjv().compile({
+      type: "object",
+      properties: { field: { type: "string", pattern } },
+    });
+    for (const c of cases) {
+      plainCount += 1;
+      const byPattern = check({ field: c.text });
+      if (byPattern !== (c.plain || c.reason === "marks"))
+        report(file, `plain-text pattern disagrees with the host on "${c.name}"`);
+      const combined = byPattern && !packTextProblems({ field: c.text }, dataPath).length;
+      if (combined !== c.plain)
+        report(file, `pattern plus text check disagree with the host on "${c.name}"`);
     }
   }
+} catch (err) {
+  report(rel(plainCorpusFile), `can't be read (${err.message})`);
 }
 
 // --- Shared parity corpus: the same cases run through the app's validator in `cargo test`.
@@ -267,7 +316,7 @@ try {
 }
 
 console.log(
-  `=== engine compatibility: ${engines.size} engine(s), ${fixtureCount} fixture(s), ${packCount} pack(s), ${corpusCount} parity case(s)`,
+  `=== engine compatibility: ${engines.size} engine(s), ${fixtureCount} fixture(s), ${packCount} pack(s), ${corpusCount} parity case(s), ${plainCount} plain-text check(s)`,
 );
 for (const p of problems) console.error(`  error   ${p}`);
 console.log(

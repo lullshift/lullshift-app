@@ -164,6 +164,26 @@ describe("validate (content pack data)", () => {
     expect(r.stdout).not.toMatch(/must NOT|\/cards\/2/);
   });
 
+  it("refuses tag characters and long combining-mark runs in pack data, as the app does", () => {
+    // Security review LOW-2: the engine pattern catches the tag character; the text walk
+    // catches the mark run, which a pattern the app compiles can't express.
+    const dir = scaffold("content");
+    editJson(path.join(dir, "deck.json"), (d) => {
+      const cards = d.cards as { front: string; back?: string }[];
+      cards[0]!.front = "tag" + String.fromCodePoint(0xe0041);
+      cards[1]!.front = "a" + String.fromCodePoint(0x301).repeat(5);
+    });
+    const errors = errorsOf(dir);
+    expect(errors).toContain(
+      "deck.json: cards[0].front contains a line break, tab or invisible character, which isn't allowed",
+    );
+    expect(errors).toContain(
+      "deck.json: cards[1].front has more than four combining marks in a row, which isn't allowed",
+    );
+    // Said once, not once per check.
+    expect(errors.split("cards[0].front contains").length).toBe(2);
+  });
+
   it("allows only data, a preview and notes in a pack (ADR-016)", () => {
     const dir = scaffold("content");
     writeFileSync(path.join(dir, "NOTES.md"), "ok");

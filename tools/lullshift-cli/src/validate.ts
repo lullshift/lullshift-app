@@ -3,9 +3,10 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { BRIDGE_FILE, SDK_VERSION } from "@lullshift/activity-sdk";
+import { BRIDGE_FILE, SDK_VERSION, packTextProblems } from "@lullshift/activity-sdk";
 import {
   createAjv,
+  dataPath,
   friendlyErrors,
   validateActivityManifest,
   type ActivityManifestV1,
@@ -340,11 +341,19 @@ function checkContent(
     report.errors.push(`engine ${m.engine} has a broken data schema: ${(e as Error).message}`);
     return;
   }
+  const problems: string[] = [];
   if (!validate(data)) {
     // Plain words with a data path (S07-A03): "deck.json: cards[3].front is longer than 200
     // characters". The app's own check words problems the same way.
-    report.errors.push(...friendlyErrors(validate.errors, m.data));
+    problems.push(...friendlyErrors(validate.errors, m.data));
   }
+  // Then the host's plain-text rule on every string, as the app runs it after the schema
+  // (security review LOW-2: the combining-mark half can't be a schema pattern).
+  for (const line of packTextProblems(data, dataPath)) {
+    const shown = `${m.data}: ${line}`;
+    if (!problems.includes(shown)) problems.push(shown);
+  }
+  report.errors.push(...problems);
 }
 
 /** -1, 0 or 1, comparing MAJOR.MINOR.PATCH; pre-releases sort before their release. */

@@ -26,10 +26,27 @@ pub struct Installed {
 /// Why a stored install no longer matches what was approved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VerifyError {
-    /// The folder is missing or contains something that isn't a plain file or folder.
+    /// A file or folder that is there couldn't be read right now (for example a scanner or
+    /// another program holds it, or permissions changed). Not proof of a change: the caller
+    /// refuses this use and lets the user retry, without marking the install damaged
+    /// (security review INFO-1).
     Unreadable,
-    /// The files differ from the digest recorded at install.
+    /// The install changed: files differ from the digest recorded at install, or something was
+    /// added, removed, renamed, or replaced by a link, folder or other non-file. The folder
+    /// itself being gone is a mismatch too.
     Mismatch,
+}
+
+impl VerifyError {
+    /// The error for a failed file-system call: a missing entry is a change, anything else is a
+    /// read that may work next time.
+    fn from_io(e: &std::io::Error) -> Self {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            Self::Mismatch
+        } else {
+            Self::Unreadable
+        }
+    }
 }
 
 impl std::fmt::Display for VerifyError {
@@ -125,8 +142,9 @@ fn write_all(tmp: &Path, pack: &PreparedPack) -> Result<(), Error> {
 }
 
 /// Recomputes the digest of an installed folder and compares it with `expected`. Anything that
-/// isn't a plain file or folder (links, devices) makes it unreadable; extra, missing or changed
-/// files make it a mismatch. Serve an installed activity only when this is `Ok`.
+/// isn't a plain file or folder (links, devices), and extra, missing or changed files, make it a
+/// mismatch; an entry that exists but can't be read right now makes it unreadable. Serve an
+/// installed activity only when this is `Ok`.
 pub fn verify_install(dir: &Path, expected: &str) -> Result<(), VerifyError> {
     verified_hashes(dir, expected).map(|_| ())
 }
@@ -153,8 +171,9 @@ impl VerifiedHashes {
 
     /// Reads `rel` from `dir` now and returns its bytes only if they still have the length and
     /// hash recorded at verification. `Ok(None)`: not a file of this install, or larger than
-    /// `max`. `Err(Mismatch)`: it changed (or became a link or folder); `Err(Unreadable)`: it
-    /// can't be read. The bytes returned are the bytes hashed, never a second read.
+    /// `max`. `Err(Mismatch)`: it changed, is gone, or became a link or folder;
+    /// `Err(Unreadable)`: it is there but can't be read right now. The bytes returned are the
+    /// bytes hashed, never a second read.
     pub fn read(&self, dir: &Path, rel: &str, max: usize) -> Result<Option<Vec<u8>>, VerifyError> {
         let Some(want) = self.0.get(rel) else {
             return Ok(None);
@@ -164,14 +183,14 @@ impl VerifiedHashes {
         }
         let path = dir.join(rel);
         // symlink_metadata: a link put in its place is never followed.
-        let meta = fs::symlink_metadata(&path).map_err(|_| VerifyError::Unreadable)?;
+        let meta = fs::symlink_metadata(&path).map_err(|e| VerifyError::from_io(&e))?;
         if !meta.is_file() || meta.len() != want.len {
             return Err(VerifyError::Mismatch);
         }
         let mut bytes = Vec::with_capacity(usize::try_from(want.len).unwrap_or(0));
         fs::File::open(&path)
             .and_then(|f| f.take(want.len.saturating_add(1)).read_to_end(&mut bytes))
-            .map_err(|_| VerifyError::Unreadable)?;
+            .map_err(|e| VerifyError::from_io(&e))?;
         let got: [u8; 32] = Sha256::digest(&bytes).into();
         if bytes.len() as u64 != want.len || got != want.sha256 {
             return Err(VerifyError::Mismatch);
@@ -204,15 +223,15 @@ fn collect(
     if depth > 8 {
         return Err(VerifyError::Mismatch);
     }
-    let read = fs::read_dir(dir).map_err(|_| VerifyError::Unreadable)?;
+    let read = fs::read_dir(dir).map_err(|e| VerifyError::from_io(&e))?;
     for entry in read {
-        let entry = entry.map_err(|_| VerifyError::Unreadable)?;
+        let entry = entry.map_err(|e| VerifyError::from_io(&e))?;
         let name = entry
             .file_name()
             .into_string()
             .map_err(|_| VerifyError::Mismatch)?;
         // symlink_metadata: a link is never followed.
-        let meta = fs::symlink_metadata(entry.path()).map_err(|_| VerifyError::Unreadable)?;
+        let meta = fs::symlink_metadata(entry.path()).map_err(|e| VerifyError::from_io(&e))?;
         let rel = if prefix.is_empty() {
             name
         } else {
@@ -227,7 +246,7 @@ fn collect(
             {
                 return Err(VerifyError::Mismatch);
             }
-            let bytes = fs::read(entry.path()).map_err(|_| VerifyError::Unreadable)?;
+            let bytes = fs::read(entry.path()).map_err(|e| VerifyError::from_io(&e))?;
             *total += bytes.len() as u64;
             out.insert(
                 rel,
@@ -237,7 +256,8 @@ fn collect(
                 },
             );
         } else {
-            return Err(VerifyError::Unreadable);
+            // A link, device or anything else was never installed: the install changed.
+            return Err(VerifyError::Mismatch);
         }
     }
     Ok(())

@@ -3,7 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAjv } from "@lullshift/agent-protocol";
+import { hostDataCheck } from "./hostDataCheck";
 import { describe, expect, it } from "vitest";
 
 const root = fileURLToPath(new URL("../../../../../", import.meta.url));
@@ -50,7 +50,7 @@ const L = (globalThis as unknown as { QuizLogic: Logic }).QuizLogic;
 
 const readJson = (p: string): unknown => JSON.parse(readFileSync(p, "utf8"));
 const schema = readJson(join(root, "activities/engines/quiz/data.schema.json"));
-const validate = createAjv({ allErrors: true }).compile(schema as object);
+const validate = hostDataCheck(schema as object);
 
 const q = (answer = 1): Question => ({
   prompt: "Pick one",

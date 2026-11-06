@@ -39,6 +39,9 @@ pub enum UrlError {
     /// A private host (IPv4 address, `localhost`, one-label name, local-network suffix) where
     /// none may be used: an activity source listed in an index.
     LocalHost,
+    /// An ssh address listed as an activity's source. Sources must be https, because only an
+    /// https fetch can be pinned to the addresses Lullshift checked (security review MEDIUM-1).
+    SourceNotHttps,
     /// A private host, or a name that resolves to a private address, for a marketplace the
     /// user has not confirmed as being on their own computer or network.
     PrivateNotConfirmed,
@@ -65,6 +68,9 @@ impl fmt::Display for UrlError {
             Self::BadHost => "the repository host name isn't valid",
             Self::LocalHost => {
                 "addresses on this computer or a local network can't be used as an activity's source"
+            }
+            Self::SourceNotHttps => {
+                "an activity's source must be an https:// address or owner/repo, not ssh"
             }
             Self::PrivateNotConfirmed => {
                 "this address is on your own computer or network; confirm that before Lullshift uses it"

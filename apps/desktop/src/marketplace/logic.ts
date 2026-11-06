@@ -13,6 +13,8 @@ import type {
 } from "./api";
 
 export const UNAVAILABLE_TEXT = "Marketplaces aren't available in this build.";
+export const UNREADABLE_TEXT =
+  "Lullshift couldn't read its files just now. Another program, such as a virus scanner, may be using them. Nothing was changed; try again in a moment.";
 export const THIRD_PARTY_CODE_TEXT =
   "Code activities from other marketplaces can't be installed in this version.";
 export const SAVED_STATE_TEXT = "Saved progress from an earlier install of this id will be used.";
@@ -39,6 +41,7 @@ const ERROR_TEXT: Record<ErrorKind, string> = {
   builtinProtected: "The built-in marketplace and its activities can't be removed.",
   busy: "Another operation on this marketplace is still running. Try again shortly.",
   tampered: "This activity's files changed after install, so Lullshift won't run it.",
+  unreadable: UNREADABLE_TEXT,
   privateHost: PRIVATE_HOST_TEXT,
   moved: "This repository has moved. Lullshift didn't follow the redirect.",
   internal: "Something went wrong. Nothing was changed.",
@@ -198,9 +201,26 @@ export function looksPrivate(value: string): boolean {
 }
 
 export function problemText(problem: ManageProblem): string {
-  return problem === "tampered"
-    ? "Its files changed on disk after install, so Lullshift turned it off and won't run it. Install it again from its marketplace, or uninstall it."
-    : "The engine it needs isn't available in this version of Lullshift, so it can't run.";
+  switch (problem) {
+    case "tampered":
+      return "Its files changed on disk after install, so Lullshift turned it off and won't run it. Install it again from its marketplace, or uninstall it.";
+    case "unreadable":
+      return UNREADABLE_TEXT;
+    case "missingEngine":
+      return "The engine it needs isn't available in this version of Lullshift, so it can't run.";
+  }
+}
+
+/** The short label shown before a problem's explanation in Manage. */
+export function problemLabel(problem: ManageProblem): string {
+  switch (problem) {
+    case "tampered":
+      return "Damaged, reinstall it. ";
+    case "unreadable":
+      return "Couldn't be read just now. ";
+    case "missingEngine":
+      return "Engine missing. ";
+  }
 }
 
 export const NOT_FOUND_AT_NEW_ADDRESS_TEXT =

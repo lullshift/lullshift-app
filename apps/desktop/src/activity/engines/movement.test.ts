@@ -3,7 +3,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAjv } from "@lullshift/agent-protocol";
+import { hostDataCheck } from "./hostDataCheck";
 import { describe, expect, it } from "vitest";
 
 const root = fileURLToPath(new URL("../../../../../", import.meta.url));
@@ -223,7 +223,7 @@ describe("lullshift.movement@1 data schema and fixtures", () => {
   const schema = JSON.parse(
     readFileSync(join(root, "activities/engines/movement/data.schema.json"), "utf8"),
   );
-  const validate = createAjv({ allErrors: true }).compile(schema);
+  const validate = hostDataCheck(schema as object);
   const dir = join(root, "tests/fixtures/engines/lullshift.movement@1");
   const load = (kind: string) =>
     readdirSync(join(dir, kind)).map((f) => ({

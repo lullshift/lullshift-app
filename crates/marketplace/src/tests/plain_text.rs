@@ -97,3 +97,55 @@ fn every_hidden_range_of_the_host_is_covered_at_both_ends() {
         );
     }
 }
+
+/// Every plain-text `pattern` in a bundled engine's data schema (security review LOW-2).
+fn engine_plain_patterns() -> Vec<(String, String)> {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../activities/engines");
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(&root).expect("engines").flatten() {
+        let file = entry.path().join("data.schema.json");
+        let Ok(bytes) = std::fs::read(&file) else {
+            continue;
+        };
+        let schema: Value = serde_json::from_slice(&bytes).expect("schema JSON");
+        let mut stack = vec![&schema];
+        while let Some(v) = stack.pop() {
+            match v {
+                Value::Object(m) => {
+                    if let Some(Value::String(p)) = m.get("pattern")
+                        && p.starts_with("^[^\\u0000-\\u001F")
+                    {
+                        out.push((file.display().to_string(), p.clone()));
+                    }
+                    stack.extend(m.values());
+                }
+                Value::Array(a) => stack.extend(a.iter()),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn engine_data_schemas_and_the_pack_text_check_agree_with_the_corpus() {
+    let patterns = engine_plain_patterns();
+    assert!(patterns.len() >= 10, "every engine has plain-text fields");
+    let all = cases();
+    for (file, pattern) in &patterns {
+        // The app's own translation of the pattern (JavaScript `u`-flag meaning).
+        let re = crate::data_schema::compile(pattern).unwrap_or_else(|e| panic!("{file}: {e}"));
+        for (name, text, expected, reason) in &all {
+            // The pattern refuses every hidden character; mark runs are the walk's half.
+            let by_pattern = re.is_match(text);
+            assert_eq!(
+                by_pattern,
+                *expected || reason.as_deref() == Some("marks"),
+                "{file}: {name}"
+            );
+            let data = serde_json::json!({ "field": text });
+            let combined = by_pattern && crate::pack_text::text_problems(&data).is_empty();
+            assert_eq!(combined, *expected, "{file}: {name}");
+        }
+    }
+}
