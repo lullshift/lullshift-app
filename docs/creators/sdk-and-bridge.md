@@ -2,7 +2,7 @@
 
 This page condenses the contract every code activity follows. The full guide, with layout and help examples, is [packages/activity-sdk/README.md](../../packages/activity-sdk/README.md) (SDK version 0.2.0). Engines are code activities too and follow the same contract; content packs don't contain code, so the engine does this for them.
 
-The SDK lives in this repository. It is not published to npm, so don't run `npm install @lullshift/activity-sdk`. `lullshift create` copies what you need.
+The SDK lives in this repository, in `packages/activity-sdk`. Publishing it to npm as `@lullshift/activity-sdk` is approved (decision 29), but it isn't on npm yet. Until the first release, use a clone. After it, `npm install @lullshift/activity-sdk` gives you the bridge script (`bridge/lullshift-bridge-v1.js`), its types and the host protocol, for tools and TypeScript. Activities themselves don't need it installed: `lullshift create` copies the bridge into the activity folder.
 
 ## Files in an activity folder
 

@@ -1,8 +1,8 @@
 # Releasing Lullshift
 
-How v1 installers are built, what the owner must do by hand, and what is deliberately not done yet. Decision record: ADR-004 (amended 2026-11-05). Hook cleanup on uninstall: ADR-010.
+How v1 installers and the npm packages are built, what the owner must do by hand, and what is deliberately not done yet. Decision record: ADR-004 (amended 2026-11-05). Hook cleanup on uninstall: ADR-010. npm packages: section 6 and the ADR-017 amendment.
 
-Nothing here runs by itself. There is no push, pull-request, merge or scheduled build, and the workflow never publishes: it creates a **draft** GitHub Release for the owner to review.
+Nothing here runs by itself. There is no push, pull-request, merge or scheduled build. The release workflow never publishes: it creates a **draft** GitHub Release for the owner to review. The npm workflow (section 6) publishes only after the owner approves the run.
 
 ## 1. Build a draft release
 
@@ -114,3 +114,51 @@ From the Claude Code hooks documentation (checked 2026-11-06): a command hook th
 ## 5. Manual checks the owner runs
 
 Not run by automation (this machine must not run the installer): install and uninstall the NSIS setup with a connected test profile, then confirm `~/.claude/settings.json` is restored and the user's own hooks remain; install and remove the `.deb` on a Linux VM; open the dmg on Intel and Apple Silicon Macs; run the update validation (S11-A02) once the updater is enabled.
+
+## 6. npm packages (owner decision 29)
+
+`@lullshift/agent-protocol`, `@lullshift/activity-sdk` and `@lullshift/cli` are published to npm by a separate manual workflow, `.github/workflows/publish-npm.yml`. The CLI is not in the installers. Decision record: ADR-017 amendment (2026-11-06).
+
+Nothing is published yet. The workflow has **not been run**, and the first run needs the owner.
+
+### What the workflow does
+
+1. Starts only by hand: Actions > **Publish npm packages** > **Run workflow**. Choose the packages (`all`, or one), the dist-tag (`latest` or `next`) and whether it is a dry run. **Dry run is on by default.**
+2. Runs only on `main`, and waits for approval in the `npm` environment.
+3. Installs with `pnpm install --frozen-lockfile`, checks the generated schemas, typechecks and tests the three packages.
+4. Builds and packs them (`node scripts/check-npm-packages.mjs`), and refuses any tarball with files outside its allowlist, tests, source maps, `.env`, local paths or `workspace:` specifiers.
+5. Installs the tarballs in an empty folder outside the repository and runs `lullshift create`, `validate` and `simulate` with them.
+6. Publishes in dependency order (protocol, SDK, CLI) with `pnpm publish --provenance --access public --no-git-checks --tag <tag>`. A version already on npm is skipped. A package whose `@lullshift` dependency isn't on npm yet stops the run.
+
+The npm token reaches only the last step, as `NODE_AUTH_TOKEN`. Each package's `prepublishOnly` guard (`scripts/npm-publish-guard.mjs`) refuses a publish anywhere but this workflow on `main`.
+
+### Owner steps before the first publish
+
+1. **Make sure the repository is public.** npm provenance is not generated for private repositories.
+2. **Register the scope.** Sign in to npmjs.com (with two-factor authentication), and create the free organization `lullshift`, which owns the `@lullshift` scope.
+3. **Choose how the workflow signs in.** One of these two:
+   - **Trusted publisher (preferred, no token):** on npmjs.com, open each package's settings and add a trusted publisher. Choose GitHub Actions, organization or user `lullshift`, repository `lullshift-app`, workflow file `publish-npm.yml` and environment `npm`. A package must exist before it can be configured, so the very first publish of each package needs a token (next option); add the trusted publisher straight after and delete the token. With trusted publishing, leave the `NPM_TOKEN` secret unset.
+   - **Granular access token:** npmjs.com > Access Tokens > Generate New Token > Granular Access Token. Give it read and write access to the `@lullshift` packages only (or to the `lullshift` organization for the first publish), and the shortest expiry that suits you. Never put it in `.npmrc`, `.env` or the repository.
+4. **Create the environment.** GitHub > Settings > Environments > New environment, named `npm`. Add yourself as a **required reviewer**, limit deployment branches to `main`, and, if you use a token, add it as the environment secret `NPM_TOKEN`. Do not add it as a repository secret.
+5. **Bump versions** in the three `package.json` files when needed and merge to `main`. The SDK version also lives in `SDK_VERSION` (`packages/activity-sdk/src/index.ts`). The CLI prints the SDK version for `--version`.
+6. Run the workflow once as a **dry run**, read the file lists it prints, then run it again with dry run off and approve it.
+7. **After publishing,** check each package page on npmjs.com for the provenance badge, and run `npx @lullshift/cli@<version> --help` on a clean machine.
+
+### Trying it locally
+
+Nothing local can publish. To see exactly what would be uploaded:
+
+```bash
+node scripts/check-npm-packages.mjs --keep ../npm-tarballs
+npm publish --dry-run ../npm-tarballs/lullshift-cli-0.1.0.tgz
+```
+
+`pnpm publish --dry-run` in a package folder is refused by the guard outside the workflow, because pnpm gives lifecycle scripts no way to tell a dry run apart.
+
+### Sources checked (2026-11-06)
+
+- npm, [Trusted publishing for npm packages](https://docs.npmjs.com/trusted-publishers): needs npm CLI 11.5.1 or later and Node 22 or later, GitHub-hosted runners only, `id-token: write`, the workflow file name must match exactly, and provenance is added on its own.
+- pnpm, [pnpm publish](https://pnpm.io/cli/publish): `--provenance`; "under trusted publishing, pnpm attaches provenance to a public package from a public repository on its own".
+- pnpm, [package.json](https://pnpm.io/package_json): `publishConfig` may override `bin`, `main`, `exports`, `types`, `engines` and other fields when packing.
+
+Not verified without a real run: that pnpm 12.6.0 completes the OIDC exchange with npm, and that headless Chrome on `ubuntu-24.04` runs the simulator step.
