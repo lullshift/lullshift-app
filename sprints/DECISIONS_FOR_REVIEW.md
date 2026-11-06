@@ -30,9 +30,9 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 24 | 10 | Content review choices | change: 24.4-24.6 |
 | 25 | 11 | First-launch welcome | change |
 | 26 | 11 | Release packaging | change: 26.3, 26.7, 26.8, 26.12 |
-| 27 | 12 | Sprint 12 build and review choices | change: 27.1, 27.5, 27.6, 27.8 |
-| 28 | 12 | Bundled Git fallback (gix, public https) | change: build it |
-| 29 | 12 | Publish the creator CLI and SDK to npm | change: build it |
+| 27 | 12 | Sprint 12 build and review choices | change: 27.1, 27.5, 27.6, 27.8 (built 2026-11-06) |
+| 28 | 12 | Bundled Git fallback (gix, public https) | change: build it (built 2026-11-06) |
+| 29 | 12 | Publish the creator CLI and SDK to npm | change: build it (built; Node 22 floor to confirm) |
 | 30 | 12 | Wording in PRD and CLAUDE.md after 27.5 | open |
 | 31 | 12 | npm package versions before the first publish | open |
 

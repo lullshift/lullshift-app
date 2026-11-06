@@ -818,7 +818,7 @@ Go through Sessions (Live and History tabs, open a session's detail panel), Acti
 
 1. Cursor: start from an older six-hook install (connected before Sprint 12) and open Integrations. Connect again, then make a Cursor session end with an error.
 2. Windows: install Lullshift into a folder whose name contains `'` and `$` (and one with `%`). Connect Codex and Cursor and run a prompt in each. Check whether either agent wraps the command in `cmd.exe /c`.
-3. Windows, non-ASCII profile path: try one that should be accepted (for example `ü`) and one that should be refused (for example Cyrillic `В`).
+3. Windows, non-ASCII profile or install path: try `ü`, and letters such as Cyrillic `В`, `Ñ` and `Ó` (accepted since decision 27.1; see M12-10).
 4. Windows PowerShell 5.1: try an install folder containing `[` or `]`.
 5. OpenCode 2.x:
    1. Choose Connect OpenCode.
@@ -836,7 +836,8 @@ Go through Sessions (Live and History tabs, open a session's detail panel), Acti
 - **Folders and paths (steps 2 to 4):**
   - The `'` and `$` folders fire hooks normally.
   - `ü` works.
-  - `В`, `[` and `]` are refused with a clear message.
+  - `ü`, `В`, `Ñ` and `Ó` work.
+  - `[` and `]` are refused with a clear message.
 - **OpenCode (step 5):**
   - The dialog names the plugin file and says Experimental / 2.x only.
   - The card shows Unknown until the first event, then Connected.
@@ -1022,6 +1023,120 @@ Use the keyboard only, and check each game again after an interruption and a res
   - A server without tool support fails with a clear message.
 - **Step 4:** no message is left stuck after quitting.
 - **Step 5:** the remembered context falls back to "No context", with a note.
+
+**Result:** \_\_\_
+
+### M12-10: Decision 27 changes (folder names, refused lookups, Moss Paths)
+
+1. Windows: use a profile or install folder containing `В`, `Ñ` or `Ó`. Connect Cursor and Codex and run a prompt in each. If you can, try one agent host that runs through the cp1252 code page.
+2. Turn Companion lookups on. With a mock or real provider, make a reply ask for an unknown lookup, a malformed one, and more than three lookups. Then close and reopen the thread.
+3. Moss Paths: turn a crossing tile, then press Undo.
+
+**Expected:**
+
+- **Step 1:** connecting works and the hooks fire.
+- **Step 2:**
+  - Each refused lookup shows a plain notice with no button.
+  - A screen reader announces it once.
+  - The notices are still there after reopening the thread.
+- **Step 3:**
+  - The turn is announced and Moves doesn't change.
+  - Undo takes the turn back without lowering Moves.
+
+**Result:** \_\_\_
+
+### M12-11: Third-party programs (decision 27.5)
+
+1. Windows: add a test marketplace that offers a code activity, and open its review.
+2. Use the consent box and Install by mouse, then by keyboard only (Tab, Space). Try pressing Install before ticking the box.
+3. With NVDA, read the warning, the consent box and the Install button.
+4. Install it, then check the library card and the activity header.
+5. Push a new commit to the test marketplace, choose Refresh and review the update.
+6. Use Change address on that marketplace, then open Manage.
+7. macOS and Linux: open the same review.
+8. Open the activity and, from its console in a debug build, send its frame to another activity's page (`location = '/<other id>/index.html'`). Then resume it.
+9. In an activity that has `activity.storage`, write in a fast burst, then write 1,025 different keys.
+10. Upgrade a database from the previous release (version 13 or 14).
+
+**Expected:**
+
+- **Steps 1 and 2:**
+  - The list says "Third-party program".
+  - The review starts with "This is someone else's program" and the Windows note.
+  - The publisher's description is labelled "From the publisher".
+  - The box is last, before the buttons, and starts unticked.
+  - Install can be focused while blocked; pressing it moves focus to the box.
+- **Step 3:** the box is read with the warning text, and Install with "Tick the box above to continue."
+- **Step 4:** both say "Third-party program from <marketplace>".
+- **Step 5:** the warning comes back unticked, and Update stays blocked until it is ticked. The new version then runs.
+- **Step 6:** Manage shows "Address changed since you accepted".
+- **Step 7:** the review says the full sandbox checks haven't been run on that platform yet. If the WebRTC block failed, it shows the red alert instead.
+- **Step 8:** the activity is stopped ("… was stopped") and resuming works.
+- **Step 9:** the burst gets `rate_limited`, and key 1,025 gets `quota_exceeded`.
+- **Step 10:** installed activities keep working and a backup is made.
+
+**Result:** \_\_\_
+
+### M12-12: Sandbox proof with launch keys and native IPC (all OSes)
+
+1. Windows: run `node tests/sandbox/run-denial-tests.mjs --attention` against a debug build. Repeat it against a release build after any WebView2, Tauri or wry upgrade.
+2. macOS and Linux debug builds: open the sandbox probe (extends M03-4, M03-5 and M12-8).
+3. Run the probe with an installed third-party code activity, not only the bundled ones.
+
+**Expected:**
+
+- **Step 1:** every check passes (59 at the time of writing).
+- **Step 2:**
+  - Every line says blocked.
+  - "native IPC channels reachable" lists `webkit.messageHandlers (ipc)`, and the forged calls are refused: Lantern Pond's saved state survives the run.
+  - Scripts and stylesheets from another activity are blocked, and the control script loads.
+- **Step 3:** the same results.
+
+**Result:** \_\_\_
+
+### M12-13: Built-in Git (decision 28)
+
+1. Take `git` off PATH (rename `git.exe` or change PATH) and restart Lullshift. Open Marketplaces.
+2. Add a public `owner/repo` marketplace, browse it, install a content pack and choose Refresh.
+3. Add a private repository and an ssh `git@…` address.
+4. Set `HTTPS_PROXY` (to any proxy address), restart, and add a public marketplace.
+5. Add a GitHub repository that has been renamed (it redirects).
+6. Put Git back and restart. Refresh the marketplace from step 2.
+
+**Expected:**
+
+- **Step 1:** the panel says "Using Lullshift's built-in Git (public https only)".
+- **Step 2:** everything works as with installed Git.
+- **Step 3:** both say that Git needs to be installed for this marketplace. The text says the server refused the request, that a public host may be limiting requests, and that Git helps only for private repositories, ssh and proxies.
+- **Step 4:** the same "install Git" message, and no direct connection is made (check with a network monitor if you can).
+- **Step 5:** "Use the new address" is offered.
+- **Step 6:** the panel says "Using Git installed on this computer" and the marketplace still works.
+
+**Result:** \_\_\_
+
+### M12-14: npm packages and the publish workflow (decision 29)
+
+Do these in order. Nothing is published until step 6.
+
+1. Register the `lullshift` organization on npm, with 2FA, before the repository and its docs are public.
+2. In GitHub, create the environment `npm`: you as required reviewer, deployment branches "Selected branches and tags" with `main` only, and `NPM_TOKEN` as an environment secret (not a repository secret).
+3. Install Node 22.12. Run `node scripts/check-npm-packages.mjs --keep <folder>`, install the three `.tgz` files in an empty folder, and run `npx lullshift --help`, `create`, `validate`, `simulate` and `pack`.
+4. Start "Publish npm packages" from a branch other than `main`.
+5. Start it from `main` with dry run on (the default).
+6. Settle decision 31 (versions), then run it with dry run off and approve it.
+7. After the first publish: add the trusted publisher on npm for each package (workflow `publish-npm.yml`, environment `npm`; the environment field is required for us), then delete the token.
+8. On a clean machine: `corepack enable`, `pnpm --version`, and `npx @lullshift/cli@<version> --help`.
+
+**Expected:**
+
+- **Step 3:** every command works on Node 22.12.
+- **Step 4:** GitHub refuses the deployment to `npm`.
+- **Step 5:**
+  - The build job prints each tarball's hash.
+  - The publish job's npm is 11.5.1 or newer, the checksum check passes, and `npm publish --dry-run` runs for each tarball.
+  - The Linux smoke step's `simulate` passes.
+- **Step 6:** the three packages appear on npm with a provenance badge, and npm's `dist.integrity` matches the hash in the build log.
+- **Step 8:** pnpm 12.6.0 runs, and the CLI prints its help.
 
 **Result:** \_\_\_
 

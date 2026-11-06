@@ -75,6 +75,12 @@ One to four items. Each `label` is plain text up to 24 characters; each `value` 
 
 `LullshiftBridge.storage.get(key)`, `.set(key, value)` and `.remove(key)` return promises of strings. They work only if the manifest declares `"permissions": ["activity.storage"]`. Use them for small things that outlive a reset, such as a best score. Prefer the single state object for everything else.
 
+Limits, per activity: at most 1,024 keys and 256 KiB in total, where each key costs its key length plus its value length plus 64 bytes. Keys are 1 to 64 characters from `A-Z a-z 0-9 . _ -`. Writes (`set` and `remove`) are limited to 240 a minute. A refused call rejects its promise with one of these messages:
+
+- `quota_exceeded`: too many keys or too many bytes. Remove something first.
+- `value_too_large`: the value alone is too big.
+- `rate_limited`: too many writes in the last minute. Write less often, for example once at the end of a round, and try again later.
+
 `activity.storage` is the only permission in manifest schema v1. A content pack can use it only if both the pack and its engine declare it. Declare nothing you don't use; marketplace reviews show permissions to the user, and updates highlight added ones.
 
 ## Keyboard, reduced motion and theme
