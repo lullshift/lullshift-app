@@ -120,7 +120,7 @@ fn codex_install_into_an_empty_home_and_back() {
         }
         assert!(rec.backup_path.is_none());
         assert_eq!(
-            codex_install::uninstall(&rec).expect("uninstall"),
+            codex_install::uninstall(&rec, &e.data).expect("uninstall"),
             UninstallOutcome::Restored
         );
         assert!(
@@ -146,7 +146,7 @@ fn codex_preserves_user_hooks_backs_up_and_restores_bytes() {
     let backup = rec.backup_path.as_ref().expect("backup");
     assert_eq!(fs::read_to_string(backup).expect("backup"), CODEX_USER);
     assert_eq!(
-        codex_install::uninstall(&rec).expect("uninstall"),
+        codex_install::uninstall(&rec, &e.data).expect("uninstall"),
         UninstallOutcome::Restored
     );
     assert_eq!(fs::read_to_string(&e.file).expect("read"), CODEX_USER);
@@ -180,7 +180,7 @@ fn codex_uninstall_after_user_edits_removes_only_ours() {
         .push(serde_json::json!({"hooks":[{"type":"command","command":"later.sh"}]}));
     fs::write(&e.file, serde_json::to_vec_pretty(&v).expect("ser")).expect("write");
     assert_eq!(
-        codex_install::uninstall(&rec).expect("uninstall"),
+        codex_install::uninstall(&rec, &e.data).expect("uninstall"),
         UninstallOutcome::Removed
     );
     let v = json(&e.file);
@@ -263,7 +263,7 @@ fn codex_escapes_awkward_paths_and_refuses_control_characters() {
             Status::Installed
         );
         assert_eq!(codex_ours(&json(&e.file)).len(), codex::HOOKS.len());
-        codex_install::uninstall(&rec).expect("uninstall");
+        codex_install::uninstall(&rec, &e.data).expect("uninstall");
         assert!(
             !e.file.exists(),
             "the escaped entries are recognised and removed"
@@ -321,7 +321,7 @@ fn codex_status_reports_hooks_turned_off_in_config() {
         codex_install::status(&e.file, Some(&config), &cmd),
         Status::Installed
     );
-    codex_install::uninstall(&rec).expect("uninstall");
+    codex_install::uninstall(&rec, &e.data).expect("uninstall");
 }
 
 // ----------------------------------------------------------------------------- Cursor
@@ -384,7 +384,7 @@ fn cursor_install_into_an_empty_home_registers_only_non_blocking_events() {
             );
         }
         assert_eq!(
-            cursor_install::uninstall(&rec).expect("uninstall"),
+            cursor_install::uninstall(&rec, &e.data).expect("uninstall"),
             UninstallOutcome::Restored
         );
         assert!(!e.file.exists());
@@ -408,7 +408,7 @@ fn cursor_preserves_user_hooks_backs_up_and_restores_bytes() {
         CURSOR_USER
     );
     assert_eq!(
-        cursor_install::uninstall(&rec).expect("u"),
+        cursor_install::uninstall(&rec, &e.data).expect("u"),
         UninstallOutcome::Restored
     );
     assert_eq!(fs::read_to_string(&e.file).expect("read"), CURSOR_USER);
@@ -465,7 +465,7 @@ fn cursor_older_six_hook_install_is_partial_and_connect_upgrades_it() {
             "the user's own stop hook is kept, ours is not duplicated"
         );
         // And Disconnect still removes everything of ours, including the new three.
-        cursor_install::uninstall(&rec).expect("uninstall");
+        cursor_install::uninstall(&rec, &e.data).expect("uninstall");
         assert!(cursor_ours(&json_or_empty(&e.file)).is_empty());
         let after = fs::read_to_string(&e.file).expect("read");
         assert!(!after.contains("postToolUseFailure") && !after.contains("preCompact"));
@@ -494,7 +494,7 @@ fn cursor_install_twice_and_uninstall_after_edits() {
     v["extra"] = Value::Bool(true);
     fs::write(&e.file, serde_json::to_vec_pretty(&v).expect("ser")).expect("write");
     assert_eq!(
-        cursor_install::uninstall(&first).expect("u"),
+        cursor_install::uninstall(&first, &e.data).expect("u"),
         UninstallOutcome::Removed
     );
     let v = json(&e.file);
@@ -516,7 +516,7 @@ fn cursor_without_a_record_still_removes_only_ours_and_created_version_goes() {
     fs::write(&e.file, serde_json::to_vec(&v).expect("ser")).expect("write");
     rec.restore_exact = false;
     assert_eq!(
-        cursor_install::uninstall(&rec).expect("u"),
+        cursor_install::uninstall(&rec, &e.data).expect("u"),
         UninstallOutcome::Removed
     );
     let v = json(&e.file);
@@ -572,7 +572,7 @@ fn cursor_refuses_unparseable_unknown_version_and_unquotable_paths() {
                 Status::Installed,
                 "{odd}"
             );
-            cursor_install::uninstall(&rec).expect("uninstall");
+            cursor_install::uninstall(&rec, &e.data).expect("uninstall");
             assert!(!e.file.exists(), "{odd}");
         }
     }
@@ -612,11 +612,11 @@ fn the_two_adapters_and_claude_code_do_not_remove_each_other() {
         created_top_keys: vec![],
     };
     assert_eq!(
-        cursor_install::uninstall(&fake).expect("u"),
+        cursor_install::uninstall(&fake, &e.data).expect("u"),
         UninstallOutcome::NothingToRemove
     );
     assert_eq!(codex_ours(&json(&e.file)).len(), codex::HOOKS.len());
-    codex_install::uninstall(&codex_rec).expect("u");
+    codex_install::uninstall(&codex_rec, &e.data).expect("u");
 }
 
 #[test]

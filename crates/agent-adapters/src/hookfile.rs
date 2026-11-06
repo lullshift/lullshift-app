@@ -160,20 +160,39 @@ pub fn command_line(exe: &Path, adapter: &str, data_dir: &Path, shell: Shell) ->
     Some(format!("{lead}{exe} hook {adapter} --data-dir {dir}"))
 }
 
-/// Whether `command` is a command line built by [`command_line`] for `adapter`: a quoted
-/// Lullshift executable (escaped for either shell) followed by `hook <adapter> --data-dir`.
-/// The leading `& ` tells the two forms apart.
-pub fn command_is_ours(command: &str, adapter: &str) -> bool {
+/// The data directory in `command` if it is exactly a command line built by [`command_line`]
+/// for `adapter`: a quoted Lullshift executable (escaped for either shell), then
+/// `hook <adapter> --data-dir `, then exactly one complete quoted token that ends the string.
+/// Anything else, such as text after the closing quote (`...; my-notify`), is not ours and is
+/// never touched. The leading `& ` tells the two forms apart.
+pub fn command_data_dir(command: &str, adapter: &str) -> Option<String> {
     let (rest, shell) = match command.strip_prefix("& ") {
         Some(r) => (r, Shell::PowerShell),
         None => (command, Shell::Sh),
     };
-    let Some((exe, tail)) = split_quoted(rest, shell) else {
-        return false;
-    };
+    let (exe, tail) = split_quoted(rest, shell)?;
     let name = exe.rsplit(['/', '\\']).next().unwrap_or("");
-    name.to_ascii_lowercase().starts_with("lullshift")
-        && tail.starts_with(&format!(" hook {adapter} --data-dir "))
+    if !name.to_ascii_lowercase().starts_with("lullshift") {
+        return None;
+    }
+    let dir_token = tail.strip_prefix(&format!(" hook {adapter} --data-dir "))?;
+    match split_quoted(dir_token, shell)? {
+        (dir, "") => Some(dir),
+        _ => None,
+    }
+}
+
+/// Whether `command` has the exact shape of a Lullshift hook command for `adapter`, whatever
+/// data directory it names (see [`command_data_dir`]).
+pub fn command_is_ours(command: &str, adapter: &str) -> bool {
+    command_data_dir(command, adapter).is_some()
+}
+
+/// [`command_is_ours`] and the data directory is exactly `data_dir`. This is what install,
+/// uninstall and status act on: another Lullshift build or profile (a different data
+/// directory) has its own entries, which are not ours to change.
+pub fn command_is_ours_in(command: &str, adapter: &str, data_dir: &str) -> bool {
+    command_data_dir(command, adapter).is_some_and(|d| d == data_dir)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -199,6 +218,9 @@ pub struct InstallRecord {
 pub(crate) struct Spec<'a> {
     /// Adapter id in the hook command (`codex`, `cursor`) and the backup file name stem.
     pub adapter: &'static str,
+    /// The data directory in the command lines this install owns. Entries naming another one
+    /// belong to another build and are left alone. `None` (not valid Unicode) matches nothing.
+    pub data_dir: Option<&'a str>,
     /// Codex nests handlers in matcher groups; Cursor lists handlers directly.
     pub grouped: bool,
     /// Top-level keys the file must have; added when missing. A different existing value makes
@@ -209,11 +231,14 @@ pub(crate) struct Spec<'a> {
     pub handler: &'a dyn Fn(&str) -> Option<Value>,
 }
 
-fn is_ours(handler: &Value, adapter: &str) -> bool {
+fn is_ours(handler: &Value, spec: &Spec) -> bool {
+    let Some(dir) = spec.data_dir else {
+        return false;
+    };
     handler
         .get("command")
         .and_then(Value::as_str)
-        .is_some_and(|c| command_is_ours(c, adapter))
+        .is_some_and(|c| command_is_ours_in(c, spec.adapter, dir))
 }
 
 /// Removes Lullshift handlers (and matcher groups left empty by that). Returns whether any were found.
@@ -226,14 +251,14 @@ fn strip_ours(hooks: &mut Map<String, Value>, spec: &Spec) -> bool {
                     return true;
                 };
                 let before = list.len();
-                list.retain(|h| !is_ours(h, spec.adapter));
+                list.retain(|h| !is_ours(h, spec));
                 let removed = list.len() != before;
                 found |= removed;
                 !(removed && list.is_empty())
             });
         } else {
             let before = entries.len();
-            entries.retain(|h| !is_ours(h, spec.adapter));
+            entries.retain(|h| !is_ours(h, spec));
             found |= entries.len() != before;
         }
     }
@@ -423,10 +448,10 @@ pub(crate) fn status(spec: &Spec, file: &Path) -> Status {
             entries
                 .filter_map(|g| g.get("hooks").and_then(Value::as_array))
                 .flatten()
-                .filter(|h| is_ours(h, spec.adapter))
+                .filter(|h| is_ours(h, spec))
                 .collect()
         } else {
-            entries.filter(|h| is_ours(h, spec.adapter)).collect()
+            entries.filter(|h| is_ours(h, spec)).collect()
         };
         if !ours.is_empty() {
             present += 1;

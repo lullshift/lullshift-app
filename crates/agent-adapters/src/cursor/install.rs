@@ -41,6 +41,7 @@ fn with_spec<T>(cmd: &HookCommand, shell: Shell, f: impl FnOnce(&Spec) -> T) -> 
     let handler = |_: &str| cmd.handler_for(shell);
     f(&Spec {
         adapter: ADAPTER_ID,
+        data_dir: cmd.data_dir.to_str(),
         grouped: false,
         top_keys: &[("version", json!(1))],
         events: &events,
@@ -77,10 +78,15 @@ pub fn install_for(
     })
 }
 
-pub fn uninstall(record: &InstallRecord) -> Result<UninstallOutcome, InstallError> {
+/// Removes Lullshift's entries that name `data_dir` (this app's data directory); entries of
+/// another Lullshift build, and the user's own, stay.
+pub fn uninstall(
+    record: &InstallRecord,
+    data_dir: &Path,
+) -> Result<UninstallOutcome, InstallError> {
     let cmd = HookCommand {
         exe: PathBuf::new(),
-        data_dir: PathBuf::new(),
+        data_dir: data_dir.to_owned(),
     };
     with_spec(&cmd, Shell::native(), |s| hookfile::uninstall(s, record))
 }

@@ -112,6 +112,7 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> i32 {
 /// Removes the hooks of every adapter. Each adapter is independent: a failure in one never
 /// stops the others.
 pub fn uninstall_all(t: &Targets) -> Report {
+    let data_dir = t.data_dir.clone();
     // Only open a database that exists and is not empty: an uninstall must not create user
     // data, and SQLite would give an empty file a full schema.
     let db = t.data_dir.join(DB_FILE);
@@ -142,7 +143,7 @@ pub fn uninstall_all(t: &Targets) -> Report {
         t.codex_default.as_deref(),
         codex::HOOKS.iter().map(|(e, _)| *e).collect(),
         |settings, events, record| {
-            codex::install::uninstall(&hook_record(settings, events, record))
+            codex::install::uninstall(&hook_record(settings, events, record), &data_dir)
         },
     );
     let cursor = one(
@@ -151,7 +152,7 @@ pub fn uninstall_all(t: &Targets) -> Report {
         t.cursor_default.as_deref(),
         cursor::HOOKS.iter().map(|(e, _)| *e).collect(),
         |settings, events, record| {
-            cursor::install::uninstall(&hook_record(settings, events, record))
+            cursor::install::uninstall(&hook_record(settings, events, record), &data_dir)
         },
     );
     let opencode = one(

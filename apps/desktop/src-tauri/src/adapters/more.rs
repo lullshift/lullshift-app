@@ -136,10 +136,11 @@ fn do_install(
 fn do_uninstall(
     agent: Agent,
     record: &InstallRecord,
+    data_dir: &std::path::Path,
 ) -> Result<UninstallOutcome, agent_adapters::claude_code::install::InstallError> {
     match agent {
-        Agent::Codex => codex::install::uninstall(record),
-        Agent::Cursor => cursor::install::uninstall(record),
+        Agent::Codex => codex::install::uninstall(record, data_dir),
+        Agent::Cursor => cursor::install::uninstall(record, data_dir),
     }
 }
 
@@ -196,7 +197,7 @@ async fn install_cmd(app: AppHandle, core: Arc<Core>, agent: Agent) -> Result<Ad
         let record = do_install(&c, previous.as_ref()).map_err(|e| error_code(&e))?;
         if let Err(code) = save_record_of(&core, agent.id(), &record) {
             // Without a record the install can't be undone reliably: take it back out.
-            return Err(match do_uninstall(agent, &record) {
+            return Err(match do_uninstall(agent, &record, &c.data_dir) {
                 Ok(_) => code,
                 Err(_) => "rollback_failed".to_owned(),
             });
@@ -225,7 +226,7 @@ async fn uninstall_cmd(
             created_hooks_key: false,
             created_top_keys: Vec::new(),
         });
-        let outcome = do_uninstall(agent, &record).map_err(|e| error_code(&e))?;
+        let outcome = do_uninstall(agent, &record, &c.data_dir).map_err(|e| error_code(&e))?;
         let sessions_disconnected = disconnect_sessions(&core, agent.id());
         if sessions_disconnected > 0 {
             let _ = app.emit(crate::SESSIONS_CHANGED, ());
