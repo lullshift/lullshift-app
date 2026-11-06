@@ -131,37 +131,21 @@ pub fn split_quoted(s: &str, shell: Shell) -> Option<(String, &str)> {
     None
 }
 
-/// Whether the UTF-8 encoding of `text` holds a byte that Windows code page 1252 decodes to a
-/// curly quote: 0x82 (U+201A), 0x91 (U+2018), 0x92 (U+2019), 0x93 (U+201C) and 0x94 (U+201D). Byte
-/// 0x84 (U+201E) is left out on purpose: it is only a double quote, literal inside a
-/// single-quoted string, and refusing it would refuse every path with a capital A-umlaut.
-///
-/// If a host passes the hook command through a legacy (ANSI) code page, a
-/// character such as Cyrillic `В` (UTF-8 `D0 92`) would arrive as `Ð` plus a curly quote, and
-/// PowerShell treats the single-quote look-alikes as quote characters, which would end the
-/// quoted path early. UTF-8 continuation bytes are at least 0x80 and lead bytes at least 0xC2,
-/// so these bytes occur only inside a non-ASCII character, never in ASCII text. The
-/// PowerShell form is refused for such paths (fail closed, ADR-021).
-pub fn has_codepage_quote_byte(text: &str) -> bool {
-    text.bytes().any(|b| matches!(b, 0x82 | 0x91..=0x94))
-}
-
-/// A quoted absolute path. PowerShell has three more refusals:
+/// A quoted absolute path. PowerShell has two more refusals:
 ///
 /// - a trailing backslash: when PowerShell hands an argument containing spaces to a native
 ///   program it wraps it in double quotes, and the program's parser reads `\"` as an escaped
 ///   quote;
-/// - a character whose UTF-8 bytes include one that a legacy code page reads as a curly quote
-///   (see [`has_codepage_quote_byte`]);
 /// - `[` or `]` in the program path: `& 'path'` resolves the path as a wildcard pattern, so an
 ///   unbalanced bracket fails to run, and a balanced one (`a[bc]`) can match a different file.
 ///   Quoting can't prevent that, so the install is refused. (Arguments are not affected.)
+///
+/// Letters whose UTF-8 bytes a legacy cp1252 code page reads as curly quotes (Cyrillic V,
+/// N-tilde, O-acute) are accepted: owner decision 27.1, accepted residual risk (ADR-021).
 fn quote(path: &Path, shell: Shell, is_program: bool) -> Option<String> {
     let s = path.to_str()?;
-    let ps_unsafe = shell == Shell::PowerShell
-        && (s.ends_with('\\')
-            || (is_program && s.contains(['[', ']']))
-            || has_codepage_quote_byte(s));
+    let ps_unsafe =
+        shell == Shell::PowerShell && (s.ends_with('\\') || (is_program && s.contains(['[', ']'])));
     if !path.is_absolute() || ps_unsafe {
         return None;
     }
@@ -654,37 +638,29 @@ mod tests {
     }
 
     #[test]
-    fn powershell_refuses_paths_a_legacy_code_page_would_turn_into_quotes() {
-        // UTF-8 bytes 0x82 and 0x91 to 0x94 decode to curly quotes in code page 1252.
-        // Cyrillic V is D0 92; the others are picked for their second byte.
-        for bad in [
+    fn powershell_accepts_letters_a_legacy_code_page_would_read_as_quotes() {
+        // Owner decision 27.1: UTF-8 bytes 0x82 and 0x91 to 0x94 (Cyrillic V is D0 92) are
+        // accepted. The path is quoted like any other and stays recognisable as ours.
+        for ch in [
             '\u{0402}', '\u{0411}', '\u{0412}', '\u{0413}', '\u{0414}', '\u{0452}', '\u{00d2}',
+            '\u{00d1}', '\u{00d3}', '\u{00c2}',
         ] {
-            let bytes = bad.to_string().into_bytes();
+            let bytes = ch.to_string().into_bytes();
             assert!(
                 bytes.iter().any(|b| matches!(b, 0x82 | 0x91..=0x94)),
-                "{bad:?} {bytes:x?}"
+                "{ch:?} {bytes:x?}"
             );
-            let dir = p(&format!("{DIR}{}x{bad}", std::path::MAIN_SEPARATOR));
-            assert!(has_codepage_quote_byte(&bad.to_string()));
-            // The PowerShell form is refused for both the program and the data directory...
-            assert!(command_line(&p(ABS), "cursor", &dir, Shell::PowerShell).is_none());
-            assert!(command_line(&dir, "cursor", &p(DIR), Shell::PowerShell).is_none());
-            // ...and sh, which has no such quotes, is not affected.
-            assert!(command_line(&p(ABS), "cursor", &dir, Shell::Sh).is_some());
+            let dir = p(&format!("{DIR}{}x{ch}", std::path::MAIN_SEPARATOR));
+            for shell in [Shell::PowerShell, Shell::Sh] {
+                let cmd = command_line(&p(ABS), "cursor", &dir, shell).expect("accepted");
+                assert!(cmd.contains(&format!("x{ch}")), "{cmd}");
+                assert!(command_is_ours(&cmd, "cursor"), "{cmd}");
+                assert!(command_line(&dir, "cursor", &p(DIR), shell).is_some());
+            }
         }
-        // Other non-ASCII text is fine, in both shells.
-        for ok in [
-            "\u{c4}\u{e9}\u{fc}",
-            "\u{65e5}\u{672c}",
-            "\u{424}\u{43f}",
-            "\u{1F600}",
-        ] {
-            assert!(!has_codepage_quote_byte(ok), "{ok}");
-            let dir = p(&format!("{DIR}{}{ok}", std::path::MAIN_SEPARATOR));
-            assert!(command_line(&p(ABS), "cursor", &dir, Shell::PowerShell).is_some());
-        }
-        assert!(!has_codepage_quote_byte("plain ASCII 'quotes' \"here\""));
+        // The other refusals still hold.
+        let nl = p(&format!("{DIR}{}a\nb", std::path::MAIN_SEPARATOR));
+        assert!(command_line(&p(ABS), "cursor", &nl, Shell::PowerShell).is_none());
     }
 
     #[test]

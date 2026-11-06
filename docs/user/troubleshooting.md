@@ -12,6 +12,8 @@
 
 **The card says "Can't connect".** Your agent's settings or hooks file isn't valid JSON, or has a format Lullshift doesn't know. Lullshift won't change it. Fix the file, then check again.
 
+**Codex or Cursor hooks don't fire on Windows.** Hooks may not work if your Windows user or install folder name contains letters such as В, Ñ, Ó. If so, install Lullshift in a folder with a plain name (for example `C:\Lullshift`) and use Repair connection. Claude Code is not affected.
+
 **A session stays on "Working".** Some agents send nothing when you interrupt a turn. After 10 minutes with no update, the session is marked as out of date and shows its last known state.
 
 **No "needs you" notification.**

@@ -94,3 +94,7 @@ Choose **Disconnect** on the agent's card, then **Remove hooks** (**Remove plugi
 - Sessions from that agent are marked "Not tracked: disconnected".
 
 Disconnect each agent before you uninstall or move Lullshift. Otherwise the agent keeps trying to run a program that is no longer there. See [Uninstalling](uninstalling.md).
+
+### Windows folder names
+
+On Windows, Codex and Cursor hooks may not work if your Windows user name or the Lullshift install folder name contains letters such as В, Ñ or Ó. If you see this, the hook won't fire (or, rarely, Codex or Cursor reads the command wrongly): install Lullshift in a folder with a plain name, or use a Windows account without these letters. Claude Code is not affected.
