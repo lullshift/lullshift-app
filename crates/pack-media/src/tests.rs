@@ -330,3 +330,141 @@ fn references_must_be_declared() {
     let err = check_declared(&[], &json!({"src": "images/\u{202e}x.png"})).expect_err("x");
     assert!(!err.contains('\u{202e}'), "{err}");
 }
+
+/// A PNG made from an IHDR and the given raw zlib stream as one IDAT chunk.
+fn png_from_zlib(width: u32, height: u32, color: u8, zlib: &[u8]) -> Vec<u8> {
+    let mut out = PNG_SIGNATURE.to_vec();
+    let mut ihdr = Vec::new();
+    ihdr.extend_from_slice(&width.to_be_bytes());
+    ihdr.extend_from_slice(&height.to_be_bytes());
+    ihdr.extend_from_slice(&[8, color, 0, 0, 0]);
+    for (kind, body) in [
+        (b"IHDR", ihdr.as_slice()),
+        (b"IDAT", zlib),
+        (b"IEND", &[][..]),
+    ] {
+        out.extend_from_slice(&(body.len() as u32).to_be_bytes());
+        out.extend_from_slice(kind);
+        out.extend_from_slice(body);
+        out.extend_from_slice(&crc(kind, body));
+    }
+    out
+}
+
+fn zlib(raw_parts: &[(&[u8], u64)]) -> Vec<u8> {
+    use flate2::{Compression, write::ZlibEncoder};
+    use std::io::Write;
+    let mut enc = ZlibEncoder::new(Vec::new(), Compression::best());
+    for (chunk, times) in raw_parts {
+        for _ in 0..*times {
+            enc.write_all(chunk).expect("write");
+        }
+    }
+    enc.finish().expect("finish")
+}
+
+#[test]
+fn an_exact_hand_built_stream_passes() {
+    // 1x1 RGB: filter byte + 3 pixel bytes.
+    let ok = png_from_zlib(1, 1, 2, &zlib(&[(&[0, 1, 2, 3], 1)]));
+    assert!(check_image("images/a.png", &ok).is_ok());
+}
+
+#[test]
+fn png_idat_with_a_huge_zero_tail_is_refused_without_inflating_it() {
+    // 1x1 pixel followed by 500 MB of zeros, which deflates to about 490 KB and fits the
+    // 512 KiB file cap. A decoder that stops after the pixels would never look at it.
+    let block = vec![0u8; 1 << 20];
+    let data = zlib(&[(&[0, 1, 2, 3], 1), (&block, 500)]);
+    let png = png_from_zlib(1, 1, 2, &data);
+    assert!(png.len() <= MAX_IMAGE_BYTES, "{}", png.len());
+    assert!(matches!(
+        check_image("images/a.png", &png),
+        Err(ImageError::Malformed(_))
+    ));
+}
+
+#[test]
+fn png_bytes_after_the_zlib_stream_end_are_refused() {
+    let mut data = zlib(&[(&[0, 1, 2, 3], 1)]);
+    data.extend_from_slice(b"<html><script>alert(1)</script></html>");
+    let png = png_from_zlib(1, 1, 2, &data);
+    assert!(matches!(
+        check_image("images/a.png", &png),
+        Err(ImageError::Malformed(_))
+    ));
+    // A second zlib stream after the first is the same thing.
+    let mut two = zlib(&[(&[0, 1, 2, 3], 1)]);
+    two.extend_from_slice(&zlib(&[(b"hidden", 1)]));
+    assert!(check_image("images/a.png", &png_from_zlib(1, 1, 2, &two)).is_err());
+}
+
+#[test]
+fn png_data_shorter_than_the_header_promises_is_refused() {
+    let png = png_from_zlib(2, 2, 2, &zlib(&[(&[0, 1, 2, 3], 1)]));
+    assert!(check_image("images/a.png", &png).is_err());
+}
+
+#[test]
+fn raw_length_covers_palette_depths_and_interlace() {
+    assert_eq!(png_raw_len(1, 1, 8, 2, 0), Some(4));
+    assert_eq!(png_raw_len(10, 3, 1, 0, 0), Some(3 * (1 + 2)));
+    assert_eq!(png_raw_len(5, 5, 8, 6, 0), Some(5 * (1 + 20)));
+    assert_eq!(png_raw_len(1, 1, 8, 2, 2), None);
+    assert_eq!(png_raw_len(1, 1, 16, 3, 0), None);
+    // Adam7 on 1x1: only the first pass has pixels.
+    assert_eq!(png_raw_len(1, 1, 8, 0, 1), Some(2));
+    // Adam7 on an 8x8 grey 8-bit image: pass sizes 1x1, 1x1, 2x1, 2x2, 4x2, 4x4, 8x4.
+    let rows = |w: u64, h: u64| h * (1 + w);
+    let expect =
+        rows(1, 1) + rows(1, 1) + rows(2, 1) + rows(2, 2) + rows(4, 2) + rows(4, 4) + rows(8, 4);
+    assert_eq!(png_raw_len(8, 8, 8, 0, 1), Some(expect));
+}
+
+#[test]
+fn encoder_made_pngs_of_odd_sizes_still_pass() {
+    for (w, h) in [(37, 11), (1, 1), (64, 3)] {
+        assert!(
+            check_image("images/a.png", &png_bytes(w, h)).is_ok(),
+            "{w}x{h}"
+        );
+    }
+}
+
+#[test]
+fn webp_with_unused_bytes_in_the_picture_chunk_is_refused() {
+    let webp = webp_bytes(12, 12);
+    // Grow the VP8L chunk (offset 16 = chunk length) and the RIFF size by 64 junk bytes.
+    let extra = 64usize;
+    let mut bytes = webp.clone();
+    let chunk_len = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
+    assert_eq!(chunk_len % 2, 0, "fixture chunk should need no padding");
+    bytes.extend_from_slice(&vec![0xab; extra]);
+    bytes[16..20].copy_from_slice(&((chunk_len + extra) as u32).to_le_bytes());
+    let riff = (bytes.len() - 8) as u32;
+    bytes[4..8].copy_from_slice(&riff.to_le_bytes());
+    assert!(matches!(
+        check_image("images/a.webp", &bytes),
+        Err(ImageError::Malformed(_))
+    ));
+    // The untouched file still passes.
+    assert!(check_image("images/a.webp", &webp).is_ok());
+}
+
+#[test]
+fn webp_padding_byte_must_be_zero_and_trailing_chunks_are_refused() {
+    let webp = webp_bytes(12, 12);
+    let chunk_len = u32::from_le_bytes(webp[16..20].try_into().unwrap()) as usize;
+    if chunk_len % 2 == 1 {
+        let mut bad = webp.clone();
+        let last = bad.len() - 1;
+        bad[last] = 1;
+        assert!(check_image("images/a.webp", &bad).is_err());
+    }
+    // A whole extra chunk after the picture is an unknown chunk.
+    let mut more = webp.clone();
+    more.extend_from_slice(b"JUNK\x04\x00\x00\x00abcd");
+    let riff = (more.len() - 8) as u32;
+    more[4..8].copy_from_slice(&riff.to_le_bytes());
+    assert!(check_image("images/a.webp", &more).is_err());
+}

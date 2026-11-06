@@ -361,5 +361,47 @@
     },
     "data": "10\u202fkm",
     "valid": true
+  },
+  {
+    "name": "empty class matches nothing: alone",
+    "schema": { "type": "string", "pattern": "^[]$" },
+    "data": "",
+    "valid": false
+  },
+  {
+    "name": "empty class matches nothing: with a char",
+    "schema": { "type": "string", "pattern": "^[]$" },
+    "data": "a",
+    "valid": false
+  },
+  {
+    "name": "empty class matches nothing: other branch still works",
+    "schema": { "type": "string", "pattern": "^(?:[]|x)$" },
+    "data": "x",
+    "valid": true
+  },
+  {
+    "name": "any-char class: newline",
+    "schema": { "type": "string", "pattern": "^[^]{3}$" },
+    "data": "a\nb",
+    "valid": true
+  },
+  {
+    "name": "any-char class: too short",
+    "schema": { "type": "string", "pattern": "^[^]{3}$" },
+    "data": "ab",
+    "valid": false
+  },
+  {
+    "name": "any-char class: astral char counts as one",
+    "schema": { "type": "string", "pattern": "^[^]$" },
+    "data": "\ud83d\ude00",
+    "valid": true
+  },
+  {
+    "name": "any-char class: empty string",
+    "schema": { "type": "string", "pattern": "^[^]$" },
+    "data": "",
+    "valid": false
   }
 ]

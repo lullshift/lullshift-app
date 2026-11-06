@@ -38,3 +38,8 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Debug builds of the deflate implementation are slow enough to make the 500 MB image-bomb
+# fixture in pack-media take half a minute; optimise it (and only it) in dev and test builds.
+[profile.dev.package.miniz_oxide]
+opt-level = 3

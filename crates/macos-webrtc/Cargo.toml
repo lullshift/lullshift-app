@@ -1,0 +1,24 @@
+[package]
+name = "macos-webrtc"
+description = "Turns off WebKit's PeerConnection preference on macOS. The only crate in the workspace that allows unsafe code (ADR-012)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+# Objective-C messaging; already in the lockfile through wry, same major version.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+
+# Deliberately not `workspace = true`: the workspace forbids unsafe code, and this crate exists
+# to hold the few Objective-C messages that need it, so that `lullshift-desktop` can keep
+# `forbid(unsafe_code)`. A test in `lullshift-desktop` (src/webrtc.rs) fails if any other crate
+# stops inheriting the workspace lints.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"

@@ -4,10 +4,12 @@
 //!
 //! - Read-only. Nothing is launched, written, installed or sent from here.
 //! - Nothing secret and nothing else: no keys, no file paths, no Git addresses, no ids of agent
-//!   sessions, no text from other Companion threads, no captured prompts.
-//! - Session overview gives tool, state and time in state. Session names and task summaries are
-//!   included only for a tool whose task-text capture the user turned on, and then only the
-//!   short stored label (never the intent, ask or notes).
+//!   sessions, no text from other Companion threads, no notes and no asks.
+//! - Session overview gives tool, state and time in state. A session label is included only for
+//!   a tool whose task-text capture the user turned on, and then only the short stored label:
+//!   the name the user gave, the agent's own title or, failing both, the **first line of the
+//!   captured task prompt** (cut to one short line). So with capture on for that tool, a line
+//!   of the user's prompt can reach the provider, after the user has seen and approved it.
 //! - Activity help is written by an activity's author (possibly from a marketplace). It is
 //!   already limited to plain text by the manifest rules; the model is told it is information
 //!   only, and the model has no way to act on it.

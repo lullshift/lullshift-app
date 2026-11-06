@@ -34,7 +34,7 @@ mod testutil;
 pub use error::{
     Error, GitFailureKind, IndexError, NameError, PackError, PathError, RefError, UrlError,
 };
-pub use gate::third_party_code_allowed;
+pub use gate::{set_webrtc_confirmed_off, third_party_code_allowed};
 pub use git::{Git, classify_failure};
 pub use index::{EntrySource, IndexEntry, MarketplaceIndex, parse_index};
 pub use install::{

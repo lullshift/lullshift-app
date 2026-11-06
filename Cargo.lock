@@ -2505,8 +2505,8 @@ dependencies = [
  "getrandom 0.4.3",
  "include_dir",
  "local-store",
+ "macos-webrtc",
  "marketplace",
- "objc2",
  "pack-media",
  "regex",
  "rusqlite",
@@ -2537,6 +2537,13 @@ dependencies = [
  "objc2-foundation",
  "time",
  "uuid",
+]
+
+[[package]]
+name = "macos-webrtc"
+version = "0.1.0"
+dependencies = [
+ "objc2",
 ]
 
 [[package]]
@@ -3096,6 +3103,7 @@ name = "pack-media"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
+ "flate2",
  "image-webp",
  "png",
  "serde_json",

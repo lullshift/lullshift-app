@@ -138,7 +138,7 @@ describe("streaming calls", () => {
     await companionToolDecision("r-abcdefgh", "call_1", false);
     expect(invoke).toHaveBeenLastCalledWith("companion_tool_decision", {
       requestId: "r-abcdefgh",
-      callId: "call_1",
+      approvalId: "call_1",
       approve: false,
     });
   });

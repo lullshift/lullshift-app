@@ -50,7 +50,7 @@ In **Settings**, **Let the Companion look things up** lets the provider ask for 
 
 | Lookup | What it returns |
 |---|---|
-| Session overview | Your agent sessions: tool, state and how long it has been in that state. Task names only for a tool where you allowed task text, and then only its short label. Never prompts, notes, files or session ids |
+| Session overview | Your agent sessions: tool, state and how long it has been in that state. A session label only for a tool where you allowed task text: the name you gave it, the agent's title or, if neither exists, the first line of the captured prompt (cut short). Never notes, files or session ids |
 | Suggest a break | One installed activity and about how long it takes. You get a card with a **Start** button; nothing starts unless you press it |
 | Activity help | The how-to-play help of one installed activity. This text is written by the activity's author |
 

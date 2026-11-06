@@ -1,8 +1,8 @@
 //! Companion tool-call storage (Sprint 12, S12-T16): migration 10, per-thread lookups, usage.
 
 use local_store::{
-    CompanionProfile, MIGRATIONS, NewToolCall, NewUserMessage, Store, StoreError, latest_version,
-    migrate, month_of,
+    CLEARED_RESULT_TEXT, CompanionProfile, MIGRATIONS, NewToolCall, NewUserMessage, Store,
+    StoreError, latest_version, migrate, month_of,
 };
 use rusqlite::Connection;
 use time::OffsetDateTime;
@@ -163,4 +163,102 @@ fn a_multi_round_reply_books_only_the_last_call_but_shows_the_totals() {
     );
     let u = s.companion_usage(&month_of(T0)).expect("usage");
     assert_eq!((u[0].input_tokens, u[0].output_tokens), (30, 12));
+}
+
+#[test]
+fn a_cancelled_send_stores_nothing_even_if_the_user_message_exists() {
+    // L4: the request was cancelled between its last check and the store transaction.
+    let (mut s, thread, m) = setup();
+    let none = s
+        .companion_complete_send_if(m, "late reply", 5, 5, 5, 5, T0, &|| false)
+        .expect("ok");
+    assert!(none.is_none());
+    let msgs = s.companion_messages(thread).expect("msgs");
+    assert_eq!(msgs.len(), 1, "no assistant message was stored");
+    assert_eq!(msgs[0].status, "pending", "the user message is untouched");
+    let used = s.companion_usage(&month_of(T0)).expect("usage");
+    assert!(
+        used.iter()
+            .all(|u| u.input_tokens == 0 && u.output_tokens == 0)
+    );
+    // A reply that is allowed goes through.
+    let some = s
+        .companion_complete_send_if(m, "reply", 5, 5, 5, 5, T0, &|| true)
+        .expect("ok");
+    assert!(some.is_some());
+    assert_eq!(s.companion_messages(thread).expect("msgs").len(), 2);
+}
+
+#[test]
+fn clearing_overview_results_keeps_other_lookups_and_the_rows() {
+    // L2: session overview text can hold a label from captured task text.
+    let (s, thread, m) = setup();
+    let mut ov = tool(
+        m,
+        "approved",
+        "claude-code: working (label: SECRET-PROMPT-LINE)",
+    );
+    ov.tool = "session_overview";
+    ov.card_activity_id = None;
+    ov.card_name = None;
+    ov.card_minutes = None;
+    s.companion_add_tool_call(&ov, T0).expect("overview");
+    s.companion_add_tool_call(&tool(m, "approved", "Tea Sort, about 5 minutes"), T0)
+        .expect("break");
+    assert_eq!(s.companion_clear_overview_results(None).expect("clear"), 1);
+    let calls = s.companion_tool_calls(thread).expect("calls");
+    assert_eq!(calls.len(), 2, "rows stay");
+    assert_eq!(calls[0].result_text, CLEARED_RESULT_TEXT);
+    assert!(!calls[0].result_text.contains("SECRET"));
+    assert_eq!(calls[1].result_text, "Tea Sort, about 5 minutes");
+    // Clearing again changes nothing.
+    assert_eq!(s.companion_clear_overview_results(None).expect("again"), 0);
+}
+
+#[test]
+fn clearing_overview_results_by_age_leaves_newer_ones() {
+    let (s, thread, m) = setup();
+    for (when, text) in [
+        (T0 - time::Duration::days(40), "old SECRET"),
+        (T0 - time::Duration::days(1), "new text"),
+    ] {
+        let mut ov = tool(m, "approved", text);
+        ov.tool = "session_overview";
+        ov.card_activity_id = None;
+        ov.card_name = None;
+        ov.card_minutes = None;
+        s.companion_add_tool_call(&ov, when).expect("add");
+    }
+    let cutoff = T0 - time::Duration::days(30);
+    assert_eq!(
+        s.companion_clear_overview_results(Some(cutoff))
+            .expect("clear"),
+        1
+    );
+    let calls = s.companion_tool_calls(thread).expect("calls");
+    assert_eq!(calls[0].result_text, CLEARED_RESULT_TEXT);
+    assert_eq!(calls[1].result_text, "new text");
+}
+
+#[test]
+fn clearing_attached_session_context_leaves_message_text_and_other_scopes() {
+    let mut s = Store::open_in_memory().expect("store");
+    s.companion_save_profile(&profile(), T0).expect("p");
+    let t = s.companion_new_thread(None, T0).expect("t");
+    let mut ids = Vec::new();
+    for (kind, ctx) in [
+        ("sessionSummary", Some("INTENT: SECRET")),
+        ("selectedNotes", Some("my notes")),
+        ("none", None),
+    ] {
+        let mut m = user_msg(t.id);
+        m.scope_kind = kind;
+        m.attached_context = ctx;
+        ids.push(s.companion_add_user_message(&m, T0).expect("m"));
+    }
+    assert_eq!(s.companion_clear_attached_session_context().expect("c"), 1);
+    let msgs = s.companion_messages(t.id).expect("msgs");
+    assert_eq!(msgs[0].attached_context, None);
+    assert_eq!(msgs[0].text, "hi");
+    assert_eq!(msgs[1].attached_context.as_deref(), Some("my notes"));
 }

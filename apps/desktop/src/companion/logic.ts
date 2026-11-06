@@ -411,7 +411,7 @@ export function shouldMountCompanion(view: string, openedBefore: boolean): boole
 // ---------- Streaming ----------
 
 export interface PendingTool {
-  callId: string;
+  approvalId: string;
   tool: string;
   label: string;
   arguments: string;
@@ -455,7 +455,7 @@ export function reduceStream(s: StreamState, e: StreamEvent): StreamState {
       return {
         ...s,
         pending: {
-          callId: e.callId,
+          approvalId: e.approvalId,
           tool: e.tool,
           label: e.label,
           arguments: e.arguments,
@@ -467,7 +467,7 @@ export function reduceStream(s: StreamState, e: StreamEvent): StreamState {
       return { ...s, skipped: [...s.skipped, e.text] };
     case "toolResolved": {
       // Only the lookup that is waiting can be resolved.
-      if (s.pending?.callId !== e.callId) return s;
+      if (s.pending?.approvalId !== e.approvalId) return s;
       return {
         ...s,
         pending: null,
@@ -543,7 +543,7 @@ export function rememberedText(kind: ScopeKind): string {
 
 export const TOOLS_SETTING_LABEL = "Let the Companion look things up";
 export const TOOLS_SETTING_HELP =
-  "Off by default. When on, the provider may ask for three read-only lookups: a summary of your agent sessions (tool, state and time in state; task names only for tools where you allowed task text), a break suggestion, and an installed activity's help. You see the exact result and choose Approve or Decline for every single lookup, and nothing is sent until you do. Lookups never change anything and never start anything. They add a little to each request, so they count toward your token budget. Some servers don't support them; turn this off if replies fail.";
+  "Off by default. When on, the provider may ask for three read-only lookups: a summary of your agent sessions (tool, state and time in state; a session label only for tools where you allowed task text: your name for it, the agent's title or the first line of the captured prompt), a break suggestion, and an installed activity's help. You see the exact result and choose Approve or Decline for every single lookup, and nothing is sent until you do. Lookups never change anything and never start anything. They add a little to each request, so they count toward your token budget. Some servers don't support them; turn this off if replies fail.";
 
 export function toolDecisionNote(rec: Pick<ToolCallRecord, "status" | "host">): string {
   const to = rec.host?.trim() || "the provider";

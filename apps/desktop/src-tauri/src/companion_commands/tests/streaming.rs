@@ -283,7 +283,7 @@ fn an_approved_lookup_shows_the_exact_text_and_only_then_sends_it() {
         &|e| {
             if let StreamEvent::ToolRequest {
                 request_id,
-                call_id,
+                approval_id,
                 result_text,
                 host,
                 tool,
@@ -295,7 +295,7 @@ fn an_approved_lookup_shows_the_exact_text_and_only_then_sends_it() {
                 *seen_before_answer.lock().expect("n") = request_count(&m);
                 assert_eq!(tool, "session_overview");
                 assert!(host.starts_with("127.0.0.1:"));
-                tool_decision(&core, &request_id, &call_id, true).expect("approve");
+                tool_decision(&core, &request_id, &approval_id, true).expect("approve");
             }
         },
     )
@@ -352,11 +352,11 @@ fn a_declined_lookup_sends_only_the_fixed_sentence_and_stores_no_data() {
     send_events(&core, t, &pid, "agents?", &Scope::None, &|e| {
         if let StreamEvent::ToolRequest {
             request_id,
-            call_id,
+            approval_id,
             ..
         } = e
         {
-            tool_decision(&core, &request_id, &call_id, false).expect("decline");
+            tool_decision(&core, &request_id, &approval_id, false).expect("decline");
         }
     })
     .expect("send");
@@ -394,12 +394,12 @@ fn unknown_tools_get_a_fixed_sentence_without_asking_and_the_round_limit_holds()
     let reply = send_events(&core, t, &pid, "hi", &Scope::None, &|e| match e {
         StreamEvent::ToolRequest {
             request_id,
-            call_id,
+            approval_id,
             tool,
             ..
         } => {
             asked.lock().expect("a").push(tool);
-            tool_decision(&core, &request_id, &call_id, true).expect("approve");
+            tool_decision(&core, &request_id, &approval_id, true).expect("approve");
         }
         StreamEvent::ToolSkipped { text, .. } => skipped.lock().expect("s").push(text),
         _ => {}
@@ -432,6 +432,50 @@ fn unknown_tools_get_a_fixed_sentence_without_asking_and_the_round_limit_holds()
         body_n(&m, 3).get("tools").is_none(),
         "tools are withdrawn after the limit"
     );
+    // M1: and the last request carries no tool blocks either, because without tool definitions
+    // a provider rejects them. The earlier rounds are plain text there.
+    let last = body_n(&m, 3).to_string();
+    for needle in ["tool_call_id", "tool_calls", "\"role\":\"tool\""] {
+        assert!(!last.contains(needle), "final request has {needle}");
+    }
+    assert!(last.contains("That lookup is not available."));
+}
+
+#[test]
+fn an_old_cards_approval_cannot_answer_a_newer_card() {
+    // L3: answers are matched by an id made here for each card, never by the provider's call id.
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 5000);
+    enable_tools(&core);
+    let m = mock_sse(vec![
+        oa_call("same_id", "suggest_break", "{}"),
+        oa_call("same_id", "suggest_break", "{}"),
+        OA_TEXT.to_owned(),
+    ]);
+    let pid = profile(&core, &m.base, None);
+    let t = thread(&core);
+    let seen = Mutex::new(Vec::<String>::new());
+    send_events(&core, t, &pid, "break?", &Scope::None, &|e| {
+        if let StreamEvent::ToolRequest {
+            request_id,
+            approval_id,
+            ..
+        } = e
+        {
+            let mut ids = seen.lock().expect("ids");
+            assert_ne!(approval_id, "same_id", "not the provider's id");
+            if let Some(old) = ids.first() {
+                // The first card was already answered; its id does nothing to this one.
+                assert!(tool_decision(&core, &request_id, old, true).is_err());
+                assert!(!ids.contains(&approval_id), "a fresh id for every card");
+            }
+            ids.push(approval_id.clone());
+            drop(ids);
+            tool_decision(&core, &request_id, &approval_id, true).expect("approve");
+        }
+    })
+    .expect("send");
+    assert_eq!(seen.lock().expect("ids").len(), 2);
 }
 
 #[test]
@@ -450,11 +494,11 @@ fn calls_over_the_per_message_limit_get_a_fixed_sentence_and_are_not_asked() {
     send_events(&core, t, &pid, "hi", &Scope::None, &|e| match e {
         StreamEvent::ToolRequest {
             request_id,
-            call_id,
+            approval_id,
             ..
         } => {
             *asked.lock().expect("a") += 1;
-            tool_decision(&core, &request_id, &call_id, true).expect("approve");
+            tool_decision(&core, &request_id, &approval_id, true).expect("approve");
         }
         StreamEvent::ToolSkipped { text, .. } => skipped.lock().expect("s").push(text),
         _ => {}
@@ -466,13 +510,15 @@ fn calls_over_the_per_message_limit_get_a_fixed_sentence_and_are_not_asked() {
         ["The limit of lookups for this message was reached."; 2]
     );
     let second = body_n(&m, 1);
-    let n = second["messages"]
-        .as_array()
-        .expect("messages")
-        .iter()
-        .filter(|m| m["role"] == "tool")
-        .count();
-    assert_eq!(n, 5, "every call gets an answer");
+    // The limit was reached, so this request has no tools and the five answers are plain text.
+    assert!(second.get("tools").is_none());
+    let text = second["messages"].to_string();
+    assert!(!text.contains("tool_call_id"));
+    assert_eq!(
+        text.matches("[suggest_break]").count(),
+        5,
+        "every call gets an answer"
+    );
 }
 
 #[test]
@@ -516,16 +562,16 @@ fn only_the_waiting_lookup_of_the_right_request_can_be_answered() {
     send_events(&core, t, &pid, "break?", &Scope::None, &|e| {
         if let StreamEvent::ToolRequest {
             request_id,
-            call_id,
+            approval_id,
             ..
         } = e
         {
             assert!(tool_decision(&core, &request_id, "another_call", true).is_err());
-            assert!(tool_decision(&core, "another-request", &call_id, true).is_err());
-            assert!(tool_decision(&core, "bad id!", &call_id, true).is_err());
-            tool_decision(&core, &request_id, &call_id, true).expect("right one");
+            assert!(tool_decision(&core, "another-request", &approval_id, true).is_err());
+            assert!(tool_decision(&core, "bad id!", &approval_id, true).is_err());
+            tool_decision(&core, &request_id, &approval_id, true).expect("right one");
             // Answering twice does nothing.
-            assert!(tool_decision(&core, &request_id, &call_id, false).is_err());
+            assert!(tool_decision(&core, &request_id, &approval_id, false).is_err());
         }
     })
     .expect("send");
@@ -546,11 +592,11 @@ fn the_budget_is_checked_again_between_lookup_rounds() {
     let e = send_events(&core, t, &pid, "break?", &Scope::None, &|ev| {
         if let StreamEvent::ToolRequest {
             request_id,
-            call_id,
+            approval_id,
             ..
         } = ev
         {
-            tool_decision(&core, &request_id, &call_id, true).expect("approve");
+            tool_decision(&core, &request_id, &approval_id, true).expect("approve");
         }
     })
     .unwrap_err();
@@ -573,11 +619,11 @@ fn lookups_belong_to_their_thread_and_go_with_it() {
     send_events(&core, t, &pid, "break?", &Scope::None, &|ev| {
         if let StreamEvent::ToolRequest {
             request_id,
-            call_id,
+            approval_id,
             ..
         } = ev
         {
-            tool_decision(&core, &request_id, &call_id, true).expect("approve");
+            tool_decision(&core, &request_id, &approval_id, true).expect("approve");
         }
     })
     .expect("send");
@@ -681,11 +727,11 @@ fn no_lookup_text_or_event_carries_a_key() {
     send_events(&core, t, &pid, "agents?", &Scope::None, &|e| {
         if let StreamEvent::ToolRequest {
             request_id,
-            call_id,
+            approval_id,
             ..
         } = &e
         {
-            tool_decision(&core, request_id, call_id, true).expect("approve");
+            tool_decision(&core, request_id, approval_id, true).expect("approve");
         }
         events.lock().expect("events").push(e);
     })

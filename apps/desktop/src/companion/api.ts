@@ -152,7 +152,7 @@ export type StreamEvent =
   | {
       type: "toolRequest";
       requestId: string;
-      callId: string;
+      approvalId: string;
       tool: ToolName | string;
       label: string;
       arguments: string;
@@ -161,7 +161,7 @@ export type StreamEvent =
       host: string;
     }
   | { type: "toolSkipped"; requestId: string; tool: string; text: string }
-  | { type: "toolResolved"; requestId: string; callId: string; approved: boolean };
+  | { type: "toolResolved"; requestId: string; approvalId: string; approved: boolean };
 
 export interface CompanionPrefs {
   /** "Let the Companion look things up". Off by default. */
@@ -296,8 +296,8 @@ export const companionRetry = (
 ) => call<Message>("companion_retry", { messageId, requestId, onEvent: eventChannel(onEvent) });
 
 /** Answers a lookup the model asked for. Nothing is sent to the provider before this. */
-export const companionToolDecision = (requestId: string, callId: string, approve: boolean) =>
-  call<void>("companion_tool_decision", { requestId, callId, approve });
+export const companionToolDecision = (requestId: string, approvalId: string, approve: boolean) =>
+  call<void>("companion_tool_decision", { requestId, approvalId, approve });
 
 export const companionPrefs = () => call<CompanionPrefs>("companion_prefs");
 

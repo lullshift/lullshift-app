@@ -385,6 +385,22 @@ pub fn compile(pattern: &str) -> Result<Regex, String> {
                     out.push(next);
                 }
             }
+            '[' if !in_class && chars.peek() == Some(&']') => {
+                // JavaScript (u mode): `[]` is an empty class that matches nothing. Rust would
+                // read the `]` as a literal.
+                chars.next();
+                out.push_str("[^\\s\\S]");
+            }
+            '[' if !in_class && {
+                let mut ahead = chars.clone();
+                ahead.next() == Some('^') && ahead.next() == Some(']')
+            } =>
+            {
+                // `[^]` matches any character, newlines included.
+                chars.next();
+                chars.next();
+                out.push_str("[\\s\\S]");
+            }
             '[' if !in_class => {
                 in_class = true;
                 out.push('[');

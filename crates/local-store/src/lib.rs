@@ -21,8 +21,8 @@ pub use marketplaces::{
 };
 
 pub use companion::{
-    CompanionMessage, CompanionProfile, CompanionThread, CompanionToolCall, CompanionUsage,
-    DEFAULT_THREAD_TITLE, MAX_ATTACHED_CHARS, MAX_MESSAGE_CHARS, MAX_PROFILES,
+    CLEARED_RESULT_TEXT, CompanionMessage, CompanionProfile, CompanionThread, CompanionToolCall,
+    CompanionUsage, DEFAULT_THREAD_TITLE, MAX_ATTACHED_CHARS, MAX_MESSAGE_CHARS, MAX_PROFILES,
     MAX_THREAD_TITLE_CHARS, MAX_THREADS, NewToolCall, NewUserMessage, month_of,
 };
 
