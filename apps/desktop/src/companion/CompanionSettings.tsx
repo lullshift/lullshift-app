@@ -558,12 +558,13 @@ export function CompanionSettings({ profiles, onProfilesChanged, onReload, onDon
             </button>
           </>
         }
-      >
-        <p>
-          The provider profile and its key in your system keychain are deleted. Conversations stay,
-          but they can't be continued with this provider.
-        </p>
-      </Dialog>
+        description={
+          <p>
+            The provider profile and its key in your system keychain are deleted. Conversations
+            stay, but they can't be continued with this provider.
+          </p>
+        }
+      />
     </div>
   );
 }

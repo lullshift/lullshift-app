@@ -378,13 +378,14 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
             </button>
           </>
         }
-      >
-        <p>
-          Lullshift forgets {removing ? truncate(removing.id, 60) : "this marketplace"} and deletes
-          its downloaded list. Activities you already installed from it stay, and so does your saved
-          progress.
-        </p>
-      </Dialog>
+        description={
+          <p>
+            Lullshift forgets {removing ? truncate(removing.id, 60) : "this marketplace"} and
+            deletes its downloaded list. Activities you already installed from it stay, and so does
+            your saved progress.
+          </p>
+        }
+      />
 
       <ReviewDialog
         request={review}

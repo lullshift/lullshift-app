@@ -257,13 +257,16 @@ export default function DetailPanel(props: Props) {
             </button>
           </>
         }
-      >
-        <p>
-          This removes {name} session {shortId(session.providerSessionId)} from Lullshift: its
-          timeline, your notes, items and links, and any captured text.
-        </p>
-        <p>It can't be undone. Files and the agent itself aren't touched.</p>
-      </Dialog>
+        description={
+          <>
+            <p>
+              This removes {name} session {shortId(session.providerSessionId)} from Lullshift: its
+              timeline, your notes, items and links, and any captured text.
+            </p>
+            <p>It can't be undone. Files and the agent itself aren't touched.</p>
+          </>
+        }
+      />
     </aside>
   );
 }

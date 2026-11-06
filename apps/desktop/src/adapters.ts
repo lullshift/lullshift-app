@@ -11,6 +11,23 @@ export type AdapterStatus =
 /** Agents with a hook adapter. */
 export type AgentId = "claude-code" | "codex" | "cursor";
 
+/** Every agent with a hook adapter, in the order Integrations lists them. */
+export const SUPPORTED_AGENTS: readonly AgentId[] = ["claude-code", "codex", "cursor"];
+
+/** The Tauri command that reports an agent's adapter status. */
+export function statusCommand(agent: AgentId): string {
+  return agent === "claude-code" ? "claude_code_status" : `${agent}_status`;
+}
+
+/**
+ * True only when every supported agent is known to be connected. A status that is missing
+ * (null: unreadable or still unknown) counts as not connected, so the welcome keeps offering the
+ * button rather than hiding it on a guess.
+ */
+export function allAgentsConnected(statuses: readonly (AdapterStatus | null)[]): boolean {
+  return statuses.length === SUPPORTED_AGENTS.length && statuses.every((s) => s === "installed");
+}
+
 export interface AdapterView {
   status: AdapterStatus;
   settingsPath: string | null;

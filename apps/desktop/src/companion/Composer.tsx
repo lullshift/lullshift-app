@@ -270,6 +270,22 @@ export function Composer({
             )}
           </>
         }
+        description={
+          shown ? (
+            <>
+              <p>
+                <strong>{sendsToText(host)}</strong>
+                {profile ? ` (${profile.label})` : ""}. Scope: {scopeLabel(shown.scope.kind)}.{" "}
+                {charCountText(shown.chars)}.
+              </p>
+              <p>{historyText(historyCount, host)}</p>
+              <p>
+                This exact text goes to the provider along with your message. Nothing else from your
+                sessions is included.
+              </p>
+            </>
+          ) : undefined
+        }
       >
         {preview.phase === "loading" && <p>Preparing the preview…</p>}
         {preview.phase === "error" && <Banner tone="danger">{preview.text}</Banner>}
@@ -277,21 +293,9 @@ export function Composer({
           <Banner tone="attention">{preview.note}</Banner>
         )}
         {shown && (
-          <>
-            <p>
-              <strong>{sendsToText(host)}</strong>
-              {profile ? ` (${profile.label})` : ""}. Scope: {scopeLabel(shown.scope.kind)}.{" "}
-              {charCountText(shown.chars)}.
-            </p>
-            <p>{historyText(historyCount, host)}</p>
-            <p>
-              This exact text goes to the provider along with your message. Nothing else from your
-              sessions is included.
-            </p>
-            <pre className="preview-text" tabIndex={0} aria-label="Exact text that will be sent">
-              {shown.text}
-            </pre>
-          </>
+          <pre className="preview-text" tabIndex={0} aria-label="Exact text that will be sent">
+            {shown.text}
+          </pre>
         )}
       </Dialog>
     </div>

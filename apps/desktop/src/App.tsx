@@ -15,6 +15,7 @@ import { Onboarding } from "./Onboarding";
 import { loadUiPrefs, updateUiPrefs, useShowWelcome, useUiPrefs } from "./uiPrefsStore";
 import { Icon, type IconName } from "./ui/Icon";
 import { Mascot } from "./ui/Mascot";
+import { SkipLink } from "./ui/SkipLink";
 
 /** Re-derive stale/unknown states and relative times even when no events arrive. */
 const REFRESH_MS = 30_000;
@@ -47,6 +48,7 @@ export default function App() {
   // Bumps on each sessions-changed event so an open detail panel re-reads its session.
   const [changeTick, setChangeTick] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   // The Activities heading while that view is hidden (only the visible view gets focus).
   const unusedHeading = useRef<HTMLHeadingElement>(null);
   const unusedCompanionHeading = useRef<HTMLHeadingElement>(null);
@@ -124,6 +126,8 @@ export default function App() {
 
   return (
     <div className="shell">
+      {/* First in the tab order; hidden until focused. Skips the five-item nav. */}
+      <SkipLink targetId="main-content" targetRef={mainRef} />
       <header className="sidebar">
         <div className="brand">
           <Mascot face="watching" size={36} />
@@ -158,7 +162,12 @@ export default function App() {
         </p>
       </header>
 
-      <main className={`content width-${contentWidth}`}>
+      <main
+        id="main-content"
+        ref={mainRef}
+        tabIndex={-1}
+        className={`content width-${contentWidth}`}
+      >
         {view === "sessions" && (
           <SessionsView
             headingRef={headingRef}

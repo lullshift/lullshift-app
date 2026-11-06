@@ -204,11 +204,13 @@ export function ManagePanel({ onChanged }: Props) {
             </button>
           </>
         }
+        description={
+          <p>
+            {uninstalling ? truncate(uninstalling.name, 60) : "This activity"} will be removed from
+            this device. You can install it again from its marketplace.
+          </p>
+        }
       >
-        <p>
-          {uninstalling ? truncate(uninstalling.name, 60) : "This activity"} will be removed from
-          this device. You can install it again from its marketplace.
-        </p>
         <label className="mk-check">
           <input
             type="checkbox"

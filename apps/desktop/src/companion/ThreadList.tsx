@@ -150,12 +150,13 @@ export function ThreadList({
             </button>
           </>
         }
-      >
-        <p>
-          The messages, and the context saved with them, are removed from this computer. This can't
-          be undone. Text already sent to a provider stays with that provider.
-        </p>
-      </Dialog>
+        description={
+          <p>
+            The messages, and the context saved with them, are removed from this computer. This
+            can't be undone. Text already sent to a provider stays with that provider.
+          </p>
+        }
+      />
     </nav>
   );
 }

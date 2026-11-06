@@ -74,8 +74,8 @@ export function TaskContextSwitch() {
             </button>
           </>
         }
+        description={<p>Here is exactly what Lullshift keeps from Claude Code:</p>}
       >
-        <p>Here is exactly what Lullshift keeps from Claude Code:</p>
         <ul className="checklist">
           {CONSENT_ITEMS.map((item) => (
             <li key={item}>

@@ -144,6 +144,14 @@ export function ReviewDialog({ request, onClose, onDone }: Props) {
           )}
         </>
       }
+      description={
+        state.phase === "ready" && !unchanged ? (
+          <p>
+            Check what this activity asks for before you continue. Nothing is{" "}
+            {isUpdate ? "updated" : "installed"} until you choose {isUpdate ? "Update" : "Install"}.
+          </p>
+        ) : undefined
+      }
     >
       {request && (
         <div className="review" aria-live="polite">

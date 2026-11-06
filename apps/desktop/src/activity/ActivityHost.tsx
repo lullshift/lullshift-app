@@ -21,7 +21,7 @@ import { Icon } from "../ui/Icon";
 import { Mascot } from "../ui/Mascot";
 import { loadContent, type ContentProblem } from "./content";
 import { HelpDialog } from "./HelpDialog";
-import { formatPlayed } from "./playTime";
+import { PausedStats } from "./PausedStats";
 import { usePreview } from "./usePreview";
 
 export interface ActivityInfo {
@@ -599,51 +599,6 @@ function PausedCard({
           How to play
         </button>
       </div>
-    </div>
-  );
-}
-
-/**
- * What the paused view shows instead of an empty card (S05-T09): time played, always; the
- * activity's own stats if it reported any; otherwise its preview image.
- */
-function PausedStats({
-  name,
-  summary,
-  playedNow,
-  playedTotal,
-  preview,
-}: {
-  name: string;
-  summary: SummaryItem[] | null;
-  playedNow: number;
-  playedTotal: number;
-  preview: string | null;
-}) {
-  const showTotal = Math.floor(playedTotal / 60) > Math.floor(playedNow / 60);
-  return (
-    <div className="paused-stats">
-      <dl className="stat-list">
-        <div className="stat">
-          <dt>Played this time</dt>
-          <dd>{formatPlayed(playedNow)}</dd>
-        </div>
-        {showTotal && (
-          <div className="stat">
-            <dt>In total</dt>
-            <dd>{formatPlayed(playedTotal)}</dd>
-          </div>
-        )}
-        {summary?.map((item, i) => (
-          <div className="stat" key={i}>
-            <dt>{item.label}</dt>
-            <dd>{String(item.value)}</dd>
-          </div>
-        ))}
-      </dl>
-      {!summary && preview && (
-        <img className="paused-preview" src={preview} alt={`${name} preview`} />
-      )}
     </div>
   );
 }

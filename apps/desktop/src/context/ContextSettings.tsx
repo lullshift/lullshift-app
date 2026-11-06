@@ -132,13 +132,16 @@ export function ContextSettings() {
             </button>
           </>
         }
-      >
-        <p>
-          This removes the intents, requests and questions Lullshift captured from your agents, for
-          every session. It can't be undone.
-        </p>
-        <p>Your own notes, items and intents stay.</p>
-      </Dialog>
+        description={
+          <>
+            <p>
+              This removes the intents, requests and questions Lullshift captured from your agents,
+              for every session. It can't be undone.
+            </p>
+            <p>Your own notes, items and intents stay.</p>
+          </>
+        }
+      />
     </>
   );
 }

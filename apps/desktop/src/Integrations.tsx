@@ -209,12 +209,18 @@ export default function Integrations({
             </button>
           </>
         }
+        description={
+          <>
+            <p>Lullshift will add a small hook to this file:</p>
+            <p className="path">
+              <code>{view?.settingsPath ?? "your Claude Code settings file"}</code>
+            </p>
+            <p>
+              Then Claude Code tells Lullshift when {hookEventText(view?.events ?? []).join(", ")}.
+            </p>
+          </>
+        }
       >
-        <p>Lullshift will add a small hook to this file:</p>
-        <p className="path">
-          <code>{view?.settingsPath ?? "your Claude Code settings file"}</code>
-        </p>
-        <p>Then Claude Code tells Lullshift when {hookEventText(view?.events ?? []).join(", ")}.</p>
         <ul className="checklist">
           <li>
             <Icon name="check" size={18} />
@@ -286,12 +292,13 @@ export default function Integrations({
             </button>
           </>
         }
-      >
-        <p>
-          Lullshift removes its hooks and stops receiving Claude Code events. Your own hooks and
-          settings stay as they are.
-        </p>
-      </Dialog>
+        description={
+          <p>
+            Lullshift removes its hooks and stops receiving Claude Code events. Your own hooks and
+            settings stay as they are.
+          </p>
+        }
+      />
     </section>
   );
 }

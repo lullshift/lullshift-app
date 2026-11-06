@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { CONNECT_EXPLAINER, WELCOME_LINES, suggestFirstActivity } from "./welcomeCopy";
+import {
+  CONNECT_EXPLAINER,
+  CONNECT_LABEL,
+  WELCOME_LINES,
+  suggestFirstActivity,
+} from "./welcomeCopy";
 
 const a = (id: string, category: string, savedUtc: string | null = null) => ({
   id,
@@ -30,8 +35,9 @@ describe("welcome wording stays true to what the app does", () => {
     expect(text).toContain("this computer");
     expect(text).toContain("offline");
   });
-  it("names the file, the backup and the two confirmations", () => {
-    expect(CONNECT_EXPLAINER).toContain("settings.json");
+  it("names the backup and the two confirmations", () => {
+    expect(CONNECT_EXPLAINER).toContain("hooks or settings file");
+    expect(CONNECT_LABEL).toBe("Connect an agent");
     expect(CONNECT_EXPLAINER.toLowerCase()).toContain("backup");
     expect(CONNECT_EXPLAINER).toContain("system dialog");
     expect(CONNECT_EXPLAINER.toLowerCase()).toContain("optional");

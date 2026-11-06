@@ -4,7 +4,13 @@ interface Props {
   open: boolean;
   title: string;
   onClose: () => void;
-  children: ReactNode;
+  /**
+   * The explanation of what the dialog asks (what will change, what is kept). Rendered first and
+   * linked with aria-describedby so a screen reader reads it after the title. Required for every
+   * consent or confirmation dialog.
+   */
+  description?: ReactNode;
+  children?: ReactNode;
   /** Buttons for the dialog footer; the first focusable element gets focus on open. */
   actions: ReactNode;
   /** Prevent closing (Esc or backdrop) while work is in progress. */
@@ -15,9 +21,10 @@ interface Props {
  * Modal dialog on the native <dialog> element: the browser traps focus, Esc cancels, and focus
  * returns to the opener when it closes.
  */
-export function Dialog({ open, title, onClose, children, actions, busy }: Props) {
+export function Dialog({ open, title, onClose, description, children, actions, busy }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  const descId = useId();
 
   useEffect(() => {
     const d = ref.current;
@@ -31,6 +38,7 @@ export function Dialog({ open, title, onClose, children, actions, busy }: Props)
       ref={ref}
       className="dialog"
       aria-labelledby={titleId}
+      aria-describedby={description ? descId : undefined}
       onCancel={(e) => {
         e.preventDefault();
         if (!busy) onClose();
@@ -44,6 +52,11 @@ export function Dialog({ open, title, onClose, children, actions, busy }: Props)
         <h2 id={titleId} className="dialog-title">
           {title}
         </h2>
+        {description && (
+          <div id={descId} className="dialog-description">
+            {description}
+          </div>
+        )}
         {children}
       </div>
       <div className="dialog-actions">{actions}</div>

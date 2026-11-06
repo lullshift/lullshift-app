@@ -221,14 +221,18 @@ export default function AgentCard({ agent }: { agent: Agent }) {
             </button>
           </>
         }
+        description={
+          <>
+            <p>Lullshift will add small hooks to this file:</p>
+            <p className="path">
+              <code>{view?.settingsPath ?? FILE[agent]}</code>
+            </p>
+            <p>
+              Then {name} tells Lullshift when {hookEventText(view?.events ?? []).join(", ")}.
+            </p>
+          </>
+        }
       >
-        <p>Lullshift will add small hooks to this file:</p>
-        <p className="path">
-          <code>{view?.settingsPath ?? FILE[agent]}</code>
-        </p>
-        <p>
-          Then {name} tells Lullshift when {hookEventText(view?.events ?? []).join(", ")}.
-        </p>
         <ul className="checklist">
           <li>
             <Icon name="check" size={18} />
@@ -304,12 +308,13 @@ export default function AgentCard({ agent }: { agent: Agent }) {
             </button>
           </>
         }
-      >
-        <p>
-          Lullshift removes its hooks and stops receiving {name} events. Your own hooks and settings
-          stay as they are.
-        </p>
-      </Dialog>
+        description={
+          <p>
+            Lullshift removes its hooks and stops receiving {name} events. Your own hooks and
+            settings stay as they are.
+          </p>
+        }
+      />
     </>
   );
 }

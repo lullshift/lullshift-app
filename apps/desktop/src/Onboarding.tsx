@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import type { ActivityInfo } from "./activity/ActivityHost";
+import { SUPPORTED_AGENTS, allAgentsConnected, statusCommand, type AdapterView } from "./adapters";
 import {
   CONNECT_EXPLAINER,
+  CONNECT_LABEL,
   WELCOME_LINES,
   WELCOME_TITLE,
   suggestFirstActivity,
@@ -24,6 +26,9 @@ interface Props {
  */
 export function Onboarding({ open, onDone, onConnect, onTryActivity }: Props) {
   const [suggestion, setSuggestion] = useState<string | null>(null);
+  // Unknown until read. Unknown or unreadable keeps the Connect button, so it is never hidden
+  // on a guess.
+  const [allConnected, setAllConnected] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -31,6 +36,15 @@ export function Onboarding({ open, onDone, onConnect, onTryActivity }: Props) {
     invoke<ActivityInfo[]>("activities_list")
       .then((list) => !cancelled && setSuggestion(suggestFirstActivity(list)?.name ?? null))
       .catch(() => undefined); // No suggestion: the generic wording below still works.
+    Promise.all(
+      SUPPORTED_AGENTS.map((agent) =>
+        invoke<AdapterView>(statusCommand(agent))
+          .then((v) => v.status)
+          .catch(() => null),
+      ),
+    )
+      .then((statuses) => !cancelled && setAllConnected(allAgentsConnected(statuses)))
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -56,16 +70,18 @@ export function Onboarding({ open, onDone, onConnect, onTryActivity }: Props) {
           >
             {suggestion ? `Try ${suggestion}` : "Browse activities"}
           </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              onDone();
-              onConnect();
-            }}
-          >
-            Set up Claude Code
-          </button>
+          {!allConnected && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                onDone();
+                onConnect();
+              }}
+            >
+              {CONNECT_LABEL}
+            </button>
+          )}
         </>
       }
     >
@@ -73,10 +89,12 @@ export function Onboarding({ open, onDone, onConnect, onTryActivity }: Props) {
         <p key={line}>{line}</p>
       ))}
       <ul className="checklist">
-        <li>
-          <Icon name="plug" size={18} />
-          <span>{CONNECT_EXPLAINER}</span>
-        </li>
+        {!allConnected && (
+          <li>
+            <Icon name="plug" size={18} />
+            <span>{CONNECT_EXPLAINER}</span>
+          </li>
+        )}
         <li>
           <Icon name="play" size={18} />
           <span>

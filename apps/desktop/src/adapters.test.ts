@@ -4,6 +4,9 @@ import {
   adapterStatusText,
   CAPABILITY_SUMMARY,
   CODEX_TRUST_NOTE,
+  SUPPORTED_AGENTS,
+  allAgentsConnected,
+  statusCommand,
   hookEventText,
 } from "./adapters";
 
@@ -36,6 +39,26 @@ describe("Codex and Cursor integration text", () => {
     expect(hookEventText(["Interrupt", "afterAgentResponse"])).toEqual([
       "you stop a turn",
       "it replies",
+    ]);
+  });
+});
+
+describe("allAgentsConnected", () => {
+  it("is true only when every supported agent is installed", () => {
+    expect(allAgentsConnected(["installed", "installed", "installed"])).toBe(true);
+    expect(allAgentsConnected(["installed", "not_installed", "installed"])).toBe(false);
+    expect(allAgentsConnected(["installed", "needs_update", "installed"])).toBe(false);
+  });
+  it("treats unknown or missing status as not connected", () => {
+    expect(allAgentsConnected(["installed", null, "installed"])).toBe(false);
+    expect(allAgentsConnected(["installed", "installed"])).toBe(false);
+    expect(allAgentsConnected([])).toBe(false);
+  });
+  it("asks the right command for each agent", () => {
+    expect(SUPPORTED_AGENTS.map(statusCommand)).toEqual([
+      "claude_code_status",
+      "codex_status",
+      "cursor_status",
     ]);
   });
 });
