@@ -3096,6 +3096,7 @@ name = "pack-media"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
+ "flate2",
  "image-webp",
  "png",
  "serde_json",

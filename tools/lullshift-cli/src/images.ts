@@ -10,6 +10,9 @@
 //   exactly the size the header implies, with valid row filters. WebP: the container and
 //   picture headers are checked here; the full WebP decode happens in the app and at install
 //   (Node has no WebP decoder, and the CLI adds no dependency for one).
+// Differences from the app: the CLI's WebP check cannot see unused bytes inside a VP8L or VP8
+// chunk (the app does for VP8L, within an 8-byte look-ahead), and WebP padding bytes are
+// checked here the same way as in the app.
 
 import { crc32, inflateSync } from "node:zlib";
 
@@ -140,13 +143,25 @@ function checkPng(b: Buffer): ImageInfo {
   if (header.colour === 3 && !palette) refuse("can't be decoded");
   // Inflate with a hard cap: one byte more than the header allows proves it is too much.
   const expected = rawSize(header);
+  const stream = Buffer.concat(idat);
   let raw: Buffer;
+  let consumed: number;
   try {
-    raw = inflateSync(Buffer.concat(idat), { maxOutputLength: expected + 1 });
+    // `info: true` reports how many input bytes the zlib stream used (`engine.bytesWritten`).
+    const r = inflateSync(stream, { maxOutputLength: expected + 1, info: true }) as unknown as {
+      buffer: Buffer;
+      engine: { bytesWritten: number };
+    };
+    raw = r.buffer;
+    consumed = r.engine.bytesWritten;
   } catch {
     return refuse("can't be decoded");
   }
   if (raw.length !== expected) refuse("can't be decoded");
+  // The stream must end exactly where the IDAT data ends: node's inflate stops at the end of the
+  // first zlib stream and ignores what follows, so bytes after it would otherwise go unseen.
+  if (consumed !== stream.length)
+    refuse("is damaged (it has data after the end of its image data)");
   checkFilters(raw, header);
   return { kind: "png", width: header.width, height: header.height };
 }
@@ -203,6 +218,8 @@ function checkWebp(b: Buffer): ImageInfo {
     const padded = len + (len & 1);
     if (padded > b.length - at - 8) refuse("is damaged (a chunk is longer than the file)");
     const body = b.subarray(at + 8, at + 8 + len);
+    if (padded !== len && b[at + 8 + len] !== 0)
+      refuse("is damaged (a chunk's padding byte isn't zero)");
     at += 8 + padded;
     const canvas = (w: number, h: number) => {
       if (extended) {

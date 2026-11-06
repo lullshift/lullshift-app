@@ -13,6 +13,9 @@ publish = false
 # change is a deliberate, reviewed bump. `png` is already in the lockfile through Tauri.
 png = "=0.18.1"
 image-webp = "=0.2.4"
+# Already in the lockfile through `png`; used to inflate IDAT under a cap and find the exact
+# end of the zlib stream.
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 serde_json.workspace = true
 
 [dev-dependencies]

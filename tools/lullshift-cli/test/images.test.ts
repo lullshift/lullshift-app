@@ -2,7 +2,7 @@
 // animated, oversized or metadata-carrying pictures, and data naming unlisted pictures.
 import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { crc32 } from "node:zlib";
+import { crc32, deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { checkImage, imageReferences, isImagePath } from "../src/images.ts";
 import { servedFiles } from "../src/simulate.ts";
@@ -97,6 +97,33 @@ describe("checkImage", () => {
     expect(why("images/a.png", withChunk(chunk("eXIf", Buffer.from("MM\0*"))))).not.toBe("ok");
     expect(why("images/a.png", withChunk(chunk("zzZz", Buffer.from("x"))))).not.toBe("ok");
     expect(why("images/a.png", Buffer.concat([PNG, Buffer.from("<script>")]))).not.toBe("ok");
+  });
+
+  it("refuses data hiding in IDAT after the pixels (extra stream, raw bytes, zero tail)", () => {
+    const ihdr = (w: number, h: number) => {
+      const d = Buffer.alloc(13);
+      d.writeUInt32BE(w, 0);
+      d.writeUInt32BE(h, 4);
+      d[8] = 8;
+      d[9] = 2;
+      return chunk("IHDR", d);
+    };
+    const png = (idat: Buffer) =>
+      Buffer.concat([PNG.subarray(0, 8), ihdr(1, 1), chunk("IDAT", idat), chunk("IEND")]);
+    const pixels = Buffer.from([0, 1, 2, 3]);
+    expect(why("images/a.png", png(deflateSync(pixels)))).toBe("ok");
+    // Raw bytes after the zlib stream end.
+    expect(
+      why("images/a.png", png(Buffer.concat([deflateSync(pixels), Buffer.from("<html>")]))),
+    ).toMatch(/after the end of its image data/);
+    // A second zlib stream after the first.
+    expect(
+      why("images/a.png", png(Buffer.concat([deflateSync(pixels), deflateSync(Buffer.from("x"))]))),
+    ).not.toBe("ok");
+    // A zero tail that inflates to far more than the pixels (checked under a cap).
+    const tail = deflateSync(Buffer.concat([pixels, Buffer.alloc(64 * 1024 * 1024)]));
+    expect(tail.length).toBeLessThan(512 * 1024);
+    expect(why("images/a.png", png(tail))).not.toBe("ok");
   });
 
   it("refuses a bad CRC and damaged pixel data", () => {

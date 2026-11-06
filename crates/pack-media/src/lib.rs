@@ -9,7 +9,10 @@
 //! 2. walks the container (PNG chunks, WebP RIFF chunks) and refuses anything but the chunks a
 //!    still picture needs: no animation (APNG `acTL`/`fcTL`/`fdAT`, WebP `ANIM`/`ANMF` or the
 //!    animation flag), no metadata (text, EXIF, XMP, time stamps), no colour profiles, no unknown
-//!    chunks, nothing after the end of the image;
+//!    chunks, nothing after the end of the image. For PNG it also inflates the image data under
+//!    a hard cap and requires the zlib stream to end exactly where the concatenated `IDAT` data
+//!    ends and to hold exactly the pixel bytes the header promises (so no extra compressed
+//!    data, and no bytes after the stream end, can hide inside `IDAT`);
 //! 3. reads the width and height from the header and refuses anything over
 //!    [`MAX_DIMENSION`] on either side **before** a decoder allocates a pixel buffer;
 //! 4. decodes the whole image with a memory-safe decoder (`png`, `image-webp`; both
@@ -17,6 +20,15 @@
 //!
 //! The bytes are not re-encoded: the bytes that pass are exactly the bytes that are hashed,
 //! installed and served, and the refusals in step 2 already keep metadata out.
+//!
+//! What is **not** detected (WebP): a `VP8 ` (lossy) chunk's last partition has no stored
+//! length, so bytes after the real data are indistinguishable from data. For `VP8L` the decoder
+//! does not report the exact end of its bitstream; the check reads how far the decoder pulled
+//! from the chunk and refuses more than 8 unread bytes (its look-ahead), so up to 8 trailing
+//! bytes in a `VP8L` chunk, and any in a `VP8 ` chunk, can pass. They are inert (no decoder or
+//! browser reads them, they cannot be a second image or metadata chunk, the RIFF and chunk
+//! lengths must add up exactly, and the whole file is capped at [`MAX_IMAGE_BYTES`]) but they
+//! are not refused.
 //!
 //! [`image_references`] finds every string in a pack's data that names an image, so the host
 //! and the CLI can require that each one is declared in the manifest.
@@ -134,9 +146,17 @@ pub fn check_image(path: &str, bytes: &[u8]) -> Result<ImageInfo, ImageError> {
     if bytes.len() > MAX_IMAGE_BYTES {
         return Err(ImageError::TooLarge);
     }
-    let (width, height) = match kind {
-        ImageKind::Png => png_structure(bytes)?,
-        ImageKind::Webp => webp_structure(bytes)?,
+    // Structure first (no decompression), then size limits, then the strict stream check, and
+    // only then a full decode.
+    let (width, height, png, vp8l_end) = match kind {
+        ImageKind::Png => {
+            let m = png_structure(bytes)?;
+            (m.width, m.height, Some(m), None)
+        }
+        ImageKind::Webp => {
+            let (w, h, end) = webp_structure(bytes)?;
+            (w, h, None, end)
+        }
     };
     if width == 0 || height == 0 {
         return Err(ImageError::Malformed("it has no pixels"));
@@ -144,9 +164,12 @@ pub fn check_image(path: &str, bytes: &[u8]) -> Result<ImageInfo, ImageError> {
     if width > MAX_DIMENSION || height > MAX_DIMENSION {
         return Err(ImageError::TooManyPixels { width, height });
     }
-    match kind {
-        ImageKind::Png => decode_png(bytes, width, height)?,
-        ImageKind::Webp => decode_webp(bytes, width, height)?,
+    match png {
+        Some(m) => {
+            check_idat_stream(&m)?;
+            decode_png(bytes, width, height)?;
+        }
+        None => decode_webp(bytes, width, height, vp8l_end)?,
     }
     Ok(ImageInfo {
         kind,
@@ -166,13 +189,114 @@ fn be32(b: &[u8]) -> u32 {
     u32::from_be_bytes([b[0], b[1], b[2], b[3]])
 }
 
-/// Walks the PNG chunks without decompressing anything. Returns the size from IHDR.
-fn png_structure(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
+/// What the PNG walk found.
+struct PngMeta {
+    width: u32,
+    height: u32,
+    /// The concatenated `IDAT` bodies: the zlib stream.
+    idat: Vec<u8>,
+    /// The inflated size the header promises (filter bytes and padding included).
+    raw_len: u64,
+}
+
+/// Bytes of inflated image data for these IHDR fields, or `None` for a combination PNG forbids.
+fn png_raw_len(width: u32, height: u32, depth: u8, color: u8, interlace: u8) -> Option<u64> {
+    let channels: u64 = match (color, depth) {
+        (0, 1 | 2 | 4 | 8 | 16) | (3, 1 | 2 | 4 | 8) => 1,
+        (4, 8 | 16) => 2,
+        (2, 8 | 16) => 3,
+        (6, 8 | 16) => 4,
+        _ => return None,
+    };
+    let bits = channels * u64::from(depth);
+    let pass = |w: u64, h: u64| -> u64 {
+        if w == 0 || h == 0 {
+            0
+        } else {
+            h * (1 + (w * bits).div_ceil(8))
+        }
+    };
+    let (w, h) = (u64::from(width), u64::from(height));
+    match interlace {
+        0 => Some(pass(w, h)),
+        1 => {
+            // Adam7: (x offset, y offset, x step, y step) per pass.
+            const PASSES: [(u64, u64, u64, u64); 7] = [
+                (0, 0, 8, 8),
+                (4, 0, 8, 8),
+                (0, 4, 4, 8),
+                (2, 0, 4, 4),
+                (0, 2, 2, 4),
+                (1, 0, 2, 2),
+                (0, 1, 1, 2),
+            ];
+            Some(
+                PASSES
+                    .iter()
+                    .map(|&(x0, y0, dx, dy)| {
+                        pass(
+                            w.saturating_sub(x0).div_ceil(dx),
+                            h.saturating_sub(y0).div_ceil(dy),
+                        )
+                    })
+                    .sum(),
+            )
+        }
+        _ => None,
+    }
+}
+
+/// Inflates the concatenated `IDAT` data under a hard cap and requires the zlib stream to end
+/// exactly at the end of that data after producing exactly the promised pixel bytes. Extra
+/// compressed data (for example a zero-filled tail that inflates to hundreds of megabytes) and
+/// raw bytes after the stream end are both refused. At most `raw_len + 64 KiB` bytes are ever
+/// produced, in a fixed 64 KiB buffer, and the loop stops at the first byte over `raw_len`.
+fn check_idat_stream(m: &PngMeta) -> Result<(), ImageError> {
+    use flate2::{Decompress, FlushDecompress, Status};
+    let mut inflater = Decompress::new(true);
+    let mut out = vec![0u8; 64 * 1024];
+    loop {
+        let (in_before, out_before) = (inflater.total_in(), inflater.total_out());
+        let start = usize::try_from(in_before).map_err(|_| ImageError::Undecodable)?;
+        let status = inflater
+            .decompress(&m.idat[start..], &mut out, FlushDecompress::None)
+            .map_err(|_| ImageError::Undecodable)?;
+        if inflater.total_out() > m.raw_len {
+            return Err(ImageError::Malformed(
+                "its image data holds more than the pixels",
+            ));
+        }
+        match status {
+            Status::StreamEnd => break,
+            Status::Ok | Status::BufError => {
+                if inflater.total_in() == in_before && inflater.total_out() == out_before {
+                    // No progress: the stream is cut short.
+                    return Err(ImageError::Undecodable);
+                }
+            }
+        }
+    }
+    if inflater.total_out() != m.raw_len {
+        return Err(ImageError::Malformed(
+            "its image data is shorter than the header says",
+        ));
+    }
+    if inflater.total_in() != m.idat.len() as u64 {
+        return Err(ImageError::Malformed(
+            "it has data after the end of its image data",
+        ));
+    }
+    Ok(())
+}
+
+/// Walks the PNG chunks without decompressing anything.
+fn png_structure(bytes: &[u8]) -> Result<PngMeta, ImageError> {
     if bytes.len() < 8 || &bytes[..8] != PNG_SIGNATURE {
         return Err(ImageError::WrongType);
     }
     let mut at = 8;
-    let mut size = None;
+    let mut head: Option<(u32, u32, u64)> = None;
+    let mut idat: Vec<u8> = Vec::new();
     let mut seen_idat = false;
     let mut idat_done = false;
     let mut first = true;
@@ -191,7 +315,16 @@ fn png_structure(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
             if &kind != b"IHDR" || len != 13 {
                 return Err(ImageError::Malformed("it doesn't start with a header"));
             }
-            size = Some((be32(body), be32(&body[4..])));
+            let (w, h) = (be32(body), be32(&body[4..]));
+            // A header over our limits is refused by size before the stream check, so only
+            // bound the arithmetic here.
+            let raw = if w > MAX_DIMENSION || h > MAX_DIMENSION {
+                0
+            } else {
+                png_raw_len(w, h, body[8], body[9], body[12])
+                    .ok_or(ImageError::Malformed("its header is invalid"))?
+            };
+            head = Some((w, h, raw));
             first = false;
             continue;
         }
@@ -202,6 +335,7 @@ fn png_structure(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
                     return Err(ImageError::Malformed("its image data is split up"));
                 }
                 seen_idat = true;
+                idat.extend_from_slice(body);
             }
             b"IEND" => {
                 if !seen_idat {
@@ -210,7 +344,14 @@ fn png_structure(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
                 if at != bytes.len() {
                     return Err(ImageError::Malformed("it has data after the end"));
                 }
-                return size.ok_or(ImageError::Malformed("it has no header"));
+                let (width, height, raw_len) =
+                    head.ok_or(ImageError::Malformed("it has no header"))?;
+                return Ok(PngMeta {
+                    width,
+                    height,
+                    idat,
+                    raw_len,
+                });
             }
             b"acTL" | b"fcTL" | b"fdAT" => return Err(ImageError::Animated),
             b"tEXt" | b"zTXt" | b"iTXt" => return Err(ImageError::Metadata("text".into())),
@@ -259,7 +400,7 @@ fn le24(b: &[u8]) -> u32 {
 }
 
 /// Walks the WebP RIFF chunks. Returns the canvas size.
-fn webp_structure(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
+fn webp_structure(bytes: &[u8]) -> Result<(u32, u32, Option<usize>), ImageError> {
     if bytes.len() < 20 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WEBP" {
         return Err(ImageError::WrongType);
     }
@@ -274,6 +415,7 @@ fn webp_structure(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
     let mut extended = false;
     let mut bitstream = false;
     let mut index = 0;
+    let mut vp8l_end: Option<usize> = None;
     while at < bytes.len() {
         if bytes.len() - at < 8 {
             return Err(ImageError::Malformed("it ends in the middle of a chunk"));
@@ -286,6 +428,10 @@ fn webp_structure(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
             return Err(ImageError::Malformed("a chunk is longer than the file"));
         }
         let body = &bytes[at + 8..at + 8 + len];
+        if padded != len && bytes[at + 8 + len] != 0 {
+            return Err(ImageError::Malformed("a chunk's padding byte isn't zero"));
+        }
+        let chunk_end = at + 8 + len;
         at += 8 + padded;
         match &kind {
             b"VP8X" => {
@@ -331,6 +477,7 @@ fn webp_structure(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
                 let w = (bits & 0x3fff) + 1;
                 let h = ((bits >> 14) & 0x3fff) + 1;
                 bitstream = true;
+                vp8l_end = Some(chunk_end);
                 check_canvas(&mut size, extended, (w, h))?;
             }
             b"ANIM" | b"ANMF" => return Err(ImageError::Animated),
@@ -343,7 +490,8 @@ fn webp_structure(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
     if !bitstream {
         return Err(ImageError::Malformed("it has no picture"));
     }
-    size.ok_or(ImageError::Malformed("it has no size"))
+    let (w, h) = size.ok_or(ImageError::Malformed("it has no size"))?;
+    Ok((w, h, vp8l_end))
 }
 
 /// The picture's own size must match the extended header's canvas, if there is one.
@@ -362,12 +510,18 @@ fn check_canvas(
     Ok(())
 }
 
-fn decode_webp(bytes: &[u8], width: u32, height: u32) -> Result<(), ImageError> {
+fn decode_webp(
+    bytes: &[u8],
+    width: u32,
+    height: u32,
+    vp8l_end: Option<usize>,
+) -> Result<(), ImageError> {
     // `new` reads only headers; our own walk has already refused every chunk the picture
     // doesn't need. The crate applies its memory limit to metadata reads only (which we never
     // make); its pixel buffers scale with the dimensions, which were capped before this call.
+    let mut cursor = Cursor::new(bytes);
     let mut decoder =
-        image_webp::WebPDecoder::new(Cursor::new(bytes)).map_err(|_| ImageError::Undecodable)?;
+        image_webp::WebPDecoder::new(&mut cursor).map_err(|_| ImageError::Undecodable)?;
     decoder.set_memory_limit(MAX_DECODED_BYTES);
     if decoder.dimensions() != (width, height) {
         return Err(ImageError::Malformed(
@@ -385,6 +539,17 @@ fn decode_webp(bytes: &[u8], width: u32, height: u32) -> Result<(), ImageError> 
     decoder
         .read_image(&mut buf)
         .map_err(|_| ImageError::Undecodable)?;
+    drop(decoder);
+    // The VP8L bit reader looks ahead at most 8 bytes, so if the decoder stopped pulling bytes
+    // more than that short of the chunk's end, the rest is data the picture doesn't use.
+    if let Some(end) = vp8l_end {
+        let pulled = usize::try_from(cursor.position()).unwrap_or(usize::MAX);
+        if end.saturating_sub(pulled) > 8 {
+            return Err(ImageError::Malformed(
+                "its picture chunk has unused data at the end",
+            ));
+        }
+    }
     Ok(())
 }
 
