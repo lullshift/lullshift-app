@@ -63,6 +63,31 @@ cargo run -p agent-ipc --example send_event -- "<app data dir>" tests/fixtures/a
 It prints the reply (`{"ok":true}`, `{"ok":true,"duplicate":true}` or `{"ok":false,"error":"<code>"}`).
 Use a fresh `eventId` for each new event; reusing one is reported as a duplicate.
 
+### Demo mode and screenshots
+
+The desktop dev server also serves a browser demo of the whole UI at `/demo.html`. It runs on a pretend backend (`apps/desktop/src/demo/`) with made-up sessions and Companion history, and it plays the bundled activities from `activities/`. No Rust core and no real data are involved. Use it for UI review and for the website's screenshots.
+
+```bash
+pnpm --filter @lullshift/desktop exec vite --port 1420
+```
+
+Then open <http://localhost:1420/demo.html>. Add `?welcome` to start with the first-launch welcome. In the browser console:
+
+- `lullshiftDemo.attention("claude-code")` makes an agent need you. A running activity pauses.
+- `lullshiftDemo.changed()` re-reads the sessions.
+
+The demo exists only on the dev server: `demo.html` isn't a build input, and the `/demo-activities/` route is dev-only.
+
+To capture screenshots, keep the dev server running and run this from the repo root:
+
+```bash
+node apps/desktop/scripts/demo-screenshots.mjs demo-screenshots
+```
+
+It drives Edge or Chrome headless (set `LULLSHIFT_BROWSER` to use another path). It writes `<shot>-light.png` and `<shot>-dark.png` at 1280x800 CSS pixels and 2x density for these shots: sessions, welcome back, activities, a game, a paused game, Companion and integrations. Add or change shots in the `SHOTS` list in the script.
+
+The website (`lullshift/lullshift.github.io`) uses five of them: sessions, game, game-paused, welcome-back and companion. They are WebP, 1600 px wide, in its `public/screens/`. Convert new captures to that size and format when you update them there.
+
 ## 4. Optional Git hooks
 
 ```bash

@@ -1024,3 +1024,40 @@ Use the keyboard only, and check each game again after an interruption and a res
 - **Step 5:** the remembered context falls back to "No context", with a note.
 
 **Result:** \_\_\_
+
+## Website and demo mode
+
+### W-1: Browser demo of the desktop UI
+
+1. Run `pnpm --filter @lullshift/desktop exec vite --port 1420` and open <http://localhost:1420/demo.html>.
+2. Visit Sessions (Live and History), Activities, Companion, Integrations and Settings.
+3. Start a game. In the console, run `lullshiftDemo.attention("claude-code")`.
+4. Open `/demo.html?welcome`.
+5. Run `node apps/desktop/scripts/demo-screenshots.mjs demo-screenshots`.
+
+**Expected:**
+
+- **Step 2:** every screen shows made-up data and none shows an error.
+- **Step 3:** the game pauses and the card says "Claude Code needs you".
+- **Step 4:** the first-launch welcome shows.
+- **Step 5:** 14 PNGs are written in light and dark, and none fails.
+
+**Result:** \_\_\_
+
+### W-2: Live website
+
+On <https://lullshift.github.io> after the first deploy:
+
+1. Switch the theme between light, dark and auto.
+2. View the home page at phone width.
+3. On the hero gallery, use the tabs with the mouse and the arrow keys, then click a screenshot. Step through the screenshots with the buttons and the arrow keys, then press Escape.
+4. Search the guide.
+
+**Expected:**
+
+- **Step 1:** the screenshots follow the theme.
+- **Step 2:** there is no sideways scrolling.
+- **Step 3:** the lightbox shows all five screenshots and closes back to the one you were viewing.
+- **Step 4:** the search finds guide pages.
+
+**Result:** \_\_\_
