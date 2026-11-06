@@ -54,6 +54,11 @@ export function describeContentError(error: unknown, engine: string | null): Con
       };
     case "engine_unusable":
       return { message: "This pack's engine couldn't be loaded.", detail };
+    case "image_invalid":
+      return {
+        message: "This pack has a picture that didn't pass Lullshift's checks, so it didn't start.",
+        detail,
+      };
     case "data_missing":
     case "data_not_json":
     case "data_too_large":

@@ -19,6 +19,8 @@ unsafe-test-file-urls = []
 # often and every bump must re-run the shared Ajv/Rust corpus. No default features: that drops
 # the HTTP and file retrievers (reqwest, rustls) and IDNA; the host also runs it offline.
 jsonschema = { version = "=0.60.2", default-features = false }
+# Pack images (S12-T11): the same checks at install as when the app loads a pack.
+pack-media = { path = "../pack-media" }
 # JavaScript-faithful `pattern` translation (data_schema.rs); already in the lockfile via Tauri.
 regex = "1.13"
 serde.workspace = true

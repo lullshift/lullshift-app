@@ -1131,3 +1131,135 @@ fn a_preview_image_is_served_from_the_verified_bytes_not_the_disk() {
     assert_eq!(served(&env), None);
     assert_eq!(manage_item(&env, FACTS).problem, Some("tampered"));
 }
+
+// ---- pictures in installed packs (S12-T11) ------------------------------------------------
+
+const PICTURES: &str = "com.example.pictures";
+const HEXAGON: &[u8] = include_bytes!(
+    "../../../../../activities/content/quiz/quiz-shapes-and-sides/images/hexagon.png"
+);
+
+fn pictures_repo(env: &Env, name: &str, image: &[u8]) -> Repo {
+    let repo = env.repo(name);
+    repo.write(
+        "packs/pictures/manifest.json",
+        &json!({
+            "schemaVersion": 1, "kind": "content", "id": PICTURES, "version": "1.0.0",
+            "name": "Pictures", "description": "One picture.", "category": "interactive",
+            "minHostVersion": "0.1.0", "sdkVersion": "0.2.0", "permissions": [], "offline": true,
+            "engine": "lullshift.quiz@1", "data": "quiz.json", "images": ["images/shape.png"]
+        })
+        .to_string(),
+    );
+    repo.write(
+        "packs/pictures/quiz.json",
+        &json!({"title": "Pictures", "questions": [{
+            "prompt": "What shape is this?",
+            "image": {"src": "images/shape.png", "alt": "A flat shape with six sides."},
+            "choices": ["Hexagon", "Square"], "answer": 0,
+            "explanation": "A hexagon has six sides."
+        }]})
+        .to_string(),
+    );
+    let path = repo.dir.join("packs/pictures/images/shape.png");
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+    std::fs::write(path, image).expect("image");
+    repo.write(
+        ".lullshift/marketplace.json",
+        &json!({
+            "schemaVersion": 1, "name": MARKET,
+            "activities": [{"id": PICTURES, "source": {"path": "packs/pictures"}}]
+        })
+        .to_string(),
+    );
+    repo.commit();
+    repo
+}
+
+#[test]
+fn an_installed_pack_serves_its_listed_pictures_and_nothing_else() {
+    let env = Env::new();
+    let repo = pictures_repo(&env, "pictures", HEXAGON);
+    add(&env.core, &repo.url()).expect("add");
+    let p = preview_install(&env.core, MARKET, PICTURES).expect("preview");
+    install_pending(&env.core, &p.token, Instant::now()).expect("install");
+    assert!(listed_ids(&env).contains(&PICTURES.to_owned()));
+    activities::content_for_core(&env.core, PICTURES).expect("content");
+
+    let ok = request(&env, &format!("/{PICTURES}/images/shape.png"));
+    assert_eq!(ok.status(), StatusCode::OK);
+    assert_eq!(ok.headers()[tauri::http::header::CONTENT_TYPE], "image/png");
+    assert_eq!(
+        ok.headers()[tauri::http::header::X_CONTENT_TYPE_OPTIONS],
+        "nosniff"
+    );
+    assert_eq!(
+        ok.headers()[tauri::http::header::CONTENT_SECURITY_POLICY],
+        activities::activity_csp().as_str()
+    );
+    assert_eq!(ok.body().as_slice(), HEXAGON);
+    for path in [
+        "images/other.png",
+        "images/shape.webp",
+        "quiz.json",
+        "images/../quiz.json",
+    ] {
+        assert_eq!(
+            request(&env, &format!("/{PICTURES}/{path}")).status(),
+            StatusCode::NOT_FOUND,
+            "{path}"
+        );
+    }
+}
+
+#[test]
+fn a_pack_with_a_disguised_or_animated_picture_is_refused() {
+    // An SVG with a script, renamed to .png.
+    let svg = br#"<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>"#;
+    // A real PNG with an animation control chunk (acTL) slipped in after the header.
+    let actl = [0u8, 0, 0, 1, 0, 0, 0, 0];
+    let mut chunk = b"acTL".to_vec();
+    chunk.extend_from_slice(&actl);
+    let mut apng = HEXAGON[..33].to_vec();
+    apng.extend_from_slice(&u32::try_from(actl.len()).expect("len").to_be_bytes());
+    apng.extend_from_slice(&chunk);
+    apng.extend_from_slice(&crc32(&chunk).to_be_bytes());
+    apng.extend_from_slice(&HEXAGON[33..]);
+    for (name, bytes) in [("svg", svg.as_slice()), ("apng", apng.as_slice())] {
+        let env = Env::new();
+        let repo = pictures_repo(&env, name, bytes);
+        add(&env.core, &repo.url()).expect("add");
+        // The preview may already refuse; if not, the install must.
+        let refused = match preview_install(&env.core, MARKET, PICTURES) {
+            Err(e) => e,
+            Ok(p) => install_pending(&env.core, &p.token, Instant::now()).expect_err(name),
+        };
+        assert_eq!(refused.kind, "invalidPack", "{name}");
+        assert!(
+            refused.message.contains("picture isn't allowed"),
+            "{name}: {}",
+            refused.message
+        );
+        assert!(!listed_ids(&env).contains(&PICTURES.to_owned()), "{name}");
+        assert!(
+            !env.core.app_dir.join("installed").join(PICTURES).exists(),
+            "{name}"
+        );
+    }
+}
+
+/// CRC-32 (IEEE), enough to build a well-formed chunk in a test.
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFFu32;
+    for &b in bytes {
+        crc ^= u32::from(b);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}

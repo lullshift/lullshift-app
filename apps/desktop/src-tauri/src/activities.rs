@@ -356,7 +356,33 @@ fn check_pack(p: &Activity) -> Checked {
         .get_file(p.dir.path().join(data_path))
         .ok_or_else(|| ContentError::new("data_missing", format!("{data_path} is missing")))?;
     let data = validate_data(schema, data_path, file.contents())?;
+    check_images(&p.manifest, &data, |path| {
+        p.dir
+            .get_file(p.dir.path().join(path))
+            .map(include_dir::File::contents)
+    })?;
     Ok((engine, data))
+}
+
+/// A pack's pictures (ADR-016 amendment, S12-T11): every image the manifest lists is present
+/// and passes [`pack_media::check_image`] (container walk, size from the header before any
+/// pixel buffer exists, full decode), and every image the data names is listed. Bundled and
+/// installed packs share this check, and the installer runs the same one.
+pub(crate) fn check_images<'a>(
+    manifest: &Manifest,
+    data: &Value,
+    read: impl Fn(&str) -> Option<&'a [u8]>,
+) -> Result<(), ContentError> {
+    // `parse_manifest` already limited the list to safe `images/<name>.png|webp` paths, so
+    // they can be shown as they are.
+    for image in &manifest.images {
+        let bytes = read(image)
+            .ok_or_else(|| ContentError::new("image_invalid", format!("{image} is missing")))?;
+        pack_media::check_image(image, bytes)
+            .map_err(|why| ContentError::new("image_invalid", format!("{image} {why}")))?;
+    }
+    pack_media::check_declared(&manifest.images, data)
+        .map_err(|why| ContentError::new("image_invalid", why))
 }
 
 /// A pack's data file against its engine's schema: at most [`DATA_MAX`] bytes, JSON, and valid.
@@ -514,14 +540,44 @@ fn lookup(
             return None;
         }
         let source = match activity.role {
-            Role::Pack => pack_content(activity).ok()?.0,
+            Role::Pack => {
+                let engine = pack_content(activity).ok()?.0;
+                if file.starts_with(pack_media::IMAGE_DIR) {
+                    // The pack's own pictures, only those its manifest lists, and only once
+                    // the pack (images included) passed its check. Never an engine file.
+                    return pack_image(&activity.manifest, file, |p| {
+                        activity
+                            .dir
+                            .get_file(activity.dir.path().join(p))
+                            .map(|f| Cow::Borrowed(f.contents()))
+                    });
+                }
+                engine
+            }
             _ => activity,
         };
         let found = source.dir.get_file(source.dir.path().join(file))?;
         return Some((Cow::Borrowed(found.contents()), content_type));
     }
-    let served = snap?.served.get(id)?;
-    Some((served.file(file)?, content_type))
+    snap?.served.get(id)?.file(file, content_type)
+}
+
+/// A listed pack picture with its content type (`image/png` or `image/webp`, from the checked
+/// path; the bytes were checked to match it). Anything not listed is not served.
+fn pack_image(
+    manifest: &Manifest,
+    file: &str,
+    read: impl FnOnce(&str) -> Option<Cow<'static, [u8]>>,
+) -> Option<(Cow<'static, [u8]>, &'static str)> {
+    if !manifest.images.iter().any(|p| p == file) {
+        return None;
+    }
+    let content_type = match file.rsplit_once('.')?.1 {
+        "png" => "image/png",
+        "webp" => "image/webp",
+        _ => return None,
+    };
+    Some((read(file)?, content_type))
 }
 
 /// Serves one request on the `lullact` scheme. Only GET; everything carries the activity CSP.
@@ -1303,6 +1359,85 @@ mod tests {
             assert!(i.url.contains(&format!("/{id}/index.html")));
         }
         assert!(count >= 1, "at least one bundled content pack");
+    }
+
+    /// S12-T11: a pack's listed pictures are checked and served at its own path with the right
+    /// type, nosniff and the unchanged activity CSP; nothing else under `images/` is served.
+    #[test]
+    fn pack_pictures_are_checked_and_served_only_when_listed() {
+        let with_images: Vec<&Activity> =
+            packs().filter(|p| !p.manifest.images.is_empty()).collect();
+        assert!(!with_images.is_empty(), "a bundled pack has pictures");
+        for p in &with_images {
+            let id = &p.manifest.id;
+            pack_content(p).unwrap_or_else(|e| panic!("{id}: {e:?}"));
+            for image in &p.manifest.images {
+                let (bytes, ct) =
+                    lookup(None, &format!("/{id}/{image}")).unwrap_or_else(|| panic!("{image}"));
+                let info = pack_media::check_image(image, &bytes).expect("checked image");
+                assert_eq!(ct, info.kind.content_type(), "{image}");
+                let r = serve(
+                    None,
+                    &tauri::http::Request::get(format!("{SCHEME}://localhost/{id}/{image}"))
+                        .body(Vec::new())
+                        .expect("request"),
+                );
+                assert_eq!(r.status(), StatusCode::OK);
+                assert_eq!(r.headers()[header::CONTENT_TYPE], ct);
+                assert_eq!(r.headers()[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+                assert_eq!(
+                    r.headers()[header::CONTENT_SECURITY_POLICY],
+                    activity_csp().as_str()
+                );
+            }
+            for path in [
+                "images/not-listed.png",
+                "images/../manifest.json",
+                "images/hexagon.svg",
+                "images",
+                "images/",
+            ] {
+                assert!(lookup(None, &format!("/{id}/{path}")).is_none(), "{path}");
+            }
+        }
+        // A pack without pictures serves nothing from images/, and an engine has no path.
+        let plain = packs()
+            .find(|p| p.manifest.images.is_empty())
+            .expect("a pack without pictures");
+        let first = &with_images[0].manifest.images[0];
+        assert!(lookup(None, &format!("/{}/{first}", plain.manifest.id)).is_none());
+        // The activity CSP still allows images only from the activity's own origin (and data:).
+        assert!(activity_csp().contains("img-src 'self' data:;"));
+    }
+
+    #[test]
+    fn bad_pack_pictures_stop_the_pack() {
+        let p = packs()
+            .find(|p| !p.manifest.images.is_empty())
+            .expect("a pack with pictures");
+        let (_, data) = pack_content(p).expect("checks");
+        let real = |path: &str| {
+            p.dir
+                .get_file(p.dir.path().join(path))
+                .map(include_dir::File::contents)
+        };
+        check_images(&p.manifest, data, real).expect("the real pictures pass");
+        let svg: &[u8] =
+            br#"<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>"#;
+        let err = check_images(&p.manifest, data, |_| Some(svg)).expect_err("svg");
+        assert_eq!(err.code(), "image_invalid");
+        let err = check_images(&p.manifest, data, |_| None).expect_err("missing");
+        assert_eq!(err.code(), "image_invalid");
+        // A real PNG under a .webp name is refused too: the type comes from the bytes and
+        // must match the name.
+        let png = real(&p.manifest.images[0]).expect("bytes");
+        let err = check_images(&p.manifest, data, |_| Some(png)).expect_err("mismatch");
+        assert_eq!(err.code(), "image_invalid");
+        // Data that names a picture the manifest doesn't list.
+        let mut sneaky = data.clone();
+        sneaky["questions"][0]["image"]["src"] = Value::from("images/elsewhere.png");
+        let err = check_images(&p.manifest, &sneaky, real).expect_err("undeclared");
+        assert_eq!(err.code(), "image_invalid");
     }
 
     #[test]

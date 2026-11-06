@@ -26,7 +26,7 @@ Content packs (ADR-003) are code-free data for a named engine. Sprint 05 set the
 ### Packs in the app
 
 - **Identity is the pack.** A pack is listed as its own activity card with the name, description, category, preview and help from the pack's manifest. Its URL is `lullact://localhost/<pack id>/index.html` (`http://lullact.localhost/<pack id>/…` on Windows), so two packs never share an address. Snapshots, storage, time played and the paused-view summary are all keyed by the pack id.
-- **The pack's path serves the engine's files.** The scheme handler maps `/<pack id>/<file>` to the engine's folder. The pack's own files (data, preview, notes) are never served; the preview reaches the UI only through `activity_preview` as a `data:` image.
+- **The pack's path serves the engine's files.** The scheme handler maps `/<pack id>/<file>` to the engine's folder. The pack's own files (data, preview, notes) are never served, with one exception since Sprint 12: the pictures listed in its `images` are served at `/<pack id>/images/<name>` (see the amendment); the preview reaches the UI only through `activity_preview` as a `data:` image.
 - **Engines are hidden.** They are not listed, have no URL of their own, and every activity command (`activity_info`, snapshots, storage, play time, `activity_content`) refuses an engine id.
 - **The host re-validates before starting.** `activity_content(id)` resolves `id@major` to exactly one bundled engine with a usable schema, reads the data (at most 256 KiB), parses it and validates it. Results are cached for the app's life (bundled files can't change while it runs). The UI calls it before creating the iframe; on failure it shows a calm card ("This pack's data doesn't match its engine, so Lullshift didn't start it. Nothing was lost.") with the plain-text reason, and never creates the iframe. The scheme handler independently refuses to serve engine files under a pack id whose check failed.
 - **Why Rust, not Ajv in the UI.** Ajv compiles schemas with `new Function`; the app CSP (`script-src 'self'`, no `unsafe-eval`) forbids that and must not be loosened. A precompiled Ajv build would need regenerating for every engine. Rust tests run every engine fixture and the shared Ajv/Rust corpus through the host's check, so it can't silently disagree with Ajv. (Sprint 07 used a hand-written subset validator; Sprint 12 replaced it with an established crate, see the amendment.)
@@ -39,8 +39,8 @@ Content packs (ADR-003) are code-free data for a named engine. Sprint 05 set the
 
 ### Pack media (v1)
 
-- **v1 packs are data plus a preview.** A pack holds `manifest.json`, its data file, an optional preview image (PNG, JPEG, WebP or SVG, at most 256 KiB) and notes (`.md`, `.txt`). Nothing else; `validate` refuses other files. The app serves only the engine's files, so pack media would never reach the player anyway.
-- Pack images or audio need a later ADR covering how an engine asks for a pack file, the allowed types and sizes, and how the scheme handler serves them without widening the sandbox.
+- **Sprint 07: packs were data plus a preview.** A pack held `manifest.json`, its data file, an optional preview image (PNG, JPEG, WebP or SVG, at most 256 KiB) and notes (`.md`, `.txt`). Nothing else; `validate` refused other files.
+- **Sprint 12: packs may also hold still pictures** listed in the manifest's `images`. See the amendment "Pictures in content packs" below. Audio and other media still need a later ADR.
 
 ### Compatibility and retirement
 
@@ -90,9 +90,35 @@ Both crates are memory-safe Rust; neither generates code at run time, so the CSP
 
 **Dependency audit.** All 23 crates added to `Cargo.lock` are under MIT, Apache-2.0, MIT-0 or BSD-2-Clause-or-Apache-or-MIT terms, compatible with Apache-2.0. `cargo deny` and `cargo audit` are not part of `pnpm check` and were not installed, so the versions were checked against the OSV database (which includes RustSec) on 2026-11-06: no known advisories for any of them. Enabling the crate also turns on `serde_json`'s `float_roundtrip` feature for the workspace (exact float parsing; no behaviour the host relies on changes).
 
+### Pictures in content packs (S12-T11)
+
+**Decision.** A content pack may carry still PNG and WebP pictures. They are untrusted input from any marketplace, so the format, the checks and the serving path are kept narrow.
+
+- **Declared in the manifest.** `images` (optional, content packs only) lists 1 to 20 unique paths of the form `images/<name>.png` or `images/<name>.webp`, where the name is 1 to 64 lowercase letters, digits and dashes and starts with a letter or digit. No subfolders, no `..`, no other extensions; an app manifest with `images` is invalid. The data refers to a picture by the same path (for Quick Quiz: `"image": {"src": "images/hexagon.png", "alt": "…"}`), and every data string that starts with `images/` must be listed, so nothing the engine asks for is unchecked.
+- **Limits.** At most 20 pictures, 512 KiB each, 2048 × 2048 pixels on either side. 20 × 512 KiB keeps a pack's pictures at 10 MiB, inside the install size cap; 2048 pixels is sharp on any desktop window the activity pane can fill; the largest decoded buffer is 2048 × 2048 × 8 bytes (32 MiB, 16-bit RGBA), and one picture is decoded at a time.
+- **No SVG, GIF or JPEG.** SVG is a document that can hold script and links; GIF is mostly animation; leaving JPEG out keeps one decoder fewer (and its EXIF and ICC handling) out of the trusted base. The preview image rules (ADR-012) are unchanged.
+
+**Checks** (`crates/pack-media`, used by the installer in `crates/marketplace`, the app for bundled and installed packs, and mirrored in the CLI):
+
+1. Path and size, then the leading bytes must match the extension (an SVG, HTML page or script renamed `.png` is refused).
+2. A container walk with an allow-list. PNG: signature, `IHDR` first, every chunk CRC checked, only `PLTE`, `tRNS`, `gAMA`, `cHRM`, `sRGB`, `sBIT`, `bKGD`, `pHYs` beside `IDAT`; refused are animation (`acTL`, `fcTL`, `fdAT`), text and metadata (`tEXt`, `zTXt`, `iTXt`, `eXIf`, `tIME`), colour profiles (`iCCP`), unknown chunks and any byte after `IEND`. WebP: the RIFF size must match the file exactly; `VP8 ` or `VP8L`, or `VP8X` without the animation, ICC, EXIF or XMP flags (with `ALPH`); refused are `ANIM`, `ANMF`, `EXIF`, `XMP `, `ICCP` and unknown chunks.
+3. Width and height are read from the header and checked against the limit **before** any decoder allocates; the decoder's own header must agree.
+4. A full decode with `png` 0.18.1 and `image-webp` 0.2.4 (image-rs crates with `#![forbid(unsafe_code)]`, pinned exactly), into one output buffer sized by the decoder and refused if over 32 MiB. `png` also runs under its own allocation limit (`png::Limits`); `image-webp` applies its memory limit only to metadata reads, which the host never makes, so for WebP the bound comes from the dimension check in step 3, which runs before the decoder is created. Any decode error refuses the picture.
+
+**Dependencies.** `png` 0.18.1 and its inflate stack (`fdeflate`, `flate2`, `miniz_oxide`, `simd-adler32`, `crc32fast`) were already in `Cargo.lock` through Tauri; the only new crates are `image-webp` 0.2.4 and `quick-error` 2.0.1 (both MIT OR Apache-2.0). `png` and `image-webp` forbid `unsafe` themselves; `simd-adler32` uses SIMD intrinsics. The OSV database (including RustSec) had no advisories for any crate in `cargo tree -p pack-media` on 2026-11-06; `cargo deny` and `cargo audit` were not installed.
+
+**Not re-encoded.** The bytes that pass are the bytes that are hashed at install, verified each session and served. Re-encoding would put an encoder in the trusted path and change the digest; refusing metadata chunks has the same privacy effect as stripping them.
+
+**Serving.** For a pack, `/<pack id>/images/<name>` is answered only from the pack's own listed pictures (bundled files, or for installed packs the bytes verified this session), with `Content-Type: image/png` or `image/webp` from the checked kind, `X-Content-Type-Options: nosniff` and the unchanged activity CSP. Anything else under `images/` is a 404, and an engine's own `images/` folder is never served for a pack (the CLI refuses engines with one). The activity CSP is not changed: `img-src 'self' data:` already limits pictures to the activity's own origin, and `connect-src 'none'` still blocks every network request. A pack whose pictures fail is refused at install, and a bundled or installed pack whose pictures fail at start is not started (`image_invalid`: "One of this pack's pictures didn't pass Lullshift's checks, so it didn't start.").
+
+**CLI.** `lullshift validate` applies the same path, size, signature and chunk rules, checks every PNG CRC and inflates the pixel data with a size bound, requiring exactly the size the header implies. Node has no WebP decoder and the CLI adds no dependency for one, so WebP is checked structurally only there; the full decode happens at install and in the app. `simulate` and `serve` serve the pack's listed pictures beside the engine's files, as the app does.
+
+**Quick Quiz.** A question may have `image: {src, alt}`; `alt` is required plain text (1 to 200 characters). The engine shows the picture in a `figure` with the alt text; if it fails to load, it shows "Picture not available. It shows: <alt>". Every question must still be answerable from the alt text alone. The bundled example is "Shapes and Sides" (`quiz-shapes-and-sides`), whose six pictures are generated by a small program, not drawn or copied.
+
 ## Consequences
 
 - About fifty packs run in the app with no code of their own, each with separate progress.
 - Engine authors are limited to the host's schema subset; the compat check says so plainly when a keyword isn't supported.
 - Three places speak the same error wording (CLI, compat check, app). Tests on each side pin the shared phrases.
-- Pack media is deferred; engines that want pictures draw them themselves.
+- Packs may carry still PNG and WebP pictures (Sprint 12); the Quick Quiz engine shows them with alt text. Audio and animation remain deferred.
+- Two image decoders (`png`, `image-webp`) are now part of the trusted computing base for third-party pack data; both forbid `unsafe` code and are pinned exactly.

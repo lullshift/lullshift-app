@@ -49,7 +49,8 @@
     ],
     "tips": [
       "Your place is saved, so you can stop after any question.",
-      "A wrong answer is just a chance to learn something."
+      "A wrong answer is just a chance to learn something.",
+      "Some questions have a picture. Each one has a description that screen readers announce, and the question can be answered from it."
     ]
   },
   "preview": "preview.svg"

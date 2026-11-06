@@ -57,6 +57,8 @@ Delete `deck.json` and create `quiz.json` that matches the quiz engine's schema 
 
 `answer` is the zero-based index of the right choice.
 
+A question can also show a picture. Put a PNG or WebP file in an `images/` folder, list it in the manifest's `images` (step 4), and add `"image": {"src": "images/teacup.png", "alt": "A white teacup on a saucer."}` to the question. The alt text is required, and the question should make sense from it alone. See [Pictures](engines-and-content-packs.md#pictures) for the rules.
+
 ## 3. Add a preview image
 
 Create `preview.svg` with your own art (png, jpg, jpeg, webp or svg, at most 256 KiB):

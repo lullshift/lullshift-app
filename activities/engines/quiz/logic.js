@@ -8,12 +8,31 @@
     prompt: 200,
     choice: 100,
     explanation: 300,
+    alt: 200,
     maxQuestions: 40,
     maxChoices: 5,
   };
 
   function isText(v, max) {
     return typeof v === "string" && v.length > 0 && v.length <= max;
+  }
+
+  // A pack picture (ADR-016, Sprint 12): a file in the pack's own images/ folder, served by the
+  // host beside this page, and alt text. Anything else (another folder, a URL, data:) is refused.
+  var IMAGE_SRC = /^images\/[a-z0-9][a-z0-9-]{0,63}\.(?:png|webp)$/;
+
+  function validImage(img) {
+    if (!img || typeof img !== "object" || Array.isArray(img)) return false;
+    var keys = Object.keys(img);
+    for (var i = 0; i < keys.length; i++) if (keys[i] !== "src" && keys[i] !== "alt") return false;
+    return typeof img.src === "string" && IMAGE_SRC.test(img.src) && isText(img.alt, LIMITS.alt);
+  }
+
+  // The question's picture, or null.
+  function imageOf(q) {
+    return q && q.image !== undefined && validImage(q.image)
+      ? { src: q.image.src, alt: q.image.alt }
+      : null;
   }
 
   // The host validates packs; this is a cheap second look so a bad pack never breaks the page.
@@ -33,6 +52,7 @@
       }
       if (!Number.isInteger(q.answer) || q.answer < 0 || q.answer >= q.choices.length) return false;
       if (!isText(q.explanation, LIMITS.explanation)) return false;
+      if (q.image !== undefined && !validImage(q.image)) return false;
     }
     return true;
   }
@@ -171,6 +191,7 @@
     LIMITS: LIMITS,
     SAMPLE: SAMPLE,
     validQuiz: validQuiz,
+    imageOf: imageOf,
     isSeed: isSeed,
     plan: plan,
     correctPosition: correctPosition,

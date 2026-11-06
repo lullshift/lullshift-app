@@ -1,0 +1,15 @@
+{
+  "title": "Tiny",
+  "questions": [
+    {
+      "prompt": "Which is larger?",
+      "choices": ["Two", "Three"],
+      "answer": 1,
+      "explanation": "Three is larger than two.",
+      "image": {
+        "src": "data:image/png;base64,AAAA",
+        "alt": "x"
+      }
+    }
+  ]
+}

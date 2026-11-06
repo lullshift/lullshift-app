@@ -253,6 +253,9 @@ pub enum PackError {
     DataTooLarge(String),
     DataNotJson(String),
     DataInvalid(Vec<String>),
+    /// A pack image failed its checks, or the data names an image the manifest doesn't list.
+    /// The text is already plain and cleaned (path and reason).
+    ImageInvalid(String),
     /// Third-party code activities can't be installed on this OS in this release.
     ThirdPartyCodeBlocked,
     /// An installed folder doesn't exist or isn't a plain folder of regular files.
@@ -297,6 +300,7 @@ impl fmt::Display for PackError {
             Self::DataInvalid(problems) => {
                 write!(f, "the content isn't valid: {}", problems.join("; "))
             }
+            Self::ImageInvalid(why) => write!(f, "a picture isn't allowed: {why}"),
             Self::ThirdPartyCodeBlocked => f.write_str(
                 "code activities from third-party marketplaces can't be installed on this system yet",
             ),

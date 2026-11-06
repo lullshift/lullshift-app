@@ -49,6 +49,7 @@ const MANIFEST_FIELDS: &[&str] = &[
     "interruptibility",
     "engine",
     "data",
+    "images",
     "help",
     "preview",
 ];
@@ -346,6 +347,7 @@ impl Git {
                     f.path == "manifest.json"
                         || Some(f.path.as_str()) == manifest.data.as_deref()
                         || Some(f.path.as_str()) == manifest.preview.as_deref()
+                        || manifest.images.contains(&f.path)
                         || ext_in(PACK_EXTENSIONS)
                 }
             };
@@ -363,6 +365,22 @@ impl Git {
                 return Err(PackError::FileTooLarge(show(preview)).into());
             }
         }
+        // Pack images (S12-T11): each declared one exists and is small enough before any blob
+        // is read; the full checks run on the bytes below.
+        for image in &manifest.images {
+            let f = listing
+                .iter()
+                .find(|f| &f.path == image)
+                .ok_or_else(|| PackError::DataMissing(show(image)))?;
+            if f.size > pack_media::MAX_IMAGE_BYTES as u64 {
+                return Err(PackError::ImageInvalid(format!(
+                    "{} {}",
+                    show(image),
+                    pack_media::ImageError::TooLarge
+                ))
+                .into());
+            }
+        }
 
         let wanted: Vec<(String, u64)> = listing.iter().map(|f| (f.oid.clone(), f.size)).collect();
         let blobs = self.read_blobs(&source.repo, &wanted)?;
@@ -374,6 +392,16 @@ impl Git {
                 bytes,
             })
             .collect();
+
+        // Every image is fully checked (container walk, size from the header, full decode)
+        // before the pack can be installed. The same check runs when the app loads it.
+        for image in &manifest.images {
+            if let Some(file) = files.iter().find(|f| &f.path == image) {
+                pack_media::check_image(image, &file.bytes).map_err(|why| {
+                    PackError::ImageInvalid(format!("{} {}", show(image), show(&why.to_string())))
+                })?;
+            }
+        }
 
         if let (Some(engine), Some(data_path)) = (engine, manifest.data.as_deref()) {
             let file = files
@@ -394,6 +422,8 @@ impl Git {
                     .collect();
                 return Err(PackError::DataInvalid(shown).into());
             }
+            pack_media::check_declared(&manifest.images, &data)
+                .map_err(|why| PackError::ImageInvalid(show(&why)))?;
         }
 
         let size_bytes = files.iter().map(|f| f.bytes.len() as u64).sum();

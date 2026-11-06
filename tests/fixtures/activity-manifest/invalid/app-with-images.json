@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "app",
+  "id": "dev.lullshift.games.grid-logic",
+  "version": "0.1.0",
+  "name": "Grid Logic",
+  "category": "arcade",
+  "minHostVersion": "0.1.0",
+  "sdkVersion": "1.0.0",
+  "permissions": [],
+  "offline": true,
+  "entrypoint": "index.html",
+  "runtime": "isolated-web-v1",
+  "interruptibility": {
+    "pause": true,
+    "resume": true,
+    "persistState": true
+  },
+  "images": ["images/a.png"]
+}

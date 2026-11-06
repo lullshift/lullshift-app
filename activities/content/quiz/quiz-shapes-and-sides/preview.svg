@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="A hexagon, a triangle and a circle side by side">
+  <rect width="320" height="200" fill="#f4efe6"/>
+  <polygon points="80,62 112,80 112,118 80,136 48,118 48,80" fill="#e0a458" stroke="#2b3a4a" stroke-width="4"/>
+  <polygon points="160,62 200,134 120,134" fill="#3d8b8f" stroke="#2b3a4a" stroke-width="4"/>
+  <circle cx="246" cy="99" r="36" fill="#8a6aa8" stroke="#2b3a4a" stroke-width="4"/>
+</svg>
