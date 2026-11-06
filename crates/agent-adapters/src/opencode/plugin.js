@@ -1,4 +1,4 @@
-// Lullshift-owned file: lullshift-observer, plugin version 1 (experimental, OpenCode 2.x only).
+// Lullshift-owned file: lullshift-observer, plugin version 2 (experimental, OpenCode 2.x only).
 // Written by Lullshift when you connect OpenCode. Disconnect in Lullshift removes it. Do not edit:
 // Lullshift replaces this file when you repair the connection.
 //
@@ -6,7 +6,7 @@
 // started, is working, needs you, finished or ended. It sends session ids and event kinds. It
 // never changes OpenCode, never returns a hook, and never sends message text, file paths, tool
 // inputs or outputs. (Your first prompt is sent only if you turned on Task context for OpenCode
-// in Lullshift.) Every failure is swallowed, so Lullshift being closed or missing cannot affect
+// in Lullshift, and only the first prompt of each session.) Every failure is swallowed, so Lullshift being closed or missing cannot affect
 // OpenCode.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -26,6 +26,8 @@ const MAX_PROMPT = 4000;
 const sessions = new Map();
 // Sessions started by another session (subagents) are not tracked as their own.
 const children = new Set();
+// Sessions whose first prompt has already been sent: later prompts never leave OpenCode.
+const prompted = new Set();
 let inFlight = 0;
 
 function remember(map, key, value) {
@@ -34,8 +36,10 @@ function remember(map, key, value) {
   else map.set(key, value);
 }
 
+// Returns whether a forwarder was started. A dropped message (too many in flight, or a spawn
+// error) returns false so the caller does not remember it as sent.
 function send(message) {
-  if (inFlight >= MAX_IN_FLIGHT) return;
+  if (inFlight >= MAX_IN_FLIGHT) return false;
   try {
     // Argument array, no shell. The child is never awaited and is detached from OpenCode.
     const child = spawn(EXE, ["hook", ADAPTER, "--data-dir", DATA_DIR], {
@@ -58,8 +62,10 @@ function send(message) {
       child.stdin.end(JSON.stringify(message));
     }
     child.unref();
+    return true;
   } catch {
     // Observing must never disturb OpenCode.
+    return false;
   }
 }
 
@@ -80,8 +86,16 @@ function captureOn() {
 function post(kind, sessionId, hint, prompt) {
   const message = { v: 1, event: kind, sessionId };
   if (typeof hint === "string" && /^[a-z_]{1,32}$/.test(hint)) message.hint = hint;
-  if (typeof prompt === "string" && prompt.length > 0) message.prompt = prompt.slice(0, MAX_PROMPT);
-  send(message);
+  if (typeof prompt === "string" && prompt.length > 0) message.prompt = cutPrompt(prompt);
+  return send(message);
+}
+
+// At most MAX_PROMPT code points; a surrogate pair is never split. The first slice only bounds
+// the work: MAX_PROMPT * 2 code units always hold at least MAX_PROMPT whole code points.
+function cutPrompt(text) {
+  return Array.from(text.slice(0, MAX_PROMPT * 2))
+    .slice(0, MAX_PROMPT)
+    .join("");
 }
 
 function working(kind, sessionId, hint, prompt) {
@@ -89,16 +103,18 @@ function working(kind, sessionId, hint, prompt) {
   const entry = sessions.get(sessionId) || { at: 0, last: "" };
   // Coalesce: at most one "working" per second per session, unless it carries the prompt.
   if (!prompt && entry.last === "working" && now - entry.at < WORKING_EVERY_MS) return;
-  remember(sessions, sessionId, { at: now, last: "working" });
-  post(kind, sessionId, hint, prompt);
+  // Remembered only if the message was really started: a dropped one is retried next time.
+  if (post(kind, sessionId, hint, prompt)) {
+    remember(sessions, sessionId, { at: now, last: "working" });
+    if (prompt) remember(prompted, sessionId);
+  }
 }
 
 function once(kind, sessionId, hint) {
   const entry = sessions.get(sessionId) || { at: 0, last: "" };
   // A turn that ended after a failure keeps showing the failure.
   if (entry.last === kind || (kind === "turn_ended" && entry.last === "failed")) return;
-  remember(sessions, sessionId, { at: entry.at, last: kind });
-  post(kind, sessionId, hint);
+  if (post(kind, sessionId, hint)) remember(sessions, sessionId, { at: entry.at, last: kind });
 }
 
 function handle(event) {
@@ -132,15 +148,16 @@ function handle(event) {
       const item = event.data.item;
       if (!item || item.type !== "user") return;
       const text = item.payload && item.payload.text;
-      working(type, id, undefined, captureOn() && typeof text === "string" ? text : undefined);
+      // Only the first prompt of a session is ever sent, and only with the consent marker.
+      const first = !prompted.has(id) && typeof text === "string" && captureOn();
+      working(type, id, undefined, first ? text : undefined);
       return;
     }
     case "permission.asked": {
       // Real signal: OpenCode is waiting for the user. Not coalesced, and the answer that
       // follows is a new "working".
       const entry = sessions.get(id) || { at: 0, last: "" };
-      remember(sessions, id, { at: entry.at, last: "attention" });
-      post(type, id);
+      if (post(type, id)) remember(sessions, id, { at: entry.at, last: "attention" });
       return;
     }
     case "permission.replied": {
@@ -167,6 +184,7 @@ function handle(event) {
     case "session.deleted":
       sessions.delete(id);
       children.delete(id);
+      prompted.delete(id);
       post(type, id);
       return;
     default:

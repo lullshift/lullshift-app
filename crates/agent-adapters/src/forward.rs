@@ -110,7 +110,10 @@ fn run_inner(args: &HookArgs, mut stdin: impl Read, started: OffsetDateTime) -> 
             None => return Outcome::Ignored,
         },
         // Codex and Cursor: session id, event type and enum hints only. The prompt is read in a
-        // second step, and only with the consent marker (ADR-013, ADR-021).
+        // second step, and only with the consent marker (ADR-013, ADR-021). The forwarder can't
+        // cheaply tell whether the app already holds a prompt for the session (that is in the
+        // app's database), so every captured prompt crosses the local pipe to the app, which
+        // keeps only the first one of a session and drops the rest.
         codex::ADAPTER_ID => match build_codex_event(&buf, started) {
             Some(e) => {
                 let context =

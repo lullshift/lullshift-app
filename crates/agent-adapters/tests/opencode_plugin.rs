@@ -256,7 +256,7 @@ fn generated_content_is_pinned() {
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(
         lines[0],
-        "// Lullshift-owned file: lullshift-observer, plugin version 1 (experimental, OpenCode 2.x only)."
+        "// Lullshift-owned file: lullshift-observer, plugin version 2 (experimental, OpenCode 2.x only)."
     );
     assert!(text.ends_with("};\n"));
     // Exactly the two embedded literals, each on its own line, ASCII only, nothing left over.
@@ -520,14 +520,32 @@ fn prompt_is_sent_only_with_the_consent_marker_and_only_for_user_messages() {
     fs::write(marker.join("opencode"), b"").expect("marker");
     let on = run_scenario("prompt", true, &e.cmd, e.dir.path());
     let sent = bodies(&on);
-    assert_eq!(sent.len(), 2, "the synthetic item is ignored: {sent:?}");
-    assert_eq!(sent[0]["prompt"], "FIRST PROMPT");
+    let prompts: Vec<(String, String)> = sent
+        .iter()
+        .filter_map(|b| {
+            Some((
+                b["sessionId"].as_str()?.to_owned(),
+                b["prompt"].as_str()?.to_owned(),
+            ))
+        })
+        .collect();
+    // The synthetic item is ignored; only the first prompt of each session is sent.
+    assert_eq!(prompts.len(), 4, "{prompts:?}");
+    assert_eq!(prompts[0], pair("ses_p", "FIRST PROMPT"));
+    assert!(!on["calls"].to_string().contains("SECOND PROMPT"));
     assert_eq!(sent[0]["event"], "session.inbox.enqueued");
+    let cp = |i: usize| prompts[i].1.chars().count();
     assert_eq!(
-        sent[1]["prompt"].as_str().expect("prompt").len(),
+        cp(1),
         4000,
         "long prompts are cut before they leave OpenCode"
     );
+    // 3999 letters + emoji + "tail": the cut at 4000 code points keeps the whole emoji.
+    assert_eq!(cp(2), 4000);
+    assert!(prompts[2].1.ends_with('\u{1F600}'));
+    // 3998 letters + two emoji + "tail": exactly 4000 whole characters, no split pair.
+    assert_eq!(cp(3), 4000);
+    assert!(prompts[3].1.ends_with("\u{1F600}\u{1F600}"));
     assert!(!on["calls"].to_string().contains("/SECRET/file"));
 }
 
@@ -540,6 +558,36 @@ fn plugin_limits_how_many_forwarders_run_at_once() {
     let e = env();
     let v = run_scenario("flood", true, &e.cmd, e.dir.path());
     assert_eq!(v["calls"].as_array().expect("calls").len(), 8);
+}
+
+#[test]
+fn dropped_messages_are_not_remembered_and_are_retried() {
+    if !node_available() {
+        eprintln!("skipped: node is not available");
+        return;
+    }
+    let e = env();
+    let marker = e.cmd.data_dir.join("context-capture");
+    fs::create_dir_all(&marker).expect("mkdir");
+    fs::write(marker.join("opencode"), b"").expect("marker");
+    let v = run_scenario("dropped", true, &e.cmd, e.dir.path());
+    assert_eq!(v["whileFull"], 8, "nothing more starts while 8 are running");
+    let sent = bodies(&v);
+    assert_eq!(sent.len(), 12, "{sent:?}");
+    let after = summary(&v)[8..].to_vec();
+    assert_eq!(
+        after,
+        vec![
+            pair("turn_ended", "ses_x"),
+            pair("session.execution.started", "ses_w"),
+            pair("permission.asked", "ses_y"),
+            pair("session.inbox.enqueued", "ses_z"),
+        ],
+        "each dropped event is sent when it comes again"
+    );
+    assert_eq!(sent[11]["prompt"], "PROMPT Z AGAIN");
+    assert!(!v["calls"].to_string().contains("PROMPT Z THIRD"));
+    assert!(!v["calls"].to_string().contains("\"PROMPT Z\""));
 }
 
 #[test]

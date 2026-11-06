@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 
 const [file, scenario] = process.argv.slice(2);
 const calls = [];
+const emitters = [];
 let autoExit = true;
 globalThis.__spawn = (exe, args, opts) => {
   const child = new EventEmitter();
@@ -16,6 +17,7 @@ globalThis.__spawn = (exe, args, opts) => {
   const call = { exe, args, opts, body: "" };
   child.stdin.on("data", (d) => (call.body += d));
   calls.push(call);
+  emitters.push(child);
   if (autoExit) setImmediate(() => child.emit("exit", 0));
   return child;
 };
@@ -121,18 +123,50 @@ if (scenario === "flow") {
   src.push(ev("session.execution.started", "ses_after_junk"));
   await settle();
 } else if (scenario === "prompt") {
-  const user = (text, type = "user") =>
-    ev("session.inbox.enqueued", "ses_p", {
+  const user = (text, type = "user", session = "ses_p") =>
+    ev("session.inbox.enqueued", session, {
       inboxID: "i",
       item: { type, payload: { text, files: ["/SECRET/file"] } },
     });
   src.push(user("FIRST PROMPT"));
   src.push(user("synthetic", "synthetic"));
-  src.push(user("x".repeat(9000)));
+  // Only the first prompt of a session is sent; the next ones are not, even after a pause.
+  await sleep(1100);
+  src.push(user("SECOND PROMPT"));
+  // Other sessions get their own first prompt, cut at 4000 code points.
+  src.push(user("x".repeat(9000), "user", "ses_q"));
+  // A surrogate pair at the cut is kept whole, never split.
+  src.push(user("a".repeat(3999) + "\u{1F600}" + "tail", "user", "ses_r"));
+  src.push(user("a".repeat(3998) + "\u{1F600}\u{1F600}" + "tail", "user", "ses_s"));
   await settle();
 } else if (scenario === "flood") {
   autoExit = false;
   for (let i = 0; i < 40; i++) src.push(ev("permission.asked", "ses_" + i));
+  await settle();
+} else if (scenario === "dropped") {
+  // Messages dropped because 8 forwarders are running are not remembered as sent: the same
+  // event is sent again once there is room.
+  autoExit = false;
+  const prompt = (text) =>
+    ev("session.inbox.enqueued", "ses_z", { item: { type: "user", payload: { text } } });
+  for (let i = 0; i < 8; i++) src.push(ev("permission.asked", "ses_f" + i));
+  await settle();
+  src.push(ev("session.idle", "ses_x"));
+  src.push(ev("session.execution.started", "ses_w"));
+  src.push(ev("permission.asked", "ses_y"));
+  src.push(prompt("PROMPT Z"));
+  await settle();
+  out.whileFull = calls.length;
+  for (const c of emitters) c.emit("exit", 0);
+  await settle();
+  src.push(ev("session.idle", "ses_x"));
+  src.push(ev("session.execution.started", "ses_w"));
+  src.push(ev("permission.asked", "ses_y"));
+  src.push(prompt("PROMPT Z AGAIN"));
+  await settle();
+  // And once sent, the prompt is not sent a third time.
+  for (const c of emitters) c.emit("exit", 0);
+  src.push(prompt("PROMPT Z THIRD"));
   await settle();
 } else if (scenario === "spawn_throws") {
   globalThis.__spawn = () => {
