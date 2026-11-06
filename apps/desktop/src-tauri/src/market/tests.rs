@@ -1745,7 +1745,10 @@ fn a_redirect_reaches_the_ui_as_moved_with_the_checked_address() {
 fn needs_git_is_a_distinct_error_and_the_backend_is_reported() {
     let e = CommandError::from(Error::Git(GitFailureKind::NeedsSystemGit));
     assert_eq!(e.kind, "needsGit");
-    assert!(e.message.starts_with("Install Git to use this marketplace."));
+    assert!(
+        e.message
+            .starts_with("Install Git to use this marketplace.")
+    );
     assert!(!e.message.contains("://"), "{}", e.message);
     let missing = CommandError::from(Error::Git(GitFailureKind::GitMissing));
     assert_ne!(missing.kind, e.kind);

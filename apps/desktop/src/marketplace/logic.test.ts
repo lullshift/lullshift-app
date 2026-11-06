@@ -105,7 +105,9 @@ describe("errorText", () => {
 
   it("describes which Git is in use, and nothing when unknown", () => {
     expect(gitBackendText("system")).toBe("Using Git installed on this computer.");
-    expect(gitBackendText("builtin")).toMatch(/^Using Lullshift's built-in Git \(public https only\)\./);
+    expect(gitBackendText("builtin")).toMatch(
+      /^Using Lullshift's built-in Git \(public https only\)\./,
+    );
     expect(gitBackendText("builtin")).not.toMatch(/https?:\/\//);
     expect(gitBackendText(null)).toBeNull();
   });

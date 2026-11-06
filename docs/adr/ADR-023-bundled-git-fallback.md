@@ -79,7 +79,7 @@ The cache stays a normal bare repository (`HEAD`, `config`, `objects/`, `refs/`,
 - `cargo tree -p marketplace -e normal`: 104 distinct crates before, 193 after (+89, mostly the `gix-*` family). The workspace lockfile gains 73 packages (the rest were already used elsewhere).
 - Licences of the new crates: all permissive and compatible with Apache-2.0: 67 MIT OR Apache-2.0 (in its various spellings), 6 Unlicense OR MIT, 5 MIT, 2 Unlicense/MIT, `dunce` CC0-1.0 OR MIT-0 OR Apache-2.0, `tinyvec` Zlib OR Apache-2.0 OR MIT, `zlib-rs` Zlib, `unicode-bom` Apache-2.0, `encoding_rs` (Apache-2.0 OR MIT) AND BSD-3-Clause, `unicode-normalization` (MIT OR Apache-2.0) AND Unicode-3.0.
 - Advisories: `cargo deny` and `cargo audit` are not installed here; the 73 new lockfile packages were checked against the OSV database (`api.osv.dev/v1/querybatch`, crates.io ecosystem): 0 advisories. Older gix releases had advisories (path handling in checkout, SHA-1 collision detection); both are in code paths this crate either doesn't use (checkout) or has fixed in the pinned versions (`sha1dc` collision detection is in the tree).
-- Binary size: see the release notes of this change for the measured release-build delta, if measured.
+- Binary size: not measured for this change (two full LTO release builds of the desktop app were not run). To be measured before release by comparing `cargo build --release -p lullshift-desktop` with and without this change. gix's default features are off (no status, blame, merge, worktree mutation or HTTP backends).
 
 ## Consequences
 
