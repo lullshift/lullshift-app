@@ -715,7 +715,7 @@ On Windows, use the installed release build (not a debug build): the release app
 
 ### M10-3: New games and packs with a screen reader and keyboard only
 
-1. With NVDA (Windows) or VoiceOver (macOS) running, open each new game from Sprint 10: Breeze Bounce, Glow Trail, Tea Sort, Pebble Merge, Sea Glass, Thread Picture, Brook Links, Island Bridges, Harvest Pairs, Clock Patience and Frost Steps. Play a few moves with the keyboard only.
+1. With NVDA (Windows) or VoiceOver (macOS) running, open each new game from Sprint 10: Breeze Bounce, Glow Trail, Teacup Tidy (was Tea Sort), Pebble Merge, Sea Glass, Thread Picture, Brook Links, Island Bridges, Harvest Pairs, Clock Patience and Frost Steps. Play a few moves with the keyboard only.
 2. In each grid game, choose the daily option twice on the same day (Fog Garden: **Today's field**).
 3. Open three or four of the new content packs (for example a quiz, a teaser set and a calm-cards deck) and go through them with the keyboard.
 4. Turn on reduced motion in the OS and open Breeze Bounce, Glow Trail and Pebble Merge.
