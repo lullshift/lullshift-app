@@ -57,7 +57,7 @@ Tauri's updater verifies every update against a minisign public key, so it canno
 } }
 ```
 
-5. Add `tauri-plugin-updater` (desktop only), register it in `lib.rs`, grant the updater permissions to the `main` window only, and add a manual **Check for updates** button. **Never call `check()` on startup, on a timer or in the background** (PRD: network use is user-initiated). Show version and source and wait for the user to confirm the install.
+5. Add `tauri-plugin-updater` (desktop only), register it in `lib.rs`, grant the updater permissions to the `main` window only, and add a manual **Check for updates** button. **Never call `check()` on startup or in the background unless the user has turned on the opt-in "Check for updates once a day" setting** (off by default; ADR-018, decision 26.3). The PRD only allows network use the user starts. Show version and source and wait for the user to confirm the install.
 6. `latest.json` must be generated from the `.sig` files and attached to the release (the workflow collects the `.sig` files; assembling `latest.json` is part of that follow-up).
 7. Publish the draft, then run S11-A02 (signed update validation) from an older build.
 
