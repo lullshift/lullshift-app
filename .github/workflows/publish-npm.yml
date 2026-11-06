@@ -1,0 +1,147 @@
+# Manual npm publish (owner decision 29, ADR-017 amendment).
+#
+# Publishes @lullshift/agent-protocol, @lullshift/activity-sdk and @lullshift/cli, in that order,
+# with npm provenance. It runs ONLY when someone starts it by hand (Actions tab > Publish npm
+# packages > Run workflow), only from main, and only after the owner approves the run in the
+# protected `npm` environment, which holds the only npm credential. Versions already on npm are
+# skipped. A dry run (the default) builds, checks and packs everything and uploads nothing.
+# See docs/RELEASING.md, section 6.
+name: Publish npm packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: Packages to publish (all = protocol, then SDK, then CLI)
+        type: choice
+        options:
+          - all
+          - agent-protocol
+          - activity-sdk
+          - cli
+        default: all
+      dist_tag:
+        description: npm dist-tag (latest for a release, next for a preview)
+        type: choice
+        options:
+          - latest
+          - next
+        default: latest
+      dry_run:
+        description: Dry run (check and pack, upload nothing)
+        type: boolean
+        default: true
+
+# Least privilege by default; the job raises only what provenance needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm
+    # Only from main. The publish guard (scripts/npm-publish-guard.mjs) checks the same.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Protected environment: the owner is its required reviewer and NPM_TOKEN is its secret.
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # npm provenance (and npm trusted publishing, if configured)
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      - name: Enable pnpm (version pinned by package.json)
+        run: corepack enable
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generated schemas and types up to date
+        run: pnpm --filter @lullshift/agent-protocol gen:types:check
+
+      - name: Typecheck and test the published packages
+        run: |
+          pnpm --filter @lullshift/agent-protocol --filter @lullshift/activity-sdk --filter @lullshift/cli run typecheck
+          pnpm --filter @lullshift/agent-protocol --filter @lullshift/activity-sdk --filter @lullshift/cli run test
+
+      - name: Build, pack and check the tarballs
+        run: node scripts/check-npm-packages.mjs --keep "$RUNNER_TEMP/tarballs"
+
+      - name: Install the tarballs and run the CLI outside the repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          smoke="$RUNNER_TEMP/smoke"
+          mkdir -p "$smoke"
+          cd "$smoke"
+          npm init -y > /dev/null
+          npm install --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP"/tarballs/*.tgz
+          npx --no-install lullshift --help > /dev/null
+          npx --no-install lullshift create "$smoke/app" --id dev.ci.smoke-app --kit grid
+          npx --no-install lullshift create "$smoke/pack" --kind content --id dev.ci.smoke-pack
+          npx --no-install lullshift validate "$smoke/app"
+          npx --no-install lullshift simulate "$smoke/app"
+          npx --no-install lullshift simulate "$smoke/pack"
+
+      - name: Publish
+        shell: bash
+        env:
+          # Scoped to this step. Empty when the owner uses npm trusted publishing instead.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          LULLSHIFT_NPM_PUBLISH: "1"
+          PACKAGES: ${{ inputs.packages }}
+          DIST_TAG: ${{ inputs.dist_tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            # The file holds a reference to the variable, never the token itself.
+            echo '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > .npmrc
+            trap 'rm -f .npmrc' EXIT
+          fi
+          on_npm() { [ "$(npm view "$1@$2" version 2> /dev/null || true)" = "$2" ]; }
+          done_now=""
+          for short in agent-protocol activity-sdk cli; do
+            if [ "$PACKAGES" != all ] && [ "$PACKAGES" != "$short" ]; then continue; fi
+            case "$short" in
+              cli) dir=tools/lullshift-cli ;;
+              *) dir="packages/$short" ;;
+            esac
+            name="$(node -p "require('./$dir/package.json').name")"
+            version="$(node -p "require('./$dir/package.json').version")"
+            if on_npm "$name" "$version"; then
+              echo "$name@$version is already on npm: skipped"
+              continue
+            fi
+            # Each @lullshift dependency must be on npm already, or published earlier in this run.
+            for dep in $(node -p "Object.keys(require('./$dir/package.json').dependencies ?? {}).filter((d) => d.startsWith('@lullshift/')).join(' ')"); do
+              depdir="$(node -p "({'@lullshift/agent-protocol':'packages/agent-protocol','@lullshift/activity-sdk':'packages/activity-sdk'})['$dep']")"
+              depver="$(node -p "require('./$depdir/package.json').version")"
+              if ! on_npm "$dep" "$depver" && [[ " $done_now " != *" $dep@$depver "* ]]; then
+                if [ "$DRY_RUN" = true ]; then
+                  echo "::warning::$name needs $dep@$depver, which isn't on npm yet; publish it first"
+                else
+                  echo "::error::$name needs $dep@$depver, which isn't on npm; publish it first (or choose all)"
+                  exit 1
+                fi
+              fi
+            done
+            args=(--access public --provenance --no-git-checks --tag "$DIST_TAG")
+            if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+            echo "Publishing $name@$version (tag $DIST_TAG, dry run: $DRY_RUN)"
+            (cd "$dir" && pnpm publish "${args[@]}")
+            done_now="$done_now $name@$version"
+          done

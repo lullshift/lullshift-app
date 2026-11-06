@@ -1,6 +1,7 @@
 //! Guards for the release configuration (S11-T01, S11-T06, privacy audit): the updater stays
-//! user-initiated and off until the owner supplies a public key, the release workflow is manual
-//! only and pinned, and the uninstaller hooks are wired. Text checks only; nothing is built.
+//! user-initiated and off until the owner supplies a public key, the release and npm workflows
+//! are manual only and pinned, and the uninstaller hooks are wired. Text checks only; nothing is
+//! built.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -130,10 +131,8 @@ fn uninstaller_hooks_are_wired() {
     );
 }
 
-#[test]
-fn release_workflow_is_manual_pinned_and_least_privilege() {
-    let root = manifest_dir().join("..").join("..").join("..");
-    let wf = read(&root.join(".github").join("workflows").join("release.yml"));
+/// Manual trigger only, every action pinned to a full SHA, read-only default token.
+fn assert_manual_and_pinned(name: &str, wf: &str) {
     // Triggers: exactly one, workflow_dispatch.
     let on = wf
         .split("\non:")
@@ -142,7 +141,7 @@ fn release_workflow_is_manual_pinned_and_least_privilege() {
         .split("\npermissions:")
         .next()
         .unwrap();
-    assert!(on.contains("workflow_dispatch"));
+    assert!(on.contains("workflow_dispatch"), "{name}");
     for bad in [
         "push",
         "pull_request",
@@ -150,13 +149,8 @@ fn release_workflow_is_manual_pinned_and_least_privilege() {
         "workflow_run",
         "release:",
     ] {
-        assert!(!on.contains(bad), "trigger `{bad}` is not allowed");
+        assert!(!on.contains(bad), "{name}: trigger `{bad}` is not allowed");
     }
-    // Only one workflow file may exist (nothing else may run on push).
-    let count = fs::read_dir(root.join(".github").join("workflows"))
-        .unwrap()
-        .count();
-    assert_eq!(count, 1, "no other workflow without a new decision");
     // Every action is pinned to a full commit SHA with a version comment.
     for line in wf.lines().filter(|l| l.trim_start().starts_with("uses:")) {
         let spec = line.split("uses:").nth(1).unwrap().trim();
@@ -164,12 +158,77 @@ fn release_workflow_is_manual_pinned_and_least_privilege() {
         let sha = rest.split_whitespace().next().unwrap();
         assert!(
             sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit()),
-            "not a full SHA: {line}"
+            "{name}: not a full SHA: {line}"
         );
-        assert!(rest.contains("# v"), "missing version comment: {line}");
+        assert!(
+            rest.contains("# v"),
+            "{name}: missing version comment: {line}"
+        );
     }
-    // Default token is read-only; write permissions appear only in the release job.
-    assert!(wf.contains("\npermissions:\n  contents: read\n"));
+    // Default token is read-only.
+    assert!(wf.contains("\npermissions:\n  contents: read\n"), "{name}");
+}
+
+#[test]
+fn only_the_two_manual_workflows_exist() {
+    let root = manifest_dir().join("..").join("..").join("..");
+    // Nothing may run on push: only these manual workflows, each from its own owner decision
+    // (release: ADR-004 amendment; npm: decision 29, ADR-017 amendment).
+    let mut names: Vec<String> = fs::read_dir(root.join(".github").join("workflows"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        ["publish-npm.yml", "release.yml"],
+        "no other workflow without a new decision"
+    );
+}
+
+#[test]
+fn npm_workflow_is_manual_gated_and_token_scoped() {
+    let root = manifest_dir().join("..").join("..").join("..");
+    let wf = read(
+        &root
+            .join(".github")
+            .join("workflows")
+            .join("publish-npm.yml"),
+    );
+    assert_manual_and_pinned("publish-npm.yml", &wf);
+    // Main only, behind the protected environment the owner approves.
+    assert!(wf.contains("if: github.ref == 'refs/heads/main'"));
+    assert!(wf.contains("environment: npm"));
+    // Provenance needs id-token; nothing writes to the repository.
+    assert!(wf.contains("id-token: write"));
+    assert!(!wf.contains("contents: write"));
+    // The token appears once, in the publish step's env, and only that step publishes.
+    assert_eq!(wf.matches("secrets.").count(), 1);
+    let publish = wf.split("- name: Publish\n").nth(1).expect("Publish step");
+    assert!(publish.contains("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}"));
+    assert!(
+        !wf.split("- name: Publish\n")
+            .next()
+            .unwrap()
+            .contains("pnpm publish")
+    );
+    assert!(publish.contains("--provenance") && publish.contains("--access public"));
+    // Inputs reach the shell only through env, never interpolated into the script.
+    for line in wf.lines().filter(|l| l.contains("${{ inputs.")) {
+        let key = line.trim_start().split(':').next().unwrap();
+        assert!(
+            key.chars().all(|c| c.is_ascii_uppercase() || c == '_'),
+            "inputs only via env: {line}"
+        );
+    }
+}
+
+#[test]
+fn release_workflow_is_manual_pinned_and_least_privilege() {
+    let root = manifest_dir().join("..").join("..").join("..");
+    let wf = read(&root.join(".github").join("workflows").join("release.yml"));
+    assert_manual_and_pinned("release.yml", &wf);
+    // Write permissions appear only in the release job.
     assert_eq!(wf.matches("contents: write").count(), 1);
     // The draft and its attestation come only from main, and the documented verification pins
     // the signer workflow and source ref (otherwise any branch's build would verify).
