@@ -56,6 +56,8 @@ In **Settings**, **Let the Companion look things up** lets the provider ask for 
 
 Every lookup is shown to you with the exact text that would be sent, and nothing goes to the provider until you press **Approve**. **Decline** sends only "The user declined." A message can use at most three lookups. Lookups can't change anything, open anything or run anything; the Companion still can only reply with text. They add a little to each request and count toward your token budget. Some servers don't support them: turn the setting off if replies fail.
 
+If the provider asks for something Lullshift won't give (a lookup that doesn't exist, one with arguments that aren't valid, or more lookups than one message allows), you see a small notice in the conversation, for example "The Companion asked for something it can't have (an unknown lookup). Nothing was sent." There is nothing to approve. The notice names the lookup only if its name is short and plain, and never shows what the provider put in its request. It stays in the conversation history with the message.
+
 ## Budget and errors
 
 - A monthly token budget stops sending once this month's usage reaches it. A message that starts under the limit may end a little over it. If the Companion uses lookups, the budget is checked again before each follow-up call.

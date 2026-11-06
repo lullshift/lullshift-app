@@ -32,7 +32,7 @@ import {
   type StreamState,
 } from "./logic";
 import { threadLabel } from "./ThreadList";
-import { ToolApprovalCard, ToolRecords } from "./ToolCards";
+import { ToolApprovalCard, ToolNotices, ToolRecords } from "./ToolCards";
 
 interface Props {
   thread: Thread;
@@ -104,6 +104,9 @@ function MessageItem({
       )}
       {mine && (message.toolCalls?.length ?? 0) > 0 && (
         <ToolRecords records={message.toolCalls} onStartActivity={onStartActivity} />
+      )}
+      {mine && (message.toolNotices?.length ?? 0) > 0 && (
+        <ToolNotices notices={message.toolNotices} />
       )}
       {retrying && <p className="msg-note">Sending again…</p>}
       {(failed || unconfirmed) && !retrying && (
@@ -335,10 +338,9 @@ export function Conversation({
               <p className="msg-note">Still writing. You can cancel at any time.</p>
             </li>
           )}
-          {stream && stream.skipped.length > 0 && (
-            <li className="msg-note">
-              {stream.skipped.length} lookup{stream.skipped.length === 1 ? " was" : "s were"} not
-              possible and got a fixed answer with no data.
+          {stream && stream.notices.length > 0 && (
+            <li>
+              <ToolNotices notices={stream.notices} />
             </li>
           )}
         </ol>

@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
-import type { ToolCallRecord } from "./api";
-import { approvalPrompt, plainLines, toolDecisionNote, type PendingTool } from "./logic";
+import type { ToolCallRecord, ToolNoticeReason } from "./api";
+import {
+  approvalPrompt,
+  plainLines,
+  toolDecisionNote,
+  toolNoticeText,
+  type PendingTool,
+} from "./logic";
 
 /** Plain text, one block per line. Never HTML, Markdown or links. */
 function Lines({ text, className }: { text: string; className: string }) {
@@ -111,6 +117,27 @@ export function ToolRecords({ records, onStartActivity, installed }: RecordsProp
               )}
             </div>
           )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+interface NoticesProps {
+  notices: readonly { reason: ToolNoticeReason; tool: string | null }[];
+}
+
+/**
+ * Lookups the model asked for that were not run. Plain text in the message flow, with no button:
+ * there is nothing to approve. It is not a live region; the polite status announces it once.
+ */
+export function ToolNotices({ notices }: NoticesProps) {
+  if (notices.length === 0) return null;
+  return (
+    <ul className="tool-notices">
+      {notices.map((n, i) => (
+        <li key={i} className="msg-note tool-notice">
+          {toolNoticeText(n.reason, n.tool)}
         </li>
       ))}
     </ul>

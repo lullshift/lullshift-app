@@ -73,11 +73,13 @@ fn powershell_command_line_round_trips_argv_through_a_native_program() {
         eprintln!("skipped: rustc is not available to build the echo program");
         return;
     }
-    // Spaces, an apostrophe, a curly quote look-alike and non-ASCII letters in both paths. None
-    // of them is refused: their UTF-8 bytes avoid 0x82 and 0x91 to 0x94.
+    // Spaces, an apostrophe, a curly quote look-alike and non-ASCII letters in both paths,
+    // including Cyrillic V and N-tilde, whose UTF-8 bytes (0x92, 0x91) a cp1252 host would read
+    // as quotes. Owner decision 27.1: accepted; the UTF-8 round trip works.
     let folders = [
         "Lull shift \u{fc}ber \u{65e5}\u{672c}",
         "it's \u{c9}t\u{e9} \u{2019}n",
+        "\u{412}\u{430}\u{441}\u{44f} \u{d1}\u{d3}\u{d2}",
         "plain",
     ];
     for ps in shells {
@@ -113,12 +115,13 @@ fn powershell_command_line_round_trips_argv_through_a_native_program() {
     }
 }
 
-/// The paths that are refused for PowerShell (legacy code page hazard) are refused up front.
+/// Owner decision 27.1: letters whose UTF-8 bytes a legacy code page reads as quotes are accepted.
 #[test]
-fn cyrillic_ve_in_a_powershell_path_is_refused_not_mangled() {
+fn cyrillic_ve_in_a_powershell_path_is_accepted_and_quoted() {
     let abs = std::env::temp_dir();
     let dir = abs.join("\u{412}\u{430}\u{43d}\u{44f}");
     let exe = abs.join("lullshift-desktop");
-    assert!(command_line(&exe, "cursor", &dir, Shell::PowerShell).is_none());
+    let cmd = command_line(&exe, "cursor", &dir, Shell::PowerShell).expect("accepted");
+    assert!(cmd.contains(dir.to_str().expect("utf8")), "{cmd}");
     assert!(command_line(&exe, "cursor", &dir, Shell::Sh).is_some());
 }

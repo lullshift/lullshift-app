@@ -6,7 +6,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   Channel: class {},
 }));
 
-import type { Scope, StreamEvent, ToolCallRecord } from "./api";
+import type { Scope, StreamEvent, ToolCallRecord, ToolNoticeReason } from "./api";
 import { ToolsSetting } from "./CompanionSettings";
 import {
   buildScope,
@@ -17,9 +17,10 @@ import {
   streamStatus,
   TOOLS_SETTING_HELP,
   TOOLS_SETTING_LABEL,
+  toolNoticeText,
   type StreamState,
 } from "./logic";
-import { ToolApprovalCard, ToolRecords } from "./ToolCards";
+import { ToolApprovalCard, ToolNotices, ToolRecords } from "./ToolCards";
 
 const RID = "r-aaaaaaaa";
 
@@ -94,6 +95,53 @@ describe("streaming state", () => {
   it("notes lookups that were not possible without showing any data", () => {
     const s = run([{ type: "toolSkipped", requestId: RID, tool: "x", text: "fixed" }]);
     expect(s.skipped).toEqual(["fixed"]);
+  });
+
+  it("collects notices for lookups that were not run and keeps the safe name only", () => {
+    const s = run([
+      { type: "toolNotice", requestId: RID, reason: "unknown", tool: "run_shell" },
+      { type: "toolNotice", requestId: RID, reason: "malformed", tool: "Run Shell!" },
+      { type: "toolNotice", requestId: RID, reason: "limit" },
+      { type: "toolNotice", requestId: "r-other-id", reason: "limit" },
+    ]);
+    expect(s.notices).toEqual([
+      { reason: "unknown", tool: "run_shell" },
+      { reason: "malformed", tool: null },
+      { reason: "limit", tool: null },
+    ]);
+  });
+
+  it("announces a notice once through the polite status, not per token", () => {
+    const withNotice = run([{ type: "toolNotice", requestId: RID, reason: "unknown" }]);
+    const text = streamStatus(withNotice, "h");
+    expect(text).toContain("asked for something it can't have");
+    // Once the reply text starts, the status goes back to the per-phase sentence.
+    const replying = run([{ type: "delta", requestId: RID, text: "abc" }], withNotice);
+    expect(streamStatus(replying, "h")).toBe("Companion is replying…");
+  });
+});
+
+describe("lookup notices", () => {
+  const cases: [ToolNoticeReason, string | null, string][] = [
+    ["unknown", "run_shell", "an unknown lookup (run_shell)"],
+    ["unknown", null, "an unknown lookup)"],
+    ["malformed", "suggest_break", "a lookup (suggest_break) that was not valid"],
+    ["limit", null, "more lookups"],
+  ];
+  it.each(cases)("renders the %s notice as plain text with no button", (reason, tool, part) => {
+    const html = renderToStaticMarkup(<ToolNotices notices={[{ reason, tool }]} />);
+    expect(html).toContain("The Companion asked for something it can&#x27;t have");
+    expect(html).toContain(part.replace("'", "&#x27;"));
+    expect(html).toContain("Nothing was sent.");
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("aria-live");
+    expect(toolNoticeText(reason, tool)).toContain("Nothing was sent.");
+  });
+
+  it("drops an unsafe tool name and renders nothing for no notices", () => {
+    expect(toolNoticeText("unknown", "<b>x</b>")).not.toContain("<b>");
+    expect(toolNoticeText("unknown", "<b>x</b>")).toContain("an unknown lookup)");
+    expect(renderToStaticMarkup(<ToolNotices notices={[]} />)).toBe("");
   });
 });
 

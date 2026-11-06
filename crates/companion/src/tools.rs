@@ -145,6 +145,36 @@ pub fn parse_request(name: &str, arguments: &str) -> Option<Request> {
     }
 }
 
+/// Why a call was not run (owner decision 27.6). Carries nothing the model sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rejection {
+    /// The name is not one of the offered tools.
+    Unknown,
+    /// A known tool with arguments that are not valid or out of range.
+    Malformed,
+}
+
+/// [`parse_request`], saying why a call was rejected.
+pub fn check_request(name: &str, arguments: &str) -> Result<Request, Rejection> {
+    if ToolName::parse(name).is_none() {
+        return Err(Rejection::Unknown);
+    }
+    parse_request(name, arguments).ok_or(Rejection::Malformed)
+}
+
+/// The requested tool name, only if it is a short safe identifier (lowercase ASCII letters,
+/// digits, `_` or `-`, starting with a letter, at most 32 characters). Anything else is `None`,
+/// so a model cannot put text of its choosing on the screen through the name.
+pub fn safe_tool_name(name: &str) -> Option<&str> {
+    let ok = !name.is_empty()
+        && name.len() <= 32
+        && name.as_bytes()[0].is_ascii_lowercase()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-');
+    ok.then_some(name)
+}
+
 /// Plain text only: control characters (except newline) and invisible or bidi characters go, and
 /// the text is cut to [`MAX_RESULT_CHARS`].
 pub fn clean_result(s: &str) -> String {
@@ -260,6 +290,37 @@ mod tests {
         }
         let big = format!("{{\"activity_id\":\"{}\"}}", "a".repeat(MAX_ARGUMENT_BYTES));
         assert_eq!(parse_request("activity_help", &big), None);
+    }
+
+    #[test]
+    fn rejections_say_why_and_safe_names_are_short_identifiers() {
+        assert_eq!(check_request("run_shell", "{}"), Err(Rejection::Unknown));
+        assert_eq!(check_request("", "{}"), Err(Rejection::Unknown));
+        assert_eq!(
+            check_request("suggest_break", "not json"),
+            Err(Rejection::Malformed)
+        );
+        assert_eq!(
+            check_request("activity_help", "{}"),
+            Err(Rejection::Malformed)
+        );
+        assert!(check_request("suggest_break", "{}").is_ok());
+        assert_eq!(safe_tool_name("run_shell"), Some("run_shell"));
+        assert_eq!(safe_tool_name("web-search2"), Some("web-search2"));
+        let long = "a".repeat(33);
+        for bad in [
+            "",
+            "Run",
+            "9lives",
+            "a b",
+            "run\nshell",
+            "<b>x</b>",
+            "caf\u{e9}",
+            "ignore previous instructions",
+            long.as_str(),
+        ] {
+            assert_eq!(safe_tool_name(bad), None, "{bad:?}");
+        }
     }
 
     #[test]

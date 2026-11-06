@@ -99,6 +99,27 @@ pub struct CompanionToolCall {
     pub created_utc: String,
 }
 
+/// A call the model made that Lullshift did not run (owner decision 27.6). No arguments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompanionToolNotice {
+    pub id: i64,
+    pub message_id: i64,
+    pub round: i64,
+    /// `unknown`, `malformed` or `limit`.
+    pub reason: String,
+    /// The requested tool name, only when it was a short safe identifier.
+    pub tool: Option<String>,
+    pub created_utc: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewToolNotice<'a> {
+    pub message_id: i64,
+    pub round: i64,
+    pub reason: &'a str,
+    pub tool: Option<&'a str>,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewToolCall<'a> {
     pub message_id: i64,
@@ -577,6 +598,42 @@ impl Store {
             )
             .map_err(check_invalid)?;
         Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Stores a notice for a call that was not run, for a user message of this thread.
+    pub fn companion_add_tool_notice(
+        &self,
+        n: &NewToolNotice<'_>,
+        now: OffsetDateTime,
+    ) -> Result<i64> {
+        self.conn
+            .execute(
+                "INSERT INTO companion_tool_notices (message_id, round, reason, tool, created_utc)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![n.message_id, n.round, n.reason, n.tool, fmt_ts(now)?],
+            )
+            .map_err(check_invalid)?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Every notice recorded in a thread, oldest first.
+    pub fn companion_tool_notices(&self, thread_id: i64) -> Result<Vec<CompanionToolNotice>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT n.id, n.message_id, n.round, n.reason, n.tool, n.created_utc
+             FROM companion_tool_notices n JOIN companion_messages m ON m.id = n.message_id
+             WHERE m.thread_id = ?1 ORDER BY n.id",
+        )?;
+        let rows = stmt.query_map([thread_id], |r| {
+            Ok(CompanionToolNotice {
+                id: r.get(0)?,
+                message_id: r.get(1)?,
+                round: r.get(2)?,
+                reason: r.get(3)?,
+                tool: r.get(4)?,
+                created_utc: r.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     /// Replaces the stored text of session overview lookups with a fixed note, because that text

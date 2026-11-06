@@ -403,7 +403,8 @@
   margin-top: var(--space-3);
 }
 
-.tool-records {
+.tool-records,
+.tool-notices {
   list-style: none;
   margin: var(--space-2) 0 0;
   padding: 0;

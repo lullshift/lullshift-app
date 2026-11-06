@@ -1,8 +1,8 @@
 //! Companion tool-call storage (Sprint 12, S12-T16): migration 10, per-thread lookups, usage.
 
 use local_store::{
-    CLEARED_RESULT_TEXT, CompanionProfile, MIGRATIONS, NewToolCall, NewUserMessage, Store,
-    StoreError, latest_version, migrate, month_of,
+    CLEARED_RESULT_TEXT, CompanionProfile, MIGRATIONS, NewToolCall, NewToolNotice, NewUserMessage,
+    Store, StoreError, latest_version, migrate, month_of,
 };
 use rusqlite::Connection;
 use time::OffsetDateTime;
@@ -98,6 +98,112 @@ fn version_9_database_upgrades_to_10_with_backup_and_keeps_companion_data() {
         )
         .expect("count");
     assert_eq!(n, 0, "backup is the v9 file");
+}
+
+#[test]
+fn version_12_database_upgrades_to_13_with_backup_and_keeps_tool_calls() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("raw");
+        migrate(&conn, &MIGRATIONS[..12], None).expect("v12");
+        conn.execute(
+            "INSERT INTO companion_threads (title, created_utc, updated_utc) VALUES ('T', 't', 't')",
+            [],
+        )
+        .expect("thread");
+        conn.execute(
+            "INSERT INTO companion_messages (thread_id, role, text, status, host, created_utc)
+             VALUES (1, 'user', 'old message', 'sent', 'h', 't')",
+            [],
+        )
+        .expect("message");
+        conn.execute(
+            "INSERT INTO companion_tool_calls
+               (message_id, round, tool, arguments, result_text, status, created_utc)
+             VALUES (1, 1, 'suggest_break', '{}', 'r', 'approved', 't')",
+            [],
+        )
+        .expect("call");
+    }
+    let (s, report) = Store::open(&path).expect("upgrade");
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (12, latest_version())
+    );
+    assert!(report.backup.is_some(), "backup before upgrade");
+    assert_eq!(s.companion_tool_calls(1).expect("calls").len(), 1);
+    assert!(s.companion_tool_notices(1).expect("none yet").is_empty());
+}
+
+#[test]
+fn failed_version_13_migration_rolls_back_to_12() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("raw");
+        migrate(&conn, &MIGRATIONS[..12], None).expect("v12");
+        conn.execute("CREATE TABLE companion_tool_notices (x INTEGER)", [])
+            .expect("clash");
+    }
+    assert!(matches!(
+        Store::open(&path),
+        Err(StoreError::Migration { version: 13, .. })
+    ));
+    let conn = Connection::open(&path).expect("reopen");
+    let v: i64 = conn
+        .query_row("SELECT max(version) FROM schema_version", [], |r| r.get(0))
+        .expect("version");
+    assert_eq!(v, 12, "left at the last good version");
+}
+
+#[test]
+fn tool_notices_store_reason_and_safe_name_only_and_go_with_the_thread() {
+    let (s, thread, m) = setup();
+    for (reason, tool) in [
+        ("unknown", Some("run_shell")),
+        ("malformed", Some("suggest_break")),
+        ("limit", None),
+    ] {
+        s.companion_add_tool_notice(
+            &NewToolNotice {
+                message_id: m,
+                round: 1,
+                reason,
+                tool,
+            },
+            T0,
+        )
+        .expect("notice");
+    }
+    let n = s.companion_tool_notices(thread).expect("notices");
+    assert_eq!(
+        n.iter()
+            .map(|n| (n.reason.as_str(), n.tool.as_deref()))
+            .collect::<Vec<_>>(),
+        [
+            ("unknown", Some("run_shell")),
+            ("malformed", Some("suggest_break")),
+            ("limit", None)
+        ]
+    );
+    let bad = |reason: &'static str, tool: Option<&'static str>, message_id: i64| {
+        s.companion_add_tool_notice(
+            &NewToolNotice {
+                message_id,
+                round: 1,
+                reason,
+                tool,
+            },
+            T0,
+        )
+    };
+    assert!(bad("other", None, m).is_err());
+    assert!(bad("unknown", Some(""), m).is_err());
+    assert!(bad("unknown", Some("a_name_that_is_far_too_long_to_be_safe"), m).is_err());
+    assert!(bad("unknown", None, 9999).is_err());
+    s.companion_delete_thread(thread).expect("delete");
+    assert!(s.companion_tool_notices(thread).expect("after").is_empty());
 }
 
 #[test]

@@ -21,8 +21,8 @@ use std::time::{Duration, Instant};
 use ::companion::provider::{MAX_OUTPUT_TOKENS, TEST_OUTPUT_TOKENS};
 use ::companion::scope::{ItemFacts, Selection, SessionFacts, compose_user_content, trim_history};
 use ::companion::tools::{
-    DECLINED_TEXT, LIMIT_TEXT, MAX_TOOL_CALLS, MAX_TOOL_ROUNDS, ToolName, UNAVAILABLE_TEXT,
-    clean_result, parse_request,
+    DECLINED_TEXT, LIMIT_TEXT, MAX_TOOL_CALLS, MAX_TOOL_ROUNDS, Rejection, ToolName,
+    UNAVAILABLE_TEXT, check_request, clean_result, safe_tool_name,
 };
 use ::companion::url_check::check_base_url;
 use ::companion::{
@@ -30,8 +30,8 @@ use ::companion::{
     ProviderSpec, RequestPlan, Role, Secret, ToolExchange, budget, chat, chat_stream,
 };
 use local_store::{
-    CompanionMessage, CompanionProfile, CompanionThread, CompanionToolCall, NewToolCall,
-    NewUserMessage, Store, StoreError, month_of,
+    CompanionMessage, CompanionProfile, CompanionThread, CompanionToolCall, CompanionToolNotice,
+    NewToolCall, NewToolNotice, NewUserMessage, Store, StoreError, month_of,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -338,6 +338,33 @@ pub struct MessageDto {
     created_at: String,
     /// Lookups made while answering this (user) message, oldest first.
     tool_calls: Vec<ToolCallDto>,
+    /// Calls the model made that Lullshift did not run, oldest first.
+    tool_notices: Vec<ToolNoticeDto>,
+}
+
+/// A call that was not run: why, and the tool name only if it was a short safe identifier.
+/// Never the model's arguments (owner decision 27.6).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolNoticeDto {
+    id: i64,
+    round: i64,
+    /// `unknown`, `malformed` or `limit`.
+    reason: String,
+    tool: Option<String>,
+    created_at: String,
+}
+
+impl From<CompanionToolNotice> for ToolNoticeDto {
+    fn from(n: CompanionToolNotice) -> Self {
+        Self {
+            id: n.id,
+            round: n.round,
+            reason: n.reason,
+            tool: n.tool,
+            created_at: n.created_utc,
+        }
+    }
 }
 
 /// A suggested activity the user can click to start. The lookup never starts it.
@@ -449,6 +476,14 @@ pub enum StreamEvent {
         approval_id: String,
         approved: bool,
     },
+    /// The model asked for a lookup that was not run (unknown, malformed or over the limit). The
+    /// UI shows a small notice with no button. Carries only the reason (`unknown`, `malformed`,
+    /// `limit`) and the tool name if it is a short safe identifier; never the model's arguments.
+    ToolNotice {
+        request_id: String,
+        reason: String,
+        tool: Option<String>,
+    },
 }
 
 impl From<CompanionMessage> for MessageDto {
@@ -475,6 +510,7 @@ impl From<CompanionMessage> for MessageDto {
             output_tokens: m.output_tokens,
             created_at: m.created_utc,
             tool_calls: Vec::new(),
+            tool_notices: Vec::new(),
         }
     }
 }
@@ -830,13 +866,21 @@ pub fn delete_thread(core: &Core, id: i64) -> Res<()> {
 }
 
 pub fn messages(core: &Core, thread_id: i64) -> Res<Vec<MessageDto>> {
-    let (msgs, calls) = with_store(core, |s| {
+    let (msgs, calls, notices) = with_store(core, |s| {
         s.companion_thread(thread_id)?.ok_or(StoreError::NotFound)?;
         Ok((
             s.companion_messages(thread_id)?,
             s.companion_tool_calls(thread_id)?,
+            s.companion_tool_notices(thread_id)?,
         ))
     })?;
+    let mut notes_by_message: HashMap<i64, Vec<ToolNoticeDto>> = HashMap::new();
+    for n in notices {
+        notes_by_message
+            .entry(n.message_id)
+            .or_default()
+            .push(ToolNoticeDto::from(n));
+    }
     let mut by_message: HashMap<i64, Vec<ToolCallDto>> = HashMap::new();
     for c in calls {
         by_message
@@ -850,6 +894,7 @@ pub fn messages(core: &Core, thread_id: i64) -> Res<Vec<MessageDto>> {
             let id = m.id;
             let mut dto = MessageDto::from(m);
             dto.tool_calls = by_message.remove(&id).unwrap_or_default();
+            dto.tool_notices = notes_by_message.remove(&id).unwrap_or_default();
             dto
         })
         .collect())
@@ -1150,13 +1195,14 @@ impl Turn<'_> {
     ) -> Result<Vec<String>, CompanionError> {
         let mut results = Vec::new();
         for call in calls {
-            let request = match parse_request(&call.name, &call.arguments) {
-                Some(r) if *used < MAX_TOOL_CALLS => r,
+            let checked = check_request(&call.name, &call.arguments);
+            let request = match checked {
+                Ok(r) if *used < MAX_TOOL_CALLS => r,
                 other => {
-                    let text = if other.is_some() {
-                        LIMIT_TEXT
-                    } else {
-                        UNAVAILABLE_TEXT
+                    let (reason, text) = match other {
+                        Ok(_) => ("limit", LIMIT_TEXT),
+                        Err(Rejection::Unknown) => ("unknown", UNAVAILABLE_TEXT),
+                        Err(Rejection::Malformed) => ("malformed", UNAVAILABLE_TEXT),
                     };
                     (self.emit)(StreamEvent::ToolSkipped {
                         request_id: self.request_id.to_owned(),
@@ -1164,6 +1210,25 @@ impl Turn<'_> {
                             .map_or("unknown", ToolName::as_str)
                             .to_owned(),
                         text: text.to_owned(),
+                    });
+                    // Only a short safe identifier is shown or stored, never the arguments.
+                    let tool = safe_tool_name(&call.name);
+                    with_store(self.core, |s| {
+                        s.companion_add_tool_notice(
+                            &NewToolNotice {
+                                message_id: self.user_message,
+                                round: i64::from(round),
+                                reason,
+                                tool,
+                            },
+                            OffsetDateTime::now_utc(),
+                        )
+                    })
+                    .map_err(|_| CompanionError::internal())?;
+                    (self.emit)(StreamEvent::ToolNotice {
+                        request_id: self.request_id.to_owned(),
+                        reason: reason.to_owned(),
+                        tool: tool.map(str::to_owned),
                     });
                     results.push(text.to_owned());
                     continue;

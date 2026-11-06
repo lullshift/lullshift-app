@@ -56,10 +56,17 @@
     return out;
   }
 
-  // False when turning the tile changes nothing (a cross). Turning is still allowed: it counts as
-  // a move and can be undone; this only tells the game to say so.
+  // False when turning the tile changes nothing (a cross). Turning is still allowed and can be
+  // undone, but it is not a move (see countsAsMove); this tells the game to say so.
   function canRotate(mask) {
     return rotate(mask, true) !== mask;
+  }
+
+  // Only a turn that changes the tile counts toward the move total. Turning a crossing is
+  // announced and undoable but free. A crossing is the same before and after a turn, so the
+  // same test works for a turn just made and for the turn Undo is about to take back.
+  function countsAsMove(mask) {
+    return canRotate(mask);
   }
 
   function isSize(n) {
@@ -204,6 +211,7 @@
     pieceType: pieceType,
     openings: openings,
     canRotate: canRotate,
+    countsAsMove: countsAsMove,
     isMask: isMask,
     dateSeed: dateSeed,
     watered: watered,

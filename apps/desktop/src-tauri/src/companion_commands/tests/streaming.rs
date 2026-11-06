@@ -391,6 +391,7 @@ fn unknown_tools_get_a_fixed_sentence_without_asking_and_the_round_limit_holds()
     let t = thread(&core);
     let asked = Mutex::new(Vec::<String>::new());
     let skipped = Mutex::new(Vec::<String>::new());
+    let notices = Mutex::new(Vec::<(String, Option<String>)>::new());
     let reply = send_events(&core, t, &pid, "hi", &Scope::None, &|e| match e {
         StreamEvent::ToolRequest {
             request_id,
@@ -402,10 +403,24 @@ fn unknown_tools_get_a_fixed_sentence_without_asking_and_the_round_limit_holds()
             tool_decision(&core, &request_id, &approval_id, true).expect("approve");
         }
         StreamEvent::ToolSkipped { text, .. } => skipped.lock().expect("s").push(text),
+        StreamEvent::ToolNotice { reason, tool, .. } => {
+            notices.lock().expect("n").push((reason, tool))
+        }
         _ => {}
     })
     .expect("send");
     assert_eq!(reply.text, "streamed reply");
+    // Owner decision 27.6: an unknown lookup also shows a notice with the safe tool name, and the
+    // notice is stored with the message so it reappears in history. No arguments anywhere.
+    assert_eq!(
+        notices.lock().expect("n").as_slice(),
+        [("unknown".to_owned(), Some("run_shell".to_owned()))]
+    );
+    let stored = messages(&core, t).expect("m")[0].tool_notices.clone();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].reason, "unknown");
+    assert_eq!(stored[0].tool.as_deref(), Some("run_shell"));
+    assert!(!format!("{stored:?}").contains("rm -rf"));
     // The made-up tool never reached the user as a request and got a fixed sentence.
     assert_eq!(
         skipped.lock().expect("s").as_slice(),
@@ -491,6 +506,7 @@ fn calls_over_the_per_message_limit_get_a_fixed_sentence_and_are_not_asked() {
     let t = thread(&core);
     let asked = Mutex::new(0usize);
     let skipped = Mutex::new(Vec::<String>::new());
+    let notices = Mutex::new(Vec::<(String, Option<String>)>::new());
     send_events(&core, t, &pid, "hi", &Scope::None, &|e| match e {
         StreamEvent::ToolRequest {
             request_id,
@@ -501,9 +517,24 @@ fn calls_over_the_per_message_limit_get_a_fixed_sentence_and_are_not_asked() {
             tool_decision(&core, &request_id, &approval_id, true).expect("approve");
         }
         StreamEvent::ToolSkipped { text, .. } => skipped.lock().expect("s").push(text),
+        StreamEvent::ToolNotice { reason, tool, .. } => {
+            notices.lock().expect("n").push((reason, tool))
+        }
         _ => {}
     })
     .expect("send");
+    assert_eq!(
+        notices.lock().expect("n").as_slice(),
+        [
+            ("limit".to_owned(), Some("suggest_break".to_owned())),
+            ("limit".to_owned(), Some("suggest_break".to_owned()))
+        ]
+    );
+    let stored = messages(&core, t).expect("m")[0].tool_notices.clone();
+    assert_eq!(
+        stored.iter().map(|n| n.reason.as_str()).collect::<Vec<_>>(),
+        ["limit", "limit"]
+    );
     assert_eq!(*asked.lock().expect("a"), 3);
     assert_eq!(
         skipped.lock().expect("s").as_slice(),
@@ -519,6 +550,72 @@ fn calls_over_the_per_message_limit_get_a_fixed_sentence_and_are_not_asked() {
         5,
         "every call gets an answer"
     );
+}
+
+#[test]
+fn a_malformed_lookup_shows_a_notice_and_an_unsafe_name_or_arguments_never_reach_it() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 5000);
+    enable_tools(&core);
+    let m = mock_sse(vec![
+        oa_calls(&[
+            (
+                "c_a".to_owned(),
+                "suggest_break",
+                "{\"available_minutes\": 9999, \"note\": \"SECRETARGS\"}",
+            ),
+            ("c_b".to_owned(), "Run Shell!", "{\"x\": \"SECRETARGS\"}"),
+        ]),
+        OA_TEXT.to_owned(),
+    ]);
+    let pid = profile(&core, &m.base, None);
+    let t = thread(&core);
+    let events = Mutex::new(Vec::<StreamEvent>::new());
+    let asked = Mutex::new(0usize);
+    send_events(&core, t, &pid, "hi", &Scope::None, &|e| {
+        if matches!(e, StreamEvent::ToolRequest { .. }) {
+            *asked.lock().expect("a") += 1;
+        }
+        events.lock().expect("e").push(e);
+    })
+    .expect("send");
+    assert_eq!(*asked.lock().expect("a"), 0, "nothing to approve");
+    let seen: Vec<(String, Option<String>)> = events
+        .lock()
+        .expect("e")
+        .iter()
+        .filter_map(|e| match e {
+            StreamEvent::ToolNotice { reason, tool, .. } => Some((reason.clone(), tool.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("malformed".to_owned(), Some("suggest_break".to_owned())),
+            ("unknown".to_owned(), None)
+        ]
+    );
+    let stored = messages(&core, t).expect("m")[0].tool_notices.clone();
+    assert_eq!(
+        stored
+            .iter()
+            .map(|n| (n.reason.as_str(), n.tool.as_deref()))
+            .collect::<Vec<_>>(),
+        [("malformed", Some("suggest_break")), ("unknown", None)]
+    );
+    // The model's arguments and odd name are in no event and not in the stored notices.
+    let all = format!("{:?}{stored:?}", events.lock().expect("e"));
+    assert!(!all.contains("SECRETARGS"), "{all}");
+    assert!(!all.contains("Run Shell"), "{all}");
+    // And they are camelCase on the wire.
+    let json = serde_json::to_string(&StreamEvent::ToolNotice {
+        request_id: "r".into(),
+        reason: "limit".into(),
+        tool: None,
+    })
+    .expect("json");
+    assert!(json.contains("\"type\":\"toolNotice\"") && json.contains("\"requestId\""));
 }
 
 #[test]

@@ -22,8 +22,9 @@ pub use marketplaces::{
 
 pub use companion::{
     CLEARED_RESULT_TEXT, CompanionMessage, CompanionProfile, CompanionThread, CompanionToolCall,
-    CompanionUsage, DEFAULT_THREAD_TITLE, MAX_ATTACHED_CHARS, MAX_MESSAGE_CHARS, MAX_PROFILES,
-    MAX_THREAD_TITLE_CHARS, MAX_THREADS, NewToolCall, NewUserMessage, month_of,
+    CompanionToolNotice, CompanionUsage, DEFAULT_THREAD_TITLE, MAX_ATTACHED_CHARS,
+    MAX_MESSAGE_CHARS, MAX_PROFILES, MAX_THREAD_TITLE_CHARS, MAX_THREADS, NewToolCall,
+    NewToolNotice, NewUserMessage, month_of,
 };
 
 pub use context::{
@@ -92,6 +93,10 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 12,
         sql: include_str!("../migrations/0012_install_source_note.sql"),
+    },
+    Migration {
+        version: 13,
+        sql: include_str!("../migrations/0013_companion_tool_notices.sql"),
     },
 ];
 
