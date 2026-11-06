@@ -123,14 +123,26 @@ Nothing is published yet. The workflow has **not been run**, and the first run n
 
 ### What the workflow does
 
-1. Starts only by hand: Actions > **Publish npm packages** > **Run workflow**. Choose the packages (`all`, or one), the dist-tag (`latest` or `next`) and whether it is a dry run. **Dry run is on by default.**
-2. Runs only on `main`, and waits for approval in the `npm` environment.
-3. Installs with `pnpm install --frozen-lockfile`, checks the generated schemas, typechecks and tests the three packages.
-4. Builds and packs them (`node scripts/check-npm-packages.mjs`), and refuses any tarball with files outside its allowlist, tests, source maps, `.env`, local paths or `workspace:` specifiers.
-5. Installs the tarballs in an empty folder outside the repository and runs `lullshift create`, `validate` and `simulate` with them.
-6. Publishes in dependency order (protocol, SDK, CLI) with `pnpm publish --provenance --access public --no-git-checks --tag <tag>`. A version already on npm is skipped. A package whose `@lullshift` dependency isn't on npm yet stops the run.
+It starts only by hand: Actions > **Publish npm packages** > **Run workflow**. Choose the packages (`all`, or one), the dist-tag (`latest` or `next`) and whether it is a dry run. **Dry run is on by default.** It has two jobs.
 
-The npm token reaches only the last step, as `NODE_AUTH_TOKEN`. Each package's `prepublishOnly` guard (`scripts/npm-publish-guard.mjs`) refuses a publish anywhere but this workflow on `main`.
+**`build`** (no environment, no secrets, no `id-token`, read-only token). Everything that runs third-party code happens here, where nothing can get an npm credential or an OIDC token:
+
+1. Installs with `pnpm install --frozen-lockfile` (pnpm version and hash pinned by `packageManager`), checks the generated schemas, typechecks and tests the three packages and the publish guard.
+2. Builds and packs them once (`node scripts/check-npm-packages.mjs --keep`), and refuses any tarball with files outside its allowlist, links or other non-regular entries, tests, source maps, `.env`, local paths, secrets (the repository's secretlint rules) or `workspace:` specifiers.
+3. Installs those tarballs in an empty folder outside the repository and runs `lullshift create`, `validate` and `simulate` with them.
+4. Prints the SHA-512 of each tarball (hex, and as npm's `sha512-<base64>` integrity), passes the list to `publish` as a job output, and uploads the tarballs as the run artifact `npm-tarballs`.
+
+**`publish`** (`needs: build`, `environment: npm`, `contents: read` and `id-token: write`). It waits for approval in the `npm` environment, then:
+
+1. Sets up Node 24 and checks that npm is 11.5.1 or later (needed for trusted publishing; see below).
+2. Downloads `npm-tarballs`. There is no checkout, no install and no repository script in this job.
+3. Checks the downloaded folder holds exactly the three listed files and that each matches the SHA-512 from `build` (`sha512sum --check --strict`). Any difference stops the run.
+4. Publishes in dependency order (protocol, SDK, CLI) with `npm publish --access public --provenance --ignore-scripts --tag <tag> <file>.tgz`, so the uploaded bytes are the ones `build` checked and smoke-tested; nothing is packed again. In a dry run, the same command with `--dry-run`.
+5. A version already on npm is skipped, but only if npm's `dist.integrity` for it equals the local tarball's. Different bytes under the same version stop the run: bump the version. A package whose `@lullshift` dependency isn't on npm yet (and isn't published earlier in the run) stops the run.
+
+The npm token, if any, reaches only the last step, as `NODE_AUTH_TOKEN`, through a temporary npm config file that holds a reference to the variable, not the token.
+
+**npm version.** `actions/setup-node` installs the newest Node 24 release, and each Node release bundles an npm version. Node 24.5.0 (2025-07-31) was the first 24.x to bundle npm 11.5.1; the newest 24.x on 2026-11-06, 24.22.2, bundles npm 11.19.1 (nodejs.org/dist/index.json). The job checks rather than upgrades npm, so nothing is fetched from the registry to publish.
 
 ### Owner steps before the first publish
 
@@ -158,7 +170,10 @@ npm publish --dry-run ../npm-tarballs/lullshift-cli-0.1.0.tgz
 ### Sources checked (2026-11-06)
 
 - npm, [Trusted publishing for npm packages](https://docs.npmjs.com/trusted-publishers): needs npm CLI 11.5.1 or later and Node 22 or later, GitHub-hosted runners only, `id-token: write`, the workflow file name must match exactly, and provenance is added on its own.
-- pnpm, [pnpm publish](https://pnpm.io/cli/publish): `--provenance`; "under trusted publishing, pnpm attaches provenance to a public package from a public repository on its own".
-- pnpm, [package.json](https://pnpm.io/package_json): `publishConfig` may override `bin`, `main`, `exports`, `types`, `engines` and other fields when packing.
+- npm, the same page: "The npm CLI automatically detects OIDC environments and uses them for authentication before falling back to traditional tokens", and the GitHub Actions trusted publisher's **Environment name** is marked "(optional)".
+- npm CLI source, [`lib/commands/publish.js`](https://github.com/npm/cli/blob/latest/lib/commands/publish.js): "only run scripts for directory type publishes", so `npm publish <file>.tgz` never runs `prepublishOnly`. A local `npm publish --dry-run <file>.tgz` against an unreachable registry printed `integrity: sha512-s5YJ...` for the protocol tarball, the same value `check-npm-packages.mjs` computes from the file: npm uploads the tarball's bytes as they are.
+- pnpm, [package.json](https://pnpm.io/package_json): `publishConfig` may override `bin`, `main`, `exports`, `types`, `engines` and other fields when packing (`pnpm pack` in the build job).
+- Node.js, [release index](https://nodejs.org/dist/index.json): npm bundled with each Node 24 release (11.5.1 from 24.5.0; 11.19.1 in 24.22.2).
+- GitHub, `actions/upload-artifact` and `actions/download-artifact` releases: v7.0.2 is commit `cf430e030ddbb5b0abf93d22962f4752f3646cd9` and v8.0.2 is `9000827ccba6bdab643e8b6fd33ac0654aef8333` (both the latest releases, 2026-10-07). download-artifact v8 fails on an artifact digest mismatch by default.
 
-Not verified without a real run: that pnpm 12.6.0 completes the OIDC exchange with npm, and that headless Chrome on `ubuntu-24.04` runs the simulator step.
+Not verified without a real run: the npm OIDC exchange from the publish job, `npm publish <file>.tgz --provenance` producing the provenance badge, and that headless Chrome on `ubuntu-24.04` runs the simulator step. The workflow's shell steps were run locally (Git Bash, Windows) with `npm publish` replaced by a stub: the SHA-512 list, the verify step refusing an extra file, a changed tarball, a forged line and a duplicate package, the dry run of all three, the skip when npm holds the same bytes, the stop when it holds different bytes, and the stop when a dependency isn't on npm.

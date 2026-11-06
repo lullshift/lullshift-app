@@ -186,41 +186,154 @@ fn only_the_two_manual_workflows_exist() {
     );
 }
 
-#[test]
-fn npm_workflow_is_manual_gated_and_token_scoped() {
+fn npm_workflow() -> String {
     let root = manifest_dir().join("..").join("..").join("..");
-    let wf = read(
+    read(
         &root
             .join(".github")
             .join("workflows")
             .join("publish-npm.yml"),
-    );
+    )
+}
+
+/// The text of one job (from `  <name>:` to the next job or the end).
+fn job<'a>(wf: &'a str, name: &str) -> &'a str {
+    let jobs = wf.split("\njobs:\n").nth(1).expect("jobs:");
+    let start = jobs
+        .find(&format!("  {name}:\n"))
+        .unwrap_or_else(|| panic!("job {name}"));
+    let rest = &jobs[start + name.len() + 4..];
+    // The next job starts with exactly two spaces of indent and a name.
+    let end = rest
+        .match_indices("\n  ")
+        .map(|(i, _)| i)
+        .find(|&i| {
+            let after = &rest[i + 3..];
+            after
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic())
+        })
+        .unwrap_or(rest.len());
+    &rest[..end]
+}
+
+#[test]
+fn npm_workflow_is_manual_gated_and_token_scoped() {
+    let wf = npm_workflow();
     assert_manual_and_pinned("publish-npm.yml", &wf);
-    // Main only, behind the protected environment the owner approves.
-    assert!(wf.contains("if: github.ref == 'refs/heads/main'"));
-    assert!(wf.contains("environment: npm"));
-    // Provenance needs id-token; nothing writes to the repository.
-    assert!(wf.contains("id-token: write"));
+    let build = job(&wf, "build");
+    let publish = job(&wf, "publish");
+    // Main only (defence in depth; the environment's branch policy is the control).
+    assert!(build.contains("if: github.ref == 'refs/heads/main'"));
+    assert!(publish.contains("if: github.ref == 'refs/heads/main'"));
+    // Nothing writes to the repository.
     assert!(!wf.contains("contents: write"));
-    // The token appears once, in the publish step's env, and only that step publishes.
+    // The token appears once, in the publish step's env.
     assert_eq!(wf.matches("secrets.").count(), 1);
-    let publish = wf.split("- name: Publish\n").nth(1).expect("Publish step");
-    assert!(publish.contains("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}"));
-    assert!(
-        !wf.split("- name: Publish\n")
-            .next()
-            .unwrap()
-            .contains("pnpm publish")
-    );
-    assert!(publish.contains("--provenance") && publish.contains("--access public"));
-    // Inputs reach the shell only through env, never interpolated into the script.
-    for line in wf.lines().filter(|l| l.contains("${{ inputs.")) {
+    assert_eq!(wf.matches("NODE_AUTH_TOKEN: ${{").count(), 1);
+    let publish_step = publish
+        .split("- name: Publish\n")
+        .nth(1)
+        .expect("Publish step");
+    assert!(publish_step.contains("NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}"));
+    // Inputs and job outputs reach the shell only through env, never interpolated into a script.
+    for line in wf
+        .lines()
+        .filter(|l| l.contains("${{ inputs.") || l.contains("${{ needs."))
+    {
         let key = line.trim_start().split(':').next().unwrap();
         assert!(
-            key.chars().all(|c| c.is_ascii_uppercase() || c == '_'),
-            "inputs only via env: {line}"
+            key.chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'),
+            "inputs and outputs only via env: {line}"
         );
     }
+}
+
+#[test]
+fn npm_id_token_and_environment_are_only_in_the_publish_job() {
+    // Medium 1: dev dependencies run in the build job, so it must not be able to mint an OIDC
+    // token (npm trusted publishing) or reach the `npm` environment's secret.
+    let wf = npm_workflow();
+    let build = job(&wf, "build");
+    let publish = job(&wf, "publish");
+    let keys = |key: &str| {
+        wf.lines()
+            .filter(|l| l.trim_start().starts_with(key))
+            .count()
+    };
+    assert_eq!(keys("id-token:"), 1, "id-token appears once");
+    assert_eq!(keys("environment:"), 1, "one environment");
+    assert!(publish.contains("environment: npm"));
+    assert!(publish.contains("permissions:\n      contents: read\n      id-token: write"));
+    assert!(publish.contains("needs: build"));
+    assert!(!build.contains("id-token") && !build.contains("environment:"));
+    assert!(!build.contains("secrets."));
+    assert!(build.contains("permissions:\n      contents: read\n"));
+    // Top-level default stays read-only (no id-token at the workflow level).
+    let top = wf.split("\njobs:\n").next().unwrap();
+    assert!(!top.contains("id-token:"));
+}
+
+#[test]
+fn npm_publish_job_uploads_the_checked_tarballs_and_runs_nothing_from_the_repo() {
+    // Medium 2: the uploaded bytes are the ones build packed, checked and smoke-tested.
+    let wf = npm_workflow();
+    let build = job(&wf, "build");
+    let publish = job(&wf, "publish");
+    assert!(build.contains("node scripts/check-npm-packages.mjs --keep"));
+    assert!(build.contains("actions/upload-artifact@"));
+    assert!(build.contains("sha512sums: ${{ steps.sums.outputs.sha512sums }}"));
+    assert!(
+        build.contains("lullshift simulate"),
+        "smoke test before upload"
+    );
+    for bad in [
+        "actions/checkout",
+        "pnpm",
+        "corepack",
+        "npm install",
+        "npm ci",
+        "run test",
+        "node scripts/",
+        "npx ",
+        "cache:",
+    ] {
+        assert!(
+            !publish.contains(bad),
+            "publish job must not run `{bad}` (no checkout, no install, no repo scripts)"
+        );
+    }
+    assert!(publish.contains("actions/download-artifact@"));
+    assert!(publish.contains("SHA512SUMS: ${{ needs.build.outputs.sha512sums }}"));
+    assert!(publish.contains("sha512sum --check --strict"));
+    // Every npm publish publishes a .tgz path, with provenance, scripts off, tag from env.
+    let publish_lines: Vec<&str> = publish
+        .lines()
+        .filter(|l| l.contains("npm publish"))
+        .collect();
+    assert_eq!(publish_lines.len(), 1, "{publish_lines:?}");
+    assert_eq!(
+        publish_lines[0].trim(),
+        "npm publish \"${args[@]}\" \"$tgz\""
+    );
+    assert!(publish.contains("tgz=\"$(find \"$dir\" -maxdepth 1 -name \"lullshift-$short-*.tgz\""));
+    assert!(publish.contains("*.tgz) ;;"));
+    assert!(
+        publish
+            .contains("args=(--access public --provenance --ignore-scripts --tag \"$DIST_TAG\")")
+    );
+    assert!(publish.contains("if [ \"$DRY_RUN\" = true ]; then args+=(--dry-run); fi"));
+    // Low 3: a version already on npm is skipped only if npm holds the same bytes.
+    assert!(publish.contains("dist.integrity"));
+    // npm >= 11.5.1 for trusted publishing; the publish job's Node matches .node-version.
+    assert!(publish.contains("printf '%s\\n' 11.5.1 \"$v\" | sort -V -C"));
+    let root = manifest_dir().join("..").join("..").join("..");
+    let node = read(&root.join(".node-version")).trim().to_string();
+    assert!(publish.contains(&format!("node-version: \"{node}\"")));
+    // pnpm no longer publishes, so its git-check override is gone too.
+    assert!(!wf.contains("pnpm publish") && !wf.contains("--no-git-checks"));
 }
 
 #[test]

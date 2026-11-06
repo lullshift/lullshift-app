@@ -2,9 +2,17 @@
 #
 # Publishes @lullshift/agent-protocol, @lullshift/activity-sdk and @lullshift/cli, in that order,
 # with npm provenance. It runs ONLY when someone starts it by hand (Actions tab > Publish npm
-# packages > Run workflow), only from main, and only after the owner approves the run in the
-# protected `npm` environment, which holds the only npm credential. Versions already on npm are
-# skipped. A dry run (the default) builds, checks and packs everything and uploads nothing.
+# packages > Run workflow). Two jobs:
+#   build    installs dev dependencies, tests, packs, checks and smoke-tests the tarballs. It has
+#            no environment, no secrets and no id-token, so nothing it runs can get an npm
+#            credential or an OIDC token.
+#   publish  waits for the owner's approval in the protected `npm` environment, downloads exactly
+#            the tarballs `build` checked, verifies their SHA-512, and uploads those bytes with
+#            `npm publish <file>.tgz`. No checkout, no install, no repository scripts.
+# The controls that matter are the `npm` environment's deployment branch policy (main only) and
+# required reviewer, and an npm credential only that environment can use. The `if:` lines and
+# scripts/npm-publish-guard.mjs are defence in depth. Versions already on npm are skipped (after
+# checking the bytes match). A dry run (the default) does everything but upload.
 # See docs/RELEASING.md, section 6.
 name: Publish npm packages
 
@@ -32,7 +40,7 @@ on:
         type: boolean
         default: true
 
-# Least privilege by default; the job raises only what provenance needs.
+# Least privilege by default; only the publish job raises id-token.
 permissions:
   contents: read
 
@@ -41,17 +49,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish to npm
-    # Only from main. The publish guard (scripts/npm-publish-guard.mjs) checks the same.
+  build:
+    name: Build, check and pack
+    # Defence in depth; the `npm` environment's branch policy is what stops other branches.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    # Protected environment: the owner is its required reviewer and NPM_TOKEN is its secret.
-    environment: npm
     permissions:
       contents: read
-      id-token: write # npm provenance (and npm trusted publishing, if configured)
+    outputs:
+      sha512sums: ${{ steps.sums.outputs.sha512sums }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,7 +70,7 @@ jobs:
         with:
           node-version-file: .node-version
 
-      - name: Enable pnpm (version pinned by package.json)
+      - name: Enable pnpm (version and hash pinned by package.json)
         run: corepack enable
 
       - name: Install JavaScript dependencies
@@ -76,6 +83,7 @@ jobs:
         run: |
           pnpm --filter @lullshift/agent-protocol --filter @lullshift/activity-sdk --filter @lullshift/cli run typecheck
           pnpm --filter @lullshift/agent-protocol --filter @lullshift/activity-sdk --filter @lullshift/cli run test
+          node --test scripts/npm-publish-guard.test.mjs
 
       - name: Build, pack and check the tarballs
         run: node scripts/check-npm-packages.mjs --keep "$RUNNER_TEMP/tarballs"
@@ -95,53 +103,167 @@ jobs:
           npx --no-install lullshift validate "$smoke/app"
           npx --no-install lullshift simulate "$smoke/app"
           npx --no-install lullshift simulate "$smoke/pack"
+          # The installed CLI ignores INIT_CWD: a relative folder lands where it runs.
+          mkdir -p "$smoke/elsewhere"
+          INIT_CWD="$smoke/elsewhere" node node_modules/@lullshift/cli/dist/main.js create rel-app --id dev.ci.rel-app
+          test -f "$smoke/rel-app/manifest.json"
+          test ! -e "$smoke/elsewhere/rel-app"
+
+      - name: Record the SHA-512 of each tarball
+        id: sums
+        shell: bash
+        working-directory: ${{ runner.temp }}/tarballs
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/SHA512SUMS"
+          for f in *.tgz; do
+            # "<hex>  <file>", the format sha512sum --check reads; npm shows the same digest
+            # as dist.integrity (sha512-<base64>).
+            printf '%s  %s\n' "$(sha512sum < "$f" | cut -d' ' -f1)" "$f" >> "$RUNNER_TEMP/SHA512SUMS"
+            echo "$f sha512-$(openssl dgst -sha512 -binary "$f" | base64 -w0)"
+          done
+          cat "$RUNNER_TEMP/SHA512SUMS"
+          {
+            echo 'sha512sums<<LULLSHIFT_SHA512SUMS'
+            cat "$RUNNER_TEMP/SHA512SUMS"
+            echo 'LULLSHIFT_SHA512SUMS'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload the checked tarballs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-tarballs
+          path: ${{ runner.temp }}/tarballs/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to npm
+    needs: build
+    # Defence in depth; the `npm` environment's branch policy is what stops other branches.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Protected environment: deployment branches main only, the owner as required reviewer, and
+    # the only npm credential (the NPM_TOKEN secret, or the trusted publisher bound to `npm`).
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # npm provenance and npm trusted publishing (OIDC); this job only
+    steps:
+      # No checkout and no install: nothing from the repository or its dependencies runs here.
+      - name: Set up Node (must match .node-version; release_config.rs checks)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: npm 11.5.1 or later (trusted publishing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="$(npm --version)"
+          echo "node $(node --version), npm $v"
+          if ! printf '%s\n' 11.5.1 "$v" | sort -V -C; then
+            echo "::error::npm $v is older than 11.5.1, which npm trusted publishing needs"
+            exit 1
+          fi
+
+      - name: Download the checked tarballs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-tarballs
+          path: ${{ runner.temp }}/tarballs
+
+      - name: Verify the tarballs are the ones build checked
+        shell: bash
+        env:
+          SHA512SUMS: ${{ needs.build.outputs.sha512sums }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/tarballs"
+          printf '%s\n' "$SHA512SUMS" > "$RUNNER_TEMP/SHA512SUMS"
+          re='^[0-9a-f]{128}  lullshift-(agent-protocol|activity-sdk|cli)-[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?\.tgz$'
+          count=0
+          while IFS= read -r line; do
+            if ! [[ "$line" =~ $re ]]; then
+              echo "::error::unexpected checksum line from the build job"
+              exit 1
+            fi
+            count=$((count + 1))
+          done < "$RUNNER_TEMP/SHA512SUMS"
+          kinds="$(cut -d' ' -f3 "$RUNNER_TEMP/SHA512SUMS" | sed -E 's/^lullshift-(agent-protocol|activity-sdk|cli)-.*/\1/' | sort -u | wc -l)"
+          if [ "$count" != 3 ] || [ "$kinds" != 3 ]; then
+            echo "::error::expected one checksum per package from the build job"
+            exit 1
+          fi
+          # Exactly the listed files, nothing more, and every byte as build checked it.
+          diff <(find . -mindepth 1 -printf '%P\n' | sort) <(cut -d' ' -f3 "$RUNNER_TEMP/SHA512SUMS" | sort)
+          sha512sum --check --strict "$RUNNER_TEMP/SHA512SUMS"
 
       - name: Publish
         shell: bash
         env:
           # Scoped to this step. Empty when the owner uses npm trusted publishing instead.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          LULLSHIFT_NPM_PUBLISH: "1"
           PACKAGES: ${{ inputs.packages }}
           DIST_TAG: ${{ inputs.dist_tag }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
+          dir="$RUNNER_TEMP/tarballs"
           if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
             # The file holds a reference to the variable, never the token itself.
-            echo '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > .npmrc
-            trap 'rm -f .npmrc' EXIT
+            export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/publish.npmrc"
+            echo '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "$NPM_CONFIG_USERCONFIG"
+            trap 'rm -f "$NPM_CONFIG_USERCONFIG"' EXIT
           fi
           on_npm() { [ "$(npm view "$1@$2" version 2> /dev/null || true)" = "$2" ]; }
+          # Name, version and @lullshift dependencies (name@version ...) from a tarball's manifest.
+          meta() {
+            tar -xzOf "$1" package/package.json | node -e '
+              const p = JSON.parse(require("fs").readFileSync(0, "utf8"));
+              const deps = Object.entries(p.dependencies ?? {})
+                .filter(([d]) => d.startsWith("@lullshift/"))
+                .map(([d, v]) => d + "@" + v);
+              console.log([p.name, p.version, ...deps].join(" "));'
+          }
           done_now=""
           for short in agent-protocol activity-sdk cli; do
             if [ "$PACKAGES" != all ] && [ "$PACKAGES" != "$short" ]; then continue; fi
-            case "$short" in
-              cli) dir=tools/lullshift-cli ;;
-              *) dir="packages/$short" ;;
+            tgz="$(find "$dir" -maxdepth 1 -name "lullshift-$short-*.tgz" -print)"
+            case "$tgz" in
+              *.tgz) ;;
+              *) echo "::error::no tarball for $short"; exit 1 ;;
             esac
-            name="$(node -p "require('./$dir/package.json').name")"
-            version="$(node -p "require('./$dir/package.json').version")"
+            read -r name version deps < <(meta "$tgz") || true
+            if [ "$name" != "@lullshift/$short" ] || [ "$(basename "$tgz")" != "lullshift-$short-$version.tgz" ]; then
+              echo "::error::$(basename "$tgz") holds $name@$version"
+              exit 1
+            fi
+            integrity="sha512-$(openssl dgst -sha512 -binary "$tgz" | base64 -w0)"
             if on_npm "$name" "$version"; then
-              echo "$name@$version is already on npm: skipped"
+              published="$(npm view "$name@$version" dist.integrity)"
+              if [ "$published" != "$integrity" ]; then
+                echo "::error::$name@$version is on npm with different bytes ($published, here $integrity); bump the version"
+                exit 1
+              fi
+              echo "$name@$version is already on npm with the same bytes: skipped"
               continue
             fi
             # Each @lullshift dependency must be on npm already, or published earlier in this run.
-            for dep in $(node -p "Object.keys(require('./$dir/package.json').dependencies ?? {}).filter((d) => d.startsWith('@lullshift/')).join(' ')"); do
-              depdir="$(node -p "({'@lullshift/agent-protocol':'packages/agent-protocol','@lullshift/activity-sdk':'packages/activity-sdk'})['$dep']")"
-              depver="$(node -p "require('./$depdir/package.json').version")"
-              if ! on_npm "$dep" "$depver" && [[ " $done_now " != *" $dep@$depver "* ]]; then
+            for dep in ${deps:-}; do
+              if ! on_npm "${dep%@*}" "${dep##*@}" && [[ " $done_now " != *" $dep "* ]]; then
                 if [ "$DRY_RUN" = true ]; then
-                  echo "::warning::$name needs $dep@$depver, which isn't on npm yet; publish it first"
+                  echo "::warning::$name needs $dep, which isn't on npm yet; publish it first"
                 else
-                  echo "::error::$name needs $dep@$depver, which isn't on npm; publish it first (or choose all)"
+                  echo "::error::$name needs $dep, which isn't on npm; publish it first (or choose all)"
                   exit 1
                 fi
               fi
             done
-            args=(--access public --provenance --no-git-checks --tag "$DIST_TAG")
+            args=(--access public --provenance --ignore-scripts --tag "$DIST_TAG")
             if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
-            echo "Publishing $name@$version (tag $DIST_TAG, dry run: $DRY_RUN)"
-            (cd "$dir" && pnpm publish "${args[@]}")
+            echo "Publishing $name@$version from $(basename "$tgz") ($integrity), tag $DIST_TAG, dry run: $DRY_RUN"
+            npm publish "${args[@]}" "$tgz"
             done_now="$done_now $name@$version"
           done
