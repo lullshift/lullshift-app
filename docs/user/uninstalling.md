@@ -2,7 +2,7 @@
 
 ## Before you uninstall
 
-1. **Disconnect each agent in Integrations.** Open **Integrations** and choose **Disconnect** on every connected agent (Claude Code, Codex, Cursor). This removes Lullshift's hooks and restores your settings files where it can. If you skip this, an agent may keep trying to run a Lullshift program that is no longer there.
+1. **Disconnect each agent in Integrations.** Open **Integrations** and choose **Disconnect** on every connected agent (Claude Code, Codex, Cursor, and OpenCode if you connected it). This removes Lullshift's hooks and restores your settings files where it can. If you skip this, an agent may keep trying to run a Lullshift program that is no longer there.
 2. **Remove Companion providers** you added (Companion, Settings). This deletes their API keys from your system keychain. Uninstalling the app does not remove keychain entries.
 3. **Export anything you want to keep.** Each session's details panel can export Markdown or JSON.
 
@@ -38,6 +38,7 @@ If an agent now reports errors about a missing program, remove Lullshift's hooks
 | Claude Code | `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) | Hook handlers whose `args` start with `"hook", "claude-code"` |
 | Codex | `$CODEX_HOME/hooks.json`, else `~/.codex/hooks.json` | Hook commands containing ` hook codex --data-dir ` |
 | Cursor | `~/.cursor/hooks.json` | Hook commands containing ` hook cursor --data-dir ` |
+| OpenCode | `~/.config/opencode/plugins/lullshift-observer.js` (or under `$XDG_CONFIG_HOME/opencode` or `$OPENCODE_CONFIG_DIR`) | Delete this file if its first line starts with `// Lullshift-owned file` |
 
 Leave every other entry as it is.
 

@@ -18,7 +18,7 @@ struct Case {
     other_hooks: [&'static str; 3],
 }
 
-const CASES: [Case; 2] = [
+const CASES: [Case; 3] = [
     Case {
         adapter: "codex",
         prompt_hook: r#"{"session_id":"s-1","hook_event_name":"UserPromptSubmit","cwd":"/SENTINEL_CWD","transcript_path":"/SENTINEL_T","prompt":"SENTINEL_PROMPT fix it password=hunter2"}"#,
@@ -35,6 +35,16 @@ const CASES: [Case; 2] = [
             r#"{"conversation_id":"c-1","hook_event_name":"stop","status":"completed","prompt":"SENTINEL_STOP"}"#,
             r#"{"conversation_id":"c-1","hook_event_name":"afterAgentResponse","text":"SENTINEL_ASSISTANT","prompt":"SENTINEL_AFTER"}"#,
             r#"{"conversation_id":"c-1","hook_event_name":"postToolUse","prompt":"SENTINEL_TOOL","tool_input":{"c":"SENTINEL_COMMAND"}}"#,
+        ],
+    },
+    // The OpenCode plugin's own allow-listed message (ADR-022), not OpenCode's event.
+    Case {
+        adapter: "opencode",
+        prompt_hook: r#"{"v":1,"event":"session.inbox.enqueued","sessionId":"o-1","path":"/SENTINEL_CWD","prompt":"SENTINEL_PROMPT fix it password=hunter2"}"#,
+        other_hooks: [
+            r#"{"v":1,"event":"turn_ended","sessionId":"o-1","prompt":"SENTINEL_STOP"}"#,
+            r#"{"v":1,"event":"session.tool.called","sessionId":"o-1","prompt":"SENTINEL_TOOL","tool_input":{"c":"SENTINEL_COMMAND"}}"#,
+            r#"{"v":1,"event":"permission.asked","sessionId":"o-1","prompt":"SENTINEL_PERM","tool_input":{"c":"SENTINEL_COMMAND"}}"#,
         ],
     },
 ];
@@ -101,7 +111,7 @@ async fn opt_in_off_the_prompt_is_never_sent() {
 async fn another_adapters_marker_does_not_open_the_gate() {
     for case in &CASES {
         let dir = tempfile::tempdir().expect("tempdir");
-        for other in ["claude-code", "codex", "cursor"] {
+        for other in ["claude-code", "codex", "cursor", "opencode"] {
             if other != case.adapter {
                 enable(dir.path(), other);
             }

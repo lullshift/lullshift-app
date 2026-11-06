@@ -88,6 +88,7 @@ impl Notice {
             "claude-code" => "A Claude Code session",
             "codex" => "A Codex session",
             "cursor" => "A Cursor session",
+            "opencode" => "An OpenCode session",
             _ => "An agent session",
         };
         match self {

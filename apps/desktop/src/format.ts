@@ -8,6 +8,7 @@ const PROVIDERS: Record<string, { name: string; icon: IconName }> = {
   "claude-code": { name: "Claude Code", icon: "terminal" },
   codex: { name: "Codex", icon: "terminal" },
   cursor: { name: "Cursor", icon: "pointer" },
+  opencode: { name: "OpenCode", icon: "terminal" },
 };
 
 /** Human name for an agent provider; unknown providers show their own ID. */

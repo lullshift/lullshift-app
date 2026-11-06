@@ -6,7 +6,7 @@ Lullshift has no accounts, no Lullshift servers and no telemetry. Your data stay
 
 - Agent sessions: the agent's name, session ID, event types, times and states.
 - Your notes, intents, decisions, checklists and Next Move items.
-- Captured task context, only if you turned on **Task context** for a tool (Claude Code, Codex or Cursor; each is off by default).
+- Captured task context, only if you turned on **Task context** for a tool (Claude Code, Codex, Cursor or OpenCode; each is off by default).
 - Activity progress, play time and settings.
 - Companion conversations, provider settings and monthly usage counts.
 
@@ -44,7 +44,7 @@ Run Lullshift with no marketplaces added and no Companion provider set up, and w
 
 ## Agents
 
-Agent hooks send Lullshift only the session ID, event type and time. Prompts, code, file paths and replies are never sent, unless you turn on Task context for a tool. For Claude Code it keeps the first prompt and what Claude Code asks you; for Codex and Cursor it keeps only the first prompt of each session. Each tool has its own switch on its card in Integrations, and nothing is kept for a tool until you turn its switch on. See [Connecting agents](connecting-agents.md).
+Agent hooks send Lullshift only the session ID, event type and time. Prompts, code, file paths and replies are never sent, unless you turn on Task context for a tool. For Claude Code it keeps the first prompt and what Claude Code asks you; for Codex, Cursor and OpenCode it keeps only the first prompt of each session. Each tool has its own switch on its card in Integrations, and nothing is kept for a tool until you turn its switch on. See [Connecting agents](connecting-agents.md).
 
 ## Where your data lives
 

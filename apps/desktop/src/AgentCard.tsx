@@ -17,7 +17,7 @@ import { useRestoreFocusAfterDialog } from "./ui/focus";
 import { Icon } from "./ui/Icon";
 import { TaskContextSwitch } from "./context/TaskContextSwitch";
 
-type Agent = "codex" | "cursor";
+type Agent = "codex" | "cursor" | "opencode";
 type Load = { status: "loading" } | { status: "ready"; view: AdapterView } | { status: "error" };
 type Message = { tone: "success" | "danger"; text: string };
 
@@ -33,12 +33,22 @@ const PILL: Record<AdapterStatus, { label: string; tone: string }> = {
 const SUB: Record<Agent, string> = {
   codex: "OpenAI's coding agent in your terminal",
   cursor: "The Cursor editor's agent",
+  opencode: "The open-source coding agent (OpenCode 2.x only)",
 };
 
 const FILE: Record<Agent, string> = {
   codex: "your Codex hooks file",
   cursor: "your Cursor hooks file",
+  opencode: "OpenCode's plugins folder",
 };
+
+/** What the pill says. An installed experimental plugin is "Unknown" until an event arrives. */
+function pillFor(agent: Agent, view: AdapterView): { label: string; tone: string } {
+  if (agent === "opencode" && view.status === "installed" && view.eventSeen !== true) {
+    return { label: "Unknown", tone: "neutral" };
+  }
+  return PILL[view.status];
+}
 
 /**
  * Hook setup for Codex or Cursor. Same consent pattern as Claude Code: nothing is written until
@@ -70,6 +80,20 @@ export default function AgentCard({ agent }: { agent: Agent }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // An installed experimental plugin is unknown until its first event arrives; look again now
+  // and then so the card turns to Connected by itself.
+  const waitingForEvent =
+    agent === "opencode" &&
+    load.status === "ready" &&
+    load.view.status === "installed" &&
+    load.view.eventSeen !== true;
+  useEffect(() => {
+    if (!waitingForEvent) return;
+    const timer = window.setInterval(() => void refresh(), 5000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waitingForEvent]);
+
   const act = async (kind: "install" | "uninstall") => {
     setBusy(true);
     setMessage(null);
@@ -83,7 +107,9 @@ export default function AgentCard({ agent }: { agent: Agent }) {
           text:
             agent === "codex"
               ? "Codex is connected. Open /hooks in Codex and trust the new hooks; until then it sends no events."
-              : "Cursor is connected. Its sessions appear under Sessions as they report.",
+              : agent === "opencode"
+                ? "The OpenCode plugin is in place. Restart OpenCode (2.x); this turns to Connected when its first event arrives."
+                : "Cursor is connected. Its sessions appear under Sessions as they report.",
         });
       } else {
         const r = await invoke<UninstallView>(`${agent}_uninstall`);
@@ -91,11 +117,15 @@ export default function AgentCard({ agent }: { agent: Agent }) {
         setMessage({
           tone: "success",
           text:
-            r.outcome === "restored"
-              ? "Disconnected. Your hooks file was restored exactly as it was."
-              : r.outcome === "removed"
-                ? "Disconnected. Changes you made to the file since connecting were kept."
-                : "There were no Lullshift hooks to remove.",
+            agent === "opencode"
+              ? r.outcome === "nothing_to_remove"
+                ? "There was no Lullshift plugin file to remove."
+                : "Disconnected. The Lullshift plugin file was removed. Restart OpenCode to stop it from running."
+              : r.outcome === "restored"
+                ? "Disconnected. Your hooks file was restored exactly as it was."
+                : r.outcome === "removed"
+                  ? "Disconnected. Changes you made to the file since connecting were kept."
+                  : "There were no Lullshift hooks to remove.",
         });
         setNotice(disconnectNotice(agent, r.sessionsDisconnected ?? 0));
       }
@@ -114,7 +144,7 @@ export default function AgentCard({ agent }: { agent: Agent }) {
   const canInstall = view && view.status !== "installed" && view.status !== "settings_invalid";
   const canRemove =
     view && ["installed", "needs_update", "partial", "hooks_disabled"].includes(view.status);
-  const pill = view ? PILL[view.status] : null;
+  const pill = view ? pillFor(agent, view) : null;
   const titleId = `${agent}-title`;
 
   return (
@@ -130,6 +160,12 @@ export default function AgentCard({ agent }: { agent: Agent }) {
           <div className="integration-titles">
             <h2 id={titleId} ref={titleRef} tabIndex={-1} className="card-title">
               {name}
+              {agent === "opencode" && (
+                <>
+                  {" "}
+                  <span className="pill tone-attention">Experimental</span>
+                </>
+              )}
             </h2>
             <p className="card-sub">{SUB[agent]}</p>
           </div>
@@ -145,7 +181,9 @@ export default function AgentCard({ agent }: { agent: Agent }) {
         {load.status === "error" && (
           <Banner tone="danger">Couldn't check the {name} setup. Its status is unknown.</Banner>
         )}
-        {view && <p className="card-text">{adapterStatusText(view.status, agent)}</p>}
+        {view && (
+          <p className="card-text">{adapterStatusText(view.status, agent, view.eventSeen)}</p>
+        )}
 
         <ul className="facts">
           <li>
@@ -226,7 +264,11 @@ export default function AgentCard({ agent }: { agent: Agent }) {
         }
         description={
           <>
-            <p>Lullshift will add small hooks to this file:</p>
+            <p>
+              {agent === "opencode"
+                ? "Lullshift will create this plugin file, and change nothing else:"
+                : "Lullshift will add small hooks to this file:"}
+            </p>
             <p className="path">
               <code>{view?.settingsPath ?? FILE[agent]}</code>
             </p>
@@ -244,19 +286,46 @@ export default function AgentCard({ agent }: { agent: Agent }) {
               prompts, code, file paths or {name}'s replies.
             </span>
           </li>
-          <li>
-            <Icon name="check" size={18} />
-            <span>
-              A backup is saved first. Your own hooks stay, though the file's spacing and formatting
-              may change.
-            </span>
-          </li>
-          <li>
-            <Icon name="check" size={18} />
-            <span>
-              Disconnect at any time. If nothing else changed the file, it's restored exactly.
-            </span>
-          </li>
+          {agent === "opencode" ? (
+            <>
+              <li>
+                <Icon name="check" size={18} />
+                <span>
+                  One new file that Lullshift owns. A file with that name that Lullshift didn't
+                  write is never replaced, and none of your OpenCode settings are touched.
+                </span>
+              </li>
+              <li>
+                <Icon name="check" size={18} />
+                <span>Disconnect at any time. It deletes the file.</span>
+              </li>
+              <li>
+                <Icon name="info" size={18} />
+                <span>
+                  Experimental: this works only with OpenCode 2.x, which Lullshift can't check. On
+                  OpenCode 1.x it does nothing, and OpenCode may show a plugin error. OpenCode loads
+                  the plugin the next time it starts, and the status stays unknown until its first
+                  event arrives.
+                </span>
+              </li>
+            </>
+          ) : (
+            <>
+              <li>
+                <Icon name="check" size={18} />
+                <span>
+                  A backup is saved first. Your own hooks stay, though the file's spacing and
+                  formatting may change.
+                </span>
+              </li>
+              <li>
+                <Icon name="check" size={18} />
+                <span>
+                  Disconnect at any time. If nothing else changed the file, it's restored exactly.
+                </span>
+              </li>
+            </>
+          )}
           {agent === "codex" && (
             <li>
               <Icon name="info" size={18} />
@@ -307,14 +376,15 @@ export default function AgentCard({ agent }: { agent: Agent }) {
               disabled={busy}
               onClick={() => void act("uninstall")}
             >
-              {busy ? "Disconnecting…" : "Remove hooks"}
+              {busy ? "Disconnecting…" : agent === "opencode" ? "Remove plugin" : "Remove hooks"}
             </button>
           </>
         }
         description={
           <p>
-            Lullshift removes its hooks and stops receiving {name} events. Your own hooks and
-            settings stay as they are.
+            {agent === "opencode"
+              ? "Lullshift deletes its plugin file and stops receiving OpenCode events. Your OpenCode settings stay as they are."
+              : `Lullshift removes its hooks and stops receiving ${name} events. Your own hooks and settings stay as they are.`}
           </p>
         }
       />

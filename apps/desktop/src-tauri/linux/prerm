@@ -1,6 +1,6 @@
 #!/bin/sh
 # Debian prerm for Lullshift (S11-T06, ADR-010). Removes Lullshift's agent hooks (Claude Code,
-# Codex, Cursor) for each normal user before the package is removed, using the app's own
+# Codex, Cursor, and the OpenCode plugin file) for each normal user before the package is removed, using the app's own
 # `--uninstall-hooks` mode (same logic as Disconnect). Only on a real removal, never on upgrade.
 # Each user is handled as that user (never as root) so file ownership is preserved. Always
 # exits 0: a hook cleanup must never block package removal.
@@ -27,7 +27,7 @@ getent passwd 2>/dev/null | while IFS=: read -r user _ uid _ _ home shell; do
   case "$shell" in */nologin | */false) continue ;; esac
   if command -v runuser >/dev/null 2>&1; then
     # Bounded, so an unreachable home or directory service can't stall package removal.
-    timeout 30 runuser -u "$user" -- env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u XDG_DATA_HOME \
+    timeout 30 runuser -u "$user" -- env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u XDG_DATA_HOME -u XDG_CONFIG_HOME -u OPENCODE_CONFIG_DIR \
       HOME="$home" "$bin" --uninstall-hooks >/dev/null 2>&1 </dev/null
   fi
 done

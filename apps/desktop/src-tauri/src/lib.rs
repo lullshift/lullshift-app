@@ -548,6 +548,9 @@ pub fn run() {
             adapters::more::cursor_status,
             adapters::more::cursor_install,
             adapters::more::cursor_uninstall,
+            adapters::opencode::opencode_status,
+            adapters::opencode::opencode_install,
+            adapters::opencode::opencode_uninstall,
             notification_prefs,
             set_notification_prefs,
             activities::activities_list,
@@ -636,7 +639,7 @@ mod tests {
 
     #[test]
     fn only_the_main_window_may_change_agent_settings() {
-        const SENSITIVE: [&str; 17] = [
+        const SENSITIVE: [&str; 19] = [
             "allow-companion-set-key",
             "allow-companion-clear-key",
             "allow-companion-send",
@@ -648,6 +651,8 @@ mod tests {
             "allow-codex-uninstall",
             "allow-cursor-install",
             "allow-cursor-uninstall",
+            "allow-opencode-install",
+            "allow-opencode-uninstall",
             "allow-marketplace-add",
             "allow-marketplace-remove",
             "allow-marketplace-install",

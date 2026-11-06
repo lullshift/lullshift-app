@@ -4,6 +4,8 @@ import {
   adapterStatusText,
   CAPABILITY_SUMMARY,
   CODEX_TRUST_NOTE,
+  EXPERIMENTAL_AGENTS,
+  experimentalState,
   SUPPORTED_AGENTS,
   allAgentsConnected,
   statusCommand,
@@ -51,6 +53,44 @@ describe("Codex and Cursor integration text", () => {
       "a helper agent finishes",
       "it tidies its context",
     ]);
+  });
+});
+
+describe("OpenCode (experimental) text", () => {
+  it("is unknown, not connected, until an event has arrived", () => {
+    for (const seen of [false, null, undefined]) {
+      expect(experimentalState({ status: "installed", eventSeen: seen })).toBe("unknown");
+      expect(adapterStatusText("installed", "opencode", seen)).toMatch(/Status unknown/);
+      expect(adapterStatusText("installed", "opencode", seen)).not.toMatch(/^Connected/);
+    }
+    expect(experimentalState({ status: "installed", eventSeen: true })).toBe("connected");
+    expect(adapterStatusText("installed", "opencode", true)).toMatch(/^Connected/);
+    expect(experimentalState({ status: "not_installed", eventSeen: true })).toBe("not_installed");
+  });
+
+  it("says it needs OpenCode 2.x and names the plugin file in errors", () => {
+    expect(CAPABILITY_SUMMARY.opencode.join(" ")).toMatch(/OpenCode 2\.x/);
+    expect(CAPABILITY_SUMMARY.opencode.join(" ")).toMatch(/permission/);
+    expect(adapterErrorText("settings_invalid", "opencode")).toMatch(/plugins folder/);
+    expect(adapterErrorText("settings_invalid", "opencode")).not.toMatch(/Claude|hooks file/);
+    expect(adapterStatusText("settings_invalid", "opencode")).toMatch(/didn't write it/);
+    expect(adapterStatusText("needs_update", "opencode")).toMatch(/plugin file/);
+  });
+
+  it("explains its events in plain words", () => {
+    expect(hookEventText(["session.created", "permission.asked", "turn_ended", "failed"])).toEqual([
+      "a session starts",
+      "it asks for permission",
+      "it finishes a turn",
+      "a turn fails",
+    ]);
+  });
+
+  it("is not part of the welcome's everything-connected check", () => {
+    expect(SUPPORTED_AGENTS).not.toContain("opencode");
+    expect(EXPERIMENTAL_AGENTS).toEqual(["opencode"]);
+    expect(SUPPORTED_AGENTS.map(statusCommand)).not.toContain("opencode_status");
+    expect(statusCommand("opencode")).toBe("opencode_status");
   });
 });
 

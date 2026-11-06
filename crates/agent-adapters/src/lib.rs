@@ -6,4 +6,5 @@ pub mod codex;
 pub mod cursor;
 pub mod forward;
 pub mod hookfile;
+pub mod opencode;
 pub mod redact;

@@ -7,7 +7,7 @@ These pages describe what the app does today. If something here doesn't match wh
 | Page | What it covers |
 |---|---|
 | [Getting started](getting-started.md) | Installing, first launch, no account, offline use |
-| [Connecting agents](connecting-agents.md) | Claude Code, Codex and Cursor: what is written, what is sent, how to disconnect |
+| [Connecting agents](connecting-agents.md) | Claude Code, Codex, Cursor and experimental OpenCode 2.x: what is written, what is sent, how to disconnect |
 | [Activities and pausing](activities.md) | Games and breaks, how pausing and saving work |
 | [Marketplaces](marketplaces.md) | Adding a Git repository, reviewing, pinning and updating |
 | [Companion](companion.md) | Chatting with your own AI provider key (BYOK) and choosing what to share |

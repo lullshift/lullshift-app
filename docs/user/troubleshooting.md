@@ -17,7 +17,7 @@
 **No "needs you" notification.**
 
 - In **Settings**, check that System notifications are allowed, and check your quiet hours.
-- Cursor never reports that it is waiting for you. Codex reports only command approvals. See [Connecting agents](connecting-agents.md#what-each-agent-can-report).
+- Cursor never reports that it is waiting for you. Codex reports only command approvals, and OpenCode only permission requests. An OpenCode card that says Unknown has not received an event yet: restart OpenCode, and note that it works only with OpenCode 2.x. See [Connecting agents](connecting-agents.md#what-each-agent-can-report).
 
 **Lullshift was moved or reinstalled and an agent shows errors about a missing program.** Open **Integrations** and choose **Repair connection** for that agent. If Lullshift is gone, see [Uninstalling](uninstalling.md#if-you-already-uninstalled).
 

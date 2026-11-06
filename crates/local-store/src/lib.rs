@@ -313,6 +313,22 @@ impl Store {
         Ok(out)
     }
 
+    /// When the app last received an event from `provider` (the newest by receipt order), or
+    /// `None` if the log holds none. Used to tell "installed" from "seen working" for an
+    /// experimental adapter (ADR-022).
+    pub fn last_received_from(&self, provider: &str) -> Result<Option<OffsetDateTime>> {
+        let ts: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT received_utc FROM events WHERE provider = ?1
+                 ORDER BY receipt_seq DESC LIMIT 1",
+                params![provider],
+                |r| r.get(0),
+            )
+            .optional()?;
+        ts.map(|t| parse_ts(&t)).transpose()
+    }
+
     pub fn event_count(&self) -> Result<i64> {
         Ok(self
             .conn

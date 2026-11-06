@@ -236,3 +236,24 @@ fn labels_carry_titles_and_the_first_intent_line() {
             .contains_key(&key(P, "work"))
     );
 }
+
+#[test]
+fn last_received_from_is_per_provider_and_none_without_events() {
+    let mut s = Store::open_in_memory().expect("open");
+    assert_eq!(s.last_received_from("opencode").expect("query"), None);
+    s.ingest(&ev(1, "cursor", "c", "working"), T0)
+        .expect("ingest");
+    assert_eq!(s.last_received_from("opencode").expect("query"), None);
+    s.ingest(&ev(2, "opencode", "o", "session_started"), T0)
+        .expect("ingest");
+    s.ingest(
+        &ev(3, "opencode", "o", "working"),
+        T0 + Duration::minutes(2),
+    )
+    .expect("ingest");
+    assert_eq!(
+        s.last_received_from("opencode").expect("query"),
+        Some(T0 + Duration::minutes(2))
+    );
+    assert_eq!(s.last_received_from("cursor").expect("query"), Some(T0));
+}

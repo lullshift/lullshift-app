@@ -129,8 +129,8 @@ describe("filters", () => {
   ];
 
   it("offers every known tool, then other tools that appear", () => {
-    expect(toolChoices([])).toEqual(["claude-code", "codex", "cursor"]);
-    expect(toolChoices(all)).toEqual(["claude-code", "codex", "cursor", "zed"]);
+    expect(toolChoices([])).toEqual(["claude-code", "codex", "cursor", "opencode"]);
+    expect(toolChoices(all)).toEqual(["claude-code", "codex", "cursor", "opencode", "zed"]);
   });
 
   it("filters by tool and by ID or tool name, ignoring case and spaces", () => {
