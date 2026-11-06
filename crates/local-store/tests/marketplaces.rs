@@ -986,7 +986,7 @@ fn kept_state_is_cleared_when_installed_from_a_different_source() {
     // Claiming for a different marketplace removes the state, and only that activity's.
     with_state(&mut s, "pack.two");
     let got = s
-        .claim_saved_state("pack.one", "other", src)
+        .claim_saved_state("pack.one", "other", src, false)
         .expect("claim");
     assert_eq!(got, local_store::SavedState::Foreign);
     assert!(s.snapshot("pack.one").expect("snap").is_none());
@@ -995,6 +995,35 @@ fn kept_state_is_cleared_when_installed_from_a_different_source() {
     assert_eq!(
         s.saved_state_for("pack.one", "acme", src).expect("q"),
         local_store::SavedState::None
+    );
+}
+
+#[test]
+fn state_from_a_different_source_is_kept_only_when_the_user_chose_to() {
+    let mut s = Store::open_in_memory().expect("store");
+    for m in ["acme", "other"] {
+        s.add_marketplace(m, &format!("https://example.org/{m}"), T0)
+            .expect("add");
+    }
+    s.put_installed_activity(&install("pack.one", "acme"), T0)
+        .expect("install");
+    with_state(&mut s, "pack.one");
+    s.remove_installed_activity("pack.one", T1).expect("remove");
+    let src = "https://example.org/team/pack";
+    let got = s
+        .claim_saved_state("pack.one", "other", src, true)
+        .expect("claim");
+    // Still reported as foreign, so the caller knows what it kept.
+    assert_eq!(got, local_store::SavedState::Foreign);
+    assert!(s.snapshot("pack.one").expect("snap").is_some(), "kept");
+    assert_eq!(
+        s.activity_value("pack.one", "best").expect("v").as_deref(),
+        Some("42")
+    );
+    // The new install is the owner from now on: the old owner row is gone.
+    assert_eq!(
+        s.saved_state_for("pack.one", "acme", src).expect("q"),
+        local_store::SavedState::Unknown
     );
 }
 
@@ -1008,7 +1037,9 @@ fn kept_state_is_reused_by_the_same_source_and_owner_row_is_dropped() {
     with_state(&mut s, "pack.one");
     s.remove_installed_activity("pack.one", T1).expect("remove");
     let src = "https://example.org/team/pack";
-    let got = s.claim_saved_state("pack.one", "acme", src).expect("claim");
+    let got = s
+        .claim_saved_state("pack.one", "acme", src, false)
+        .expect("claim");
     assert_eq!(got, local_store::SavedState::Own);
     assert!(s.snapshot("pack.one").expect("snap").is_some(), "kept");
     // With the owner row gone, a later look says "unknown" rather than trusting a stale owner.
@@ -1024,7 +1055,8 @@ fn state_without_an_owner_is_unknown_and_kept_and_deleting_it_leaves_no_owner() 
     with_state(&mut s, "pack.old");
     let src = "https://example.org/team/pack";
     assert_eq!(
-        s.claim_saved_state("pack.old", "acme", src).expect("claim"),
+        s.claim_saved_state("pack.old", "acme", src, false)
+            .expect("claim"),
         local_store::SavedState::Unknown
     );
     assert!(s.snapshot("pack.old").expect("snap").is_some());

@@ -13,7 +13,12 @@ import {
   type UpdatePreview,
 } from "./api";
 import {
+  asksAboutSavedState,
   errorText,
+  FOREIGN_STATE_DELETE,
+  FOREIGN_STATE_KEEP,
+  FOREIGN_STATE_KEEP_WARNING,
+  FOREIGN_STATE_TEXT,
   installSummary,
   kindLabel,
   permissionExplanation,
@@ -57,6 +62,10 @@ export function ReviewDialog({ request, onClose, onDone }: Props) {
   const setState = (s: State) => {
     if (request) setResult({ for: request, state: s });
   };
+  // The answer about saved progress from another source, tagged like `result`, so every new
+  // review starts at "delete".
+  const [keepFor, setKeepFor] = useState<ReviewRequest | null>(null);
+  const keepSaved = keepFor !== null && keepFor === request;
 
   useEffect(() => {
     if (!request) return;
@@ -95,7 +104,8 @@ export function ReviewDialog({ request, onClose, onDone }: Props) {
     const p = state.preview;
     setState({ phase: "working", preview: p });
     try {
-      if (request.mode === "install") await marketplaceInstall(p.token);
+      if (request.mode === "install")
+        await marketplaceInstall(p.token, asksAboutSavedState(p) && keepSaved);
       else await marketplaceUpdate(p.token);
       onDone(
         request.mode === "install"
@@ -164,7 +174,13 @@ export function ReviewDialog({ request, onClose, onDone }: Props) {
           )}
           {state.phase === "error" && <Banner tone="danger">{state.text}</Banner>}
           {preview && (
-            <ReviewBody preview={preview} update={isUpdate ? (preview as UpdatePreview) : null} />
+            <ReviewBody
+              preview={preview}
+              update={isUpdate ? (preview as UpdatePreview) : null}
+              keepSaved={keepSaved}
+              disabled={working}
+              onKeepSaved={(keep) => setKeepFor(keep ? request : null)}
+            />
           )}
         </div>
       )}
@@ -172,12 +188,67 @@ export function ReviewDialog({ request, onClose, onDone }: Props) {
   );
 }
 
+/**
+ * Asks what to do with saved progress recorded as another marketplace's or repository's
+ * (decision 18.6). Delete is selected and takes the focus when the question appears; keeping it
+ * shows a warning.
+ */
+export function ForeignStateChoice({
+  keep,
+  disabled,
+  onChange,
+}: {
+  keep: boolean;
+  disabled: boolean;
+  onChange: (keep: boolean) => void;
+}) {
+  return (
+    <fieldset className="review-saved-choice" aria-describedby="review-saved-text">
+      <legend className="review-subtitle">Saved progress</legend>
+      <p id="review-saved-text">{FOREIGN_STATE_TEXT}</p>
+      <label className="mk-check">
+        <input
+          type="radio"
+          name="review-saved"
+          autoFocus
+          checked={!keep}
+          disabled={disabled}
+          onChange={() => onChange(false)}
+        />
+        <span>{FOREIGN_STATE_DELETE}</span>
+      </label>
+      <label className="mk-check">
+        <input
+          type="radio"
+          name="review-saved"
+          checked={keep}
+          disabled={disabled}
+          aria-describedby={keep ? "review-saved-warning" : undefined}
+          onChange={() => onChange(true)}
+        />
+        <span>{FOREIGN_STATE_KEEP}</span>
+      </label>
+      {keep && (
+        <div id="review-saved-warning">
+          <Banner tone="attention">{FOREIGN_STATE_KEEP_WARNING}</Banner>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
 function ReviewBody({
   preview: p,
   update,
+  keepSaved,
+  disabled,
+  onKeepSaved,
 }: {
   preview: InstallPreview;
   update: UpdatePreview | null;
+  keepSaved: boolean;
+  disabled: boolean;
+  onKeepSaved: (keep: boolean) => void;
 }) {
   const view = update ? updateView(update) : null;
   if (view?.unchanged) {
@@ -198,6 +269,9 @@ function ReviewBody({
 
       {p.thirdParty && <Banner tone="attention">{UNVERIFIED_TEXT}</Banner>}
       {savedStateLine(p) && <Banner tone="attention">{savedStateLine(p)}</Banner>}
+      {!update && asksAboutSavedState(p) && (
+        <ForeignStateChoice keep={keepSaved} disabled={disabled} onChange={onKeepSaved} />
+      )}
 
       {view && (
         <div className="review-diff">

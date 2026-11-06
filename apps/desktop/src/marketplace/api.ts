@@ -152,7 +152,15 @@ export interface InstallPreview {
   thirdParty: boolean;
   /** Saved progress from an earlier install of this id exists and will be used. */
   hasSavedState: boolean;
+  /**
+   * Kept progress for this id: none; own (same marketplace and source, used); unknown (older
+   * than the source record, used); foreign (another marketplace's or source's: the review asks
+   * whether to delete it, deleted by default). Missing on older hosts.
+   */
+  savedState?: SavedStateKind;
 }
+
+export type SavedStateKind = "none" | "own" | "unknown" | "foreign";
 
 export interface UpdatePreview extends InstallPreview {
   from: { commit: string; version: string; permissions: string[] };
@@ -204,7 +212,12 @@ export const marketplaceEntries = (id: string) =>
   call<MarketplaceEntry[]>("marketplace_entries", { id });
 export const marketplacePreviewInstall = (marketplaceId: string, activityId: string) =>
   call<InstallPreview>("marketplace_preview_install", { marketplaceId, activityId });
-export const marketplaceInstall = (token: string) => call<null>("marketplace_install", { token });
+/**
+ * Installs a reviewed activity. `keepSavedState` only matters when the review said
+ * `savedState: "foreign"`: true keeps that progress, false (the default) deletes it.
+ */
+export const marketplaceInstall = (token: string, keepSavedState = false) =>
+  call<null>("marketplace_install", { token, keepSavedState });
 export const marketplacePreviewUpdate = (activityId: string) =>
   call<UpdatePreview>("marketplace_preview_update", { activityId });
 export const marketplaceUpdate = (token: string) => call<null>("marketplace_update", { token });

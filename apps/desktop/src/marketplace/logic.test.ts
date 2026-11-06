@@ -7,6 +7,10 @@ import * as api from "./api";
 import type { ErrorKind, ManageItem, MarketplaceEntry, UpdatePreview } from "./api";
 import {
   addressChangedText,
+  asksAboutSavedState,
+  FOREIGN_STATE_DELETE,
+  FOREIGN_STATE_KEEP_WARNING,
+  FOREIGN_STATE_TEXT,
   canCheckUpdate,
   canInstall,
   changeAddressCheck,
@@ -258,6 +262,24 @@ describe("savedStateLine", () => {
     expect(savedStateLine(preview({ hasSavedState: true }))).toBe(
       "Saved progress from an earlier install of this id will be used.",
     );
+    expect(savedStateLine(preview({ hasSavedState: true, savedState: "unknown" }))).toBe(
+      "Saved progress from an earlier install of this id will be used.",
+    );
+  });
+
+  it("asks only about progress from another source, and older hosts never ask", () => {
+    expect(asksAboutSavedState(preview({ savedState: "foreign" }))).toBe(true);
+    for (const s of ["none", "own", "unknown", undefined] as const) {
+      expect(asksAboutSavedState(preview({ savedState: s })), String(s)).toBe(false);
+    }
+    // The question replaces the "will be used" line, which would be wrong for deleted state.
+    expect(savedStateLine(preview({ hasSavedState: true, savedState: "foreign" }))).toBeNull();
+  });
+
+  it("warns before keeping progress from another source", () => {
+    expect(FOREIGN_STATE_DELETE).toMatch(/recommended/);
+    expect(FOREIGN_STATE_KEEP_WARNING).toMatch(/trust both sources/);
+    expect(FOREIGN_STATE_TEXT).toMatch(/different marketplace or repository/);
   });
 });
 
@@ -404,6 +426,16 @@ describe("api error normalisation", () => {
     expect(invoke).toHaveBeenCalledWith("activity_uninstall", {
       activityId: "a",
       deleteSavedState: true,
+    });
+    await api.marketplaceInstall("t");
+    expect(invoke).toHaveBeenCalledWith("marketplace_install", {
+      token: "t",
+      keepSavedState: false,
+    });
+    await api.marketplaceInstall("t", true);
+    expect(invoke).toHaveBeenCalledWith("marketplace_install", {
+      token: "t",
+      keepSavedState: true,
     });
   });
 });

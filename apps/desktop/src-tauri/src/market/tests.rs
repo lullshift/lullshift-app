@@ -186,7 +186,7 @@ fn added(env: &Env) -> (Repo, String) {
 fn installed(env: &Env) -> (Repo, String) {
     let (repo, commit) = added(env);
     let preview = preview_install(&env.core, MARKET, FACTS).expect("preview");
-    install_pending(&env.core, &preview.token, Instant::now()).expect("install");
+    install_pending(&env.core, &preview.token, false, Instant::now()).expect("install");
     (repo, commit)
 }
 
@@ -272,9 +272,9 @@ fn add_entries_preview_install_then_listed_and_served() {
     assert!(!env.core.app_dir.join("installed").exists());
 
     // Install: listed (with its source) and served under the app CSP from the engine's files.
-    install_pending(&env.core, &p.token, Instant::now()).expect("install");
+    install_pending(&env.core, &p.token, false, Instant::now()).expect("install");
     assert_eq!(
-        err_kind(install_pending(&env.core, &p.token, Instant::now())),
+        err_kind(install_pending(&env.core, &p.token, false, Instant::now())),
         "notFound",
         "a token works once"
     );
@@ -421,6 +421,7 @@ fn refresh_then_update_shows_a_permission_diff_and_keeps_the_enabled_flag() {
         err_kind(install_pending(
             &env.core,
             &up.preview.token,
+            false,
             Instant::now()
         )),
         "notFound"
@@ -619,7 +620,7 @@ fn uninstall_keeps_saved_state_unless_asked() {
 
     // Install again and uninstall with the saved state.
     let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
-    install_pending(&env.core, &p.token, Instant::now()).expect("install");
+    install_pending(&env.core, &p.token, false, Instant::now()).expect("install");
     uninstall(&env.core, FACTS, true).expect("uninstall");
     assert!(
         with_store(&env.core, |s| s.snapshot(FACTS))
@@ -850,17 +851,17 @@ fn tokens_expire_and_expired_reviews_install_nothing() {
     let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
     let later = Instant::now() + TOKEN_TTL + Duration::from_secs(1);
     assert_eq!(
-        err_kind(install_pending(&env.core, &p.token, later)),
+        err_kind(install_pending(&env.core, &p.token, false, later)),
         "notFound"
     );
     assert!(!env.core.app_dir.join("installed").exists());
     // The expired token is gone for good, and a made-up one never works.
     assert_eq!(
-        err_kind(install_pending(&env.core, &p.token, Instant::now())),
+        err_kind(install_pending(&env.core, &p.token, false, Instant::now())),
         "notFound"
     );
     assert_eq!(
-        err_kind(install_pending(&env.core, "00", Instant::now())),
+        err_kind(install_pending(&env.core, "00", false, Instant::now())),
         "notFound"
     );
     // Only a few reviews are held at once.
@@ -1000,11 +1001,16 @@ fn concurrent_installs_of_one_id_from_different_marketplaces_are_busy() {
         // The first install is running: the id is locked for every marketplace.
         let _running = begin(&env.core, &activity_key(FACTS)).expect("lock");
         assert_eq!(
-            err_kind(install_pending(&env.core, &second.token, Instant::now())),
+            err_kind(install_pending(
+                &env.core,
+                &second.token,
+                false,
+                Instant::now()
+            )),
             "busy"
         );
     }
-    install_pending(&env.core, &first.token, Instant::now()).expect("first wins");
+    install_pending(&env.core, &first.token, false, Instant::now()).expect("first wins");
     assert_eq!(
         err_kind(preview_install(&env.core, "other-tools", FACTS)),
         "alreadyExists"
@@ -1040,7 +1046,7 @@ fn saved_state_is_announced_and_reused_only_by_the_same_source() {
         serde_json::to_value(&again).expect("json")["hasSavedState"],
         true
     );
-    install_pending(&env.core, &again.token, Instant::now()).expect("install");
+    install_pending(&env.core, &again.token, false, Instant::now()).expect("install");
     assert!(
         with_store(&env.core, |s| s.snapshot(FACTS))
             .expect("get")
@@ -1054,13 +1060,18 @@ fn saved_state_is_announced_and_reused_only_by_the_same_source() {
     add(&env.core, &other.url()).expect("second marketplace");
     let foreign = preview_install(&env.core, "other-tools", FACTS).expect("preview");
     assert!(!foreign.has_saved_state);
+    assert_eq!(
+        serde_json::to_value(&foreign).expect("json")["savedState"],
+        "foreign",
+        "the review asks"
+    );
     assert!(
         with_store(&env.core, |s| s.snapshot(FACTS))
             .expect("get")
             .is_some(),
         "a preview deletes nothing"
     );
-    install_pending(&env.core, &foreign.token, Instant::now()).expect("install");
+    install_pending(&env.core, &foreign.token, false, Instant::now()).expect("install");
     assert!(
         with_store(&env.core, |s| s.snapshot(FACTS))
             .expect("get")
@@ -1087,9 +1098,60 @@ fn state_of_unknown_origin_is_announced_in_the_review() {
     added(&env);
     let clean = preview_install(&env.core, MARKET, FACTS).expect("preview");
     assert!(!clean.has_saved_state);
+    assert_eq!(
+        serde_json::to_value(&clean).expect("json")["savedState"],
+        "none"
+    );
     save_state(&env, FACTS);
     let with_state = preview_install(&env.core, MARKET, FACTS).expect("preview");
     assert!(with_state.has_saved_state);
+    // State older than the owner record is kept and used as before; nothing is asked.
+    assert_eq!(
+        serde_json::to_value(&with_state).expect("json")["savedState"],
+        "unknown"
+    );
+    install_pending(&env.core, &with_state.token, false, Instant::now()).expect("install");
+    assert!(
+        with_store(&env.core, |s| s.snapshot(FACTS))
+            .expect("get")
+            .is_some()
+    );
+}
+
+#[test]
+fn progress_from_another_source_is_kept_only_when_the_user_chooses_to() {
+    let env = Env::new();
+    installed(&env);
+    save_state(&env, FACTS);
+    uninstall(&env.core, FACTS, false).expect("uninstall, keep state");
+    let other = lookalike_repo(&env, "other", "other-tools");
+    add(&env.core, &other.url()).expect("second marketplace");
+
+    let foreign = preview_install(&env.core, "other-tools", FACTS).expect("preview");
+    assert_eq!(
+        serde_json::to_value(&foreign).expect("json")["savedState"],
+        "foreign"
+    );
+    install_pending(&env.core, &foreign.token, true, Instant::now()).expect("install, keep");
+    assert!(
+        with_store(&env.core, |s| s.snapshot(FACTS))
+            .expect("get")
+            .is_some(),
+        "kept"
+    );
+    assert_eq!(
+        with_store(&env.core, |s| s.activity_value(FACTS, "best"))
+            .expect("get")
+            .as_deref(),
+        Some("9")
+    );
+    // The new install owns it now: reinstalling from the same place reuses it without asking.
+    uninstall(&env.core, FACTS, false).expect("uninstall, keep state");
+    let again = preview_install(&env.core, "other-tools", FACTS).expect("preview");
+    assert_eq!(
+        serde_json::to_value(&again).expect("json")["savedState"],
+        "own"
+    );
 }
 
 #[test]
@@ -1113,7 +1175,7 @@ fn a_preview_image_swapped_after_the_check_is_never_shown() {
     let commit = repo.commit();
     add(&env.core, &repo.url()).expect("add");
     let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
-    install_pending(&env.core, &p.token, Instant::now()).expect("install");
+    install_pending(&env.core, &p.token, false, Instant::now()).expect("install");
 
     let served = |env: &Env| {
         env.core

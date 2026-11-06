@@ -528,6 +528,19 @@ pub struct InstallPreviewDto {
     third_party: bool,
     /// Saved progress from an earlier install of this id exists and this install will use it.
     has_saved_state: bool,
+    /// Kept saved progress for this id: `none`, `own` (same marketplace and source, used),
+    /// `unknown` (no recorded source, kept and used), or `foreign` (recorded as another
+    /// marketplace's or source's: deleted at install unless the user chooses to keep it).
+    saved_state: &'static str,
+}
+
+fn saved_state_str(s: SavedState) -> &'static str {
+    match s {
+        SavedState::None => "none",
+        SavedState::Own => "own",
+        SavedState::Unknown => "unknown",
+        SavedState::Foreign => "foreign",
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -579,7 +592,7 @@ fn preview_dto(
     marketplace_id: &str,
     source_path: &str,
     pack: &PreparedPack,
-    has_saved_state: bool,
+    saved: SavedState,
 ) -> InstallPreviewDto {
     let p = &pack.preview;
     // The pack was validated, so its manifest parses; the description is plain text.
@@ -607,7 +620,8 @@ fn preview_dto(
         size_bytes: p.size_bytes,
         file_count: p.file_count,
         third_party: p.third_party,
-        has_saved_state,
+        has_saved_state: matches!(saved, SavedState::Own | SavedState::Unknown),
+        saved_state: saved_state_str(saved),
     }
 }
 
@@ -1083,11 +1097,10 @@ pub fn preview_install(
     }
     let git = git(core)?;
     let (pack, source_path) = prepare(core, &git, &rec, activity_id)?;
-    let has_saved_state = with_store(core, |s| {
+    // Foreign state is deleted at install unless the user keeps it in the review (18.6).
+    let saved = with_store(core, |s| {
         s.saved_state_for(activity_id, &rec.id, &pack.preview.source_url)
     })?;
-    // Foreign state is cleared at install, so only state this install will use is announced.
-    let has_saved_state = matches!(has_saved_state, SavedState::Own | SavedState::Unknown);
     let token = put_pending(
         core,
         Pending {
@@ -1098,13 +1111,7 @@ pub fn preview_install(
             created: Instant::now(),
         },
     )?;
-    Ok(preview_dto(
-        token,
-        &rec.id,
-        &source_path,
-        &pack,
-        has_saved_state,
-    ))
+    Ok(preview_dto(token, &rec.id, &source_path, &pack, saved))
 }
 
 fn record_of(pending: &Pending) -> NewInstalledActivity {
@@ -1133,8 +1140,10 @@ fn refresh_library(core: &Core) {
     let _ = core.library.snapshot(core);
 }
 
-/// Installs a previewed activity.
-pub fn install_pending(core: &Core, token: &str, now: Instant) -> Res<()> {
+/// Installs a previewed activity. `keep_saved_state` is the user's answer when the review said
+/// kept progress belongs to another marketplace or source (`savedState: "foreign"`): `true`
+/// keeps it for this install, `false` (the default) deletes it. It changes nothing otherwise.
+pub fn install_pending(core: &Core, token: &str, keep_saved_state: bool, now: Instant) -> Res<()> {
     let pending = take_pending(core, token, now)?;
     if !matches!(pending.kind, PendingKind::Install) {
         return Err(CommandError::new(
@@ -1159,10 +1168,15 @@ pub fn install_pending(core: &Core, token: &str, now: Instant) -> Res<()> {
     let root = install_root(core);
     install(&root, &pending.pack)?;
     // Saved state kept from a different marketplace or source is deleted here, not handed to
-    // this code (review L7).
+    // this code (review L7), unless the user chose to keep it in the review (decision 18.6).
     let source_url = p.source_url.clone();
     with_store(core, |s| {
-        s.claim_saved_state(&p.activity_id, &pending.marketplace_id, &source_url)
+        s.claim_saved_state(
+            &p.activity_id,
+            &pending.marketplace_id,
+            &source_url,
+            keep_saved_state,
+        )
     })
     .inspect_err(|_| {
         let _ = remove_install(&root, &p.activity_id, &p.commit);
@@ -1225,7 +1239,7 @@ pub fn preview_update(core: &Core, activity_id: &str) -> Res<UpdatePreviewDto> {
         },
     )?;
     Ok(UpdatePreviewDto {
-        preview: preview_dto(token, &market.id, &source_path, &pack, false),
+        preview: preview_dto(token, &market.id, &source_path, &pack, SavedState::None),
         from: FromDto {
             commit: rec.commit_sha.clone(),
             version: rec.manifest_version.clone(),
@@ -1441,8 +1455,16 @@ pub async fn marketplace_preview_install(
 }
 
 #[tauri::command]
-pub async fn marketplace_install(core: tauri::State<'_, Arc<Core>>, token: String) -> Res<()> {
-    run(&core, move |c| install_pending(c, &token, Instant::now())).await
+pub async fn marketplace_install(
+    core: tauri::State<'_, Arc<Core>>,
+    token: String,
+    keep_saved_state: Option<bool>,
+) -> Res<()> {
+    let keep = keep_saved_state.unwrap_or(false);
+    run(&core, move |c| {
+        install_pending(c, &token, keep, Instant::now())
+    })
+    .await
 }
 
 #[tauri::command]

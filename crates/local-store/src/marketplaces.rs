@@ -760,19 +760,21 @@ impl Store {
     }
 
     /// Called when an install is about to be recorded. State recorded as belonging to a different
-    /// marketplace or source is deleted (with everything else the host keeps for the id); state
-    /// that is the same install's, or whose owner is unknown, is kept. The owner row is dropped
-    /// either way, because the new install record is the owner from now on. One transaction.
+    /// marketplace or source is deleted (with everything else the host keeps for the id) unless
+    /// the user chose to keep it in the review (`keep_foreign`, decision 18.6); state that is the
+    /// same install's, or whose owner is unknown, is kept. The owner row is dropped either way,
+    /// because the new install record is the owner from now on. One transaction.
     pub fn claim_saved_state(
         &mut self,
         activity_id: &str,
         marketplace_id: &str,
         source_url: &str,
+        keep_foreign: bool,
     ) -> Result<SavedState> {
         check_activity_id(activity_id)?;
         let tx = self.conn.transaction()?;
         let found = saved_state_for(&tx, activity_id, marketplace_id, source_url)?;
-        if found == SavedState::Foreign {
+        if found == SavedState::Foreign && !keep_foreign {
             clear_state_tx(&tx, activity_id)?;
         }
         tx.execute(

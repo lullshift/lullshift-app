@@ -284,7 +284,19 @@ export function updateView(p: UpdatePreview): UpdateView {
 
 /** The line that says saved progress will be reused, or null. */
 export function savedStateLine(p: InstallPreview): string | null {
-  return p.hasSavedState ? SAVED_STATE_TEXT : null;
+  return p.hasSavedState && !asksAboutSavedState(p) ? SAVED_STATE_TEXT : null;
+}
+
+export const FOREIGN_STATE_TEXT =
+  "This device has saved progress for an activity with this id that came from a different marketplace or repository.";
+export const FOREIGN_STATE_DELETE = "Delete that saved progress (recommended)";
+export const FOREIGN_STATE_KEEP = "Keep it for this install";
+export const FOREIGN_STATE_KEEP_WARNING =
+  "Only keep it if you trust both sources. The new activity will be able to read everything the old one saved.";
+
+/** Whether the review must ask about saved progress from another source (decision 18.6). */
+export function asksAboutSavedState(p: InstallPreview): boolean {
+  return p.savedState === "foreign";
 }
 
 export function installSummary(p: InstallPreview): string {
