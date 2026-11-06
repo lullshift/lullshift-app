@@ -10,13 +10,13 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 80,
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
     },
     "intro": {
       "type": "string",
       "minLength": 1,
       "maxLength": 300,
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
     },
     "phases": {
       "type": "array",
@@ -39,7 +39,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 24,
-            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
           }
         },
         "if": {
@@ -70,7 +70,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 200,
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
     }
   }
 }

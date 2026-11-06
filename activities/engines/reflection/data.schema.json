@@ -10,13 +10,13 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 80,
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
     },
     "intro": {
       "type": "string",
       "minLength": 1,
       "maxLength": 300,
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
     },
     "allowNotes": {
       "type": "boolean"
@@ -34,13 +34,13 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
           },
           "followUp": {
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
           }
         }
       }

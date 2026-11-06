@@ -54,6 +54,13 @@ Content packs (ADR-003) are code-free data for a named engine. Sprint 05 set the
 - Engines are listed in `.lullshift/marketplace.json` like any activity (by manifest id and source path), so a pack's `id@major` can resolve to an engine that a marketplace provides and so installs can pin both. The app recognises an engine by its `engine.json` and never shows it as a card. No schema change to `MARKETPLACE_V1` is needed.
 - Installing third-party packs and engines is ADR-002 work (not in Sprint 07). When it lands, a pack installs only if its `id@major` resolves to a bundled or installed engine, and the host re-validates the data at install and before every start.
 
+## Amendments (Sprint 12)
+
+### Plain text refuses U+2028 and U+2029 (S12-T10, decision 14)
+
+- Every engine's shared plain-text pattern now also refuses the line separator U+2028 and the paragraph separator U+2029, changed in all ten engine schemas in one pass. The full set is: U+0000-001F, U+007F-009F, U+00AD, U+061C, U+180E, U+200B-200F, U+2028, U+2029, U+202A-202E, U+2060-2064, U+2066-206F and U+FEFF. The pattern is written with JSON escapes in every schema, so the characters are visible in review.
+- **Why no new major.** This tightens the rules, which "Compatibility and retirement" would normally treat as a new major. The owner chose a one-pass ban instead (decision 14): the characters render as invisible line breaks and no bundled pack uses them. An installed third-party pack whose text contains one stops running after the update and is listed with the "can't run on its engine" problem until its author fixes it; nothing is deleted. Older fixtures are unchanged and still pass; each engine has two new invalid fixtures (`line-separator.json`, `paragraph-separator.json`), and the shared Ajv/Rust corpus has plain-text cases for both characters.
+
 ## Consequences
 
 - About fifty packs run in the app with no code of their own, each with separate progress.

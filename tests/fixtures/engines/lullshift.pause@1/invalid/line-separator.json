@@ -1,0 +1,9 @@
+{
+  "title": "Two\u2028lines",
+  "steps": [
+    {
+      "text": "Rest your eyes.",
+      "seconds": 10
+    }
+  ]
+}

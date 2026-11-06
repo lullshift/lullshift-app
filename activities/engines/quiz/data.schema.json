@@ -10,13 +10,13 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 80,
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
     },
     "intro": {
       "type": "string",
       "minLength": 1,
       "maxLength": 300,
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
     },
     "shuffle": {
       "type": "boolean"
@@ -34,7 +34,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
           },
           "choices": {
             "type": "array",
@@ -44,7 +44,7 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 100,
-              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
             }
           },
           "answer": {
@@ -56,7 +56,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 300,
-            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
           }
         },
         "allOf": [

@@ -10,13 +10,13 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 80,
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
     },
     "intro": {
       "type": "string",
       "minLength": 1,
       "maxLength": 300,
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
     },
     "teasers": {
       "type": "array",
@@ -31,25 +31,25 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 300,
-            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
           },
           "hint": {
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
           },
           "answer": {
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
           },
           "explanation": {
             "type": "string",
             "minLength": 1,
             "maxLength": 300,
-            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]*$"
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
           },
           "kind": {
             "type": "string",

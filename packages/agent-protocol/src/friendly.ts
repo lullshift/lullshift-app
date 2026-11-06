@@ -17,10 +17,11 @@ export function dataPath(instancePath: string): string {
   return out;
 }
 
-// Control, bidirectional and invisible characters (as in the manifest schema's plain text).
+// Control, bidirectional and invisible characters (as in the engine schemas' plain text, which
+// also refuse the line and paragraph separators U+2028 and U+2029).
 const HIDDEN =
   // eslint-disable-next-line no-control-regex
-  /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF"]/gu;
+  /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u2028\u2029\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF"]/gu;
 
 function cleanKey(key: string): string {
   return [...key].slice(0, 40).join("").replace(HIDDEN, "?");
