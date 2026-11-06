@@ -1,13 +1,17 @@
 import type { ErrorObject, ValidateFunction } from "ajv/dist/2020.js";
 import { createAjv } from "./ajv.ts";
-import agentEventSchema from "../../../reference/AGENT_EVENT_V1.schema.json" with { type: "json" };
-import activityManifestSchema from "../../../reference/ACTIVITY_MANIFEST_V1.schema.json" with { type: "json" };
-import marketplaceSchema from "../../../reference/MARKETPLACE_V1.schema.json" with { type: "json" };
-import type { AgentEventV1 } from "./generated/agent-event";
-import type { ActivityManifestV1, Help } from "./generated/activity-manifest";
-import type { MarketplaceIndexV1 } from "./generated/marketplace";
+// The schemas in /reference, generated into a module so the published package carries them.
+import {
+  activityManifestSchema,
+  agentEventSchema,
+  marketplaceSchema,
+} from "./generated/schemas.ts";
+import type { AgentEventV1 } from "./generated/agent-event.ts";
+import type { ActivityManifestV1, Help } from "./generated/activity-manifest.ts";
+import type { MarketplaceIndexV1 } from "./generated/marketplace.ts";
 
 export type { AgentEventV1, ActivityManifestV1, Help, MarketplaceIndexV1 };
+export { activityManifestSchema, agentEventSchema, marketplaceSchema };
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: string[] };
 
