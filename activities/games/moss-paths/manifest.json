@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "app",
   "id": "app.lullshift.games.moss-paths",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "name": "Moss Paths",
   "description": "A quiet garden of stream tiles. Turn each tile until water from the spring reaches every bed. A garden each day that remembers your best, or a new one whenever you like.",
   "author": "Lullshift",
@@ -35,7 +35,7 @@
     "tips": [
       "Start from the spring and work outward, one tile at a time.",
       "Ends and bends in the corners and along the edges can only point inward, so fix those first.",
-      "A crossing looks the same from every side, so turning it changes nothing. It still counts as a move, and Undo takes it back.",
+      "A crossing looks the same from every side, so turning it changes nothing. You can turn it and Undo takes it back, but it doesn't count as a move.",
       "You can stop at any time. Your garden is saved and waits for you."
     ]
   },

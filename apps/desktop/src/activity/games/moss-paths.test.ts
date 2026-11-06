@@ -24,6 +24,7 @@ interface Logic {
   pieceType(mask: number): string;
   openings(mask: number): string[];
   canRotate(mask: number): boolean;
+  countsAsMove(mask: number): boolean;
   isMask(v: unknown): boolean;
   dateSeed(d: Date, size?: number): number;
   SIZES: number[];
@@ -193,7 +194,7 @@ describe("Moss Paths sizes and crossings", () => {
       expect(L.dateSeed(d, n)).toBe(L.dateSeed(new Date(2026, 10, 6, 20), n));
   });
 
-  it("a crossing can be turned: it stays a crossing, counts as a move and undoes", () => {
+  it("a crossing can be turned and undone but is not a move", () => {
     const cells = [15, 5, 5, 5];
     const turned = L.turn(cells, 0, true);
     expect(turned).toEqual(cells);
@@ -201,5 +202,44 @@ describe("Moss Paths sizes and crossings", () => {
     expect(history).toHaveLength(1);
     expect(L.undo(turned, history)).toEqual({ cells, history: [] });
     expect(L.pieceType(L.rotate(15, false))).toBe("cross");
+    // A crossing is free; every other piece counts, before and after the turn.
+    expect(L.countsAsMove(15)).toBe(false);
+    for (const mask of [L.N, L.N | L.S, L.N | L.E, L.N | L.E | L.S]) {
+      expect(L.countsAsMove(mask)).toBe(true);
+      expect(L.countsAsMove(L.rotate(mask, true))).toBe(true);
+    }
+  });
+
+  it("the game counts moves without crossings, including through Undo", () => {
+    // The same bookkeeping as main.js: +1 per counted turn, -1 when Undo takes one back.
+    let cells = [15, L.N | L.S, 0, 0];
+    let history: Move[] = [];
+    let moves = 0;
+    const turnAt = (i: number) => {
+      if (L.countsAsMove(cells[i] as number)) moves += 1;
+      cells = L.turn(cells, i, true);
+      history = L.pushMove(history, i, true);
+    };
+    const undoOne = () => {
+      const last = history[history.length - 1] as Move;
+      if (L.countsAsMove(cells[last.i] as number)) moves = Math.max(0, moves - 1);
+      ({ cells, history } = L.undo(cells, history));
+    };
+    turnAt(0);
+    turnAt(0);
+    expect(moves).toBe(0);
+    turnAt(1);
+    expect(moves).toBe(1);
+    turnAt(0);
+    expect(moves).toBe(1);
+    undoOne();
+    expect(moves).toBe(1);
+    undoOne();
+    undoOne();
+    expect(moves).toBe(0);
+    expect(history).toHaveLength(1);
+    undoOne();
+    expect(moves).toBe(0);
+    expect(history).toEqual([]);
   });
 });

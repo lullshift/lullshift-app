@@ -252,7 +252,7 @@
     var crossing = !L.canRotate(mask);
     grid.set(x, y, L.rotate(mask, cw));
     game.history = L.pushMove(game.history, i, cw);
-    game.moves += 1;
+    if (!crossing) game.moves += 1; // turning a crossing is not a move
     render();
     if (L.isSolved(cellsNow(), SIZE, game.src)) {
       game.solved = true;
@@ -275,10 +275,12 @@
 
   function undoMove() {
     if (game.history.length === 0 || game.solved) return;
+    var last = game.history[game.history.length - 1];
+    var counted = L.countsAsMove(cellsNow()[last.i]);
     var r = L.undo(cellsNow(), game.history);
     setCells(r.cells);
     game.history = r.history;
-    game.moves = Math.max(0, game.moves - 1);
+    if (counted) game.moves = Math.max(0, game.moves - 1);
     setMessage("Undone. " + movesText(game.moves) + ".");
     render();
     save();

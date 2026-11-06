@@ -10,6 +10,7 @@ An original game bundled with Lullshift, built on the grid kit (ADR-019).
 2. Turn a tile a quarter turn so its stream lines up with its neighbours. Water only passes where two tiles open toward each other.
 3. Watch the Watered count grow until every tile is blue.
 4. Today's garden is the same for everyone today and remembers your best. New garden deals a fresh one. Restart tangles the same garden again, and Undo takes back your last turn.
+5. A crossing looks the same from every side. Turning it is announced and Undo takes it back, but it does not count as a move.
 
 ## Files
 
