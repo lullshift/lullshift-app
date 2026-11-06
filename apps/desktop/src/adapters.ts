@@ -230,7 +230,7 @@ export function adapterErrorText(code: string, agent: AgentId = "claude-code"): 
     );
   }
   if (code === "unsupported_path") {
-    return "Lullshift is installed in a folder whose name contains a line break or another control character, which can't be written safely into a hook command. Nothing was changed.";
+    return "Lullshift can't write a hook command for this folder name: the Lullshift program folder or your user data folder has a character that can't be written safely (a control character such as a line break, or on Windows a letter that an older code page could turn into a curly quote, such as the Cyrillic letter Ve or O-grave). Nothing was changed. Claude Code is not affected.";
   }
   return text
     .replace("Claude Code settings file", `${n} hooks file`)
