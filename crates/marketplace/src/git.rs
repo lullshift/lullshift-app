@@ -95,6 +95,12 @@ impl Output {
     pub fn failure(&self) -> GitFailureKind {
         classify_failure(self.code, &self.stderr)
     }
+
+    /// The raw stderr. Tests only; production code never sees it.
+    #[cfg(test)]
+    pub fn stderr_for_tests(&self) -> &str {
+        &self.stderr
+    }
 }
 
 /// A located `git` plus the settings every call shares.
@@ -225,8 +231,17 @@ impl Git {
     }
 
     fn command(&self, git_dir: Option<&Path>, args: &[&str]) -> Command {
+        self.command_with(&[], git_dir, args)
+    }
+
+    /// Like `command`, plus extra `-c` settings after the fixed ones. Only fixed keys built by
+    /// this crate are passed here (the resolution pin), never text from a repository.
+    fn command_with(&self, extra: &[String], git_dir: Option<&Path>, args: &[&str]) -> Command {
         let mut cmd = Command::new(&self.exe);
         cmd.args(self.config());
+        for setting in extra {
+            cmd.arg("-c").arg(setting);
+        }
         if let Some(dir) = git_dir {
             cmd.arg("--git-dir").arg(dir);
         }
@@ -278,6 +293,7 @@ impl Git {
         repo: &Path,
         args: &[&str],
         max_output: usize,
+        resolve_pin: Option<&str>,
     ) -> Result<Output, Error> {
         let objects = repo.join("objects");
         let watch = Watch {
@@ -285,7 +301,13 @@ impl Git {
             dir: objects,
             cap: self.fetch_cap,
         };
-        let mut cmd = self.command(Some(repo), args);
+        // `http.curloptResolve` (Git 2.37+) makes curl use the addresses Lullshift checked
+        // instead of resolving the name again (decision 18.8). Older Git ignores the key.
+        let extra: Vec<String> = resolve_pin
+            .map(|pin| format!("http.curloptResolve={pin}"))
+            .into_iter()
+            .collect();
+        let mut cmd = self.command_with(&extra, Some(repo), args);
         run_process(
             &mut cmd,
             None,

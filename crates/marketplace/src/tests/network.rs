@@ -46,6 +46,63 @@ fn a_confirmed_loopback_address_reaches_git() {
 }
 
 #[test]
+fn git_connects_to_the_pinned_address_instead_of_resolving_the_name_again() {
+    // `.invalid` never resolves (RFC 6761). With the pin, curl skips DNS and tries the pinned
+    // loopback address (port 1, closed); without it, it fails to resolve. Offline-safe.
+    let env = Env::new();
+    let repo = env.path("cache/pin/repo.git");
+    env.git.ensure_repo(&repo).expect("repo");
+    let args = [
+        "fetch",
+        "--quiet",
+        "--depth=1",
+        "--end-of-options",
+        "https://pin-check.invalid:1/o/r",
+        "+HEAD:refs/lullshift/fetched",
+    ];
+    let pinned = env
+        .git
+        .run_fetch(
+            &repo,
+            &args,
+            crate::git::SMALL_OUTPUT,
+            Some("pin-check.invalid:1:127.0.0.1"),
+        )
+        .expect("ran");
+    assert!(!pinned.success());
+    let text = pinned.stderr_for_tests().to_ascii_lowercase();
+    assert!(
+        !text.contains("could not resolve"),
+        "the pinned address was used: {text}"
+    );
+    let unpinned = env
+        .git
+        .run_fetch(&repo, &args, crate::git::SMALL_OUTPUT, None)
+        .expect("ran");
+    assert!(
+        unpinned
+            .stderr_for_tests()
+            .to_ascii_lowercase()
+            .contains("could not resolve"),
+        "control: without the pin the name doesn't resolve"
+    );
+}
+
+#[test]
+fn a_name_that_resolves_to_loopback_is_refused_until_confirmed() {
+    // `localhost` is also private by its text; the resolved check is what stops a public-looking
+    // name, which `net::check_addresses` tests without DNS.
+    let env = Env::new();
+    let url = GitUrl::parse("https://localhost:1/o/r").expect("parse");
+    assert_eq!(
+        env.git
+            .fetch(&env.path("cache/l/repo.git"), &url, None)
+            .expect_err("refused"),
+        Error::Url(UrlError::PrivateNotConfirmed)
+    );
+}
+
+#[test]
 fn an_index_can_never_list_a_private_source() {
     for url in [
         "https://localhost/o/r",

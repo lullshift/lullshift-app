@@ -161,7 +161,9 @@ export const marketplaceList = () => call<Marketplace[]>("marketplace_list");
 export const marketplaceAdd = (url: string, confirmPrivate = false) =>
   call<Marketplace>("marketplace_add", { url, confirmPrivate });
 export const marketplaceRemove = (id: string) => call<null>("marketplace_remove", { id });
-export const marketplaceRefresh = (id: string) => call<Marketplace>("marketplace_refresh", { id });
+/** `confirmPrivate`: the user ticked the private-network box after a `privateHost` answer. */
+export const marketplaceRefresh = (id: string, confirmPrivate = false) =>
+  call<Marketplace>("marketplace_refresh", { id, confirmPrivate });
 export const marketplaceEntries = (id: string) =>
   call<MarketplaceEntry[]>("marketplace_entries", { id });
 export const marketplacePreviewInstall = (marketplaceId: string, activityId: string) =>

@@ -7,12 +7,13 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-use crate::error::{Error, GitFailureKind, IndexError, PackError, RefError, UrlError};
+use crate::error::{Error, GitFailureKind, IndexError, PackError, RefError};
 use crate::git::{Class, Git, SMALL_OUTPUT};
 use crate::index::{
     EntrySource, INDEX_MAX_BYTES, INDEX_PATH, IndexEntry, MarketplaceIndex, parse_index,
 };
 use crate::manifest::{Manifest, parse_manifest};
+use crate::net::{check_destination, curl_resolve};
 use crate::validate::{Commit, GitRef, GitUrl, RelPath};
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -119,12 +120,14 @@ impl Git {
     /// place (its older commits are pinned by installs and must stay); a failed or killed fetch
     /// only ever leaves temporary pack files, which are removed, and never moves the fetched ref.
     pub fn fetch(&self, repo: &Path, url: &GitUrl, r: Option<&GitRef>) -> Result<Commit, Error> {
-        // A private host is fetched only after the user confirmed it (decision 17).
-        if url.is_private_host() && !url.private_confirmed() {
-            return Err(UrlError::PrivateNotConfirmed.into());
-        }
+        // A private host, or a name that resolves to a private address, is fetched only after
+        // the user confirmed it (decisions 17 and 18.8). The checked addresses are pinned for
+        // https so Git doesn't resolve the name again to something else.
+        let addrs = check_destination(url)?;
+        let pin = curl_resolve(url, &addrs);
+        let pin = pin.as_deref();
         if repo.join("HEAD").is_file() {
-            let result = self.fetch_into(repo, url, r);
+            let result = self.fetch_into(repo, url, r, pin);
             if result.is_err() {
                 remove_partial_objects(repo);
             }
@@ -139,7 +142,7 @@ impl Git {
             STAGING_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
         let _ = std::fs::remove_dir_all(&staging);
-        let result = self.fetch_into(&staging, url, r).and_then(|commit| {
+        let result = self.fetch_into(&staging, url, r, pin).and_then(|commit| {
             // A folder without HEAD is the leftover of an earlier failed attempt.
             let _ = std::fs::remove_dir_all(repo);
             std::fs::rename(&staging, repo).map_err(Error::io("move the new cache into place"))?;
@@ -151,7 +154,13 @@ impl Git {
         result
     }
 
-    fn fetch_into(&self, repo: &Path, url: &GitUrl, r: Option<&GitRef>) -> Result<Commit, Error> {
+    fn fetch_into(
+        &self,
+        repo: &Path,
+        url: &GitUrl,
+        r: Option<&GitRef>,
+        pin: Option<&str>,
+    ) -> Result<Commit, Error> {
         self.ensure_repo(repo)?;
         if let Some(r) = r {
             self.check_ref_format(r)?;
@@ -171,6 +180,7 @@ impl Git {
                 &refspec,
             ],
             SMALL_OUTPUT,
+            pin,
         )?;
         if !fetched.success() {
             return Err(fetched.failure().into());

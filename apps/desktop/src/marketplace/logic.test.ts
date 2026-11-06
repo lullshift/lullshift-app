@@ -333,6 +333,11 @@ describe("api error normalisation", () => {
       url: "https://10.0.0.5/a/b",
       confirmPrivate: true,
     });
+    await api.marketplaceRefresh("home", true);
+    expect(invoke).toHaveBeenCalledWith("marketplace_refresh", {
+      id: "home",
+      confirmPrivate: true,
+    });
     await api.marketplaceAdd("acme/games");
     expect(invoke).toHaveBeenCalledWith("marketplace_add", {
       url: "acme/games",

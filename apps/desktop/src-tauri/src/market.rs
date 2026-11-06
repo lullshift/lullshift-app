@@ -691,7 +691,15 @@ fn active_market(core: &Core, id: &str) -> Res<MarketplaceRecord> {
 }
 
 /// Fetches the marketplace again. The built-in one has nothing to fetch.
+#[cfg(test)]
 pub fn refresh(core: &Core, id: &str) -> Res<MarketplaceDto> {
+    refresh_confirming(core, id, false)
+}
+
+/// Like [`refresh`]; with `confirm_private` the user ticked "This marketplace is on my own
+/// computer or network" after a refresh said its name now resolves to a private address
+/// (decision 18.8). The confirmation is stored only once that fetch succeeded.
+pub fn refresh_confirming(core: &Core, id: &str, confirm_private: bool) -> Res<MarketplaceDto> {
     let rec = active_market(core, id)?;
     if rec.builtin {
         return Ok(market_dto(core, &rec));
@@ -699,6 +707,12 @@ pub fn refresh(core: &Core, id: &str) -> Res<MarketplaceDto> {
     let _guard = begin(core, id)?;
     let git = git(core)?;
     let url = git_url_of(core, &rec)?;
+    let newly_confirmed = confirm_private && !url.private_confirmed();
+    let url = if confirm_private {
+        url.confirm_private()
+    } else {
+        url
+    };
     let repo = cache_dir(core, id).join("repo.git");
     let commit = git.fetch(&repo, &url, None)?;
     let index = git.read_index(&repo, &commit, false)?;
@@ -719,6 +733,9 @@ pub fn refresh(core: &Core, id: &str) -> Res<MarketplaceDto> {
     let now = OffsetDateTime::now_utc();
     let commit_text = commit.to_string();
     with_store(core, |s| s.record_fetch(id, &commit_text, now))?;
+    if newly_confirmed {
+        with_store(core, |s| s.set_marketplace_private(id, true))?;
+    }
     let rec = active_market(core, id)?;
     Ok(market_dto(core, &rec))
 }
@@ -827,15 +844,27 @@ fn prepare(
         CommandError::new("notFound", "This marketplace doesn't list that activity.")
     })?;
     let external_root = cache.join("external");
-    let resolved = git.resolve_entry(
-        &MarketplaceRef {
-            repo: &repo,
-            commit: &commit,
-            url: &url,
-            external_cache_root: &external_root,
-        },
-        entry,
-    )?;
+    let resolved = git
+        .resolve_entry(
+            &MarketplaceRef {
+                repo: &repo,
+                commit: &commit,
+                url: &url,
+                external_cache_root: &external_root,
+            },
+            entry,
+        )
+        .map_err(|e| match e {
+            // An activity's own source repository is never confirmed as private: only the
+            // marketplace the user added can be (decision 17).
+            Error::Url(UrlError::PrivateNotConfirmed | UrlError::SpecialAddress) => {
+                CommandError::new(
+                    "invalidIndex",
+                    "This activity's source repository is on a private network address, so Lullshift won't fetch it.",
+                )
+            }
+            other => other.into(),
+        })?;
     let source_path = resolved
         .path
         .as_ref()
@@ -1196,8 +1225,12 @@ pub async fn marketplace_remove(core: tauri::State<'_, Arc<Core>>, id: String) -
 pub async fn marketplace_refresh(
     core: tauri::State<'_, Arc<Core>>,
     id: String,
+    confirm_private: Option<bool>,
 ) -> Res<MarketplaceDto> {
-    run(&core, move |c| refresh(c, &id)).await
+    run(&core, move |c| {
+        refresh_confirming(c, &id, confirm_private.unwrap_or(false))
+    })
+    .await
 }
 
 #[tauri::command]

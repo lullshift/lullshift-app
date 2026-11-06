@@ -301,6 +301,28 @@ fn private_host_confirmation_is_recorded_and_revival_takes_the_new_answer() {
 }
 
 #[test]
+fn an_existing_marketplace_can_be_confirmed_private_but_not_the_builtin_one() {
+    let mut s = Store::open_in_memory().expect("store");
+    s.add_marketplace("acme", "https://git.example.com/acme/market", T0)
+        .expect("add");
+    s.set_marketplace_private("acme", true).expect("confirm");
+    assert!(
+        s.marketplace("acme")
+            .expect("get")
+            .expect("row")
+            .private_host
+    );
+    assert!(matches!(
+        s.set_marketplace_private("lullshift", true),
+        Err(StoreError::NotFound)
+    ));
+    assert!(matches!(
+        s.set_marketplace_private("nope", true),
+        Err(StoreError::NotFound)
+    ));
+}
+
+#[test]
 fn version_10_database_upgrades_to_11_and_marks_existing_marketplaces_public() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("l.db");

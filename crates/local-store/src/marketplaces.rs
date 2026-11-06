@@ -498,6 +498,20 @@ impl Store {
         Ok(())
     }
 
+    /// Records that the user confirmed an active marketplace as being on their own computer or
+    /// network (decision 18.8: a name that now resolves to a private address).
+    pub fn set_marketplace_private(&self, id: &str, private_host: bool) -> Result<()> {
+        let n = self.conn.execute(
+            "UPDATE marketplaces SET private_host = ?2
+             WHERE id = ?1 AND removed_at IS NULL AND builtin = 0",
+            params![id, i64::from(private_host)],
+        )?;
+        if n == 0 {
+            return Err(StoreError::NotFound);
+        }
+        Ok(())
+    }
+
     /// Records the commit a fetch of an active marketplace resolved to.
     pub fn record_fetch(&self, id: &str, commit: &str, at: OffsetDateTime) -> Result<()> {
         check_commit(commit)?;

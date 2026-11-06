@@ -1317,6 +1317,16 @@ fn a_confirmed_marketplace_records_it_and_later_fetches_carry_it() {
     );
     refresh(&env.core, MARKET).expect("refresh with the stored confirmation");
 
+    // A refresh can add the confirmation (a name that now resolves inward, decision 18.8);
+    // it is stored once that fetch succeeded.
+    let env2 = Env::new();
+    let (repo2, _) = standard_repo(&env2);
+    add(&env2.core, &repo2.url()).expect("add");
+    assert!(!active_market(&env2.core, MARKET).expect("rec").private_host);
+    let m = refresh_confirming(&env2.core, MARKET, true).expect("refresh");
+    assert!(m.private_host);
+    drop(repo2);
+
     // An unconfirmed marketplace never gets the flag from its cache sidecar.
     let env = Env::new();
     let (repo, _) = standard_repo(&env);

@@ -4,7 +4,76 @@
 //! confirms it. This module says which addresses need that confirmation and which can never be
 //! a Git server at all.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+
+use crate::error::UrlError;
+use crate::validate::{GitUrl, Scheme};
+
+/// Where a fetch may go, checked just before it starts (decisions 17 and 18.8).
+///
+/// - A private host in the address needs the user's confirmation.
+/// - The host name is resolved with the system resolver; if any address it resolves to can
+///   never be a Git server the fetch is refused, and if any is private the fetch needs the same
+///   confirmation as a private address. IPv4 inside IPv6 is judged as IPv4.
+/// - If the name doesn't resolve here (no network, or only a proxy can resolve it), nothing is
+///   refused: `git` will fail honestly, or reach the host through the user's proxy.
+///
+/// Returns the addresses that were checked, so an https fetch can pin them
+/// (`http.curloptResolve`) and `git` doesn't resolve the name again to something else.
+pub fn check_destination(url: &GitUrl) -> Result<Vec<SocketAddr>, UrlError> {
+    if url.scheme() == Scheme::File {
+        return Ok(Vec::new());
+    }
+    if url.is_private_host() && !url.private_confirmed() {
+        return Err(UrlError::PrivateNotConfirmed);
+    }
+    let Ok(found) = (url.host(), url.effective_port()).to_socket_addrs() else {
+        return Ok(Vec::new());
+    };
+    let addrs: Vec<SocketAddr> = found.collect();
+    check_addresses(&addrs, url.private_confirmed())?;
+    Ok(addrs)
+}
+
+/// The decision for a list of resolved addresses. Pure, so it is tested without DNS.
+pub fn check_addresses(addrs: &[SocketAddr], private_confirmed: bool) -> Result<(), UrlError> {
+    let mut private = false;
+    for a in addrs {
+        match classify_ip(a.ip()) {
+            AddrClass::Never => return Err(UrlError::SpecialAddress),
+            AddrClass::Private => private = true,
+            AddrClass::Public => {}
+        }
+    }
+    if private && !private_confirmed {
+        return Err(UrlError::PrivateNotConfirmed);
+    }
+    Ok(())
+}
+
+/// The `http.curloptResolve` value that pins `host:port` to the checked addresses, for an https
+/// address with at least one. IPv6 addresses are bracketed, as curl expects.
+pub fn curl_resolve(url: &GitUrl, addrs: &[SocketAddr]) -> Option<String> {
+    if url.scheme() != Scheme::Https || addrs.is_empty() {
+        return None;
+    }
+    let mut list: Vec<String> = Vec::new();
+    for a in addrs {
+        let text = match a.ip() {
+            IpAddr::V4(v4) => v4.to_string(),
+            IpAddr::V6(v6) => format!("[{v6}]"),
+        };
+        if !list.contains(&text) {
+            list.push(text);
+        }
+    }
+    Some(format!(
+        "{}:{}:{}",
+        url.host(),
+        url.effective_port(),
+        list.join(",")
+    ))
+}
 
 /// The class of an IP address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,6 +206,71 @@ mod tests {
         ] {
             assert_eq!(class(ip), want, "{ip}");
         }
+    }
+
+    fn sock(text: &str) -> SocketAddr {
+        SocketAddr::new(text.parse().expect("ip"), 443)
+    }
+
+    #[test]
+    fn a_public_name_that_resolves_inward_needs_the_confirmation() {
+        let public = [sock("140.82.112.3"), sock("2606:4700::1111")];
+        assert_eq!(check_addresses(&public, false), Ok(()));
+        // DNS rebinding or a public name pointing at a private address.
+        for inward in [
+            vec![sock("127.0.0.1")],
+            vec![sock("140.82.112.3"), sock("10.0.0.7")],
+            vec![sock("::1")],
+            vec![sock("::ffff:192.168.1.1")],
+            vec![sock("fd00::5")],
+            vec![sock("100.64.1.1")],
+        ] {
+            assert_eq!(
+                check_addresses(&inward, false),
+                Err(UrlError::PrivateNotConfirmed),
+                "{inward:?}"
+            );
+            assert_eq!(check_addresses(&inward, true), Ok(()), "{inward:?}");
+        }
+        // Never, even with the confirmation.
+        for never in [
+            vec![sock("169.254.169.254")],
+            vec![sock("140.82.112.3"), sock("0.0.0.0")],
+            vec![sock("fe80::1")],
+            vec![sock("::ffff:169.254.169.254")],
+            vec![sock("ff02::1")],
+        ] {
+            assert_eq!(
+                check_addresses(&never, true),
+                Err(UrlError::SpecialAddress),
+                "{never:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn localhost_resolves_to_loopback_and_needs_the_confirmation() {
+        let url = GitUrl::parse("https://localhost:1/o/r").expect("parse");
+        assert_eq!(check_destination(&url), Err(UrlError::PrivateNotConfirmed));
+        let confirmed = url.confirm_private();
+        let addrs = check_destination(&confirmed).expect("confirmed");
+        assert!(addrs.iter().all(|a| a.ip().is_loopback()), "{addrs:?}");
+    }
+
+    #[test]
+    fn https_fetches_pin_the_checked_addresses() {
+        let url = GitUrl::parse("https://git.example.com:8443/o/r").expect("parse");
+        assert_eq!(
+            curl_resolve(&url, &[sock("140.82.112.3"), sock("2606:4700::1111")]).as_deref(),
+            Some("git.example.com:8443:140.82.112.3,[2606:4700::1111]")
+        );
+        assert_eq!(curl_resolve(&url, &[]), None);
+        let ssh = GitUrl::parse("git@git.example.com:o/r").expect("parse");
+        assert_eq!(
+            curl_resolve(&ssh, &[sock("140.82.112.3")]),
+            None,
+            "ssh resolves on its own; documented in ADR-015"
+        );
     }
 
     #[test]

@@ -89,6 +89,8 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
   const [privateOk, setPrivateOk] = useState(false);
   /** The backend said this address resolves to a private one, so the box must be shown. */
   const [privateAsked, setPrivateAsked] = useState(false);
+  /** A refresh answered `privateHost`: the box shown under that marketplace. */
+  const [refreshPrivate, setRefreshPrivate] = useState<{ id: string; ok: boolean } | null>(null);
   /** Which marketplace is busy; "add" while adding. One git operation at a time per UI. */
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
@@ -165,17 +167,21 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
     }
   };
 
-  const refresh = async (m: Marketplace) => {
+  const refresh = async (m: Marketplace, confirmPrivate = false) => {
     setMessage(null);
     setBusy(m.id);
     setLive(`Refreshing ${truncate(m.id, 60)}…`);
     try {
-      await marketplaceRefresh(m.id);
+      await marketplaceRefresh(m.id, confirmPrivate);
+      setRefreshPrivate(null);
       say("success", `${truncate(m.id, 60)} is up to date.`);
       await loadList();
       if (selected === m.id) await loadEntries(m.id);
     } catch (err) {
-      say("danger", errorText(toCommandError(err)));
+      const e = toCommandError(err);
+      // Its name now resolves to a private address: ask, never assume (decision 18.8).
+      if (e.kind === "privateHost") setRefreshPrivate({ id: m.id, ok: false });
+      say("danger", errorText(e));
     } finally {
       setBusy(null);
     }
@@ -348,6 +354,35 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
                   </>
                 )}
               </div>
+              {refreshPrivate?.id === m.id && (
+                <div className="mk-private-refresh">
+                  <PrivateHostBox
+                    id={`mk-private-${m.id}`}
+                    checked={refreshPrivate.ok}
+                    disabled={busy !== null}
+                    onChange={(ok) => setRefreshPrivate({ id: m.id, ok })}
+                  />
+                  <div className="activity-actions">
+                    <button
+                      type="button"
+                      className="btn btn-quiet"
+                      disabled={busy !== null}
+                      onClick={() => setRefreshPrivate(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={busy !== null || !refreshPrivate.ok}
+                      onClick={() => void refresh(m, true)}
+                    >
+                      Confirm and refresh
+                      <span className="visually-hidden"> {truncate(m.id, 60)}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
