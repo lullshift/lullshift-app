@@ -643,7 +643,7 @@ mod tests {
 
     #[test]
     fn only_the_main_window_may_change_agent_settings() {
-        const SENSITIVE: [&str; 22] = [
+        const SENSITIVE: &[&str] = &[
             "allow-companion-set-tools-enabled",
             "allow-companion-tool-decision",
             "allow-companion-set-key",
