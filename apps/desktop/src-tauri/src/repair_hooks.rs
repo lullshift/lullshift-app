@@ -415,10 +415,12 @@ mod tests {
     }
 
     /// The reinstall sequence: the old uninstaller runs in place (keep records), the new setup
-    /// finishes, and the repair runs for the new program.
-    fn reinstall(env: &Env, at: u64) -> Run {
+    /// finishes, and the repair runs for the new program. The clock is read after the
+    /// uninstaller wrote its marker: reading it first made the marker look one second in the
+    /// future whenever a second ticked in between, and the repair (rightly) refused it.
+    fn reinstall(env: &Env) -> Run {
         uninstall_hooks::uninstall_all(&env.targets(true));
-        repair_all(&env.data(), &env.new_exe(), at)
+        repair_all(&env.data(), &env.new_exe(), unix_now())
     }
 
     #[test]
@@ -444,8 +446,9 @@ mod tests {
         let env = Env::new();
         // Only Claude Code and Cursor were connected.
         let files = connect(&env, &["claude-code", "cursor"]);
-        let Run::Restored(report) = reinstall(&env, unix_now()) else {
-            panic!("expected a restore");
+        let report = match reinstall(&env) {
+            Run::Restored(report) => report,
+            other => panic!("expected a restore, got {other:?}"),
         };
         assert_eq!(report.claude_code, RepairResult::Restored);
         assert_eq!(report.cursor, RepairResult::Restored);
@@ -486,8 +489,9 @@ mod tests {
     fn restores_all_four_adapters_and_the_records_point_at_the_new_program() {
         let env = Env::new();
         let files = connect(&env, &["claude-code", "codex", "cursor", "opencode"]);
-        let Run::Restored(report) = reinstall(&env, unix_now()) else {
-            panic!("expected a restore");
+        let report = match reinstall(&env) {
+            Run::Restored(report) => report,
+            other => panic!("expected a restore, got {other:?}"),
         };
         assert_eq!(
             report,
@@ -573,7 +577,7 @@ mod tests {
         // The user pressed Disconnect for Cursor before the reinstall.
         env.store().mark_adapter_uninstalled("cursor").unwrap();
         fs::write(&files[1], b"{\"version\":1}").unwrap();
-        let Run::Restored(report) = reinstall(&env, unix_now()) else {
+        let Run::Restored(report) = reinstall(&env) else {
             panic!("fresh marker");
         };
         assert_eq!(report.claude_code, RepairResult::Restored);
