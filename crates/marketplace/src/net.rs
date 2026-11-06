@@ -129,8 +129,10 @@ pub enum AddrClass {
 }
 
 /// Classifies an address. IPv4 addresses embedded in IPv6 (mapped `::ffff:a.b.c.d`,
-/// compatible `::a.b.c.d`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`) are classified as the IPv4
-/// address they carry, so wrapping cannot hide a private one.
+/// translated `::ffff:0:a.b.c.d`, compatible `::a.b.c.d`, NAT64 `64:ff9b::/96`, 6to4
+/// `2002::/16`) are classified as the IPv4 address they carry, so wrapping cannot hide a
+/// private one; NAT64 local-use `64:ff9b:1::/48` is at best Private. Teredo, discard-only and
+/// ORCHID addresses are never allowed.
 pub fn classify_ip(ip: IpAddr) -> AddrClass {
     match ip {
         IpAddr::V4(v4) => classify_v4(v4),
@@ -167,7 +169,31 @@ fn classify_v6(ip: Ipv6Addr) -> AddrClass {
         return classify_v4(v4);
     }
     let seg = ip.segments();
-    if ip.is_unspecified() || ip.is_multicast() || (seg[0] & 0xffc0) == 0xfe80 {
+    // NAT64 local-use prefix, 64:ff9b:1::/48 (RFC 8215). The IPv4 address is judged as usual
+    // (taken from the last 32 bits, where a /96 deployment puts it), and the result is never
+    // better than Private: the prefix is only routed inside an operator's own network, and with
+    // a shorter prefix the IPv4 bits sit elsewhere, so the last 32 bits alone can't clear it.
+    if seg[0] == 0x0064 && seg[1] == 0xff9b && seg[2] == 0x0001 {
+        let [a, b] = seg[6].to_be_bytes();
+        let [c, d] = seg[7].to_be_bytes();
+        return match classify_v4(Ipv4Addr::new(a, b, c, d)) {
+            AddrClass::Never => AddrClass::Never,
+            _ => AddrClass::Private,
+        };
+    }
+    if ip.is_unspecified()
+        || ip.is_multicast()
+        || (seg[0] & 0xffc0) == 0xfe80
+        // Discard-only, 100::/64 (RFC 6666): traffic to it is dropped by design.
+        || (seg[0] == 0x0100 && seg[1..4].iter().all(|s| *s == 0))
+        // Teredo, 2001::/32 (RFC 4380): a tunnel that carries the client's IPv4 address
+        // (obfuscated) and the server's, so it can lead to any IPv4 host, private ones
+        // included. No Git server is reached over Teredo; never allowed.
+        || (seg[0] == 0x2001 && seg[1] == 0x0000)
+        // ORCHID and ORCHIDv2, 2001:10::/28 and 2001:20::/28 (RFC 4843, RFC 7343): host
+        // identifiers that must never appear as network addresses.
+        || (seg[0] == 0x2001 && matches!(seg[1] & 0xfff0, 0x0010 | 0x0020))
+    {
         return AddrClass::Never;
     }
     if ip.is_loopback()
@@ -177,6 +203,10 @@ fn classify_v6(ip: Ipv6Addr) -> AddrClass {
         || (seg[0] & 0xffc0) == 0xfec0
         // Documentation, 2001:db8::/32.
         || (seg[0] == 0x2001 && seg[1] == 0x0db8)
+        // The rest of the IETF protocol assignments, 2001::/23 (benchmarking 2001:2::/48,
+        // AMT, AS112, anycast services): like IPv4's 192.0.0.0/24 and 198.18.0.0/15, not where
+        // a public Git server lives, so they need the user's confirmation.
+        || (seg[0] == 0x2001 && seg[1] < 0x0200)
     {
         return AddrClass::Private;
     }
@@ -197,6 +227,10 @@ fn embedded_v4(ip: Ipv6Addr) -> Option<Ipv4Addr> {
     };
     // IPv4-compatible ::a.b.c.d (deprecated), but not :: or ::1.
     if seg[..6].iter().all(|s| *s == 0) && !(seg[6] == 0 && seg[7] <= 1) {
+        return Some(low(seg[6], seg[7]));
+    }
+    // IPv4-translated (SIIT), ::ffff:0:a.b.c.d (RFC 2765).
+    if seg[..4].iter().all(|s| *s == 0) && seg[4] == 0xffff && seg[5] == 0 {
         return Some(low(seg[6], seg[7]));
     }
     // NAT64 well-known prefix, 64:ff9b::/96.
@@ -382,6 +416,48 @@ mod tests {
             ("64:ff9b::808:808", AddrClass::Public),
             ("2002:c0a8:0101::1", AddrClass::Private),
             ("2002:0808:0808::1", AddrClass::Public),
+        ] {
+            assert_eq!(class(ip), want, "{ip}");
+        }
+    }
+
+    /// Security review LOW-3: more IPv6 forms that carry or hide an inward address.
+    #[test]
+    fn more_ipv6_wrappers_and_special_ranges() {
+        for (ip, want) in [
+            // IPv4-translated (SIIT), unwrapped.
+            ("::ffff:0:127.0.0.1", AddrClass::Private),
+            ("::ffff:0:a9fe:a9fe", AddrClass::Never),
+            ("::ffff:0:808:808", AddrClass::Public),
+            // NAT64 local-use: never better than Private, Never if the IPv4 inside is.
+            ("64:ff9b:1::808:808", AddrClass::Private),
+            ("64:ff9b:1::a00:5", AddrClass::Private),
+            ("64:ff9b:1::a9fe:a9fe", AddrClass::Never),
+            ("64:ff9b:1:ffff::e000:1", AddrClass::Never),
+            // Next to it, but outside the /48: an ordinary global address.
+            ("64:ff9b:2::808:808", AddrClass::Public),
+            // Teredo, 2001::/32: never.
+            ("2001::1", AddrClass::Never),
+            ("2001:0:4136:e378:8000:63bf:3fff:fdd2", AddrClass::Never),
+            ("2001:0:ffff:ffff:ffff:ffff:ffff:ffff", AddrClass::Never),
+            // Discard-only, 100::/64: never; just outside it is not special.
+            ("100::1", AddrClass::Never),
+            ("100::ffff:ffff:ffff:ffff", AddrClass::Never),
+            ("100:0:0:1::1", AddrClass::Public),
+            // ORCHID and ORCHIDv2: never.
+            ("2001:10::1", AddrClass::Never),
+            ("2001:1f:ffff::1", AddrClass::Never),
+            ("2001:20::1", AddrClass::Never),
+            ("2001:2f:ffff::1", AddrClass::Never),
+            // The rest of 2001::/23 needs the confirmation.
+            ("2001:1::1", AddrClass::Private),
+            ("2001:2::1", AddrClass::Private),
+            ("2001:3::1", AddrClass::Private),
+            ("2001:4:112::1", AddrClass::Private),
+            ("2001:1ff:ffff::1", AddrClass::Private),
+            // Just past 2001::/23 is ordinary global unicast.
+            ("2001:200::1", AddrClass::Public),
+            ("2001:4860:4860::8888", AddrClass::Public),
         ] {
             assert_eq!(class(ip), want, "{ip}");
         }
