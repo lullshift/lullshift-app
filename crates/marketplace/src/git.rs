@@ -6,6 +6,10 @@
 //! and a cap on how much output they may produce. `git`'s stderr is only used to pick a
 //! [`GitFailureKind`]; it is dropped afterwards because it can contain URLs and credentials.
 //!
+//! Without a `git` on `PATH`, [`Git::new`] returns the built-in Git ([`Backend::Builtin`],
+//! `crate::builtin`, decision 28, ADR-023) instead. It shares the settings below (timeouts,
+//! fetch cap, object checks, resolver) but never starts a process.
+//!
 //! `file://` repositories are possible only in tests: [`Git::for_tests`] is `cfg(test)` here, and
 //! for the desktop crate's tests it is also compiled when the `unsafe-test-file-urls` feature is
 //! on in a debug build. The feature is requested only from a dev-dependency (resolver 3 does not
@@ -103,9 +107,21 @@ impl Output {
     }
 }
 
-/// A located `git` plus the settings every call shares.
+/// Which Git does the work (decision 28, ADR-023).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    /// The `git` installed on this computer, through the hardened runner. Always preferred.
+    System,
+    /// Lullshift's built-in Git (gitoxide), used when no `git` is on `PATH`. Public https
+    /// marketplaces only; anything that needs a sign-in or ssh is `NeedsSystemGit`.
+    Builtin,
+}
+
+/// A located `git` (or the built-in Git) plus the settings every call shares.
 #[derive(Debug, Clone)]
 pub struct Git {
+    backend: Backend,
+    /// Empty for the built-in Git, which never starts a process.
     exe: PathBuf,
     hooks_dir: PathBuf,
     allow_file: bool,
@@ -117,14 +133,77 @@ pub struct Git {
     resolve: crate::net::Resolve,
     /// Tests only: replaces the proxy lookup so the machine's own settings don't matter.
     proxy_override: Option<bool>,
+    /// Tests only: the built-in Git talks plain http to a loopback test server.
+    plain_http_for_tests: bool,
 }
 
 impl Git {
     /// Finds `git` on `PATH` and prepares the empty hooks directory under `app_dir`
     /// (`<app_dir>/empty-hooks`; `core.hooksPath` points here, so no hook can run).
+    ///
+    /// Without a `git` on `PATH` this is the built-in Git ([`Backend::Builtin`]); installed Git
+    /// is always used when it is there.
     pub fn new(app_dir: &Path) -> Result<Self, Error> {
-        let exe = find_git().ok_or(GitFailureKind::GitMissing)?;
-        Self::with_executable(exe, app_dir, false)
+        Self::detect(find_git(), app_dir)
+    }
+
+    /// [`Git::new`] with the search result given, so the choice can be tested without changing
+    /// the process's `PATH`.
+    pub(crate) fn detect(found: Option<PathBuf>, app_dir: &Path) -> Result<Self, Error> {
+        match found {
+            Some(exe) => Self::with_executable(exe, app_dir, false),
+            None => Ok(Self::builtin(app_dir)),
+        }
+    }
+
+    /// The built-in Git (gitoxide). Used by [`Git::new`] when no `git` is found; public so the
+    /// desktop crate's tests can exercise it too.
+    pub fn builtin(app_dir: &Path) -> Self {
+        Self {
+            backend: Backend::Builtin,
+            exe: PathBuf::new(),
+            hooks_dir: app_dir.join("empty-hooks"),
+            allow_file: false,
+            network_timeout: NETWORK_TIMEOUT,
+            local_timeout: LOCAL_TIMEOUT,
+            fetch_cap: FETCH_MAX_BYTES,
+            fsck: true,
+            resolve: crate::net::system_resolve,
+            proxy_override: None,
+            plain_http_for_tests: false,
+        }
+    }
+
+    /// The built-in Git aimed at the loopback test server: plain http, and the test host name
+    /// resolving to the server. Tests only.
+    #[cfg(test)]
+    pub(crate) fn builtin_for_tests(app_dir: &Path) -> Self {
+        let mut git = Self::builtin(app_dir);
+        git.plain_http_for_tests = true;
+        git.resolve = crate::testserver::resolve;
+        git.proxy_override = Some(false);
+        git
+    }
+
+    /// Which Git this is.
+    pub fn backend(&self) -> Backend {
+        self.backend
+    }
+
+    pub(crate) fn plain_http_for_tests(&self) -> bool {
+        self.plain_http_for_tests
+    }
+
+    pub(crate) fn fsck_enabled(&self) -> bool {
+        self.fsck
+    }
+
+    pub(crate) fn fetch_cap(&self) -> u64 {
+        self.fetch_cap
+    }
+
+    pub(crate) fn network_timeout(&self) -> Duration {
+        self.network_timeout
     }
 
     /// Like `new`, but with `file://` allowed. Exists only in this crate's tests and in debug
@@ -149,6 +228,7 @@ impl Git {
             });
         }
         Ok(Self {
+            backend: Backend::System,
             exe,
             hooks_dir,
             allow_file,
@@ -158,6 +238,7 @@ impl Git {
             fsck: true,
             resolve: crate::net::system_resolve,
             proxy_override: None,
+            plain_http_for_tests: false,
         })
     }
 
@@ -189,6 +270,10 @@ impl Git {
         }
         if crate::net::env_proxy_configured(|k| std::env::var_os(k)) {
             return true;
+        }
+        if self.backend == Backend::Builtin {
+            // No Git configuration to read without Git.
+            return false;
         }
         // `--global` so no repository found from the working folder can answer.
         self.run(
@@ -332,6 +417,10 @@ impl Git {
         stdin: Option<Vec<u8>>,
         max_output: usize,
     ) -> Result<Output, Error> {
+        if self.backend == Backend::Builtin {
+            // The built-in Git never starts a process; reaching this is a bug, reported honestly.
+            return Err(GitFailureKind::GitMissing.into());
+        }
         let timeout = self.timeout(class);
         let mut cmd = self.command(git_dir, args);
         run_process(&mut cmd, stdin, timeout, max_output, None)
@@ -347,6 +436,9 @@ impl Git {
         max_output: usize,
         resolve_pin: Option<&str>,
     ) -> Result<Output, Error> {
+        if self.backend == Backend::Builtin {
+            return Err(GitFailureKind::GitMissing.into());
+        }
         let objects = repo.join("objects");
         let watch = Watch {
             baseline: dir_size(&objects),
@@ -395,7 +487,12 @@ impl Git {
 
 /// Looks for `git` in the absolute entries of `PATH`.
 fn find_git() -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
+    find_git_in(std::env::var_os("PATH"))
+}
+
+/// Looks for `git` in the absolute entries of a `PATH`-style list.
+pub(crate) fn find_git_in(path: Option<OsString>) -> Option<PathBuf> {
+    let path = path?;
     let name = if cfg!(windows) { "git.exe" } else { "git" };
     std::env::split_paths(&path)
         .filter(|dir| dir.is_absolute())

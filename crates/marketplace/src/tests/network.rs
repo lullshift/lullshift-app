@@ -22,7 +22,16 @@ fn a_private_host_is_not_fetched_without_confirmation() {
         let repo = env.path("cache/private/repo.git");
         let parsed = GitUrl::parse(url).expect("private hosts parse");
         let err = env.git.fetch(&repo, &parsed, None).expect_err(url);
-        assert_eq!(err, Error::Url(UrlError::PrivateNotConfirmed), "{url}");
+        if builtin_mode() && parsed.scheme() == crate::validate::Scheme::Ssh {
+            // The built-in Git says "install Git" for ssh before anything else (ADR-023).
+            assert_eq!(
+                err,
+                Error::Git(crate::error::GitFailureKind::NeedsSystemGit),
+                "{url}"
+            );
+        } else {
+            assert_eq!(err, Error::Url(UrlError::PrivateNotConfirmed), "{url}");
+        }
         assert!(!repo.exists(), "{url}: nothing was created");
     }
 }
@@ -49,6 +58,10 @@ fn a_confirmed_loopback_address_reaches_git() {
 fn git_connects_to_the_pinned_address_instead_of_resolving_the_name_again() {
     // `.invalid` never resolves (RFC 6761). With the pin, curl skips DNS and tries the pinned
     // loopback address (port 1, closed); without it, it fails to resolve. Offline-safe.
+    // The built-in Git's pin is `tests::builtin::only_the_checked_address_is_contacted`.
+    if builtin_mode() {
+        return;
+    }
     let env = Env::new();
     let repo = env.path("cache/pin/repo.git");
     env.git.ensure_repo(&repo).expect("repo");
@@ -172,6 +185,14 @@ fn behind_a_proxy_an_unresolvable_name_is_left_to_the_proxy() {
     let err = git
         .fetch(&env.path("cache/proxied/repo.git"), &url, None)
         .expect_err("nothing to fetch");
+    if builtin_mode() {
+        // The built-in Git never uses a proxy, so it never fetches unpinned (ADR-023).
+        assert_eq!(
+            err,
+            Error::Git(crate::error::GitFailureKind::NeedsSystemGit)
+        );
+        return;
+    }
     assert!(err.git_kind().is_some(), "{err}");
     assert!(crate::git::spawned::any_with("fetch"), "git fetch ran");
 }

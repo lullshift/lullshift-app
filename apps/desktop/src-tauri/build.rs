@@ -20,6 +20,7 @@ fn main() {
             "activities_list",
             "activities_manage_list",
             "marketplace_list",
+            "marketplace_git_backend",
             "marketplace_add",
             "marketplace_remove",
             "marketplace_refresh",

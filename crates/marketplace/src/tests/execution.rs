@@ -29,7 +29,14 @@ fn filter_cmd(marker: &Path) -> String {
 }
 
 fn plain_git(env: &Env, repo: &Path, args: &[&str]) -> bool {
-    Command::new(env.git.executable())
+    // The built-in Git has no executable; installed Git then plays the user's later `git`.
+    let exe = env.git.executable();
+    let exe = if exe.as_os_str().is_empty() {
+        Path::new("git")
+    } else {
+        exe
+    };
+    Command::new(exe)
         .arg("--git-dir")
         .arg(repo)
         .args(args)

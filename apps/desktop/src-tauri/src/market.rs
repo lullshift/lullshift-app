@@ -130,6 +130,11 @@ fn from_git_kind(kind: GitFailureKind) -> CommandError {
             "gitMissing",
             "Git isn't installed, or isn't on your PATH. Install Git to use marketplaces.",
         ),
+        // Decision 28: the built-in Git reads public https marketplaces only.
+        GitFailureKind::NeedsSystemGit => (
+            "needsGit",
+            "Install Git to use this marketplace. Lullshift's built-in Git only reads public https marketplaces; this one asks for a sign-in, uses ssh, or is only reachable through a proxy.",
+        ),
         GitFailureKind::OutputTooLarge => (
             "invalidPack",
             "The repository returned more data than Lullshift allows.",
@@ -1446,6 +1451,31 @@ async fn run<T: Send + 'static>(
 #[tauri::command]
 pub async fn marketplace_list(core: tauri::State<'_, Arc<Core>>) -> Res<Vec<MarketplaceDto>> {
     run(&core, list).await
+}
+
+/// Which Git marketplaces use (decision 28, ADR-023).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitBackendDto {
+    /// "system": the Git installed on this computer. "builtin": Lullshift's built-in Git,
+    /// public https marketplaces only.
+    pub backend: &'static str,
+}
+
+/// The Git in use, found once per run (installing Git takes effect after a restart).
+pub fn git_backend(core: &Core) -> Res<GitBackendDto> {
+    let git = git(core)?;
+    Ok(GitBackendDto {
+        backend: match git.backend() {
+            marketplace::Backend::System => "system",
+            marketplace::Backend::Builtin => "builtin",
+        },
+    })
+}
+
+#[tauri::command]
+pub async fn marketplace_git_backend(core: tauri::State<'_, Arc<Core>>) -> Res<GitBackendDto> {
+    run(&core, git_backend).await
 }
 
 #[tauri::command]

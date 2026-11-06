@@ -7,7 +7,9 @@
 //! - `images`: pictures in content packs (S12-T11).
 //! - `network`: where a fetch may go: private hosts, resolved addresses (decisions 17, 18).
 //! - `plain_text`: the shared plain-text corpus (decision 18.7).
+//! - `builtin`: the built-in Git (decision 28, ADR-023); it also re-runs this whole suite on it.
 
+mod builtin;
 mod execution;
 mod happy;
 mod images;

@@ -13,6 +13,33 @@ use crate::git::Git;
 use crate::pack::AvailableEngine;
 use crate::validate::{Commit, GitUrl};
 
+/// Set to `builtin` to run the fixture suite on the built-in Git (decision 28, ADR-023): the
+/// test binary re-runs itself with it (`tests::builtin::whole_suite_on_the_builtin_git`).
+pub const BACKEND_VAR: &str = "LULLSHIFT_TEST_GIT_BACKEND";
+
+/// True when this test process runs the suite on the built-in Git.
+pub fn builtin_mode() -> bool {
+    std::env::var(BACKEND_VAR).is_ok_and(|v| v == "builtin")
+}
+
+/// The address of a repository folder that may not exist, for the backend under test.
+pub fn url_for(path: &Path) -> GitUrl {
+    if builtin_mode() {
+        crate::testserver::repo_url(path)
+    } else {
+        GitUrl::for_test_file(path)
+    }
+}
+
+/// A test-mode `Git` for the backend this process tests.
+fn test_git(app: &Path) -> Git {
+    if builtin_mode() {
+        Git::builtin_for_tests(app)
+    } else {
+        Git::for_tests(app).expect("git on PATH")
+    }
+}
+
 /// An app folder with a test-mode `Git`, cache folders and an install root.
 pub struct Env {
     pub tmp: TempDir,
@@ -22,7 +49,7 @@ pub struct Env {
 impl Env {
     pub fn new() -> Self {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let git = Git::for_tests(&tmp.path().join("app")).expect("git on PATH");
+        let git = test_git(&tmp.path().join("app"));
         Self { tmp, git }
     }
 
@@ -30,9 +57,7 @@ impl Env {
     /// (`..` entries, hostile `.gitmodules`) reach the pack validation behind it.
     pub fn lenient() -> Self {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let git = Git::for_tests(&tmp.path().join("app"))
-            .expect("git on PATH")
-            .without_fsck_for_tests();
+        let git = test_git(&tmp.path().join("app")).without_fsck_for_tests();
         Self { tmp, git }
     }
 
@@ -127,8 +152,15 @@ impl Src {
         String::from_utf8_lossy(&out.stdout).trim().to_owned()
     }
 
+    /// The repository's address for the backend under test: `file://` for installed Git, the
+    /// loopback test server for the built-in Git.
     pub fn url(&self) -> GitUrl {
-        GitUrl::for_test_file(&self.dir)
+        url_for(&self.dir)
+    }
+
+    /// Always the loopback test server address, whichever backend this process tests.
+    pub fn http_url(&self) -> GitUrl {
+        crate::testserver::repo_url(&self.dir)
     }
 
     /// Commits exactly `files` (no other content) on `main`, advancing it, and returns the

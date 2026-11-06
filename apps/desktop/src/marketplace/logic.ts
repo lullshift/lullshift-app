@@ -6,6 +6,7 @@ import type {
   CodeRisk,
   CommandError,
   ErrorKind,
+  GitBackend,
   InstallPreview,
   ManageItem,
   ManageProblem,
@@ -34,6 +35,8 @@ const ERROR_TEXT: Record<ErrorKind, string> = {
   notFound: "That repository or item wasn't found. Check the address and try again.",
   timeout: "Git took too long to answer. Try again in a moment.",
   gitMissing: "Git isn't installed or can't be found. Install Git, then try again.",
+  needsGit:
+    "Install Git to use this marketplace. Lullshift's built-in Git only reads public https marketplaces; this one needs a sign-in, uses ssh, or is only reachable through a proxy. After installing Git, restart Lullshift and try again.",
   invalidUrl: "That doesn't look like a Git address Lullshift can use.",
   invalidIndex: "This repository doesn't have a valid Lullshift marketplace.",
   invalidPack: "This activity's files didn't pass Lullshift's checks, so it can't be installed.",
@@ -49,6 +52,15 @@ const ERROR_TEXT: Record<ErrorKind, string> = {
   internal: "Something went wrong. Nothing was changed.",
   unavailable: UNAVAILABLE_TEXT,
 };
+
+/** The status line for the Git in use (decision 28); null when unknown. Plain text, no link. */
+export function gitBackendText(backend: GitBackend | null): string | null {
+  if (backend === "system") return "Using Git installed on this computer.";
+  if (backend === "builtin") {
+    return "Using Lullshift's built-in Git (public https only). To add private or ssh marketplaces, install Git, then restart Lullshift.";
+  }
+  return null;
+}
 
 /** Kinds where the backend's own short sentence adds useful detail. */
 const DETAILED: ReadonlySet<ErrorKind> = new Set(["invalidUrl", "invalidIndex", "invalidPack"]);

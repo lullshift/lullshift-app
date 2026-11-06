@@ -26,6 +26,8 @@ Lullshift connects to the network only when you do something that needs it:
 
 During Git actions, your own Git configuration applies: credential helpers, proxies and SSH settings. Lullshift doesn't change them.
 
+If Git isn't installed, Lullshift's built-in Git contacts the same hosts, at the same moments, for public https marketplaces only. It reads no Git configuration, uses no proxy and sends no credentials; a repository that asks for a sign-in is left for installed Git.
+
 **Updates:** Lullshift does not check for updates on its own. Any update check runs only when you ask for it.
 
 **Outside Lullshift's control:**

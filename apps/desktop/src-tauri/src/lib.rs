@@ -567,6 +567,7 @@ pub fn run() {
             activities::activity_add_play,
             activities::activity_content,
             market::marketplace_list,
+            market::marketplace_git_backend,
             market::marketplace_add,
             market::marketplace_remove,
             market::marketplace_refresh,

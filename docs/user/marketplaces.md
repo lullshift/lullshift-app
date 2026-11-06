@@ -8,9 +8,20 @@ Open **Activities**, then the **Marketplaces** tab.
 
 `lullshift` is always listed first, marked **Built in**. Its activities are the ones bundled with the app. They are reviewed by pull request in the Lullshift repository, ship with each app release and need no network. You can turn them off in **Manage**, but you can't remove them or the built-in marketplace.
 
-## You need Git
+## Git installed, or the built-in Git
 
-Adding and updating marketplaces runs the `git` already installed on your computer. If Git is missing, Lullshift says "Git isn't installed, or isn't on your PATH." Bundled activities work without Git.
+If Git is installed on your computer, Lullshift uses it for adding and updating marketplaces. If it isn't, Lullshift uses its own built-in Git instead. The **Marketplaces** tab says which one is in use, under the address box:
+
+- "Using Git installed on this computer."
+- "Using Lullshift's built-in Git (public https only)."
+
+The built-in Git reads **public https marketplaces only**, including `owner/repo` on GitHub. It never asks for a password and never uses a proxy. For these, you need Git installed:
+
+- a private repository (one that needs a sign-in);
+- an `ssh://` or `git@host:path` address;
+- a network where the Git server can only be reached through a proxy.
+
+Lullshift then says "Install Git to use this marketplace." Install Git, restart Lullshift (it picks the Git to use when it starts), and try again. Marketplaces you added with the built-in Git keep working after Git is installed, and the other way round. Bundled activities need neither.
 
 ## Adding a marketplace
 
