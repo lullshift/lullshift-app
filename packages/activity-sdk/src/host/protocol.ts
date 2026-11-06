@@ -15,15 +15,26 @@ const KEY_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 export const SUMMARY_ITEMS_MAX = 4;
 export const SUMMARY_TEXT_MAX = 24;
 
-// Control, bidirectional-override and invisible formatting characters; mirrors the manifest's
-// plain-text pattern.
+// Control, bidirectional, separator and invisible formatting characters: the host's set
+// (`hidden_char` in crates/marketplace, `is_invisible` in agent-core) and the manifest's
+// plain-text pattern. All of them run tests/fixtures/plain-text/cases.json (decision 18.7).
 const NOT_PLAIN =
-  // eslint-disable-next-line no-control-regex
-  /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]/u;
+  // eslint-disable-next-line no-control-regex, no-misleading-character-class
+  /[\u0000-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F-\u1160\u17B4-\u17B5\u180B-\u180E\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u206F\u3164\uFEFF\uFFA0\uFFF9-\uFFFB\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}]/u;
 
-/** Plain text of 1 to `max` characters (code points), with no control or invisible characters. */
+// More than four combining marks in a row stack over neighbouring text; the host refuses them.
+const LONG_MARK_RUN =
+  // eslint-disable-next-line no-misleading-character-class
+  /[\u0300-\u036F\u0483-\u0489\u0591-\u05BD\u0610-\u061A\u064B-\u065F\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F]{5}/u;
+
+/**
+ * Plain text of 1 to `max` characters (code points), with no control or invisible characters
+ * and no run of more than four combining marks.
+ */
 export function isPlainText(v: unknown, max: number): v is string {
-  if (typeof v !== "string" || v.length === 0 || NOT_PLAIN.test(v)) return false;
+  if (typeof v !== "string" || v.length === 0 || NOT_PLAIN.test(v) || LONG_MARK_RUN.test(v)) {
+    return false;
+  }
   return [...v].length <= max;
 }
 

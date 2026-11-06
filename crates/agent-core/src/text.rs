@@ -43,4 +43,24 @@ mod tests {
         assert!(!has_unsafe_chars("a\nb", true));
         assert!(!has_unsafe_chars("Fix the login bug", false));
     }
+
+    /// The shared plain-text corpus (decision 18.7): every case refused for a hidden character
+    /// is refused here too, and nothing the corpus allows is. (Mark runs are the marketplace's
+    /// extra rule for creator text, so those cases are not checked here.)
+    #[test]
+    fn agrees_with_the_shared_plain_text_corpus() {
+        let doc: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/plain-text/cases.json"
+        ))
+        .expect("corpus");
+        for case in doc["cases"].as_array().expect("cases") {
+            let name = case["name"].as_str().expect("name");
+            let text = case["text"].as_str().expect("text");
+            match case["reason"].as_str() {
+                Some("hidden") => assert!(has_unsafe_chars(text, false), "{name}"),
+                Some(_) => {}
+                None => assert!(!has_unsafe_chars(text, false), "{name}"),
+            }
+        }
+    }
 }

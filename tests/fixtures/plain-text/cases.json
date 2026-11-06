@@ -1,0 +1,341 @@
+{
+  "description": "Shared plain-text corpus (decision 18.7). The host (crates/marketplace manifest::text_ok and agent-core text::is_invisible), the manifest and marketplace schemas' plain-text pattern, and the SDK's isPlainText must all agree with `plain` for every case. `reason` is why a case is refused: `hidden` for a control or invisible character, `marks` for more than four combining marks in a row. Every non-ASCII character is written as a \\u escape.",
+  "cases": [
+    {
+      "name": "ascii words",
+      "text": "Moss Paths",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "accented letters",
+      "text": "Caf\u00e9 cr\u00e8me",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "one combining mark",
+      "text": "nai\u0308ve",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "four combining marks",
+      "text": "a\u0301\u0302\u0303\u0304",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "mark runs reset between letters",
+      "text": "a\u0301\u0302\u0303\u0304b\u0301\u0302\u0303\u0304",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "emoji",
+      "text": "Leaf \ud83c\udf3f",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "japanese",
+      "text": "\u9759\u304b\u306a\u6642\u9593",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "arabic",
+      "text": "\u0633\u0644\u0627\u0645",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "hangul syllables",
+      "text": "\ud55c\uae00",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "no-break space",
+      "text": "a\u00a0b",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "per mille sign after the bidi block",
+      "text": "5\u2030",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "hangul letter after the filler",
+      "text": "\u3165",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "musical symbol before the format controls",
+      "text": "\ud834\udd72",
+      "plain": true,
+      "reason": null
+    },
+    {
+      "name": "nul",
+      "text": "a\u0000b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "tab",
+      "text": "a\tb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "newline",
+      "text": "a\nb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "unit separator",
+      "text": "a\u001fb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "delete",
+      "text": "a\u007fb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "next line",
+      "text": "a\u0085b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "c1 end",
+      "text": "a\u009fb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "soft hyphen",
+      "text": "a\u00adb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "combining grapheme joiner",
+      "text": "a\u034fb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "arabic letter mark",
+      "text": "a\u061cb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "hangul choseong filler",
+      "text": "a\u115fb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "hangul jungseong filler",
+      "text": "a\u1160b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "khmer inherent vowel aq",
+      "text": "a\u17b4b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "khmer inherent vowel aa",
+      "text": "a\u17b5b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "mongolian variation selector",
+      "text": "a\u180bb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "mongolian vowel separator",
+      "text": "a\u180eb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "zero width space",
+      "text": "a\u200bb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "zero width joiner",
+      "text": "a\u200db",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "right-to-left mark",
+      "text": "a\u200fb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "line separator",
+      "text": "a\u2028b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "paragraph separator",
+      "text": "a\u2029b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "left-to-right embedding",
+      "text": "a\u202ab",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "right-to-left override",
+      "text": "a\u202eb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "word joiner",
+      "text": "a\u2060b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "invisible plus",
+      "text": "a\u2064b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "left-to-right isolate",
+      "text": "a\u2066b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "pop directional isolate",
+      "text": "a\u2069b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "nominal digit shapes",
+      "text": "a\u206fb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "hangul filler",
+      "text": "a\u3164b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "byte order mark",
+      "text": "a\ufeffb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "halfwidth hangul filler",
+      "text": "a\uffa0b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "interlinear annotation anchor",
+      "text": "a\ufff9b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "interlinear annotation terminator",
+      "text": "a\ufffbb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "shorthand format letter overlap",
+      "text": "a\ud82f\udca0b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "shorthand format up step",
+      "text": "a\ud82f\udca3b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "musical symbol begin beam",
+      "text": "a\ud834\udd73b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "musical symbol end phrase",
+      "text": "a\ud834\udd7ab",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "language tag",
+      "text": "a\udb40\udc01b",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "cancel tag",
+      "text": "a\udb40\udc7fb",
+      "plain": false,
+      "reason": "hidden"
+    },
+    {
+      "name": "five combining marks",
+      "text": "a\u0301\u0302\u0303\u0304\u0305",
+      "plain": false,
+      "reason": "marks"
+    },
+    {
+      "name": "five marks from different blocks",
+      "text": "a\u0300\u0483\u0591\u20d0\ufe20",
+      "plain": false,
+      "reason": "marks"
+    },
+    {
+      "name": "a long stack after plain text",
+      "text": "Moss \u0610\u0611\u0612\u0613\u0614\u0615\u0616",
+      "plain": false,
+      "reason": "marks"
+    },
+    {
+      "name": "extended and supplement marks",
+      "text": "x\u1ab0\u1ab1\u1dc0\u1dc1\u064b",
+      "plain": false,
+      "reason": "marks"
+    }
+  ]
+}
