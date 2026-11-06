@@ -25,11 +25,29 @@ use crate::url_check::check_base_url;
 
 pub const TIMEOUT: Duration = Duration::from_secs(60);
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+/// Streaming: the wait for the first byte of a reply (a local model may be reading a long prompt).
+pub const STREAM_FIRST_BYTE_TIMEOUT: Duration = Duration::from_secs(60);
+/// Streaming: the longest silence once a reply has started. Keep-alive pings reset it.
+pub const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Streaming: hard cap on one provider call, whatever the stream does.
+pub const STREAM_TOTAL_TIMEOUT: Duration = Duration::from_secs(300);
+/// Streaming: most reply text kept (bytes of cleaned text).
+pub const MAX_REPLY_BYTES: usize = 128 * 1024;
+/// Streaming: largest single SSE line or event (bytes).
+pub const MAX_EVENT_BYTES: usize = 64 * 1024;
+/// Streaming: most raw bytes read from one stream.
+pub const MAX_STREAM_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy)]
 pub struct HttpConfig {
     pub timeout: Duration,
     pub max_response_bytes: usize,
+    pub first_byte_timeout: Duration,
+    pub idle_timeout: Duration,
+    pub total_timeout: Duration,
+    pub max_reply_bytes: usize,
+    pub max_event_bytes: usize,
+    pub max_stream_bytes: usize,
 }
 
 impl Default for HttpConfig {
@@ -37,6 +55,12 @@ impl Default for HttpConfig {
         Self {
             timeout: TIMEOUT,
             max_response_bytes: MAX_RESPONSE_BYTES,
+            first_byte_timeout: STREAM_FIRST_BYTE_TIMEOUT,
+            idle_timeout: STREAM_IDLE_TIMEOUT,
+            total_timeout: STREAM_TOTAL_TIMEOUT,
+            max_reply_bytes: MAX_REPLY_BYTES,
+            max_event_bytes: MAX_EVENT_BYTES,
+            max_stream_bytes: MAX_STREAM_BYTES,
         }
     }
 }
@@ -65,7 +89,7 @@ struct Raw {
     body: Vec<u8>,
 }
 
-fn agent(cfg: &HttpConfig, loopback: bool) -> ureq::Agent {
+pub(crate) fn agent(cfg: &HttpConfig, loopback: bool) -> ureq::Agent {
     let mut b = Config::builder()
         .http_status_as_error(false)
         .max_redirects(0)
@@ -85,7 +109,7 @@ fn agent(cfg: &HttpConfig, loopback: bool) -> ureq::Agent {
     b.build().new_agent()
 }
 
-fn classify(e: &ureq::Error) -> CompanionError {
+pub(crate) fn classify(e: &ureq::Error) -> CompanionError {
     match e {
         ureq::Error::Timeout(_) => CompanionError::timeout(),
         ureq::Error::Io(io)
@@ -167,9 +191,9 @@ pub struct LateUsage {
     pub reported: bool,
 }
 
-const PENDING: u8 = 0;
-const DELIVERED: u8 = 1;
-const ABANDONED: u8 = 2;
+pub(crate) const PENDING: u8 = 0;
+pub(crate) const DELIVERED: u8 = 1;
+pub(crate) const ABANDONED: u8 = 2;
 
 /// Sends one non-streaming chat request and returns the reply. Waits on a worker thread so
 /// `cancel` takes effect at once; a cancelled worker finishes (or times out) on its own.

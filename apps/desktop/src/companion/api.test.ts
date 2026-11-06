@@ -1,9 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invoke = vi.hoisted(() => vi.fn());
-vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+const FakeChannel = vi.hoisted(
+  () =>
+    class {
+      onmessage: ((e: unknown) => void) | undefined;
+    },
+);
+vi.mock("@tauri-apps/api/core", () => ({ invoke, Channel: FakeChannel }));
 
-import { companionSend, companionSetKey, toCommandError } from "./api";
+import {
+  companionRetry,
+  companionSend,
+  companionSetKey,
+  companionToolDecision,
+  newRequestId,
+  toCommandError,
+} from "./api";
 import { errorText } from "./logic";
 
 const SECRET = "sk-test-SECRET-0123456789";
@@ -67,9 +80,15 @@ describe("toCommandError", () => {
 
   it("does not copy message text from a failed send", async () => {
     invoke.mockRejectedValueOnce(`failed: my prompt text ${SECRET}`);
-    const err = await companionSend(1, "p", "my prompt text", { kind: "none" }, null).catch(
-      (e: unknown) => e,
-    );
+    const err = await companionSend(
+      1,
+      "p",
+      "my prompt text",
+      { kind: "none" },
+      null,
+      "r-0123456789",
+      () => undefined,
+    ).catch((e: unknown) => e);
     expect(JSON.stringify(err)).not.toContain("my prompt text");
   });
 });
@@ -77,13 +96,15 @@ describe("toCommandError", () => {
 describe("companionSend", () => {
   it("passes the previewed context hash through", async () => {
     invoke.mockResolvedValue({});
-    await companionSend(1, "p", "hi", { kind: "none" }, null);
+    await companionSend(1, "p", "hi", { kind: "none" }, null, "r-0123456789", () => undefined);
     expect(invoke).toHaveBeenLastCalledWith("companion_send", {
       threadId: 1,
       profileId: "p",
       text: "hi",
       scope: { kind: "none" },
       expectedContextSha256: null,
+      requestId: "r-0123456789",
+      onEvent: expect.any(FakeChannel),
     });
     await companionSend(
       1,
@@ -91,7 +112,40 @@ describe("companionSend", () => {
       "hi",
       { kind: "sessionSummary", provider: "x", sessionId: "y" },
       "ab12",
+      "r-0123456789",
+      () => undefined,
     );
     expect(invoke.mock.lastCall?.[1]).toMatchObject({ expectedContextSha256: "ab12" });
+  });
+});
+
+describe("streaming calls", () => {
+  it("routes channel messages to the handler given for that call", async () => {
+    invoke.mockResolvedValue({});
+    const seen: unknown[] = [];
+    await companionRetry(5, "r-abcdefgh", (e) => seen.push(e));
+    const args = invoke.mock.lastCall?.[1] as {
+      onEvent: InstanceType<typeof FakeChannel>;
+      requestId: string;
+    };
+    expect(args.requestId).toBe("r-abcdefgh");
+    args.onEvent.onmessage?.({ type: "delta", requestId: "r-abcdefgh", text: "hi" });
+    expect(seen).toEqual([{ type: "delta", requestId: "r-abcdefgh", text: "hi" }]);
+  });
+
+  it("answers a lookup by request and call id only", async () => {
+    invoke.mockResolvedValue(undefined);
+    await companionToolDecision("r-abcdefgh", "call_1", false);
+    expect(invoke).toHaveBeenLastCalledWith("companion_tool_decision", {
+      requestId: "r-abcdefgh",
+      callId: "call_1",
+      approve: false,
+    });
+  });
+
+  it("makes request ids the backend accepts, and different each time", () => {
+    const a = newRequestId();
+    expect(a).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
+    expect(newRequestId()).not.toBe(a);
   });
 });

@@ -90,22 +90,28 @@ type Usage = { profileId: string; month: string; inputTokens: number; outputToke
 - `companion_delete_thread({ id }) -> void`
 - `companion_messages({ threadId }) -> Message[]`
 - `companion_preview_context({ scope }) -> ContextPreview`
-- `companion_send({ threadId, profileId, text, scope, expectedContextSha256 }) -> Message`
+- `companion_send({ threadId, profileId, text, scope, expectedContextSha256, requestId, onEvent }) -> Message`
+  - Sprint 12: the reply streams. `requestId` is chosen by the UI (8 to 64 characters of `A-Za-z0-9_-`) and `onEvent` is a Tauri `Channel`. Events (all carry `requestId`, and the UI ignores other ids): `started`, `round { round }`, `delta { text }` (already cleaned), `toolRequest { callId, tool, label, arguments, resultText, host }`, `toolSkipped { tool, text }`, `toolResolved { callId, approved }`. The promise still ends with the stored assistant message, or an error.
   - `expectedContextSha256` is the `sha256` of the preview the user confirmed: lowercase hex SHA-256 of the exact attached text, or `null` for scope `none`. The backend rebuilds the context and compares. On any mismatch (including a missing hash for a scope that attaches text, or a hash given for `none`) it returns `invalidInput` with "The context changed since you previewed it. Review it again.", stores nothing and makes no request. The UI then shows a new preview.
   - Only earlier messages that were sent to the same host (`host[:port]`) as this send are repeated as history. Messages that went to another host are never replayed to this one.
   - Returns the assistant message.
   - The user message is stored first, as `pending`, then marked `sent` or `failed`.
   - The context attached is built again on the backend from the scope. The text must match what the preview would show.
-- `companion_retry({ messageId }) -> Message`
+- `companion_retry({ messageId, requestId, onEvent }) -> Message`
   - Resends a failed user message with the same attached context. If the profile's host differs from the host stored on the message, it returns `invalidInput` ("This provider's address changed. Send the message again to review it.") and sends nothing.
 - `companion_cancel({ threadId }) -> void`
-  - Returns at once. The thread stays busy (`busy` for send, retry and delete) until the HTTP worker has really ended, which can be up to the 60 s timeout. Cancelled calls are counted in usage: the provider's real numbers if a reply arrives, otherwise an estimate from the request size. The cancelled message says the request may already have reached the provider.
+  - Returns at once and frees the thread at once (Sprint 12, decision 20.1): a new send in the same thread can start immediately. The old worker is abandoned and anything it still receives is discarded (never stored, never sent to the UI). The cancelled call is still counted in usage when its worker finishes: the provider's numbers if reported, otherwise an estimate from the request and the text received. The cancelled message says the request may already have reached the provider.
+- `companion_tool_decision({ requestId, callId, approve }) -> void`
+  - Answers the lookup that a `toolRequest` event announced. Nothing is sent to the provider before this. `notFound` if nothing matching is waiting (already answered, cancelled, other call or request).
+- `companion_prefs() -> { toolsEnabled, lastScope }`
+  - `toolsEnabled` is false until the user turns lookups on. `lastScope` is the scope of the last message that passed validation, or null.
+- `companion_set_tools_enabled({ enabled }) -> { toolsEnabled, lastScope }`
 - `companion_usage() -> Usage[]`
   - Covers the current month.
 
 ## Not exposed
 
-No command returns key material. No command lets the frontend choose arbitrary headers, endpoints beyond the profile's base URL, tools or system prompts.
+No command returns key material. No command lets the frontend choose arbitrary headers, endpoints beyond the profile's base URL, tools or system prompts. Whether the three read-only lookups are offered is decided by the stored `toolsEnabled` setting, never by an argument of `companion_send`.
 
 ## Implementation notes and deviations (backend, Sprint 09)
 
@@ -122,10 +128,12 @@ These are the places where the backend adds detail to the contract above or diff
   - Once the user message is stored, any failure (`offline`, `timeout`, `rateLimited`, `keyRejected`, `providerError`, `invalidResponse`, `cancelled`) returns the error **and** leaves the user message as `failed` with `error` set. The UI should call `companion_messages` again after an error to show it.
   - A send for a thread that is already sending returns `busy` before anything else.
 - **`companion_retry`.** Only a `failed` user message that is the **latest message in its thread** can be retried (`invalidInput` otherwise), and its profile must still exist (`notFound` if it was deleted). Key and budget are checked again. The same attached context is resent; it is not rebuilt.
-- **`companion_cancel`.** Resolves at once. The pending `companion_send` then returns `cancelled`, and the message stays `failed` with kind `cancelled`, so it can be retried. Cancelling a thread that is not sending does nothing.
+- **`companion_cancel`.** Resolves at once. The pending `companion_send` then returns `cancelled`, and the message stays `failed` with kind `cancelled`, so it can be retried. Cancelling a thread that is not sending does nothing. The thread is free as soon as this returns.
+- **Messages carry `toolCalls`.** A user message has `toolCalls: { id, round, tool, label, arguments, resultText, status: approved|declined, card: { activityId, name, minutes } | null, host, createdAt }[]`: the lookups made while answering it, with exactly what was sent. A card is only for an approved `suggest_break`; starting the activity is the UI's explicit user action, never the lookup's.
+- **Limits (Sprint 12).** 60 s to the first byte, 30 s of silence once started, 300 s per provider call, 128 KiB of reply text, 64 KiB per event, 4 MiB per stream; at most 3 rounds and 3 honoured lookups per message.
 - **Restart.** Messages left `pending` by a quit or crash are changed to `failed` / `cancelled` at the next launch.
 - **History sent to the provider.** The newest 20 delivered messages (at most 60,000 characters), as plain text. Failed messages are not included. Context attached to earlier messages is **not** repeated; it goes only with the message it was chosen for. The attached text is placed before the user's text: `<context>\n\n---\n\n<text>`.
-- **System prompt.** One fixed sentence in `crates/companion/src/provider.rs` (`SYSTEM_PROMPT`): a chat companion that can only reply with text. Output is capped at 1024 tokens per reply (16 for the connection test).
+- **System prompt.** One fixed sentence in `crates/companion/src/provider.rs` (`SYSTEM_PROMPT`): a chat companion that can only reply with text. With lookups on, `SYSTEM_PROMPT_WITH_TOOLS` instead. Output is capped at 1024 tokens per reply (16 for the connection test).
 - **Scopes.**
   - `sessionSummary` text: a fixed header line, then Title (user title, else the agent's), Status (the last reported state and when it was reported, with a note that it may have changed), Intent (the user's, else the captured one) and Latest ask.
   - `selectedNotes` needs `notes: true` or at least one item id, otherwise `invalidInput`. Item ids that do not belong to the session give `invalidInput`. An unknown session gives `notFound`.

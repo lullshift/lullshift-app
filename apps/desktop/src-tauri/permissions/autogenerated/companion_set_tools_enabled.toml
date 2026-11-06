@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-companion-set-tools-enabled"
+description = "Enables the companion_set_tools_enabled command without any pre-configured scope."
+commands.allow = ["companion_set_tools_enabled"]
+
+[[permission]]
+identifier = "deny-companion-set-tools-enabled"
+description = "Denies the companion_set_tools_enabled command without any pre-configured scope."
+commands.deny = ["companion_set_tools_enabled"]

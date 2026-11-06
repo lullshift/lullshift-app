@@ -39,10 +39,10 @@ fn invalid<T: std::fmt::Debug>(r: Result<T, StoreError>) {
 
 #[test]
 fn latest_is_8_and_fresh_install_has_builtin_row() {
-    assert_eq!(latest_version(), 9);
+    assert_eq!(latest_version(), 10);
     let (s, report) =
         Store::open(&tempfile::tempdir().expect("dir").path().join("l.db")).expect("open");
-    assert_eq!((report.from_version, report.to_version), (0, 9));
+    assert_eq!((report.from_version, report.to_version), (0, 10));
     assert!(report.backup.is_none());
     let list = s.marketplaces().expect("list");
     assert_eq!(list.len(), 1);
@@ -78,7 +78,7 @@ fn version_5_database_upgrades_to_8_with_backup_and_keeps_data() {
         .expect("play");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (5, 9));
+    assert_eq!((report.from_version, report.to_version), (5, 10));
     let backup = report.backup.expect("backup before upgrade");
     assert!(backup.exists());
     assert_eq!(s.sessions().expect("sessions").len(), 1);
@@ -753,7 +753,7 @@ fn version_6_database_upgrades_to_8_with_backup_and_keeps_state() {
         .expect("snapshot");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (6, 9));
+    assert_eq!((report.from_version, report.to_version), (6, 10));
     let backup = report.backup.expect("backup before upgrade");
     assert!(s.snapshot("app.x.game").expect("get").is_some());
     let b = Connection::open(&backup).expect("open backup");

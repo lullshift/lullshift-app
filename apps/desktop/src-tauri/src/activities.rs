@@ -132,19 +132,19 @@ impl ContentError {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityInfo {
-    id: String,
-    name: String,
-    description: String,
-    category: String,
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) category: String,
     version: String,
     url: String,
     storage: bool,
     saved_utc: Option<String>,
-    help: Option<Help>,
+    pub(crate) help: Option<Help>,
     /// True if the manifest names a preview image; fetch it with `activity_preview`.
     preview: bool,
     /// Total time played, in seconds, measured by the host.
-    played_seconds: i64,
+    pub(crate) played_seconds: i64,
     /// Content packs: the engine reference (`id@major`); None for apps.
     engine: Option<String>,
     /// Where the activity came from.

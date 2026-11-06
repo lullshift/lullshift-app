@@ -36,13 +36,32 @@ When you write a message, you choose the context to share with it:
 
 Before sending with context, you see a preview of exactly what will be attached. If the context changes after you previewed it, Lullshift asks you to review it again.
 
+The next message starts with the choice you used last, so you don't have to pick it again. You still see the exact text in a preview, and confirm it, before every send. If the session you used last is gone, the composer goes back to No context and tells you.
+
 Context goes only with the message you chose it for. Earlier messages are sent as history only to the same host they went to before.
+
+## Replies appear as they are written
+
+Replies stream in as the provider writes them, as plain text with no links. A screen reader hears a short status ("Companion is replying") and then the finished reply once, not every word. If the connection drops part-way, the message is marked as not sent and you can try again; the part that arrived still counts toward your budget.
+
+## Lookups (off by default)
+
+In **Settings**, **Let the Companion look things up** lets the provider ask for three read-only lookups:
+
+| Lookup | What it returns |
+|---|---|
+| Session overview | Your agent sessions: tool, state and how long it has been in that state. Task names only for a tool where you allowed task text, and then only its short label. Never prompts, notes, files or session ids |
+| Suggest a break | One installed activity and about how long it takes. You get a card with a **Start** button; nothing starts unless you press it |
+| Activity help | The how-to-play help of one installed activity. This text is written by the activity's author |
+
+Every lookup is shown to you with the exact text that would be sent, and nothing goes to the provider until you press **Approve**. **Decline** sends only "The user declined." A message can use at most three lookups. Lookups can't change anything, open anything or run anything; the Companion still can only reply with text. They add a little to each request and count toward your token budget. Some servers don't support them: turn the setting off if replies fail.
 
 ## Budget and errors
 
-- A monthly token budget stops sending once this month's usage reaches it. A message that starts under the limit may end a little over it.
+- A monthly token budget stops sending once this month's usage reaches it. A message that starts under the limit may end a little over it. If the Companion uses lookups, the budget is checked again before each follow-up call.
 - If you are offline, rate-limited, or the key is rejected, the message is kept as failed and you can retry it.
-- **Cancel** returns at once, but the request may already have reached the provider.
+- If a provider goes quiet for 30 seconds mid-reply (or 60 seconds before it starts), Lullshift gives up on that reply.
+- **Cancel** stops the reply at once and you can write again straight away. Anything the provider still sends for it is thrown away. The request may already have reached the provider, so it still counts toward your usage.
 
 ## Data
 

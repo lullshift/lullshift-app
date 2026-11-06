@@ -13,18 +13,25 @@
 //!   user picked, through the store.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use ::companion::provider::{MAX_OUTPUT_TOKENS, TEST_OUTPUT_TOKENS};
 use ::companion::scope::{ItemFacts, Selection, SessionFacts, compose_user_content, trim_history};
+use ::companion::tools::{
+    DECLINED_TEXT, LIMIT_TEXT, MAX_TOOL_CALLS, MAX_TOOL_ROUNDS, ToolName, UNAVAILABLE_TEXT,
+    clean_result, parse_request,
+};
 use ::companion::url_check::check_base_url;
 use ::companion::{
     CancelToken, ChatMessage, CompanionError, HttpConfig, KeyStore, KeyringStore, ProviderKind,
-    ProviderSpec, Role, Secret, budget, chat, chat_tracked,
+    ProviderSpec, RequestPlan, Role, Secret, ToolExchange, budget, chat, chat_stream,
 };
 use local_store::{
-    CompanionMessage, CompanionProfile, CompanionThread, NewUserMessage, Store, StoreError,
-    month_of,
+    CompanionMessage, CompanionProfile, CompanionThread, CompanionToolCall, NewToolCall,
+    NewUserMessage, Store, StoreError, month_of,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -34,8 +41,17 @@ use zeroize::Zeroize;
 
 use crate::Core;
 
+mod lookups;
+
 /// Most items one scope may pick.
 const MAX_SCOPE_ITEMS: usize = 200;
+
+/// Preference key for Companion's own settings (the lookups switch and the last context choice).
+/// Neither is secret; keys never go here.
+pub const COMPANION_PREFS_KEY: &str = "companion";
+
+/// How long a lookup waits for the user's decision before the whole request is cancelled.
+const APPROVAL_WAIT: Duration = Duration::from_secs(10 * 60);
 
 // ---- state -------------------------------------------------------------------------------
 
@@ -48,12 +64,30 @@ struct QueuedUsage {
     output_tokens: i64,
 }
 
-type BusyMap = Arc<Mutex<HashMap<i64, CancelToken>>>;
+/// The request currently using a thread. Cancelling removes it at once, so the thread is free
+/// while the old worker may still be winding down; the request number tells a late cleanup from
+/// the old request apart from a newer request on the same thread.
+struct Active {
+    seq: u64,
+    request_id: String,
+    token: CancelToken,
+}
+
+type BusyMap = Arc<Mutex<HashMap<i64, Active>>>;
+type ApprovalMap = Arc<Mutex<HashMap<String, Approval>>>;
+
+/// A lookup waiting for the user's decision, by request id.
+struct Approval {
+    call_id: String,
+    tx: mpsc::Sender<bool>,
+}
 
 pub struct CompanionState {
     pub(crate) keys: Arc<dyn KeyStore>,
     pub(crate) http: HttpConfig,
-    cancels: BusyMap,
+    active: BusyMap,
+    next_seq: AtomicU64,
+    approvals: ApprovalMap,
     late_usage: Arc<Mutex<Vec<QueuedUsage>>>,
 }
 
@@ -67,7 +101,9 @@ impl CompanionState {
         Self {
             keys,
             http,
-            cancels: Arc::new(Mutex::new(HashMap::new())),
+            active: Arc::new(Mutex::new(HashMap::new())),
+            next_seq: AtomicU64::new(1),
+            approvals: Arc::new(Mutex::new(HashMap::new())),
             late_usage: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -77,29 +113,62 @@ impl CompanionState {
         Self::with_parts(keys, http)
     }
 
-    /// Marks `thread` as sending, or says it already is. The mark is removed when the last clone
-    /// of the guard is dropped; a worker that outlives a cancel holds one, so the thread stays
-    /// busy until the request has really ended.
-    fn begin(&self, thread: i64) -> Res<SendGuard> {
-        let mut m = self.cancels.lock().map_err(|_| CommandError::internal())?;
-        if m.contains_key(&thread) {
+    /// Marks `thread` as busy with `request_id`, or says it already is. The mark is removed when
+    /// the guard is dropped or the request is cancelled, whichever comes first.
+    fn begin(&self, thread: i64, request_id: &str) -> Res<SendGuard> {
+        let mut m = self.active.lock().map_err(|_| CommandError::internal())?;
+        // A request id must be unique among live requests, so an answer to a lookup can only
+        // ever reach the request it was meant for.
+        if m.contains_key(&thread) || m.values().any(|a| a.request_id == request_id) {
             return Err(CommandError::from(CompanionError::busy()));
         }
         let token = CancelToken::new();
-        m.insert(thread, token.clone());
-        Ok(SendGuard(Arc::new(GuardInner {
-            map: Arc::clone(&self.cancels),
+        let seq = self.next_seq.fetch_add(1, Ordering::SeqCst);
+        m.insert(
             thread,
+            Active {
+                seq,
+                request_id: request_id.to_owned(),
+                token: token.clone(),
+            },
+        );
+        Ok(SendGuard {
+            map: Arc::clone(&self.active),
+            approvals: Arc::clone(&self.approvals),
+            thread,
+            seq,
+            request_id: request_id.to_owned(),
             token,
-        })))
+        })
     }
 
+    /// Cancels the request on `thread` and frees the thread at once (S12-T15). Whatever the old
+    /// worker still delivers is discarded by the request itself, which checks its token.
     fn cancel(&self, thread: i64) {
-        if let Ok(m) = self.cancels.lock()
-            && let Some(t) = m.get(&thread)
-        {
-            t.cancel();
+        let removed = match self.active.lock() {
+            Ok(mut m) => m.remove(&thread),
+            Err(_) => None,
+        };
+        if let Some(a) = removed {
+            a.token.cancel();
+            if let Ok(mut ap) = self.approvals.lock() {
+                ap.remove(&a.request_id);
+            }
         }
+    }
+
+    /// Records the user's answer to a waiting lookup. False if nothing matches (already answered,
+    /// cancelled, or another call).
+    fn decide(&self, request_id: &str, call_id: &str, approve: bool) -> bool {
+        let Ok(mut ap) = self.approvals.lock() else {
+            return false;
+        };
+        match ap.get(request_id) {
+            Some(a) if a.call_id == call_id => {}
+            _ => return false,
+        }
+        ap.remove(request_id)
+            .is_some_and(|a| a.tx.send(approve).is_ok())
     }
 }
 
@@ -109,26 +178,32 @@ impl Default for CompanionState {
     }
 }
 
-struct GuardInner {
+/// Held by a request for as long as it owns its thread.
+struct SendGuard {
     map: BusyMap,
+    approvals: ApprovalMap,
     thread: i64,
+    seq: u64,
+    request_id: String,
     token: CancelToken,
 }
 
-impl Drop for GuardInner {
-    fn drop(&mut self) {
-        if let Ok(mut m) = self.map.lock() {
-            m.remove(&self.thread);
-        }
+impl SendGuard {
+    fn token(&self) -> &CancelToken {
+        &self.token
     }
 }
 
-#[derive(Clone)]
-struct SendGuard(Arc<GuardInner>);
-
-impl SendGuard {
-    fn token(&self) -> &CancelToken {
-        &self.0.token
+impl Drop for SendGuard {
+    fn drop(&mut self) {
+        if let Ok(mut m) = self.map.lock()
+            && m.get(&self.thread).is_some_and(|a| a.seq == self.seq)
+        {
+            m.remove(&self.thread);
+        }
+        if let Ok(mut ap) = self.approvals.lock() {
+            ap.remove(&self.request_id);
+        }
     }
 }
 
@@ -251,6 +326,119 @@ pub struct MessageDto {
     input_tokens: Option<i64>,
     output_tokens: Option<i64>,
     created_at: String,
+    /// Lookups made while answering this (user) message, oldest first.
+    tool_calls: Vec<ToolCallDto>,
+}
+
+/// A suggested activity the user can click to start. The lookup never starts it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardDto {
+    activity_id: String,
+    name: String,
+    minutes: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallDto {
+    id: i64,
+    round: i64,
+    tool: String,
+    label: String,
+    arguments: String,
+    /// Exactly what was sent to the provider.
+    result_text: String,
+    /// `approved` or `declined`.
+    status: String,
+    card: Option<CardDto>,
+    host: Option<String>,
+    created_at: String,
+}
+
+impl From<CompanionToolCall> for ToolCallDto {
+    fn from(c: CompanionToolCall) -> Self {
+        let label = ToolName::parse(&c.tool).map_or("Lookup", ToolName::label);
+        let card = match (c.card_activity_id, c.card_name, c.card_minutes) {
+            (Some(activity_id), Some(name), Some(m)) => Some(CardDto {
+                activity_id,
+                name,
+                minutes: u32::try_from(m).unwrap_or(0),
+            }),
+            _ => None,
+        };
+        Self {
+            id: c.id,
+            round: c.round,
+            tool: c.tool,
+            label: label.to_owned(),
+            arguments: c.arguments,
+            result_text: c.result_text,
+            status: c.status,
+            card,
+            host: c.host,
+            created_at: c.created_utc,
+        }
+    }
+}
+
+/// Settings Companion keeps for itself.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CompanionPrefs {
+    /// "Let the Companion look things up". Off unless the user turns it on.
+    #[serde(default)]
+    pub tools_enabled: bool,
+    /// The context choice of the last message sent, used to start the next composer. The preview
+    /// is still shown and required before every send.
+    #[serde(default)]
+    pub last_scope: Option<Scope>,
+}
+
+/// What a streaming reply tells the UI. Every event carries the request id it belongs to; the UI
+/// ignores events for any other id. Text is already cleaned.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum StreamEvent {
+    Started {
+        request_id: String,
+    },
+    /// A new provider call begins (after a lookup); earlier streamed text belongs to the call
+    /// before.
+    Round {
+        request_id: String,
+        round: u32,
+    },
+    Delta {
+        request_id: String,
+        text: String,
+    },
+    /// The model asked for a lookup. `result_text` is exactly what would be sent. Nothing is sent
+    /// until the UI answers with `companion_tool_decision`.
+    ToolRequest {
+        request_id: String,
+        call_id: String,
+        tool: String,
+        label: String,
+        arguments: String,
+        result_text: String,
+        host: String,
+    },
+    /// A lookup that was not offered or went over the limit got a fixed sentence and no data.
+    ToolSkipped {
+        request_id: String,
+        tool: String,
+        text: String,
+    },
+    ToolResolved {
+        request_id: String,
+        call_id: String,
+        approved: bool,
+    },
 }
 
 impl From<CompanionMessage> for MessageDto {
@@ -276,6 +464,7 @@ impl From<CompanionMessage> for MessageDto {
             input_tokens: m.input_tokens,
             output_tokens: m.output_tokens,
             created_at: m.created_utc,
+            tool_calls: Vec::new(),
         }
     }
 }
@@ -615,16 +804,34 @@ pub fn rename_thread(core: &Core, id: i64, title: &str) -> Res<()> {
 
 pub fn delete_thread(core: &Core, id: i64) -> Res<()> {
     // A thread being sent to cannot be deleted under the call.
-    let _guard = core.companion.begin(id)?;
+    let _guard = core.companion.begin(id, "delete-thread")?;
     with_store(core, |s| s.companion_delete_thread(id))
 }
 
 pub fn messages(core: &Core, thread_id: i64) -> Res<Vec<MessageDto>> {
-    with_store(core, |s| {
+    let (msgs, calls) = with_store(core, |s| {
         s.companion_thread(thread_id)?.ok_or(StoreError::NotFound)?;
-        s.companion_messages(thread_id)
-    })
-    .map(|v| v.into_iter().map(MessageDto::from).collect())
+        Ok((
+            s.companion_messages(thread_id)?,
+            s.companion_tool_calls(thread_id)?,
+        ))
+    })?;
+    let mut by_message: HashMap<i64, Vec<ToolCallDto>> = HashMap::new();
+    for c in calls {
+        by_message
+            .entry(c.message_id)
+            .or_default()
+            .push(ToolCallDto::from(c));
+    }
+    Ok(msgs
+        .into_iter()
+        .map(|m| {
+            let id = m.id;
+            let mut dto = MessageDto::from(m);
+            dto.tool_calls = by_message.remove(&id).unwrap_or_default();
+            dto
+        })
+        .collect())
 }
 
 pub fn usage(core: &Core) -> Res<Vec<UsageDto>> {
@@ -755,6 +962,42 @@ pub fn preview_context(core: &Core, scope: Scope) -> Res<ContextPreviewDto> {
     })
 }
 
+// ---- settings kept by Companion ------------------------------------------------------------
+
+fn load_prefs(core: &Core) -> CompanionPrefs {
+    with_store(core, |s| s.preference(COMPANION_PREFS_KEY))
+        .ok()
+        .flatten()
+        .and_then(|j| serde_json::from_str::<CompanionPrefs>(&j).ok())
+        .unwrap_or_default()
+}
+
+fn save_prefs(core: &Core, prefs: &CompanionPrefs) -> Res<()> {
+    let json = serde_json::to_string(prefs).map_err(|_| CommandError::internal())?;
+    with_store(core, |s| s.set_preference(COMPANION_PREFS_KEY, &json))
+}
+
+pub fn prefs(core: &Core) -> CompanionPrefs {
+    load_prefs(core)
+}
+
+pub fn set_tools_enabled(core: &Core, enabled: bool) -> Res<CompanionPrefs> {
+    let mut p = load_prefs(core);
+    p.tools_enabled = enabled;
+    save_prefs(core, &p)?;
+    Ok(p)
+}
+
+/// Remembers the context choice of a message that is about to be sent. Best effort: a failure to
+/// save it must not stop the message.
+fn remember_scope(core: &Core, scope: &Scope) {
+    let mut p = load_prefs(core);
+    if p.last_scope.as_ref() != Some(scope) {
+        p.last_scope = Some(scope.clone());
+        let _ = save_prefs(core, &p);
+    }
+}
+
 // ---- sending -----------------------------------------------------------------------------
 
 /// Lowercase hex SHA-256 of the exact attached text.
@@ -771,7 +1014,7 @@ fn context_sha256(text: &str) -> String {
 /// went to (or came from) `host`. Messages sent to another host are left out, so a conversation
 /// is never replayed to a provider it was not sent to; a message with no recorded host is left
 /// out too. Old attached context is not repeated: it goes only with the message it was chosen
-/// for.
+/// for. Lookups made for earlier messages are not replayed either; the reply that used them is.
 fn history(core: &Core, thread_id: i64, before: Option<i64>, host: &str) -> Res<Vec<ChatMessage>> {
     let all = with_store(core, |s| s.companion_messages(thread_id))?;
     let list = all
@@ -791,11 +1034,195 @@ fn history(core: &Core, thread_id: i64, before: Option<i64>, host: &str) -> Res<
     Ok(trim_history(list))
 }
 
-/// Sends, then records the outcome on the stored user message.
+/// A request id is chosen by the UI so it can ignore events that are not its own.
+fn check_request_id(id: &str) -> Res<()> {
+    let ok = (8..=64).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if ok {
+        Ok(())
+    } else {
+        Err(CommandError::invalid("That request id isn't valid."))
+    }
+}
+
+/// Where stream events go. The Tauri command wraps a `Channel`; tests collect them.
+pub type Emit<'a> = &'a (dyn Fn(StreamEvent) + Send + Sync);
+
+fn book(core: &Core, profile_id: &str, input: i64, output: i64) {
+    if input > 0 || output > 0 {
+        let _ = with_store(core, |s| {
+            s.companion_record_usage(profile_id, OffsetDateTime::now_utc(), input, output)
+        });
+    }
+}
+
+/// Re-checks the monthly budget between provider calls of one reply, so lookups cannot run past
+/// it.
+fn budget_still_ok(core: &Core, profile: &CompanionProfile) -> Result<(), CompanionError> {
+    flush_late_usage(core);
+    let month = month_of(OffsetDateTime::now_utc());
+    let used = with_store(core, |s| s.companion_usage(&month))
+        .map_err(|_| CompanionError::internal())?
+        .into_iter()
+        .find(|u| u.profile_id == profile.id);
+    let (i, o) = used.map_or((0, 0), |u| (u.input_tokens, u.output_tokens));
+    budget::check(profile.monthly_token_budget, i, o)?;
+    Ok(())
+}
+
+enum Decision {
+    Approved,
+    Declined,
+}
+
+/// Waits for the user's answer to a lookup. Cancelling, a dropped answer channel or a very long
+/// wait end the request instead, and nothing is sent.
+fn await_decision(
+    rx: &mpsc::Receiver<bool>,
+    token: &CancelToken,
+) -> Result<Decision, CompanionError> {
+    let start = Instant::now();
+    loop {
+        if token.is_cancelled() {
+            return Err(CompanionError::cancelled());
+        }
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(true) => return Ok(Decision::Approved),
+            Ok(false) => return Ok(Decision::Declined),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if start.elapsed() > APPROVAL_WAIT {
+                    return Err(CompanionError::cancelled());
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(CompanionError::cancelled());
+            }
+        }
+    }
+}
+
+fn fail_message(core: &Core, user_message: i64, e: &CompanionError) {
+    let _ = with_store(core, |s| {
+        s.companion_fail_message(user_message, e.kind.as_str(), &e.message)
+    });
+}
+
+struct Turn<'a> {
+    core: &'a Core,
+    guard: &'a SendGuard,
+    prepared: &'a Prepared,
+    user_message: i64,
+    request_id: &'a str,
+    emit: Emit<'a>,
+}
+
+impl Turn<'_> {
+    /// Answers the lookups of one reply, one by one. Each valid lookup is shown with its exact
+    /// result and waits for the user. Returns the answer text for every call, in order.
+    fn answer_calls(
+        &self,
+        round: u32,
+        calls: &[::companion::tools::ToolCall],
+        used: &mut usize,
+    ) -> Result<Vec<String>, CompanionError> {
+        let mut results = Vec::new();
+        for call in calls {
+            let request = match parse_request(&call.name, &call.arguments) {
+                Some(r) if *used < MAX_TOOL_CALLS => r,
+                other => {
+                    let text = if other.is_some() {
+                        LIMIT_TEXT
+                    } else {
+                        UNAVAILABLE_TEXT
+                    };
+                    (self.emit)(StreamEvent::ToolSkipped {
+                        request_id: self.request_id.to_owned(),
+                        tool: ToolName::parse(&call.name)
+                            .map_or("unknown", ToolName::as_str)
+                            .to_owned(),
+                        text: text.to_owned(),
+                    });
+                    results.push(text.to_owned());
+                    continue;
+                }
+            };
+            *used += 1;
+            let lookup = lookups::run(self.core, &request, OffsetDateTime::now_utc())
+                .map_err(|_| CompanionError::internal())?;
+            let text = clean_result(&lookup.text);
+            let tool = request.name();
+            // Register before showing, so a fast answer cannot arrive too early.
+            let (tx, rx) = mpsc::channel();
+            {
+                let mut ap = self
+                    .core
+                    .companion
+                    .approvals
+                    .lock()
+                    .map_err(|_| CompanionError::internal())?;
+                ap.insert(
+                    self.request_id.to_owned(),
+                    Approval {
+                        call_id: call.id.clone(),
+                        tx,
+                    },
+                );
+            }
+            (self.emit)(StreamEvent::ToolRequest {
+                request_id: self.request_id.to_owned(),
+                call_id: call.id.clone(),
+                tool: tool.as_str().to_owned(),
+                label: tool.label().to_owned(),
+                arguments: clean_result(&call.arguments),
+                result_text: text.clone(),
+                host: self.prepared.host.clone(),
+            });
+            let decision = await_decision(&rx, self.guard.token())?;
+            let approved = matches!(decision, Decision::Approved);
+            let sent = if approved {
+                text
+            } else {
+                DECLINED_TEXT.to_owned()
+            };
+            let card = lookup.card.as_ref().filter(|_| approved);
+            let args = clean_result(&call.arguments);
+            with_store(self.core, |s| {
+                s.companion_add_tool_call(
+                    &NewToolCall {
+                        message_id: self.user_message,
+                        round: i64::from(round),
+                        tool: tool.as_str(),
+                        arguments: &args,
+                        result_text: &sent,
+                        status: if approved { "approved" } else { "declined" },
+                        card_activity_id: card.map(|c| c.activity_id.as_str()),
+                        card_name: card.map(|c| c.name.as_str()),
+                        card_minutes: card.map(|c| i64::from(c.minutes)),
+                        host: &self.prepared.host,
+                    },
+                    OffsetDateTime::now_utc(),
+                )
+            })
+            .map_err(|_| CompanionError::internal())?;
+            (self.emit)(StreamEvent::ToolResolved {
+                request_id: self.request_id.to_owned(),
+                call_id: call.id.clone(),
+                approved,
+            });
+            results.push(sent);
+        }
+        Ok(results)
+    }
+}
+
+/// Streams the reply, serves any lookups, then records the outcome on the stored user message.
 ///
-/// If the user cancels, this returns at once, but the HTTP worker may still be running: it keeps
-/// a clone of `guard`, so the thread stays busy until the worker has ended, and it queues the
-/// call's usage (real if a reply arrived, otherwise estimated from the request size).
+/// If the user cancels, this returns at once: the thread was already freed by `cancel`, the HTTP
+/// worker winds down on its own and queues the call's usage, and nothing it delivers later is
+/// written anywhere (only this function writes, and it checks the token first).
+#[allow(clippy::too_many_arguments)]
 fn deliver(
     core: &Core,
     guard: &SendGuard,
@@ -803,64 +1230,153 @@ fn deliver(
     user_message: i64,
     mut messages: Vec<ChatMessage>,
     content: String,
+    request_id: &str,
+    emit: Emit<'_>,
 ) -> Res<MessageDto> {
     messages.push(ChatMessage {
         role: Role::User,
         content,
     });
-    let queue = Arc::clone(&core.companion.late_usage);
-    let profile_id = prepared.profile.id.clone();
-    let result = chat_tracked(
-        &core.companion.http,
-        &prepared.spec,
-        &prepared.key,
-        &messages,
-        MAX_OUTPUT_TOKENS,
-        guard.token(),
-        guard.clone(),
-        move |u| {
-            if let Ok(mut q) = queue.lock() {
-                q.push(QueuedUsage {
-                    profile_id,
-                    at: OffsetDateTime::now_utc(),
-                    input_tokens: u.input_tokens,
-                    output_tokens: u.output_tokens,
-                });
+    let tools_on = load_prefs(core).tools_enabled;
+    let turn = Turn {
+        core,
+        guard,
+        prepared,
+        user_message,
+        request_id,
+        emit,
+    };
+    let mut rounds: Vec<ToolExchange> = Vec::new();
+    let mut calls_used = 0usize;
+    let (mut total_in, mut total_out) = (0i64, 0i64);
+    let mut round_no: u32 = 0;
+    let err: CompanionError = loop {
+        round_no += 1;
+        if round_no > 1 {
+            if let Err(e) = budget_still_ok(core, &prepared.profile) {
+                break e;
             }
-        },
-    );
-    match result {
-        Ok(reply) => {
-            let done = with_store(core, |s| {
-                s.companion_complete_send(
-                    user_message,
-                    &reply.text,
+            emit(StreamEvent::Round {
+                request_id: request_id.to_owned(),
+                round: round_no,
+            });
+        }
+        let offer = tools_on && rounds.len() < MAX_TOOL_ROUNDS && calls_used < MAX_TOOL_CALLS;
+        let plan = RequestPlan {
+            messages: &messages,
+            rounds: &rounds,
+            tools: offer,
+            stream: true,
+            max_output_tokens: MAX_OUTPUT_TOKENS,
+        };
+        let queue = Arc::clone(&core.companion.late_usage);
+        let profile_id = prepared.profile.id.clone();
+        let result = chat_stream(
+            &core.companion.http,
+            &prepared.spec,
+            &prepared.key,
+            &plan,
+            guard.token(),
+            |d| {
+                emit(StreamEvent::Delta {
+                    request_id: request_id.to_owned(),
+                    text: d.to_owned(),
+                });
+            },
+            move |u| {
+                if let Ok(mut q) = queue.lock() {
+                    q.push(QueuedUsage {
+                        profile_id,
+                        at: OffsetDateTime::now_utc(),
+                        input_tokens: u.input_tokens,
+                        output_tokens: u.output_tokens,
+                    });
+                }
+            },
+        );
+        match result {
+            Err(f) => {
+                // Zero for a call the worker will book itself (cancelled or silent) or one that
+                // never produced bytes; otherwise the provider's numbers or an estimate that
+                // includes the partial reply.
+                book(core, &prepared.profile.id, f.input_tokens, f.output_tokens);
+                break f.error;
+            }
+            Ok(reply) => {
+                // A cancel that raced the end of the stream: discard the reply, keep the cost.
+                if guard.token().is_cancelled() {
+                    book(
+                        core,
+                        &prepared.profile.id,
+                        reply.input_tokens,
+                        reply.output_tokens,
+                    );
+                    break CompanionError::cancelled();
+                }
+                total_in = total_in.saturating_add(reply.input_tokens);
+                total_out = total_out.saturating_add(reply.output_tokens);
+                if reply.tool_calls.is_empty() || !offer {
+                    if reply.text.trim().is_empty() {
+                        book(
+                            core,
+                            &prepared.profile.id,
+                            reply.input_tokens,
+                            reply.output_tokens,
+                        );
+                        break CompanionError::invalid_response();
+                    }
+                    let done = with_store(core, |s| {
+                        s.companion_complete_send_booked(
+                            user_message,
+                            &reply.text,
+                            total_in,
+                            total_out,
+                            reply.input_tokens,
+                            reply.output_tokens,
+                            OffsetDateTime::now_utc(),
+                        )
+                    });
+                    return match done {
+                        Ok(m) => Ok(m.into()),
+                        Err(e) => {
+                            book(
+                                core,
+                                &prepared.profile.id,
+                                reply.input_tokens,
+                                reply.output_tokens,
+                            );
+                            let _ = with_store(core, |s| {
+                                s.companion_fail_message(user_message, e.kind, &e.message)
+                            });
+                            Err(e)
+                        }
+                    };
+                }
+                // The model asked for lookups: book this call now, answer them, go round again.
+                book(
+                    core,
+                    &prepared.profile.id,
                     reply.input_tokens,
                     reply.output_tokens,
-                    OffsetDateTime::now_utc(),
-                )
-            });
-            match done {
-                Ok(m) => Ok(m.into()),
-                Err(e) => {
-                    let _ = with_store(core, |s| {
-                        s.companion_fail_message(user_message, e.kind, &e.message)
-                    });
-                    Err(e)
+                );
+                match turn.answer_calls(round_no, &reply.tool_calls, &mut calls_used) {
+                    Ok(results) => rounds.push(ToolExchange {
+                        text: reply.text,
+                        calls: reply.tool_calls,
+                        results,
+                    }),
+                    Err(e) => break e,
                 }
             }
         }
-        Err(e) => {
-            let _ = with_store(core, |s| {
-                s.companion_fail_message(user_message, e.kind.as_str(), &e.message)
-            });
-            Err(e.into())
-        }
-    }
+    };
+    fail_message(core, user_message, &err);
+    Err(err.into())
 }
 
 /// `expected_context_sha256` is the hash the preview returned for the attached text (`None` for
 /// scope `none`). If the text built now differs, nothing is stored or sent.
+#[allow(clippy::too_many_arguments)]
 pub fn send(
     core: &Core,
     thread_id: i64,
@@ -868,8 +1384,11 @@ pub fn send(
     text: &str,
     scope: &Scope,
     expected_context_sha256: Option<&str>,
+    request_id: &str,
+    emit: Emit<'_>,
 ) -> Res<MessageDto> {
-    let guard = core.companion.begin(thread_id)?;
+    check_request_id(request_id)?;
+    let guard = core.companion.begin(thread_id, request_id)?;
     let text = text.trim();
     if text.is_empty() {
         return Err(CommandError::invalid("Write a message first."));
@@ -886,6 +1405,7 @@ pub fn send(
             "The context changed since you previewed it. Review it again.",
         ));
     }
+    remember_scope(core, scope);
     let past = history(core, thread_id, None, &prepared.host)?;
     let id = with_store(core, |s| {
         s.companion_add_user_message(
@@ -902,13 +1422,14 @@ pub fn send(
         )
     })?;
     let content = compose_user_content(attached.as_deref(), text);
-    deliver(core, &guard, &prepared, id, past, content)
+    deliver(core, &guard, &prepared, id, past, content, request_id, emit)
 }
 
-pub fn retry(core: &Core, message_id: i64) -> Res<MessageDto> {
+pub fn retry(core: &Core, message_id: i64, request_id: &str, emit: Emit<'_>) -> Res<MessageDto> {
+    check_request_id(request_id)?;
     let msg = with_store(core, |s| s.companion_message(message_id))?
         .ok_or_else(|| CompanionError::not_found("That message no longer exists."))?;
-    let guard = core.companion.begin(msg.thread_id)?;
+    let guard = core.companion.begin(msg.thread_id, request_id)?;
     // Re-read under the thread guard.
     let msg = with_store(core, |s| s.companion_message(message_id))?
         .ok_or_else(|| CompanionError::not_found("That message no longer exists."))?;
@@ -941,11 +1462,22 @@ pub fn retry(core: &Core, message_id: i64) -> Res<MessageDto> {
     let past = history(core, msg.thread_id, Some(msg.id), &prepared.host)?;
     with_store(core, |s| s.companion_mark_pending(msg.id))?;
     let content = compose_user_content(msg.attached_context.as_deref(), &msg.text);
-    deliver(core, &guard, &prepared, msg.id, past, content)
+    deliver(
+        core, &guard, &prepared, msg.id, past, content, request_id, emit,
+    )
 }
 
 pub fn cancel(core: &Core, thread_id: i64) {
     core.companion.cancel(thread_id);
+}
+
+pub fn tool_decision(core: &Core, request_id: &str, call_id: &str, approve: bool) -> Res<()> {
+    check_request_id(request_id)?;
+    if core.companion.decide(request_id, call_id, approve) {
+        Ok(())
+    } else {
+        Err(CompanionError::not_found("That lookup is no longer waiting.").into())
+    }
 }
 
 /// At start-up: messages a crash or quit left `pending` become retryable `failed` ones.
@@ -1034,6 +1566,7 @@ pub async fn companion_preview_context(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn companion_send(
     core: CoreState<'_>,
     thread_id: i64,
@@ -1041,8 +1574,14 @@ pub async fn companion_send(
     text: String,
     scope: Scope,
     expected_context_sha256: Option<String>,
+    request_id: String,
+    on_event: tauri::ipc::Channel<StreamEvent>,
 ) -> Res<MessageDto> {
     run(&core, move |c| {
+        let emit = channel_emitter(on_event);
+        emit(StreamEvent::Started {
+            request_id: request_id.clone(),
+        });
         send(
             c,
             thread_id,
@@ -1050,14 +1589,61 @@ pub async fn companion_send(
             &text,
             &scope,
             expected_context_sha256.as_deref(),
+            &request_id,
+            &emit,
         )
     })
     .await
 }
 
 #[tauri::command]
-pub async fn companion_retry(core: CoreState<'_>, message_id: i64) -> Res<MessageDto> {
-    run(&core, move |c| retry(c, message_id)).await
+pub async fn companion_retry(
+    core: CoreState<'_>,
+    message_id: i64,
+    request_id: String,
+    on_event: tauri::ipc::Channel<StreamEvent>,
+) -> Res<MessageDto> {
+    run(&core, move |c| {
+        let emit = channel_emitter(on_event);
+        emit(StreamEvent::Started {
+            request_id: request_id.clone(),
+        });
+        retry(c, message_id, &request_id, &emit)
+    })
+    .await
+}
+
+/// Events go to the UI over the channel the command was called with, so they reach only that
+/// call. A closed channel (the UI went away) just drops them.
+fn channel_emitter(
+    on_event: tauri::ipc::Channel<StreamEvent>,
+) -> impl Fn(StreamEvent) + Send + Sync {
+    move |e| {
+        let _ = on_event.send(e);
+    }
+}
+
+#[tauri::command]
+pub async fn companion_tool_decision(
+    core: CoreState<'_>,
+    request_id: String,
+    call_id: String,
+    approve: bool,
+) -> Res<()> {
+    tool_decision(&core, &request_id, &call_id, approve)
+}
+
+#[tauri::command]
+pub async fn companion_prefs(core: CoreState<'_>) -> Res<CompanionPrefs> {
+    run(&core, |c| Ok(prefs(c))).await
+}
+
+#[tauri::command]
+pub async fn companion_set_tools_enabled(
+    core: CoreState<'_>,
+    enabled: bool,
+) -> Res<CompanionPrefs> {
+    run(&core, move |c| set_tools_enabled(c, enabled)).await
 }
 
 #[tauri::command]

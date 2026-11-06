@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { SessionView } from "../sessions";
 import { Banner } from "../ui/Banner";
 import { Dialog } from "../ui/Dialog";
@@ -22,7 +22,10 @@ import {
   sendsToText,
   CONTEXT_CHANGED_NOTE,
   historyText,
+  rememberedText,
+  restoreScope,
   type ConfirmedPreview,
+  type ScopeDraft,
 } from "./logic";
 
 /** What came of a send. `contextChanged`: the backend refused because the context differs from the preview. */
@@ -39,6 +42,8 @@ interface Props {
   sending: boolean;
   /** How many earlier messages go along (same host only). */
   historyCount: number;
+  /** The context choice of the last message sent; the composer starts with it if it still works. */
+  rememberedScope: Scope | null;
   /** `expectedSha256` is the hash of the preview the user confirmed (null for no context). */
   onSend: (text: string, scope: Scope, expectedSha256: string | null) => Promise<SendResult>;
   onCancel: () => void;
@@ -59,6 +64,7 @@ export function Composer({
   sessions,
   sending,
   historyCount,
+  rememberedScope,
   onSend,
   onCancel,
   onOpenSettings,
@@ -66,9 +72,38 @@ export function Composer({
   const textId = useId();
   const profileId = useId();
   const [text, setText] = useState("");
-  const [draft, setDraft] = useState(EMPTY_SCOPE);
+  const [draft, setDraftState] = useState<ScopeDraft>(EMPTY_SCOPE);
+  const [restoreNote, setRestoreNote] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>({ phase: "closed" });
   const ticket = useRef(0);
+  const touched = useRef(false);
+  const setDraft = (d: ScopeDraft) => {
+    touched.current = true;
+    setRestoreNote(null);
+    setDraftState(d);
+  };
+
+  // Start with the last context choice, but only if it still works: it is previewed in the
+  // background (nothing is sent), and if the session or items are gone the composer falls back to
+  // No context and says so. The preview is still shown and confirmed before every send.
+  useEffect(() => {
+    if (!rememberedScope || rememberedScope.kind === "none") return;
+    let live = true;
+    companionPreviewContext(rememberedScope)
+      .then(() => true)
+      .catch(() => false)
+      .then((available) => {
+        if (!live || touched.current) return;
+        const r = restoreScope(rememberedScope, available);
+        setDraftState(r.draft);
+        setRestoreNote(r.note ?? (available ? rememberedText(rememberedScope.kind) : null));
+      });
+    return () => {
+      live = false;
+    };
+    // Only when this composer first appears: later changes belong to the user.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const scope = buildScope(draft);
   const host = profile?.host ?? null;
   const hasKey = !!profile?.hasKey;
@@ -78,13 +113,11 @@ export function Composer({
     if (!scope || !profile) return;
     if (!canSend({ text, scope, confirmed, hasProfile: hasKey, sending })) return;
     const toSend = text;
-    const draftBefore = draft;
-    // The scope never carries over: back to "No context" as soon as this send starts.
-    setDraft(EMPTY_SCOPE);
+    // The choice stays for the next message (it is remembered), but the preview does not: every
+    // send needs a preview of the exact text, confirmed again.
     const result = await onSend(toSend, scope, confirmed?.sha256 ?? null);
     if (result.contextChanged) {
-      // Nothing was stored or sent. Put the choice back and show what would be sent now.
-      setDraft(draftBefore);
+      // Nothing was stored or sent. Show what would be sent now.
       void openPreview(CONTEXT_CHANGED_NOTE, scope);
       return;
     }
@@ -224,6 +257,11 @@ export function Composer({
       />
 
       <ContextPicker draft={draft} onChange={setDraft} sessions={sessions} disabled={sending} />
+      {restoreNote && (
+        <p className="field-note composer-remembered" role="status">
+          {restoreNote}
+        </p>
+      )}
       <p className="field-note composer-history">{historyText(historyCount, host)}</p>
 
       <div className="composer-actions">

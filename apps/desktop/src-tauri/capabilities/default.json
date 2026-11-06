@@ -80,6 +80,9 @@
     "allow-companion-send",
     "allow-companion-retry",
     "allow-companion-cancel",
-    "allow-companion-usage"
+    "allow-companion-usage",
+    "allow-companion-prefs",
+    "allow-companion-set-tools-enabled",
+    "allow-companion-tool-decision"
   ]
 }

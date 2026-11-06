@@ -4,11 +4,14 @@ import { Banner } from "../ui/Banner";
 import {
   companionDeleteThread,
   companionNewThread,
+  companionPrefs,
   companionProfiles,
   companionRenameThread,
   companionThreads,
   toCommandError,
+  type CompanionPrefs,
   type ProviderProfile,
+  type Scope,
   type Thread,
 } from "./api";
 import { CompanionSettings } from "./CompanionSettings";
@@ -29,14 +32,17 @@ interface Props {
   headingRef: RefObject<HTMLHeadingElement | null>;
   sessions: readonly SessionView[];
   now: number;
+  /** The user clicked a break the Companion suggested. */
+  onStartActivity: (activityId: string) => void;
 }
 
 /**
  * Companion: threads, conversation and provider settings. The Rust core holds the truth (threads,
  * messages, keys, usage); this component only keeps the last snapshot it was given.
  */
-export default function CompanionView({ headingRef, sessions, now }: Props) {
+export default function CompanionView({ headingRef, sessions, now, onStartActivity }: Props) {
   const [boot, setBoot] = useState<Boot>({ status: "loading" });
+  const [prefs, setPrefs] = useState<CompanionPrefs>({ toolsEnabled: false, lastScope: null });
   const [profiles, setProfiles] = useState<ProviderProfile[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -67,6 +73,13 @@ export default function CompanionView({ headingRef, sessions, now }: Props) {
 
   useEffect(() => {
     let live = true;
+    // Settings are read apart from the rest: if they can't be read, Companion still works, with
+    // lookups off and no remembered context.
+    companionPrefs()
+      .then((p) => {
+        if (live) setPrefs(p);
+      })
+      .catch(() => undefined);
     Promise.all([companionProfiles(), companionThreads()])
       .then(([p, t]) => {
         if (!live) return;
@@ -206,6 +219,8 @@ export default function CompanionView({ headingRef, sessions, now }: Props) {
                 setProfiles(p);
               }}
               onReload={reload}
+              toolsEnabled={prefs.toolsEnabled}
+              onToolsChanged={(p) => setPrefs(p)}
               onDone={() => setPanel("chat")}
             />
           ) : (
@@ -227,6 +242,9 @@ export default function CompanionView({ headingRef, sessions, now }: Props) {
                   profile={activeProfile}
                   onPickProfile={setActiveProfileId}
                   sessions={sessions}
+                  rememberedScope={prefs.lastScope}
+                  onScopeUsed={(scope: Scope) => setPrefs((p) => ({ ...p, lastScope: scope }))}
+                  onStartActivity={onStartActivity}
                   onOpenSettings={openSettings}
                   onActivity={() => void reloadThreads()}
                 />
