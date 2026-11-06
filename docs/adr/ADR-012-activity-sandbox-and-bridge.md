@@ -1,6 +1,6 @@
 # ADR-012: Activity sandbox strategy and host bridge protocol
 
-- **Status:** Accepted (Sprint 03); amended in Sprint 12 (WebRTC turned off, S12-T13)
+- **Status:** Accepted (Sprint 03); amended in Sprint 12 (WebRTC turned off, S12-T13) and after the security review of owner decision 27.5 (launch keys, serving budgets, storage rows, native IPC research)
 - **Date:** 2026-11-05
 - **Owner:** Implementation lead
 - **Related:** ADR-003 (activity model), ADR-010 (hook installation), `reference/ACTIVITY_MANIFEST_V1.schema.json`, `tests/sandbox/`
@@ -18,13 +18,23 @@ Tauri 2.12 (wry 0.57, WebView2 on Windows) was checked against its source: custo
 
 ### Where activities run
 
-- **An origin apart from the app.** Activity files are served by a custom scheme, `lullact`. The URL is `http://lullact.localhost/<activity id>/<file>` on Windows and `lullact://localhost/<activity id>/<file>` elsewhere. The app is never served from that origin, and activities are never served from the app's origin.
-  - All activities share this one origin and are told apart only by path. What keeps them apart is the opaque origin each one runs with, set twice: by the iframe and by the activity's own CSP header.
+- **An origin apart from the app.** Activity files are served by a custom scheme, `lullact`. Since the security review of decision 27.5 the URL carries a per-launch key: `http://lullact.localhost/<launch key>/<activity id>/<file>` on Windows and `lullact://localhost/<launch key>/<activity id>/<file>` elsewhere (see "Launch keys" below). The app is never served from that origin, and activities are never served from the app's origin.
+  - All activities share this one origin. What keeps their data apart is the opaque origin each one runs with, set twice: by the iframe and by the activity's own CSP header. What keeps their *files* apart is the launch key: a request is served only if its key is live and was issued for the id in its path.
 - **A sandboxed iframe in the main window:** `sandbox="allow-scripts"`, without `allow-same-origin`, so the document's security origin is opaque (`"null"`). It has no cookies, Web Storage or IndexedDB, and can't navigate the top window, open popups or submit forms. The `allow` attribute denies camera, microphone, geolocation, clipboard, screen capture, fullscreen, payment, USB, serial, HID and Bluetooth. The referrer policy is `no-referrer`.
 - **The app CSP allows frames from the activity scheme only:** `frame-src lullact: http://lullact.localhost`, never `'self'` (S03-T06).
 - **Every activity response carries a strict CSP:** `sandbox allow-scripts` (so the page has an opaque origin even if it is ever loaded without the iframe's attribute), `default-src 'none'`, scripts/styles/images/fonts/media only from `'self'`, `connect-src 'none'`, `frame-src`/`child-src`/`worker-src`/`object-src`/`manifest-src 'none'`, `base-uri 'none'`, `form-action 'none'`, and `frame-ancestors` limited to the app origin.
   - Further headers: `nosniff`, `no-referrer`, `no-store`, a deny-all `Permissions-Policy` and `Cross-Origin-Opener-Policy`.
   - No inline script and no `eval`. Classic scripts only: module scripts and web fonts would need CORS, which an opaque origin can't satisfy.
+- **Launch keys (security review of decision 27.5, MEDIUM-2).** The trusted UI calls `activity_launch(id)` for every launch. Core returns the entry address under a fresh random 128-bit key (32 hex digits, `getrandom`) and remembers `key -> id`.
+  - The scheme handler refuses (HTTP 403, with the activity CSP) any request whose key is missing, unknown or revoked, or whose path names an id other than the key's. So an activity cannot navigate its frame to another activity's page (which would run under the first activity's nonce, id and storage), and cannot load another activity's script, stylesheet or image. The request is refused before any file is looked up.
+  - A key is revoked when its activity is launched again (the new key replaces the old one), when the UI calls `activity_launch_end(id)` (the frame was removed: paused, failed, closed, replaced), and when the app exits. Keys are never persisted.
+  - The frame still resolves relative URLs against `/<key>/<id>/index.html`, and `'self'` in the CSP is the whole `lullact` origin, so bundled and installed activities needed no change. Absolute paths such as `/main.js` never worked and still don't.
+  - The key is not a secret from its own activity (it can read `location`); it only has to be unguessable and useless for any other id.
+  - **UI guard.** The host counts `load` events of the frame per launch. A second load means the frame navigated; the host freezes it at once with reason `navigated` ("<name> was stopped") and does not wait for a save, since the new document has no bridge. The last save is kept. This is defence in depth: the 403 page is itself a load.
+  - New commands `activity_launch` and `activity_launch_end` are in the app's ACL manifest (`build.rs`) and granted to the `main` window only, like the other activity commands (`the_new_commands_are_granted_only_to_the_main_window` style test, plus `no_capability_exposes_dialogs_to_scripts`).
+- **Serving is off the webview's thread, and bounded (MEDIUM-1).** The handler is `register_asynchronous_uri_scheme_protocol` (Tauri 2.12.5 `app.rs`: `H: Fn(UriSchemeContext, Request<Vec<u8>>, UriSchemeResponder)`, answered with `UriSchemeResponder::respond`), and each request runs on a blocking thread, because serving an installed file reads and hashes it (up to 5 MiB).
+  - **Budget per activity.** A fixed 10-second window allows 400 requests and 48 MiB sent. A request that arrives when either is used up gets HTTP 429 (with the activity CSP) before any file is read; a request that crosses the byte limit is the last one served. A loop of `new Image().src = '/<key>/<id>/big.png?' + Math.random()` therefore costs at most about ten 5 MiB reads per window, not an unbounded number. The budget is per activity id, so one flooding activity does not starve another.
+  - **Cache of verified bytes (small files only).** An installed file of at most 256 KiB that was just read and hashed is kept in memory for five seconds (4 MiB per activity at most), and served again only while its length and modification time are unchanged. A changed file is caught on the next request (length or time differs, so it is read and hashed again and fails the check). A change that restores the length and time is caught when the entry expires, and until then only the bytes that were verified are served, never the changed ones. Larger files are never cached; the budget limits how often they are hashed. This is the one place installed content is held in memory (decision 18.5 otherwise keeps none), and it lives only inside one verified snapshot.
 - **The scheme handler serves only listed activities.** An activity is listed only if its manifest:
   - parses and is of kind `app`, with runtime `isolated-web-v1` and entry point `index.html`;
   - declares all three interruptibility capabilities;
@@ -35,7 +45,7 @@ Tauri 2.12 (wry 0.57, WebView2 on Windows) was checked against its source: custo
 ### Tauri IPC is not reachable from activities
 
 - Capabilities grant commands to the `main` window. No capability lists the activity scheme or any remote URL. A test fails if any capability exposes dialogs to scripts. Another test fails if a window other than `main` gets the agent-settings commands (S03-T07).
-- **Tauri globals.** Tauri injects its initialization scripts into every frame, so `__TAURI_INTERNALS__`, `ipc` and `chrome.webview` exist inside the activity.
+- **Tauri globals.** On Windows Tauri's initialization scripts run in every frame, so `__TAURI_INTERNALS__`, `ipc` and `chrome.webview` exist inside the activity. (macOS and Linux inject them into the main frame only; see "Native IPC channels from a frame" below, which also corrects how origins are classified.)
   - The denial tests call commands through them: `dashboard`, `notification_prefs`, `activity_clear_snapshot` for another activity, and `plugin:event|emit` of `agent-attention`.
   - None of these calls is ever answered. A canary save for another activity is untouched, and a forged attention event has no effect.
   - The direct `fetch` route to `ipc.localhost` is blocked by the activity's `connect-src 'none'`.
@@ -43,6 +53,31 @@ Tauri 2.12 (wry 0.57, WebView2 on Windows) was checked against its source: custo
   - **This depends on Tauri internals.** Re-run the denial tests on every Tauri or wry upgrade. If any of these checks fails, move activities to a separate webview with no capabilities before shipping.
 - Installing agent hooks also needs a native confirmation dialog from Rust that names the settings file (S03-T07). Even a script that reached IPC couldn't install hooks without the user.
   - It could still do other harm: uninstall the hooks, turn off "needs you" notifications, or read the dashboard. Those calls have no native confirmation. That is why the Tauri-globals check is a release blocker, not a nice-to-have.
+
+### Native IPC channels from a frame (security review of decision 27.5, MEDIUM-4)
+
+The question: can a frame inside the main window post to the host's IPC handler, and does anything but a secret stop the handler from treating that message as the main window's? Checked against the pinned sources (wry 0.57.1, tauri 2.12.5, tauri-runtime-wry 2.12.3), 2026-11-06.
+
+| Platform | Channel in a frame | What wry reports as the message's URL | Reaches the handler from a subframe? |
+|---|---|---|---|
+| Windows (WebView2) | `window.chrome.webview` is present in the frame; Tauri's `window.ipc` is built on it | `ICoreWebView2WebMessageReceivedEventArgs::Source` (`webview2/mod.rs`) | Not through the `CoreWebView2` handler wry uses: frame messages need a handler on `CoreWebView2Frame`, which wry does not register. The denial tests show the canary untouched, which is the evidence. Not read from Microsoft's docs in this change. |
+| macOS (WKWebView) | `window.webkit.messageHandlers.ipc` is available in every frame | `WKScriptMessage.frameInfo.request.URL` (`wkwebview/class/wry_web_view_delegate.rs`): the **sending frame's** URL | Yes. |
+| Linux (WebKitGTK) | `window.webkit.messageHandlers.ipc`, same | `webview.uri()` (`webkitgtk/mod.rs`): the **top-level** URI, whichever frame sent it | Yes, and it is attributed to the main page. |
+
+What Tauri does with a message (`ipc/protocol.rs`, `webview/mod.rs`):
+
+- **There is no main-frame flag.** `wry::Request` carries only a URL and a body, so Rust cannot ask whether a message came from the main frame, and cannot reject non-main-frame IPC by itself. No hook runs before Tauri's own check. A Rust-side rejection is not possible with these versions; nothing was added.
+- **Origin is not a barrier.** `Webview::is_local_url` treats a URL as local if its scheme (or, on Windows, `<scheme>.localhost`) is a custom protocol registered by the app. `lullact` is one, so a message from an activity frame would be classified as the `main` window's local origin, and the `main` capability (which lists the activity and marketplace commands) would apply. The earlier statement in this ADR that Tauri classifies activity origins as remote was wrong for registered schemes.
+- **The invoke key is what stops it.** `Webview::on_message` drops a message unless it carries the webview's random `__TAURI_INVOKE_KEY__` (`ipc-protocol.js`: a `const` inside a closure, never put on `window`). Tauri's initialization scripts are added with `for_main_frame_only: true` (`manager/webview.rs`), and wry applies that on macOS and Linux (`wkwebview/mod.rs`, `webkitgtk/mod.rs`), so **no subframe there ever holds the key**. On Windows wry always adds scripts to subframes (wry docs on `for_main_frame_only`), so a frame **does** hold the key and `__TAURI_INTERNALS__`; there the barrier is that its message never reaches the handler (row 1).
+
+So the control on macOS and Linux is the secrecy of the invoke key plus the main-frame-only injection; on Windows it is the missing frame handler. All three are behaviour of dependencies, not of this app. They are why "Tauri globals in frames" stays in Known gaps and why a Tauri or wry upgrade must re-run the denial tests.
+
+Probe additions (`sandbox-probe/ipc.js`, `probe.js`, `nested.js`):
+
+- "native IPC channels reachable from the activity frame" and "…from a nested frame" report which of `webkit.messageHandlers` (and its `ipc` handler), `chrome.webview` and `window.ipc` exist, and store them in `window.probeIpc`; the runner prints them.
+- "forged native IPC call from the activity frame" and the nested-frame equivalent post one forged invoke (a guessed key, `activity_clear_snapshot` for the runner's canary save) through every channel they have. They are counted as blocked because the frame cannot see the host's answer; refusal is shown by the runner's "another activity's save is untouched" and "forged attention event had no effect" checks. On macOS and Linux, where the runner does not run, the manual check is that the probe page lists `webkit.messageHandlers (ipc)` as reachable, and that lantern-pond's save survives the run (M03-4, M03-5).
+
+If an upgrade ever gives subframes the key, or makes wry deliver subframe messages to the main handler, the fix is the one this ADR already names: move activities to a separate webview with no capabilities.
 
 ### Bridge protocol v1
 
@@ -63,7 +98,13 @@ All traffic is `postMessage` of plain objects `{ lullshift: 1, nonce, type, ... 
   - its origin is `"null"`;
   - its nonce is current.
   Messages are capped at 320 KB of JSON. A token bucket allows 30 messages per second, with bursts up to 120. Anything else is dropped and counted, never queued.
-- **Storage** is namespaced by activity id and needs the `activity.storage` permission. Limits: 64 KiB per value and 256 KiB per activity, checked in one SQLite transaction in Rust. The webview's own limits are a convenience, not the enforcement.
+- **Storage** is namespaced by activity id and needs the `activity.storage` permission. Limits (security review of decision 27.5, MEDIUM-3), all checked in Rust, in one SQLite transaction; the webview's own limits are a convenience, not the enforcement:
+  - 64 KiB per value;
+  - 256 KiB per activity, where **every key costs its key bytes + its value bytes + 64 bytes of row overhead**, so many tiny keys are not free;
+  - at most **1024 keys** per activity (an empty-valued 1025th key is refused);
+  - a **write budget** of 240 writes (`set` and `remove`) per activity per minute.
+  Refusals reach the bridge as `storage-result` errors: `quota_exceeded` (bytes or key count), `value_too_large`, and the new `rate_limited` (budget used up; retry later). The SDK passes the code through as the rejection's message, so no SDK change is needed; documenting `rate_limited` beside the other codes in the SDK docs is a follow-up for the SDK owner.
+  - The check sums the namespace's rows with the store lock held. That scan is bounded by the key cap (at most 1024 rows on the `(activity_id, key)` primary key), so a running per-activity counter and a schema change were not needed (no migration for this item). Rows written before this change are counted the same way; an activity already over the new limits can still read and remove keys; it can replace a value only if the result fits, and add a key only once it is back under.
 - **Snapshots** are JSON, at most 256 KiB, one per activity, stored in SQLite (migration 0003).
   - A null or missing state never replaces a snapshot, so a broken activity can't wipe good progress. Both the host and Rust enforce this.
   - The host ignores state sent before `init`, which would otherwise be a blank start state.
@@ -123,6 +164,19 @@ These are optional additions; an older host drops the new message as an unknown 
 | **WebRTC** | **Gap in Sprint 03:** `RTCPeerConnection` exists and gathers host ICE candidates. Closed in Sprint 12, see below. |
 
 **Windows 11 (26200), WebView2 runtime 156.0.4314.58, 2026-11-06 (Sprint 12): 48 of 48 checks pass with `--attention`, no known gaps.** The six new WebRTC checks are described in the next section.
+
+**Windows 11 (26200), WebView2, 2026-11-06 (security review of decision 27.5): 59 of 59 checks pass with `--attention`, no known gaps.** The 11 new checks:
+
+| Area | Result |
+|---|---|
+| Script and stylesheet loaded from another activity, with the frame's own key, a guessed key, or no key | Refused (error event) |
+| Control: a script of the frame's own, under its own key | Loads |
+| Frame navigates to another activity's page (`/<own key>/<other id>/index.html`) | Refused by the server; the host stops the frame ("was stopped", reason `navigated`) |
+| Launch address carries a 128-bit key; a resumed launch gets a different one | Yes |
+| Native IPC reachable from the activity frame and from a nested frame | `chrome.webview` and `window.ipc` present in both; no `webkit.messageHandlers` on Windows |
+| Forged invoke (guessed key, `activity_clear_snapshot` for the canary) posted through `window.ipc` and `chrome.webview` from both frames | Refused: the canary save is untouched and the forged attention event has no effect |
+
+That last row is the evidence for the first row of the table in "Native IPC channels from a frame": on Windows `window.ipc` and `chrome.webview` do exist in the frame (observed), Tauri's script, and so the invoke key, is injected into subframes there (wry's documentation of `for_main_frame_only`), and what keeps a frame's message from acting is that it never reaches the handler (inferred from the untouched canary, not from Microsoft's documentation).
 
 **macOS (WKWebView) and Linux (WebKitGTK):** not run. No machine was available. Those runs are manual tests M03-4 and M03-5 in `docs/MANUAL_TESTS.md`. The runner uses the Chromium debug protocol, so on those OSes the probe's own results page is the check. WebKit has no out-of-process iframes, so a busy activity may slow the app there. Pause still works because the host removes the frame.
 
@@ -204,9 +258,9 @@ The full proof with the shipped arguments passes 48 of 48 with `--attention`.
 
 - **WebRTC.** Closed in Sprint 12 on Windows (proof passes in full), and turned off on macOS and Linux with their proof still to run (see "WebRTC is off in the webview" above). Third-party code activities can be installed on every OS after a risk warning and consent (owner decision 27.5, amendment below).
 - **Tauri globals in frames** (above): mitigated today, but by behaviour we don't control.
-- **Before third-party code activities (Sprint 08)**, these were to be settled. They were found in the Sprint 03 security review. They are still open; owner decision 27.5 opened third-party code with a consent warning, and the ADR-015 amendment lists them as residual risks. None of them reaches another activity's data or the host:
-  - **Loading another activity.** An activity can navigate its own frame to another activity's page with the same nonce. That page would then run under the first activity's id and storage. The host should pin the frame to the launched activity's path, or serve each activity from its own host name.
-  - **Storage quota.** The quota counts key and value bytes only. Many tiny keys still cost database space, and Rust has no write budget per activity. A cost per row or a cap on keys is needed, plus a write rate limit in Rust.
+- **Before third-party code activities (Sprint 08)**, these were to be settled. They were found in the Sprint 03 security review. Owner decision 27.5 opened third-party code with a consent warning before they were all closed; the security review of that change (commit 72d3576) then closed (a) and (b):
+  - **(a) Loading another activity: closed.** Per-launch keys in the address (see "Launch keys"); the server refuses another id's files and unknown or revoked keys, and the UI stops a frame that loads a second document. Denial checks: scripts and stylesheets from another activity are refused, and a navigation to another activity's page stops the frame.
+  - **(b) Storage quota: closed.** A cost per row (64 bytes), at most 1024 keys, and a write budget of 240 per activity per minute, all in Rust. See "Storage".
   - **"Nothing to save" looks like no answer.** An activity that has nothing to report is closed as unresponsive after three autosaves. The SDK's bridge client now answers with the last known state (Sprint 05). Activities that use their own client must still always return a state.
   - **Uninstalling hooks and changing notification settings** have no native confirmation (see above).
 
@@ -224,6 +278,6 @@ The product owner opened third-party code activities on Windows, macOS and Linux
 
 **The WebRTC state is now information.** `webrtc::set_state` tells `marketplace::set_webrtc_block`, which only picks the warning's honest note: Windows `Asserted` says the proof passed on a test computer but the block can't be read back here; macOS and Linux `Off` say the block is in place and read back but the proof hasn't run on that platform; `Failed` says plainly that the block couldn't be applied on this computer; anything else says the block isn't confirmed yet. No note claims a guarantee, and none blocks the install.
 
-**Residual risks** (also in the ADR-015 amendment): macOS and Linux unverified; Windows not read back; `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` or the WebView2 registry policy can undo the Windows block; DNS prefetch untested; the Sprint 03 items under "Known gaps" (frame navigation to another activity's page, storage quota by bytes) still open.
+**Residual risks** (also in the ADR-015 amendment): macOS and Linux unverified; Windows not read back; `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` or the WebView2 registry policy can undo the Windows block; DNS prefetch untested; the remaining Sprint 03 items under "Known gaps" (the "nothing to save" case and native confirmation of hook uninstalls) are still open; frame navigation to another activity's page and the storage quota were closed in the security review of this decision.
 
 **Project rules.** The "only where the sandbox proof passed" rule came from Sprint 08 (S08-T05) and `docs/TECHNICAL_ARCHITECTURE.md` §6.4, which now point here. `CLAUDE.md` is changed only by the owner; the suggested wording for its activity rules is in this change's report.
