@@ -14,6 +14,7 @@ import {
   errorText,
   manageSubtitle,
   NOT_FOUND_AT_NEW_ADDRESS_TEXT,
+  problemLabel,
   problemText,
   truncate,
   UNAVAILABLE_TEXT,
@@ -133,9 +134,7 @@ export function ManagePanel({ onChanged }: Props) {
                 />
                 {item.problem && (
                   <Banner tone="attention">
-                    <strong>
-                      {item.problem === "tampered" ? "Damaged, reinstall it. " : "Engine missing. "}
-                    </strong>
+                    <strong>{problemLabel(item.problem)}</strong>
                     {problemText(item.problem)}
                   </Banner>
                 )}

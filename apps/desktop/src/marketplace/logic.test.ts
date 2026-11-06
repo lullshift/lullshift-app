@@ -24,6 +24,8 @@ import {
   looksPrivate,
   manageSubtitle,
   permissionExplanation,
+  problemLabel,
+  problemText,
   shortCommit,
   THIRD_PARTY_CODE_TEXT,
   truncate,
@@ -45,6 +47,7 @@ const KINDS: ErrorKind[] = [
   "builtinProtected",
   "busy",
   "tampered",
+  "unreadable",
   "privateHost",
   "moved",
   "internal",
@@ -329,6 +332,13 @@ describe("manage helpers", () => {
     expect(canCheckUpdate(item())).toBe(true);
     expect(canCheckUpdate(item({ builtin: true }))).toBe(false);
     expect(canCheckUpdate(item({ problem: "tampered" }))).toBe(false);
+  });
+  it("tells a file that couldn't be read apart from a damaged one", () => {
+    expect(problemLabel("unreadable")).toMatch(/just now/);
+    expect(problemText("unreadable")).toMatch(/try again/);
+    expect(problemText("unreadable")).not.toMatch(/reinstall|Install it again/i);
+    expect(problemLabel("tampered")).toMatch(/reinstall/);
+    expect(problemText("missingEngine")).toMatch(/engine/);
   });
   it("describes the source", () => {
     expect(manageSubtitle(item())).toBe("Content pack · From friends · version 1.0.0");

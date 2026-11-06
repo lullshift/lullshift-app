@@ -16,6 +16,7 @@ This is the contract between the Tauri backend (`apps/desktop/src-tauri`) and th
 - `builtinProtected`
 - `busy`
 - `tampered`
+- `unreadable` (S12-T14: `activity_set_enabled(true)` found a file of the install that exists but can't be read right now, for example locked by another program; nothing changed, try again)
 - `privateHost` (Sprint 12: a private address that the user hasn't confirmed, or a name that resolved to one)
 - `moved` (Sprint 12: the repository answered with a redirect; `CommandError` also carries `moved: { url, sameHost }`, with `url` a display https address)
 - `internal`
@@ -134,7 +135,7 @@ type UpdatePreview = InstallPreview & {
   - Each item gets `source: { marketplaceId: string, builtin: boolean, commit: string | null }`.
   - Disabled activities are left out.
   - An installed activity whose digest no longer matches is left out and disabled. `activities_manage_list` reports it as `tampered`.
-- **`activities_manage_list() -> ManageItem[]`:** lists every bundled and installed activity, including disabled ones, so the user can re-enable them. Each item is `{ activityId, name, kind, builtin, marketplaceId, enabled, commit, version, problem: "tampered" | "missingEngine" | null, sourceNote: "notFoundAtNewAddress" | null }` (`sourceNote` since Sprint 12).
+- **`activities_manage_list() -> ManageItem[]`:** lists every bundled and installed activity, including disabled ones, so the user can re-enable them. Each item is `{ activityId, name, kind, builtin, marketplaceId, enabled, commit, version, problem: "tampered" | "missingEngine" | "unreadable" | null, sourceNote: "notFoundAtNewAddress" | null }` (`sourceNote` since Sprint 12).
 - **Serving installed activities:**
   - Same sandbox, CSP, path rules and engine-pack rules as bundled ones.
   - Files are read from `<app data>/installed/<id>/<commit>/`.
@@ -154,7 +155,7 @@ Code: `apps/desktop/src-tauri/src/market.rs` (commands), `activities.rs` and `ac
 - `sourceChanged` (update review): the install's recorded source address against the address the update would come from. It is set when they differ (for example an index entry that now points at another repository), counts toward "needs your approval", and the UI shows it as a highlighted "Source changed" row with both addresses.
 - `hasSavedState` (install review): true when saved progress exists for the id and the install will use it; the UI says "Saved progress from an earlier install of this id will be used." When an activity is uninstalled with its saved state kept, the marketplace and source it came from are recorded (migration 0007). Installing the id from a different marketplace or source deletes that state at install time (storage values, snapshot and play time), unless the user chose to keep it (`savedState: "foreign"` and `keepSavedState: true`, Sprint 12). `hasSavedState` is false for that case. State with no recorded owner (older than 0007) is kept and announced.
 - Installs, updates and uninstalls also take a per-activity-id lock across marketplaces; a second one on the same id returns `busy`.
-- Sprint 12 (decision 18.5): no file bytes are held in memory. Every read of an installed file is read again and hashed again against the snapshot's check before it is used. That covers the manifest, a pack's data, the preview image, a pack's listed pictures and an app's served files. A mismatch serves nothing and turns the activity off, so `problem` becomes `"tampered"`. `activity_content` returns the content error code `damaged`.
+- Sprint 12 (decision 18.5): no file bytes are held in memory. Every read of an installed file is read again and hashed again against the snapshot's check before it is used. That covers the manifest, a pack's data, the preview image, a pack's listed pictures and an app's served files. A mismatch serves nothing and turns the activity off, so `problem` becomes `"tampered"`. `activity_content` returns the content error code `damaged`. A file that is there but can't be read right now (another program holds it, for example) is not a mismatch (S12-T14 security review, INFO-1): that one use is refused (`activity_content` returns `unreadable`, a served file is a 404, the preview is null), nothing is turned off, `problem` is `"unreadable"` while it lasts, and the next use checks again. A missing file or folder, a link or anything else that isn't a plain file still counts as a mismatch.
 - `marketplace_preview_install` returns `alreadyExists` for the built-in marketplace (its activities are the bundled ones), for any id that exists in the bundled catalog (an installed activity may never shadow a bundled one, engines included), and for an id that is already installed (use update).
 - `marketplace_entries` returns `notFound` for a marketplace that was never fetched ("Refresh it first"). For same-repo entries, name, description and kind come from `manifest.json` at the fetched commit (one batch of Git calls, no network); entries from another repository have `name`/`description`/`kind` null.
 - `marketplace_refresh` fails with `invalidIndex` if the index's `name` no longer equals the marketplace id.

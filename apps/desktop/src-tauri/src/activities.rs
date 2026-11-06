@@ -35,6 +35,7 @@ pub(crate) mod installed;
 
 use crate::Core;
 use installed::Served;
+use marketplace::VerifyError;
 use marketplace::data_schema;
 #[cfg(test)]
 use marketplace::manifest::plain;
@@ -538,12 +539,13 @@ fn lookup(snap: Option<&installed::Snapshot>, path: &str) -> Option<FoundFile> {
     lookup_checked(snap, path).ok().flatten()
 }
 
-/// [`lookup`], except that an installed file which no longer matches its install check is
-/// `Err(activity id)`: nothing is served and the caller marks the activity damaged.
+/// [`lookup`], except that an installed file which no longer matches its install check, or
+/// can't be read right now, is `Err((activity id, why))`: nothing is served, and the caller
+/// marks the activity damaged only for a mismatch.
 fn lookup_checked(
     snap: Option<&installed::Snapshot>,
     path: &str,
-) -> Result<Option<FoundFile>, String> {
+) -> Result<Option<FoundFile>, (String, VerifyError)> {
     let Some((id, file)) = split_path(path) else {
         return Ok(None);
     };
@@ -580,7 +582,9 @@ fn lookup_checked(
         return Ok(None);
     };
     // An installed file (a pack's picture included) is read and hashed again now.
-    served.file(file, content_type).map_err(|_| id.to_owned())
+    served
+        .file(file, content_type)
+        .map_err(|e| (id.to_owned(), e))
 }
 
 /// The content type of a picture the manifest lists (`image/png` or `image/webp`, from the
@@ -613,9 +617,13 @@ pub fn serve(core: Option<&Core>, request: &tauri::http::Request<Vec<u8>>) -> Re
     let found = if request.method() == tauri::http::Method::GET {
         match lookup_checked(snap.as_deref(), request.uri().path()) {
             Ok(found) => found,
-            Err(damaged) => {
-                if let Some(core) = core {
-                    installed::mark_damaged(core, &damaged);
+            Err((id, why)) => {
+                // A file that only couldn't be read is a 404 for this request; a retry may
+                // work. Only a changed file turns the activity off (security review INFO-1).
+                if why == VerifyError::Mismatch
+                    && let Some(core) = core
+                {
+                    installed::mark_damaged(core, &id);
                 }
                 None
             }
@@ -863,13 +871,19 @@ pub(crate) fn content_for_core(core: &Core, id: &str) -> Result<Value, ContentEr
         },
         Ok(Found::Installed(s)) => match s.pack_data() {
             Ok(data) => data,
-            Err(_) => {
+            Err(VerifyError::Mismatch) => {
                 installed::mark_damaged(core, id);
                 Err(ContentError::new(
                     "damaged",
                     "this activity's files changed on disk; reinstall it",
                 ))
             }
+            // Locked by another program, for example: refuse this load, keep the activity on,
+            // and let the user try again (security review INFO-1).
+            Err(VerifyError::Unreadable) => Err(ContentError::new(
+                "unreadable",
+                "this activity's files can't be read right now; try again",
+            )),
         },
         Err(code) if code == "unknown_activity" => Err(ContentError::new("unknown_activity", "")),
         Err(_) => Err(ContentError::new("internal", "the check didn't finish")),
@@ -914,10 +928,11 @@ pub(crate) fn preview_for_core(core: &Core, id: &str) -> Result<Option<String>, 
             };
             match s.preview_bytes(PREVIEW_MAX) {
                 Ok(bytes) => bytes.map(|b| format!("data:{t};base64,{}", base64(&b))),
-                Err(_) => {
+                Err(VerifyError::Mismatch) => {
                     installed::mark_damaged(core, id);
                     None
                 }
+                Err(VerifyError::Unreadable) => None,
             }
         }
     })

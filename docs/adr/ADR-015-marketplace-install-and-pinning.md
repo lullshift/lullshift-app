@@ -160,6 +160,7 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
   - `activity_content` returns `damaged`.
   - The activity is turned off in the store, and the next snapshot shows it as `tampered`. The UI says "Damaged, reinstall it."
 - **Recovery.** Turning it back on re-verifies, so a restored file works again.
+- **A file that can't be read is not a mismatch (S12-T14 security review, INFO-1).** A file or folder that is there but can't be read right now (a virus scanner or backup tool holds it, permissions changed) refuses only that use: `activity_content` returns `unreadable` ("try again"), a served file is a 404, the preview is empty, and Manage shows `unreadable` while it lasts. Nothing is turned off, and a snapshot with such an install isn't kept, so the next use checks again. A missing file or folder, a link, or anything else that isn't a plain file is still a mismatch.
 
 ### 6. Saved progress from another source (decision 18.6)
 

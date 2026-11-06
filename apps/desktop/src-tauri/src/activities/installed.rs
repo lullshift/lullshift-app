@@ -12,7 +12,9 @@
 //! file against the digest recorded at install and keeps only the per-file hashes, never file
 //! content (decision 18.5). Every later use (the manifest, a pack's data, its preview, an app's
 //! files) reads the file again and hashes it again; bytes that no longer match are never served,
-//! the activity is turned off and shown as damaged (`tampered`), and the snapshot is rebuilt.
+//! the activity is turned off and shown as damaged (`tampered`), and the snapshot is rebuilt. A
+//! file that is there but can't be read right now (a scanner holds it, say) only refuses that
+//! use; nothing is turned off and the next use tries again (`unreadable`).
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -75,6 +77,10 @@ pub(crate) enum Problem {
     Tampered,
     /// The bundled engine it names is gone or no longer accepts its data.
     MissingEngine,
+    /// A file is there but couldn't be read during this check (another program holds it, for
+    /// example). Not proof of a change: the activity isn't turned off, and the next check tries
+    /// again (security review INFO-1).
+    Unreadable,
 }
 
 impl Problem {
@@ -82,6 +88,15 @@ impl Problem {
         match self {
             Self::Tampered => "tampered",
             Self::MissingEngine => "missingEngine",
+            Self::Unreadable => "unreadable",
+        }
+    }
+
+    /// Only a mismatch is tampering; a read that failed is retried.
+    pub(crate) fn from_verify(e: VerifyError) -> Self {
+        match e {
+            VerifyError::Mismatch => Self::Tampered,
+            VerifyError::Unreadable => Self::Unreadable,
         }
     }
 }
@@ -99,7 +114,8 @@ pub(crate) struct ManageItem {
     pub enabled: bool,
     pub commit: Option<String>,
     pub version: String,
-    /// `tampered`, `missingEngine` or null.
+    /// `tampered`, `missingEngine`, `unreadable` (couldn't be read just now; retried on the next
+    /// check) or null.
     pub problem: Option<&'static str>,
     /// `notFoundAtNewAddress` when the marketplace moved and this install's pinned commit wasn't
     /// at the new address (decision 18.4); it still runs as installed. Null otherwise.
@@ -113,6 +129,9 @@ pub(crate) struct Snapshot {
     /// Installed activities that are enabled, verified and runnable, by id.
     pub served: BTreeMap<String, Arc<Served>>,
     pub manage: Vec<ManageItem>,
+    /// Some install couldn't be read during this build. Such a snapshot is used once and not
+    /// kept, so the next use checks again instead of hiding the activity for the session.
+    pub retry: bool,
 }
 
 /// A checked install.
@@ -138,7 +157,8 @@ impl Library {
         }
         let started = self.generation.load(Ordering::SeqCst);
         let built = Arc::new(build(core)?);
-        if self.generation.load(Ordering::SeqCst) == started
+        if !built.retry
+            && self.generation.load(Ordering::SeqCst) == started
             && let Ok(mut slot) = self.snapshot.write()
         {
             *slot = Some(Arc::clone(&built));
@@ -163,7 +183,8 @@ impl Library {
 
 /// A file of an installed activity no longer matches what was checked: it is turned off in the
 /// store and the snapshot is dropped, so the next build shows it as damaged (`tampered`) until
-/// it is reinstalled.
+/// it is reinstalled. Only for [`VerifyError::Mismatch`]: a file that couldn't be read
+/// ([`VerifyError::Unreadable`]) just refuses that one use (security review INFO-1).
 pub(crate) fn mark_damaged(core: &Core, activity_id: &str) {
     if let Ok(guard) = core.store.lock()
         && let Some(store) = guard.as_ref()
@@ -193,9 +214,14 @@ fn catalog_has(id: &str) -> bool {
 }
 
 /// The manifest, read and hashed again against the check.
-fn verified_manifest(dir: &Path, hashes: &VerifiedHashes) -> Option<Manifest> {
-    let bytes = hashes.read(dir, "manifest.json", MANIFEST_MAX).ok()??;
-    parse_manifest(std::str::from_utf8(&bytes).ok()?)
+fn verified_manifest(dir: &Path, hashes: &VerifiedHashes) -> Result<Option<Manifest>, Problem> {
+    let Some(bytes) = hashes
+        .read(dir, "manifest.json", MANIFEST_MAX)
+        .map_err(Problem::from_verify)?
+    else {
+        return Ok(None);
+    };
+    Ok(std::str::from_utf8(&bytes).ok().and_then(parse_manifest))
 }
 
 fn read_manifest(dir: &Path) -> Option<Manifest> {
@@ -223,18 +249,22 @@ fn evaluate(core: &Core, rec: &InstalledActivity) -> Evaluated {
     };
     let hashes = match verified_hashes(&dir, &rec.digest) {
         Ok(hashes) => hashes,
-        Err(VerifyError::Unreadable | VerifyError::Mismatch) => {
+        Err(e) => {
             let name = read_manifest(&dir).map_or_else(|| rec.activity_id.clone(), |m| m.name);
             return Evaluated {
                 name,
                 version: rec.manifest_version.clone(),
-                outcome: Err(Problem::Tampered),
+                outcome: Err(Problem::from_verify(e)),
             };
         }
     };
-    let Some(manifest) = verified_manifest(&dir, &hashes).filter(|m| {
-        m.id == rec.activity_id && m.kind == rec.kind.as_str() && m.engine == rec.engine
-    }) else {
+    let manifest = match verified_manifest(&dir, &hashes) {
+        Ok(found) => found.filter(|m| {
+            m.id == rec.activity_id && m.kind == rec.kind.as_str() && m.engine == rec.engine
+        }),
+        Err(problem) => return fallback(Err(problem)),
+    };
+    let Some(manifest) = manifest else {
         return fallback(Err(Problem::Tampered));
     };
     let name = manifest.name.clone();
@@ -272,7 +302,7 @@ fn pack_role(
     let data_path = manifest.data.as_deref().unwrap_or_default();
     let bytes = hashes
         .read(dir, data_path, DATA_MAX + 1)
-        .map_err(|_| Problem::Tampered)?
+        .map_err(Problem::from_verify)?
         .ok_or(Problem::MissingEngine)?;
     let data = validate_data(schema, data_path, &bytes).map_err(|_| Problem::MissingEngine)?;
     // Pictures were checked at install; check them again here, so a pack installed by an older
@@ -282,7 +312,7 @@ fn pack_role(
     for path in &manifest.images {
         if let Some(b) = hashes
             .read(dir, path, FILE_MAX)
-            .map_err(|_| Problem::Tampered)?
+            .map_err(Problem::from_verify)?
         {
             pictures.push((path.clone(), b));
         }
@@ -347,6 +377,7 @@ fn build(core: &Core) -> Result<Snapshot, String> {
         let problem = evaluated.outcome.as_ref().err().copied();
         let mut enabled = rec.enabled && !shadowed;
         // A copy that changed on disk stops running now and stays off until it verifies again.
+        // One that only couldn't be read keeps its enabled choice; it isn't served this time.
         if problem == Some(Problem::Tampered)
             && rec.enabled
             && let Ok(guard) = core.store.lock()
@@ -371,10 +402,12 @@ fn build(core: &Core) -> Result<Snapshot, String> {
             source_note: note_of(&rec.activity_id),
         });
     }
+    let retry = manage.iter().any(|m| m.problem == Some("unreadable"));
     Ok(Snapshot {
         disabled,
         served,
         manage,
+        retry,
     })
 }
 

@@ -1358,6 +1358,12 @@ pub fn set_enabled(core: &Core, activity_id: &str, enabled: bool) -> Res<()> {
                     "This activity's files have changed since it was installed, so it can't be turned on. Uninstall it and install it again.",
                 ));
             }
+            Err(Problem::Unreadable) => {
+                return Err(CommandError::new(
+                    "unreadable",
+                    "This activity's files can't be read right now. Another program may be using them. Try again in a moment.",
+                ));
+            }
             Err(Problem::MissingEngine) => {
                 // Allowed: it stays listed as unusable until Lullshift provides the engine.
             }

@@ -718,6 +718,80 @@ fn a_file_changed_after_the_check_is_refused_on_the_next_load_and_shown_damaged(
     assert!(!env.install_dir(FACTS, &commit).exists());
 }
 
+/// Holds `path` so no other handle can read it, as a virus scanner can on Windows (chmod 000 on
+/// Unix). `None` if this platform or user can still read it (root, for example).
+fn lock_against_reading(path: &std::path::Path) -> Option<std::fs::File> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(path)
+            .ok()
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o000)).ok()?;
+        if std::fs::read(path).is_ok() {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).ok()?;
+            return None;
+        }
+        std::fs::File::open(path.parent()?).ok()
+    }
+}
+
+fn unlock(path: &std::path::Path, lock: std::fs::File) {
+    drop(lock);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+}
+
+#[test]
+fn a_file_that_cant_be_read_right_now_refuses_the_load_but_is_not_marked_damaged() {
+    // Security review INFO-1: a locked file (antivirus, backup) is not tampering.
+    let env = Env::new();
+    let (_, commit) = installed(&env);
+    let original = activities::content_for_core(&env.core, FACTS).expect("content");
+    let deck = env.install_dir(FACTS, &commit).join("deck.json");
+    let Some(lock) = lock_against_reading(&deck) else {
+        eprintln!("skipped: this platform or user can read a locked file");
+        return;
+    };
+    let err = activities::content_for_core(&env.core, FACTS).unwrap_err();
+    assert_eq!(err.code(), "unreadable", "a retryable refusal");
+    let rec = with_store(&env.core, |s| s.installed_activity(FACTS))
+        .expect("store")
+        .expect("record");
+    assert!(rec.enabled, "not turned off in the store");
+    // A fresh check while it is still locked shows it as unreadable, still on, not served.
+    env.core.library.invalidate();
+    let item = manage_item(&env, FACTS);
+    assert_eq!(item.problem, Some("unreadable"));
+    assert!(item.enabled);
+    assert!(!listed_ids(&env).contains(&FACTS.to_owned()));
+    assert_eq!(
+        err_kind(set_enabled(&env.core, FACTS, true)),
+        "unreadable",
+        "turning on re-checks and asks for a retry"
+    );
+
+    // Once the lock is gone, the next use works again without any reinstall or toggle.
+    unlock(&deck, lock);
+    assert!(listed_ids(&env).contains(&FACTS.to_owned()));
+    assert_eq!(manage_item(&env, FACTS).problem, None);
+    assert_eq!(
+        activities::content_for_core(&env.core, FACTS).expect("content"),
+        original
+    );
+}
+
 #[test]
 fn a_same_length_change_is_caught_by_the_hash_not_only_the_size() {
     let env = Env::new();
