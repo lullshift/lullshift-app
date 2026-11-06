@@ -6,7 +6,10 @@
 //! in the app needs WebRTC (the Companion and Git run in Rust), so it is turned off in the engine
 //! for the whole webview:
 //!
-//! - **Windows (WebView2):** browser arguments set in `tauri.conf.json` ([`WINDOWS_ARGS`]).
+//! - **Windows (WebView2):** browser arguments set in `tauri.conf.json` ([`WINDOWS_ARGS`]). The
+//!   dev server's address is added to the proxy bypass list only by `tauri.dev.conf.json`, which
+//!   `pnpm desktop:dev` merges in with `--config` ([`WINDOWS_DEV_ARGS`]); release builds never
+//!   include it.
 //!   WebView2 has no setting to turn WebRTC off, so the arguments take away its routes out:
 //!   WebRTC may use only proxied connections (no UDP, STUN or UDP relay), and the webview's only
 //!   proxy is a closed local port, so its TCP connections (ICE-TCP, TURN over TCP) fail too,
@@ -42,7 +45,20 @@ pub const WINDOWS_ARGS: &[&str] = &[
     // The only proxy is a closed local port, so proxied (TCP) connections fail as well.
     "--proxy-server=http://127.0.0.1:9",
     // No implicit loopback bypass (`<-loopback>`), so WebRTC can't reach this machine either.
-    // The app's own `http://` hosts, served by the app (and the dev server), skip the proxy.
+    // The app's own `http://` hosts, served by the app, skip the proxy. (The dev server's host
+    // is added only by the dev overlay, `tauri.dev.conf.json`.)
+    "--proxy-bypass-list=<-loopback>;http://tauri.localhost;http://ipc.localhost;\
+     http://lullact.localhost",
+];
+
+/// The arguments of `pnpm desktop:dev`: [`WINDOWS_ARGS`] plus the dev server's address in the
+/// bypass list (the last argument). Used by a test to keep `tauri.dev.conf.json` honest.
+#[cfg(test)]
+const WINDOWS_DEV_ARGS: &[&str] = &[
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
+    "--webrtc-ip-handling-policy=disable_non_proxied_udp",
+    "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+    "--proxy-server=http://127.0.0.1:9",
     "--proxy-bypass-list=<-loopback>;http://tauri.localhost;http://ipc.localhost;\
      http://lullact.localhost;http://localhost:1420",
 ];
@@ -163,6 +179,59 @@ mod tests {
     }
 
     #[test]
+    fn the_dev_overlay_adds_only_the_dev_server_and_release_has_no_localhost_1420() {
+        let release = config_args();
+        assert!(!release.contains("1420"), "release config: {release}");
+        let overlay: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.dev.conf.json")).expect("dev overlay");
+        // Tauri replaces arrays whole, so the overlay repeats the window; everything but the
+        // arguments must equal the release window.
+        let base: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("conf");
+        let (mut a, mut b) = (
+            overlay["app"]["windows"][0].clone(),
+            base["app"]["windows"][0].clone(),
+        );
+        let dev_args = a["additionalBrowserArgs"]
+            .as_str()
+            .expect("args")
+            .to_owned();
+        a.as_object_mut()
+            .expect("o")
+            .remove("additionalBrowserArgs");
+        b.as_object_mut()
+            .expect("o")
+            .remove("additionalBrowserArgs");
+        assert_eq!(a, b, "the overlay window must match the release window");
+        assert_eq!(overlay["app"]["windows"].as_array().expect("w").len(), 1);
+        assert_eq!(
+            dev_args.split_whitespace().collect::<Vec<_>>(),
+            WINDOWS_DEV_ARGS
+        );
+        // Dev differs from release by that one bypass entry, at the end of the last argument.
+        let (dev_last, rel_last) = (
+            WINDOWS_DEV_ARGS.last().expect("last"),
+            WINDOWS_ARGS.last().expect("last"),
+        );
+        assert_eq!(*dev_last, format!("{rel_last};http://localhost:1420"));
+        assert_eq!(
+            WINDOWS_DEV_ARGS[..WINDOWS_DEV_ARGS.len() - 1],
+            WINDOWS_ARGS[..WINDOWS_ARGS.len() - 1]
+        );
+        // The overlay changes nothing else (no CSP, capabilities or bundle changes).
+        assert_eq!(
+            overlay["app"]
+                .as_object()
+                .expect("app")
+                .keys()
+                .collect::<Vec<_>>(),
+            ["windows"]
+        );
+        let top: Vec<&String> = overlay.as_object().expect("o").keys().collect();
+        assert_eq!(top, ["$schema", "app"]);
+    }
+
+    #[test]
     fn the_arguments_leave_no_direct_route_and_keep_wry_defaults() {
         let has = |a: &str| WINDOWS_ARGS.contains(&a);
         assert!(has("--webrtc-ip-handling-policy=disable_non_proxied_udp"));
@@ -190,7 +259,6 @@ mod tests {
                 "http://tauri.localhost",
                 "http://ipc.localhost",
                 "http://lullact.localhost",
-                "http://localhost:1420",
             ]
         );
         assert!(
