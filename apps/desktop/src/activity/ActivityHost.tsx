@@ -17,6 +17,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { providerName } from "../format";
+import { activitySourceLabel } from "../marketplace/logic";
 import { Icon } from "../ui/Icon";
 import { Mascot } from "../ui/Mascot";
 import { loadContent, type ContentProblem } from "./content";
@@ -398,6 +399,8 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
     setHelpOpen(true);
   };
 
+  // Third-party code and packs say where they came from (owner decision 27.5).
+  const sourceLabel = activitySourceLabel(activity.source, activity.engine);
   const live =
     nonce !== "" &&
     (phase.kind === "loading" || phase.kind === "running" || phase.kind === "pausing");
@@ -406,6 +409,7 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
     <section className="host" aria-label={activity.name}>
       <header className="host-bar">
         <h2 className="host-title">{activity.name}</h2>
+        {sourceLabel && <span className="host-source">{sourceLabel}</span>}
         <span className="host-status" role="status">
           {phase.kind === "loading"
             ? "Starting…"

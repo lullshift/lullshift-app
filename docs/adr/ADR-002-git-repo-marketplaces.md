@@ -22,7 +22,7 @@ Handoff v1.1 planned a hosted marketplace with accounts, server-side review and 
 
 ## Security consequences
 
-- The activity sandbox (architecture doc, "Activity sandbox and host bridge") is the primary safety boundary for third-party code and must be proven on Windows, macOS and Linux before third-party *code* activities can be installed. Content-only packs (ADR-003) can be enabled earlier.
+- The activity sandbox (architecture doc, "Activity sandbox and host bridge") is the primary safety boundary for third-party code and must be proven on Windows, macOS and Linux before third-party *code* activities can be installed. Content-only packs (ADR-003) can be enabled earlier. *Amended by owner decision 27.5 (ADR-015 amendment, 2026-11-06): third-party code can be installed on every platform after a risk warning and explicit consent at each install and code-changing update; the warning says what is and isn't verified on the user's platform. The sandbox is unchanged.*
 - Repository content is untrusted input: validate the index and manifests strictly; reject path traversal, symlinks escaping the pack folder, oversized files, Git submodules/LFS (v1), and unknown permissions.
 - Git is invoked with a hardened configuration (no hooks, no `core.fsmonitor`, no custom protocols beyond https/ssh/file, no submodule recursion) into an app-owned cache directory.
 

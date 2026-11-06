@@ -277,8 +277,6 @@ pub enum PackError {
     /// A pack image failed its checks, or the data names an image the manifest doesn't list.
     /// The text is already plain and cleaned (path and reason).
     ImageInvalid(String),
-    /// Third-party code activities can't be installed on this OS in this release.
-    ThirdPartyCodeBlocked,
     /// An installed folder doesn't exist or isn't a plain folder of regular files.
     Unreadable,
     /// What `git` returned didn't match what it listed.
@@ -322,9 +320,6 @@ impl fmt::Display for PackError {
                 write!(f, "the content isn't valid: {}", problems.join("; "))
             }
             Self::ImageInvalid(why) => write!(f, "a picture isn't allowed: {why}"),
-            Self::ThirdPartyCodeBlocked => f.write_str(
-                "code activities from third-party marketplaces can't be installed on this system yet",
-            ),
             Self::Unreadable => f.write_str("the installed activity folder can't be read"),
             Self::Inconsistent => f.write_str("Git returned an unexpected object"),
         }

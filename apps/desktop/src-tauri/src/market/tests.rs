@@ -186,7 +186,7 @@ fn added(env: &Env) -> (Repo, String) {
 fn installed(env: &Env) -> (Repo, String) {
     let (repo, commit) = added(env);
     let preview = preview_install(&env.core, MARKET, FACTS).expect("preview");
-    install_pending(&env.core, &preview.token, false, Instant::now()).expect("install");
+    install_pending(&env.core, &preview.token, false, false, Instant::now()).expect("install");
     (repo, commit)
 }
 
@@ -249,13 +249,13 @@ fn add_entries_preview_install_then_listed_and_served() {
     assert_eq!(facts.name.as_deref(), Some("Facts"));
     assert_eq!(facts.kind, Some("content"));
     assert!(facts.featured && !facts.external && facts.installed.is_none());
-    assert_eq!(facts.blocked, None);
+    assert!(!facts.third_party_code);
     let game = entries
         .iter()
         .find(|e| e.activity_id == GAME)
         .expect("game");
     assert_eq!(game.kind, Some("app"));
-    assert_eq!(game.blocked, Some("thirdPartyCode"));
+    assert!(game.third_party_code, "flagged so the list can say so");
 
     // Preview installs nothing.
     let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
@@ -268,13 +268,20 @@ fn add_entries_preview_install_then_listed_and_served() {
     assert_eq!(p.source_path.as_deref(), Some("packs/facts"));
     assert_eq!(p.file_count, 3);
     assert!(p.third_party && p.permissions.is_empty());
+    assert!(p.code_risk.is_none(), "a pack carries no code warning");
     assert!(!listed_ids(&env).contains(&FACTS.to_owned()));
     assert!(!env.core.app_dir.join("installed").exists());
 
     // Install: listed (with its source) and served under the app CSP from the engine's files.
-    install_pending(&env.core, &p.token, false, Instant::now()).expect("install");
+    install_pending(&env.core, &p.token, false, false, Instant::now()).expect("install");
     assert_eq!(
-        err_kind(install_pending(&env.core, &p.token, false, Instant::now())),
+        err_kind(install_pending(
+            &env.core,
+            &p.token,
+            false,
+            false,
+            Instant::now()
+        )),
         "notFound",
         "a token works once"
     );
@@ -390,7 +397,7 @@ fn refresh_then_update_shows_a_permission_diff_and_keeps_the_enabled_flag() {
     let same = preview_update(&env.core, FACTS).expect("preview");
     assert!(same.unchanged);
     assert_eq!(same.from.commit, v1);
-    update_pending(&env.core, &same.preview.token, Instant::now()).expect("no-op");
+    update_pending(&env.core, &same.preview.token, false, Instant::now()).expect("no-op");
     assert_eq!(
         with_store(&env.core, |s| s.installed_activity(FACTS))
             .expect("store")
@@ -422,12 +429,13 @@ fn refresh_then_update_shows_a_permission_diff_and_keeps_the_enabled_flag() {
             &env.core,
             &up.preview.token,
             false,
+            false,
             Instant::now()
         )),
         "notFound"
     );
     let up = preview_update(&env.core, FACTS).expect("again");
-    update_pending(&env.core, &up.preview.token, Instant::now()).expect("update");
+    update_pending(&env.core, &up.preview.token, false, Instant::now()).expect("update");
     assert!(env.install_dir(FACTS, &v2).is_dir(), "new commit folder");
     assert!(
         !env.install_dir(FACTS, &v1).exists(),
@@ -620,7 +628,7 @@ fn uninstall_keeps_saved_state_unless_asked() {
 
     // Install again and uninstall with the saved state.
     let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
-    install_pending(&env.core, &p.token, false, Instant::now()).expect("install");
+    install_pending(&env.core, &p.token, false, false, Instant::now()).expect("install");
     uninstall(&env.core, FACTS, true).expect("uninstall");
     assert!(
         with_store(&env.core, |s| s.snapshot(FACTS))
@@ -846,8 +854,9 @@ fn records_this_release_cannot_run_are_not_served() {
         permissions: Vec::new(),
         digest: digest.clone(),
         size_bytes: 1,
+        code_consent: None,
     };
-    // A hand-made third-party code record, and one that reuses a bundled id.
+    // A hand-made third-party code record without consent, and one that reuses a bundled id.
     with_store(&env.core, |s| {
         s.put_installed_activity(&record(GAME, ActivityKind::App), OffsetDateTime::now_utc())?;
         s.put_installed_activity(
@@ -892,18 +901,279 @@ fn a_second_operation_on_the_same_marketplace_is_busy() {
     refresh(&env.core, MARKET).expect("free again");
 }
 
+// ---- third-party code with consent (owner decision 27.5) ----------------------------------
+
+const GAME_JS: &str = "document.title = 'g';";
+
+/// Gives the standard repository's game a script and a stylesheet, and commits.
+fn write_game(repo: &Repo, body: &str) -> String {
+    repo.write("packs/game/manifest.json", &game_manifest(GAME));
+    repo.write(
+        "packs/game/index.html",
+        &format!(
+            "<!doctype html><title>g</title><link rel=stylesheet href=style.css><script src=main.js></script>{body}"
+        ),
+    );
+    repo.write("packs/game/main.js", GAME_JS);
+    repo.write("packs/game/style.css", "body{margin:0}");
+    repo.commit()
+}
+
+/// The standard repository with a richer game, added.
+fn added_with_game(env: &Env) -> (Repo, String) {
+    let (repo, _) = standard_repo(env);
+    let commit = write_game(&repo, "");
+    add(&env.core, &repo.url()).expect("add");
+    (repo, commit)
+}
+
+fn installed_game(env: &Env) -> (Repo, String) {
+    let (repo, commit) = added_with_game(env);
+    let p = preview_install(&env.core, MARKET, GAME).expect("preview");
+    install_pending(&env.core, &p.token, false, true, Instant::now()).expect("install");
+    (repo, commit)
+}
+
 #[test]
-fn code_activities_from_third_party_marketplaces_cannot_be_installed() {
+fn third_party_code_is_reviewed_with_a_risk_note_for_this_computer() {
+    let env = Env::new();
+    added_with_game(&env);
+    let p = preview_install(&env.core, MARKET, GAME).expect("third-party code is reviewable");
+    assert_eq!(p.kind, "app");
+    assert!(p.third_party);
+    let risk = p.code_risk.clone().expect("a code warning");
+    let json = serde_json::to_value(&p).expect("json");
+    let expected_platform = if cfg!(windows) {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    };
+    assert_eq!(json["codeRisk"]["platform"], expected_platform);
+    assert_eq!(
+        json["codeRisk"]["status"],
+        serde_json::to_value(marketplace::code_risk_status()).expect("status")
+    );
+    assert_eq!(risk.status, marketplace::code_risk_status());
+    // The review installs nothing.
+    assert!(!env.core.app_dir.join("installed").exists());
+}
+
+#[test]
+fn third_party_code_is_refused_without_consent_and_the_token_is_used_up() {
+    let env = Env::new();
+    added_with_game(&env);
+    let p = preview_install(&env.core, MARKET, GAME).expect("preview");
+    let e =
+        install_pending(&env.core, &p.token, false, false, Instant::now()).expect_err("no consent");
+    assert_eq!(e.kind, "codeRiskNotAccepted");
+    assert!(
+        e.message
+            .contains("I understand and want to install this program")
+    );
+    assert!(
+        !env.core.app_dir.join("installed").exists(),
+        "nothing written"
+    );
+    assert!(
+        with_store(&env.core, |s| s.installed_activity(GAME))
+            .expect("store")
+            .is_none(),
+        "nothing recorded"
+    );
+    assert!(!listed_ids(&env).contains(&GAME.to_owned()));
+    // The refused review can't be replayed with consent added afterwards.
+    assert_eq!(
+        err_kind(install_pending(
+            &env.core,
+            &p.token,
+            false,
+            true,
+            Instant::now()
+        )),
+        "notFound"
+    );
+}
+
+#[test]
+fn third_party_code_installed_with_consent_runs_exactly_like_bundled_code() {
+    let env = Env::new();
+    let (_repo, commit) = installed_game(&env);
+
+    // The consent is recorded with the commit it was given for.
+    let rec = with_store(&env.core, |s| s.installed_activity(GAME))
+        .expect("store")
+        .expect("record");
+    let consent = rec.code_consent.clone().expect("consent recorded");
+    assert_eq!(consent.commit, commit);
+    assert_eq!(rec.commit_sha, commit);
+    assert!(rec.enabled);
+
+    // Listed with its source, as an app (no engine).
+    let infos = activities::list_activities(&env.core).expect("list");
+    let info = infos.iter().find(|i| i.id() == GAME).expect("listed");
+    let json = serde_json::to_value(info).expect("json");
+    assert_eq!(
+        json["source"],
+        json!({"marketplaceId": MARKET, "builtin": false, "commit": commit})
+    );
+    assert_eq!(json["engine"], serde_json::Value::Null);
+    let item = manage_item(&env, GAME);
+    assert_eq!(
+        (item.kind, item.builtin, item.enabled, item.problem),
+        ("app", false, true, None)
+    );
+
+    // Every file is served with the same headers as a bundled app's, CSP included.
+    let bundled = request(&env, &format!("/{}/index.html", bundled_app_id()));
+    assert_eq!(bundled.status(), StatusCode::OK);
+    for file in ["index.html", "main.js", "style.css", "manifest.json"] {
+        let r = request(&env, &format!("/{GAME}/{file}"));
+        assert_eq!(r.status(), StatusCode::OK, "{file}");
+        for (name, value) in bundled.headers() {
+            if name == tauri::http::header::CONTENT_TYPE {
+                continue;
+            }
+            assert_eq!(r.headers().get(name), Some(value), "{file}: {name}");
+        }
+        assert_eq!(
+            r.headers().len(),
+            bundled.headers().len(),
+            "{file}: no extra headers"
+        );
+        assert_eq!(
+            r.headers()[tauri::http::header::CONTENT_SECURITY_POLICY],
+            activities::activity_csp().as_str()
+        );
+    }
+    assert_eq!(
+        request(&env, &format!("/{GAME}/main.js")).body(),
+        GAME_JS.as_bytes()
+    );
+    assert_eq!(
+        request(&env, &format!("/{GAME}/main.js")).headers()[tauri::http::header::CONTENT_TYPE],
+        "text/javascript; charset=utf-8"
+    );
+    // Path rules are the same: no escaping the folder, no unlisted files.
+    for bad in [
+        "../x/index.html",
+        "missing.js",
+        ".hidden.js",
+        "main.js%00.html",
+    ] {
+        assert_eq!(
+            request(&env, &format!("/{GAME}/{bad}")).status(),
+            StatusCode::NOT_FOUND,
+            "{bad}"
+        );
+    }
+    // It has no storage permission, so the host refuses storage on its behalf.
+    assert_eq!(
+        activities::storage_target(&env.core, GAME, "k").unwrap_err(),
+        "not_permitted"
+    );
+    // An app gets no pack content.
+    assert_eq!(
+        activities::content_for_core(&env.core, GAME).expect("content"),
+        serde_json::Value::Null
+    );
+}
+
+#[test]
+fn installed_third_party_code_changed_on_disk_is_never_served() {
+    let env = Env::new();
+    let (_repo, commit) = installed_game(&env);
+    assert_eq!(
+        request(&env, &format!("/{GAME}/main.js")).status(),
+        StatusCode::OK
+    );
+    // Same length, different bytes: caught by the re-hash on this load.
+    let evil: String = GAME_JS.chars().map(|_| 'x').collect();
+    std::fs::write(env.install_dir(GAME, &commit).join("main.js"), evil).expect("swap");
+    assert_eq!(
+        request(&env, &format!("/{GAME}/main.js")).status(),
+        StatusCode::NOT_FOUND
+    );
+    env.core.library.invalidate();
+    assert_eq!(manage_item(&env, GAME).problem, Some("tampered"));
+    assert!(!listed_ids(&env).contains(&GAME.to_owned()));
+}
+
+#[test]
+fn an_update_that_changes_third_party_code_needs_consent_again() {
+    let env = Env::new();
+    let (repo, v1) = installed_game(&env);
+    let first = with_store(&env.core, |s| s.installed_activity(GAME))
+        .expect("store")
+        .expect("record")
+        .code_consent
+        .expect("consent");
+
+    // Nothing new: no consent is needed to confirm "no update".
+    let same = preview_update(&env.core, GAME).expect("preview");
+    assert!(same.unchanged);
+    assert!(same.preview.code_risk.is_some(), "still flagged as code");
+    update_pending(&env.core, &same.preview.token, false, Instant::now()).expect("no-op");
+
+    // New code at a new commit.
+    let v2 = write_game(&repo, "<p>v2</p>");
+    refresh(&env.core, MARKET).expect("refresh");
+    let up = preview_update(&env.core, GAME).expect("update preview");
+    assert!(!up.unchanged);
+    assert_eq!(up.preview.commit, v2);
+    assert!(
+        up.preview.code_risk.is_some(),
+        "the update review warns again"
+    );
+
+    // Without consent: refused, nothing changes, the old commit keeps running.
+    assert_eq!(
+        err_kind(update_pending(
+            &env.core,
+            &up.preview.token,
+            false,
+            Instant::now()
+        )),
+        "codeRiskNotAccepted"
+    );
+    let rec = with_store(&env.core, |s| s.installed_activity(GAME))
+        .expect("store")
+        .expect("record");
+    assert_eq!(rec.commit_sha, v1);
+    assert_eq!(rec.code_consent.as_ref(), Some(&first));
+    assert!(env.install_dir(GAME, &v1).is_dir() && !env.install_dir(GAME, &v2).exists());
+    assert_eq!(
+        request(&env, &format!("/{GAME}/index.html")).status(),
+        StatusCode::OK
+    );
+
+    // With consent: updated, and the record holds the consent for the new commit.
+    let up = preview_update(&env.core, GAME).expect("again");
+    update_pending(&env.core, &up.preview.token, true, Instant::now()).expect("update");
+    let rec = with_store(&env.core, |s| s.installed_activity(GAME))
+        .expect("store")
+        .expect("record");
+    assert_eq!(rec.commit_sha, v2);
+    let consent = rec.code_consent.expect("new consent");
+    assert_eq!(consent.commit, v2);
+    assert!(!env.install_dir(GAME, &v1).exists(), "old folder removed");
+    let page = request(&env, &format!("/{GAME}/index.html"));
+    assert_eq!(page.status(), StatusCode::OK);
+    assert!(String::from_utf8_lossy(page.body()).contains("v2"));
+}
+
+#[test]
+fn consent_is_ignored_for_content_packs() {
+    // A pack has no code; the flag changes nothing either way.
     let env = Env::new();
     added(&env);
-    let e = preview_install(&env.core, MARKET, GAME).expect_err("blocked");
-    assert_eq!(e.kind, "thirdPartyCodeBlocked");
-    assert!(!e.message.is_empty());
-    assert!(!env.core.app_dir.join("installed").exists());
-    assert!(
-        env.core.market.pending.lock().expect("lock").is_empty(),
-        "no token was issued"
-    );
+    let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
+    install_pending(&env.core, &p.token, false, true, Instant::now()).expect("install");
+    let rec = with_store(&env.core, |s| s.installed_activity(FACTS))
+        .expect("store")
+        .expect("record");
+    assert!(rec.code_consent.is_none(), "nothing recorded for a pack");
 }
 
 #[test]
@@ -925,17 +1195,29 @@ fn tokens_expire_and_expired_reviews_install_nothing() {
     let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
     let later = Instant::now() + TOKEN_TTL + Duration::from_secs(1);
     assert_eq!(
-        err_kind(install_pending(&env.core, &p.token, false, later)),
+        err_kind(install_pending(&env.core, &p.token, false, false, later)),
         "notFound"
     );
     assert!(!env.core.app_dir.join("installed").exists());
     // The expired token is gone for good, and a made-up one never works.
     assert_eq!(
-        err_kind(install_pending(&env.core, &p.token, false, Instant::now())),
+        err_kind(install_pending(
+            &env.core,
+            &p.token,
+            false,
+            false,
+            Instant::now()
+        )),
         "notFound"
     );
     assert_eq!(
-        err_kind(install_pending(&env.core, "00", false, Instant::now())),
+        err_kind(install_pending(
+            &env.core,
+            "00",
+            false,
+            false,
+            Instant::now()
+        )),
         "notFound"
     );
     // Only a few reviews are held at once.
@@ -1046,6 +1328,7 @@ fn an_update_from_another_source_is_flagged() {
                 permissions: rec.permissions.clone(),
                 digest: rec.digest.clone(),
                 size_bytes: rec.size_bytes,
+                code_consent: rec.code_consent.clone(),
             },
             OffsetDateTime::now_utc(),
         )
@@ -1079,12 +1362,13 @@ fn concurrent_installs_of_one_id_from_different_marketplaces_are_busy() {
                 &env.core,
                 &second.token,
                 false,
+                false,
                 Instant::now()
             )),
             "busy"
         );
     }
-    install_pending(&env.core, &first.token, false, Instant::now()).expect("first wins");
+    install_pending(&env.core, &first.token, false, false, Instant::now()).expect("first wins");
     assert_eq!(
         err_kind(preview_install(&env.core, "other-tools", FACTS)),
         "alreadyExists"
@@ -1096,6 +1380,7 @@ fn concurrent_installs_of_one_id_from_different_marketplaces_are_busy() {
             err_kind(update_pending(
                 &env.core,
                 &update.preview.token,
+                false,
                 Instant::now()
             )),
             "busy"
@@ -1120,7 +1405,7 @@ fn saved_state_is_announced_and_reused_only_by_the_same_source() {
         serde_json::to_value(&again).expect("json")["hasSavedState"],
         true
     );
-    install_pending(&env.core, &again.token, false, Instant::now()).expect("install");
+    install_pending(&env.core, &again.token, false, false, Instant::now()).expect("install");
     assert!(
         with_store(&env.core, |s| s.snapshot(FACTS))
             .expect("get")
@@ -1145,7 +1430,7 @@ fn saved_state_is_announced_and_reused_only_by_the_same_source() {
             .is_some(),
         "a preview deletes nothing"
     );
-    install_pending(&env.core, &foreign.token, false, Instant::now()).expect("install");
+    install_pending(&env.core, &foreign.token, false, false, Instant::now()).expect("install");
     assert!(
         with_store(&env.core, |s| s.snapshot(FACTS))
             .expect("get")
@@ -1184,7 +1469,7 @@ fn state_of_unknown_origin_is_announced_in_the_review() {
         serde_json::to_value(&with_state).expect("json")["savedState"],
         "unknown"
     );
-    install_pending(&env.core, &with_state.token, false, Instant::now()).expect("install");
+    install_pending(&env.core, &with_state.token, false, false, Instant::now()).expect("install");
     assert!(
         with_store(&env.core, |s| s.snapshot(FACTS))
             .expect("get")
@@ -1206,7 +1491,7 @@ fn progress_from_another_source_is_kept_only_when_the_user_chooses_to() {
         serde_json::to_value(&foreign).expect("json")["savedState"],
         "foreign"
     );
-    install_pending(&env.core, &foreign.token, true, Instant::now()).expect("install, keep");
+    install_pending(&env.core, &foreign.token, true, false, Instant::now()).expect("install, keep");
     assert!(
         with_store(&env.core, |s| s.snapshot(FACTS))
             .expect("get")
@@ -1249,7 +1534,7 @@ fn a_preview_image_swapped_after_the_check_is_never_shown() {
     let commit = repo.commit();
     add(&env.core, &repo.url()).expect("add");
     let p = preview_install(&env.core, MARKET, FACTS).expect("preview");
-    install_pending(&env.core, &p.token, false, Instant::now()).expect("install");
+    install_pending(&env.core, &p.token, false, false, Instant::now()).expect("install");
 
     let served = |env: &Env| {
         env.core
@@ -1336,7 +1621,7 @@ fn an_installed_pack_serves_its_listed_pictures_and_nothing_else() {
     let repo = pictures_repo(&env, "pictures", HEXAGON);
     add(&env.core, &repo.url()).expect("add");
     let p = preview_install(&env.core, MARKET, PICTURES).expect("preview");
-    install_pending(&env.core, &p.token, false, Instant::now()).expect("install");
+    install_pending(&env.core, &p.token, false, false, Instant::now()).expect("install");
     assert!(listed_ids(&env).contains(&PICTURES.to_owned()));
     activities::content_for_core(&env.core, PICTURES).expect("content");
 
@@ -1373,7 +1658,7 @@ fn a_picture_changed_on_disk_after_the_check_is_refused_and_the_pack_shown_damag
     let repo = pictures_repo(&env, "pictures", HEXAGON);
     add(&env.core, &repo.url()).expect("add");
     let p = preview_install(&env.core, MARKET, PICTURES).expect("preview");
-    install_pending(&env.core, &p.token, false, Instant::now()).expect("install");
+    install_pending(&env.core, &p.token, false, false, Instant::now()).expect("install");
     let path = format!("/{PICTURES}/images/shape.png");
     assert_eq!(request(&env, &path).status(), StatusCode::OK);
 
@@ -1418,7 +1703,9 @@ fn a_pack_with_a_disguised_or_animated_picture_is_refused() {
         // The preview may already refuse; if not, the install must.
         let refused = match preview_install(&env.core, MARKET, PICTURES) {
             Err(e) => e,
-            Ok(p) => install_pending(&env.core, &p.token, false, Instant::now()).expect_err(name),
+            Ok(p) => {
+                install_pending(&env.core, &p.token, false, false, Instant::now()).expect_err(name)
+            }
         };
         assert_eq!(refused.kind, "invalidPack", "{name}");
         assert!(
@@ -1605,7 +1892,7 @@ fn progress_kept_from_an_uninstalled_activity_is_asked_about_after_a_change_of_a
         "foreign",
         "the review asks"
     );
-    install_pending(&env.core, &review.token, false, Instant::now()).expect("install");
+    install_pending(&env.core, &review.token, false, false, Instant::now()).expect("install");
     assert!(
         with_store(&env.core, |s| s.snapshot(FACTS))
             .expect("get")
@@ -1654,7 +1941,7 @@ fn a_pinned_commit_missing_at_the_new_address_leaves_the_install_as_is_with_a_no
     );
     // An update from the new address clears the note.
     let p = preview_update(&env.core, FACTS).expect("update preview");
-    update_pending(&env.core, &p.preview.token, Instant::now()).expect("update");
+    update_pending(&env.core, &p.preview.token, false, Instant::now()).expect("update");
     assert_eq!(manage_item(&env, FACTS).source_note, None);
 }
 

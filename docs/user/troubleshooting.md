@@ -38,7 +38,8 @@
 | Git isn't installed, or isn't on your PATH | Install Git, then restart Lullshift |
 | Can't reach the repository | Check your network connection |
 | Access was denied | For a private repository, set up Git credentials on this computer first (credential manager, SSH key or `gh auth login`) |
-| Code activities from third-party marketplaces can't be installed on this system yet | Expected in this release. Content packs can be installed |
+| Lullshift didn't install this program, because the box under the warning wasn't ticked | Open the review again, read the warning, and tick **I understand and want to install this program** if you want it |
+| **Install** is greyed out in a review | It is a third-party program. Read the warning and tick the box under it |
 | This marketplace hasn't been fetched yet. Refresh it first | Choose **Refresh** on the marketplace, then browse again |
 | This review has expired or was already used | Reviews last 10 minutes and work once. Open the review again |
 

@@ -14,6 +14,9 @@ import {
 } from "./api";
 import {
   asksAboutSavedState,
+  canConfirmReview,
+  CODE_RISK_TICK_HINT,
+  codeRiskView,
   errorText,
   FOREIGN_STATE_DELETE,
   FOREIGN_STATE_KEEP,
@@ -21,6 +24,7 @@ import {
   FOREIGN_STATE_TEXT,
   installSummary,
   kindLabel,
+  needsCodeConsent,
   permissionExplanation,
   permissionLabel,
   savedStateLine,
@@ -66,6 +70,10 @@ export function ReviewDialog({ request, onClose, onDone }: Props) {
   // review starts at "delete".
   const [keepFor, setKeepFor] = useState<ReviewRequest | null>(null);
   const keepSaved = keepFor !== null && keepFor === request;
+  // The consent box under a third-party code warning, tagged the same way, so every new review
+  // (install or update) starts unticked (owner decision 27.5).
+  const [consentFor, setConsentFor] = useState<ReviewRequest | null>(null);
+  const consented = consentFor !== null && consentFor === request;
 
   useEffect(() => {
     if (!request) return;
@@ -102,11 +110,13 @@ export function ReviewDialog({ request, onClose, onDone }: Props) {
   const confirm = async () => {
     if (state.phase !== "ready" || !request) return;
     const p = state.preview;
+    if (!canConfirmReview(p, consented)) return;
+    const acceptCodeRisk = needsCodeConsent(p) && consented;
     setState({ phase: "working", preview: p });
     try {
       if (request.mode === "install")
-        await marketplaceInstall(p.token, asksAboutSavedState(p) && keepSaved);
-      else await marketplaceUpdate(p.token);
+        await marketplaceInstall(p.token, asksAboutSavedState(p) && keepSaved, acceptCodeRisk);
+      else await marketplaceUpdate(p.token, acceptCodeRisk);
       onDone(
         request.mode === "install"
           ? `${truncate(p.name, 60)} was installed and turned on.`
@@ -143,9 +153,11 @@ export function ReviewDialog({ request, onClose, onDone }: Props) {
             {unchanged ? "Close" : "Cancel"}
           </button>
           {state.phase === "ready" && !unchanged && (
-            <button type="button" className="btn btn-primary" onClick={() => void confirm()}>
-              {isUpdate ? "Update" : "Install"}
-            </button>
+            <ConfirmButton
+              label={isUpdate ? "Update" : "Install"}
+              blocked={!canConfirmReview(state.preview, consented)}
+              onConfirm={() => void confirm()}
+            />
           )}
           {working && (
             <button type="button" className="btn btn-primary" disabled>
@@ -178,13 +190,96 @@ export function ReviewDialog({ request, onClose, onDone }: Props) {
               preview={preview}
               update={isUpdate ? (preview as UpdatePreview) : null}
               keepSaved={keepSaved}
+              consented={consented}
               disabled={working}
               onKeepSaved={(keep) => setKeepFor(keep ? request : null)}
+              onConsent={(yes) => setConsentFor(yes ? request : null)}
             />
           )}
         </div>
       )}
     </Dialog>
+  );
+}
+
+/**
+ * Install or Update. While the code-risk box is unticked it is disabled and described by the
+ * hint that says why, so a screen reader hears the reason on the button.
+ */
+export function ConfirmButton({
+  label,
+  blocked,
+  onConfirm,
+}: {
+  label: string;
+  blocked: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="btn btn-primary"
+      disabled={blocked}
+      aria-describedby={blocked ? "review-code-risk-hint" : undefined}
+      onClick={onConfirm}
+    >
+      {label}
+    </button>
+  );
+}
+
+/**
+ * The warning for code from a third-party marketplace and the consent box (owner decision
+ * 27.5). The box is never ticked in advance; the warning text describes it.
+ */
+export function CodeRiskSection({
+  preview,
+  consented,
+  disabled,
+  onChange,
+}: {
+  preview: InstallPreview;
+  consented: boolean;
+  disabled: boolean;
+  onChange: (consented: boolean) => void;
+}) {
+  const view = codeRiskView(preview);
+  if (!view) return null;
+  return (
+    <section className="review-code-risk" aria-labelledby="review-code-risk-title">
+      <Banner tone={view.failed ? "danger" : "attention"}>
+        <h3 id="review-code-risk-title" className="review-subtitle">
+          {view.heading}
+        </h3>
+        <div id="review-code-risk-text">
+          <ul className="plain-list review-code-risk-points">
+            {view.points.map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ul>
+          <p>{view.verification}</p>
+          <p>
+            <strong>{view.worstCase}</strong>
+          </p>
+          <p>{view.noGuarantee}</p>
+        </div>
+      </Banner>
+      <label className="mk-check review-code-risk-consent">
+        <input
+          type="checkbox"
+          checked={consented}
+          disabled={disabled}
+          aria-describedby="review-code-risk-text"
+          onChange={(e) => onChange(e.currentTarget.checked)}
+        />
+        <span>{view.consentLabel}</span>
+      </label>
+      {!consented && (
+        <p id="review-code-risk-hint" className="review-code-risk-hint">
+          {CODE_RISK_TICK_HINT}
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -241,14 +336,18 @@ function ReviewBody({
   preview: p,
   update,
   keepSaved,
+  consented,
   disabled,
   onKeepSaved,
+  onConsent,
 }: {
   preview: InstallPreview;
   update: UpdatePreview | null;
   keepSaved: boolean;
+  consented: boolean;
   disabled: boolean;
   onKeepSaved: (keep: boolean) => void;
+  onConsent: (consented: boolean) => void;
 }) {
   const view = update ? updateView(update) : null;
   if (view?.unchanged) {
@@ -268,6 +367,7 @@ function ReviewBody({
       {p.description && <p>{truncate(p.description, 400)}</p>}
 
       {p.thirdParty && <Banner tone="attention">{UNVERIFIED_TEXT}</Banner>}
+      <CodeRiskSection preview={p} consented={consented} disabled={disabled} onChange={onConsent} />
       {savedStateLine(p) && <Banner tone="attention">{savedStateLine(p)}</Banner>}
       {!update && asksAboutSavedState(p) && (
         <ForeignStateChoice keep={keepSaved} disabled={disabled} onChange={onKeepSaved} />

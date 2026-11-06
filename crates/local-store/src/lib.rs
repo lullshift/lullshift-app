@@ -15,9 +15,9 @@ mod context;
 mod marketplaces;
 
 pub use marketplaces::{
-    ActivityKind, AddressChange, BUILTIN_MARKETPLACE_ID, InstalledActivity, MAX_ACTIVITY_ID_CHARS,
-    MAX_MARKETPLACE_ID_CHARS, MAX_PATH_CHARS, MAX_URL_CHARS, MarketplaceRecord,
-    NewInstalledActivity, SavedState,
+    ActivityKind, AddressChange, BUILTIN_MARKETPLACE_ID, CodeConsent, InstalledActivity,
+    MAX_ACTIVITY_ID_CHARS, MAX_MARKETPLACE_ID_CHARS, MAX_PATH_CHARS, MAX_URL_CHARS,
+    MarketplaceRecord, NewInstalledActivity, SavedState,
 };
 
 pub use companion::{
@@ -97,6 +97,10 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 13,
         sql: include_str!("../migrations/0013_companion_tool_notices.sql"),
+    },
+    Migration {
+        version: 14,
+        sql: include_str!("../migrations/0014_code_consent.sql"),
     },
 ];
 

@@ -71,8 +71,7 @@ static STATE: AtomicU8 = AtomicU8::new(State::Unknown as u8);
 pub enum State {
     /// Not checked yet.
     Unknown = 0,
-    /// Turned off and read back (macOS, Linux). The only state that opens the third-party code
-    /// gate (`marketplace::third_party_code_allowed`).
+    /// Turned off and read back (macOS, Linux).
     Off = 1,
     /// Could not be turned off or confirmed.
     Failed = 2,
@@ -82,8 +81,21 @@ pub enum State {
     Asserted = 3,
 }
 
+impl State {
+    /// The same fact in the marketplace crate's terms. It only chooses which honest warning the
+    /// third-party code review shows (owner decision 27.5); it opens or closes nothing.
+    const fn as_block(self) -> marketplace::WebrtcBlock {
+        match self {
+            Self::Unknown => marketplace::WebrtcBlock::Unknown,
+            Self::Off => marketplace::WebrtcBlock::ReadBack,
+            Self::Failed => marketplace::WebrtcBlock::Failed,
+            Self::Asserted => marketplace::WebrtcBlock::Asserted,
+        }
+    }
+}
+
 /// What is known about WebRTC in the main webview.
-#[allow(dead_code)] // Read by tests; the third-party code gate is told through `record`.
+#[allow(dead_code)] // Read by tests; the review's warning is told through `set_state`.
 pub fn state() -> State {
     match STATE.load(Ordering::SeqCst) {
         1 => State::Off,
@@ -93,11 +105,11 @@ pub fn state() -> State {
     }
 }
 
-/// Stores `state` and tells the third-party code gate whether WebRTC is confirmed off: only
-/// `Off` counts.
+/// Stores `state` and tells the marketplace crate, so the third-party code review can say
+/// honestly what is known on this computer.
 fn set_state(state: State) {
     STATE.store(state as u8, Ordering::SeqCst);
-    marketplace::set_webrtc_confirmed_off(state == State::Off);
+    marketplace::set_webrtc_block(state.as_block());
 }
 
 #[cfg_attr(windows, allow(dead_code))] // Windows only asserts; tests still call it.
@@ -114,7 +126,7 @@ fn record(ok: bool) {
 pub fn disable(window: &tauri::WebviewWindow) {
     #[cfg(windows)]
     {
-        // Not read back, so not `Off`: the gate stays closed (see `State::Asserted`).
+        // Not read back, so not `Off` (see `State::Asserted`); the review says so.
         let _ = window;
         set_state(State::Asserted);
     }
@@ -386,11 +398,19 @@ mod tests {
         assert_eq!(state(), State::Off);
         record(false);
         assert_eq!(state(), State::Failed);
-        // Windows: set at creation, not read back. Not `Off`, so the gate gets no confirmation.
+        // Windows: set at creation, not read back. Not `Off`.
         set_state(State::Asserted);
         assert_eq!(state(), State::Asserted);
         assert_ne!(state(), State::Off);
-        assert!(!marketplace::third_party_code_allowed());
         set_state(State::Unknown);
+    }
+
+    #[test]
+    fn each_state_maps_to_the_same_fact_for_the_review() {
+        use marketplace::WebrtcBlock as B;
+        assert_eq!(State::Unknown.as_block(), B::Unknown);
+        assert_eq!(State::Off.as_block(), B::ReadBack);
+        assert_eq!(State::Failed.as_block(), B::Failed);
+        assert_eq!(State::Asserted.as_block(), B::Asserted);
     }
 }

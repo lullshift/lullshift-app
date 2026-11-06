@@ -2,8 +2,8 @@
 //! typed API over it.
 
 use local_store::{
-    ActivityKind, AddressChange, BUILTIN_MARKETPLACE_ID, MIGRATIONS, NewInstalledActivity,
-    SavedState, Store, StoreError, latest_version, migrate,
+    ActivityKind, AddressChange, BUILTIN_MARKETPLACE_ID, CodeConsent, MIGRATIONS,
+    NewInstalledActivity, SavedState, Store, StoreError, latest_version, migrate,
 };
 use rusqlite::Connection;
 use time::OffsetDateTime;
@@ -28,6 +28,7 @@ fn install(id: &str, market: &str) -> NewInstalledActivity {
         permissions: vec!["storage".to_owned()],
         digest: DIGEST.to_owned(),
         size_bytes: 1234,
+        code_consent: None,
     }
 }
 
@@ -39,7 +40,7 @@ fn invalid<T: std::fmt::Debug>(r: Result<T, StoreError>) {
 
 #[test]
 fn latest_is_8_and_fresh_install_has_builtin_row() {
-    assert!(latest_version() >= 12);
+    assert!(latest_version() >= 14);
     let (s, report) =
         Store::open(&tempfile::tempdir().expect("dir").path().join("l.db")).expect("open");
     assert_eq!(
@@ -586,6 +587,201 @@ fn source_note_only_takes_the_known_value() {
     };
     assert!(insert("notFoundAtNewAddress").is_ok());
     assert!(insert("whatever").is_err());
+}
+
+// ---- owner decision 27.5: consent to third-party code, migration 0014 --------------------
+
+fn code_install(id: &str, sha: &str, consent: Option<OffsetDateTime>) -> NewInstalledActivity {
+    NewInstalledActivity {
+        commit_sha: sha.to_owned(),
+        kind: ActivityKind::App,
+        engine: None,
+        code_consent: consent.map(|at| CodeConsent {
+            at,
+            commit: sha.to_owned(),
+        }),
+        ..install(id, "acme")
+    }
+}
+
+#[test]
+fn code_consent_is_recorded_with_its_commit_and_replaced_on_update() {
+    let mut s = Store::open_in_memory().expect("store");
+    s.add_marketplace("acme", "https://github.com/acme/market", T0)
+        .expect("add");
+    let a = s
+        .put_installed_activity(&code_install("com.acme.g", SHA_A, Some(T0)), T0)
+        .expect("install");
+    assert_eq!(
+        a.code_consent,
+        Some(CodeConsent {
+            at: T0,
+            commit: SHA_A.to_owned()
+        })
+    );
+    // An update to a new commit records the consent given for that commit.
+    let b = s
+        .put_installed_activity(&code_install("com.acme.g", SHA_B, Some(T1)), T1)
+        .expect("update");
+    assert_eq!(
+        b.code_consent,
+        Some(CodeConsent {
+            at: T1,
+            commit: SHA_B.to_owned()
+        })
+    );
+    assert_eq!(b.installed_at, T0, "an update keeps the install time");
+    // A pack has none, and replacing code with a pack clears it.
+    let c = s
+        .put_installed_activity(
+            &NewInstalledActivity {
+                commit_sha: SHA_A.to_owned(),
+                ..install("com.acme.g", "acme")
+            },
+            T1,
+        )
+        .expect("pack");
+    assert_eq!(c.code_consent, None);
+}
+
+#[test]
+fn code_consent_must_match_the_commit_and_the_kind() {
+    let mut s = Store::open_in_memory().expect("store");
+    s.add_marketplace("acme", "https://github.com/acme/market", T0)
+        .expect("add");
+    let mut wrong_commit = code_install("com.acme.g", SHA_A, Some(T0));
+    if let Some(c) = wrong_commit.code_consent.as_mut() {
+        c.commit = SHA_B.to_owned();
+    }
+    invalid(s.put_installed_activity(&wrong_commit, T0));
+    let pack = NewInstalledActivity {
+        code_consent: Some(CodeConsent {
+            at: T0,
+            commit: SHA_A.to_owned(),
+        }),
+        ..install("com.acme.p", "acme")
+    };
+    invalid(s.put_installed_activity(&pack, T0));
+    assert!(s.installed_activities().expect("list").is_empty());
+}
+
+#[test]
+fn the_schema_refuses_half_or_malformed_consent() {
+    let (_d, conn) = raw_db();
+    conn.execute(
+        "INSERT INTO marketplaces (id, url, added_at, builtin)
+         VALUES ('acme', 'https://a.example/b', '2026-11-05T10:00:00Z', 0)",
+        [],
+    )
+    .expect("market");
+    let insert = |id: &str, kind: &str, at: Option<&str>, commit: Option<&str>| {
+        let engine = if kind == "content" {
+            "'engine.trivia@1'"
+        } else {
+            "NULL"
+        };
+        conn.execute(
+            &format!(
+                "INSERT INTO installed_activities (activity_id, marketplace_id, source_url,
+                   source_path, commit_sha, manifest_version, kind, engine, permissions, digest,
+                   size_bytes, installed_at, updated_at, code_consent_at, code_consent_commit)
+                 VALUES ('{id}', 'acme', 'https://a.example/b', '', '{SHA_A}', '1.0.0',
+                   '{kind}', {engine}, '[]', '{DIGEST}', 1, 't', 't', ?1, ?2)"
+            ),
+            rusqlite::params![at, commit],
+        )
+    };
+    let t = Some("2026-11-06T10:00:00Z");
+    let upper = SHA_A.to_uppercase();
+    assert!(insert("a.ok", "app", t, Some(SHA_A)).is_ok());
+    assert!(insert("a.none", "app", None, None).is_ok());
+    assert!(insert("a.at-only", "app", t, None).is_err());
+    assert!(insert("a.commit-only", "app", None, Some(SHA_A)).is_err());
+    assert!(insert("a.short", "app", t, Some("abc")).is_err());
+    assert!(
+        insert("a.upper", "app", t, Some(&upper)).is_err(),
+        "lowercase hex only"
+    );
+    assert!(insert("p.pack", "content", t, Some(SHA_A)).is_err());
+}
+
+#[test]
+fn version_13_database_upgrades_to_14_and_keeps_installs_without_consent() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("open raw");
+        migrate(&conn, &MIGRATIONS[..13], None).expect("v13");
+        conn.execute(
+            "INSERT INTO marketplaces (id, url, added_at, builtin)
+             VALUES ('acme', 'https://github.com/acme/market', '2026-11-05T10:00:00Z', 0)",
+            [],
+        )
+        .expect("row");
+        conn.execute(
+            &format!(
+                "INSERT INTO installed_activities (activity_id, marketplace_id, source_url,
+                   source_path, commit_sha, manifest_version, kind, engine, permissions, digest,
+                   size_bytes, installed_at, updated_at, source_note)
+                 VALUES ('com.acme.a', 'acme', 'https://github.com/acme/market', 'p', '{SHA_A}',
+                   '1.0.0', 'content', 'engine.trivia@1', '[]', '{DIGEST}', 1,
+                   '2026-11-05T10:00:00Z', '2026-11-05T10:00:00Z', 'notFoundAtNewAddress')"
+            ),
+            [],
+        )
+        .expect("install");
+    }
+    let (s, report) = Store::open(&path).expect("upgrade");
+    assert_eq!((report.from_version, report.to_version), (13, 14));
+    assert!(
+        report.backup.is_some(),
+        "a backup is taken before migrating"
+    );
+    let rec = s
+        .installed_activity("com.acme.a")
+        .expect("get")
+        .expect("kept");
+    assert_eq!(rec.code_consent, None);
+    assert_eq!(rec.commit_sha, SHA_A);
+    assert_eq!(
+        s.install_source_notes().expect("notes"),
+        [("com.acme.a".to_owned(), "notFoundAtNewAddress".to_owned())],
+        "earlier columns are untouched"
+    );
+}
+
+#[test]
+fn failed_version_14_migration_rolls_back_to_13() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("open raw");
+        migrate(&conn, &MIGRATIONS[..13], None).expect("v13");
+        // The second ALTER of the step clashes, so the first must be rolled back with it.
+        conn.execute(
+            "ALTER TABLE installed_activities ADD COLUMN code_consent_commit INTEGER",
+            [],
+        )
+        .expect("clash");
+    }
+    assert!(matches!(
+        Store::open(&path),
+        Err(StoreError::Migration { version: 14, .. })
+    ));
+    let conn = Connection::open(&path).expect("reopen raw");
+    let v: i64 = conn
+        .query_row("SELECT max(version) FROM schema_version", [], |r| r.get(0))
+        .expect("version");
+    assert_eq!(v, 13, "left at the last good version");
+    let has_at: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM pragma_table_info('installed_activities')
+             WHERE name = 'code_consent_at'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("columns");
+    assert_eq!(has_at, 0, "the first ALTER of the step was rolled back too");
 }
 
 // ---- API: marketplaces -----------------------------------------------------------------

@@ -76,7 +76,24 @@ Progress from the same marketplace and repository is reused without asking.
 
 **Content packs** (data for a bundled engine, no code) can be installed from any marketplace.
 
-**Code activities from third-party marketplaces can't be installed in this release.** They are listed but blocked, with the message "Code activities from third-party marketplaces can't be installed on this system yet. Content packs can." This stays in place until the activity sandbox has passed its security checks on each operating system.
+**Code activities from third-party marketplaces** (programs someone else wrote) can be installed on Windows, macOS and Linux, after you read a warning and agree. They are listed as **Third-party program**.
+
+Their review has an extra section, **This is someone else's program**. It tells you:
+
+- it runs inside Lullshift's sandbox, the same one the built-in activities use;
+- by design it has no access to your files, the network, your clipboard or the rest of Lullshift;
+- which permissions it asks for;
+- what Lullshift has checked on your computer:
+  - **Windows:** Lullshift's sandbox checks passed on a test computer. WebRTC, a way a web page could send data out, is blocked by settings Lullshift gives the browser engine, but Lullshift can't read those settings back to confirm them on your computer.
+  - **macOS and Linux:** WebRTC is turned off and Lullshift confirmed the setting, but the full sandbox checks haven't been run on these platforms yet.
+  - If Lullshift **couldn't** turn WebRTC off on your computer, the warning says so plainly.
+- the worst case: if the sandbox has a gap Lullshift doesn't know about, the program could try to send out what it shows you or what you type into it. Don't type passwords, keys or other private information into it.
+
+**Install** stays unavailable until you tick **I understand and want to install this program**. The box is never ticked for you. Lullshift remembers when you agreed and for which commit. Each update that changes the program's code asks again.
+
+Installed programs run exactly like the built-in activities, in the same sandbox, and show **Third-party program from** and the marketplace's name in the library and at the top of the activity.
+
+Lullshift can't guarantee its sandbox has no gaps. Only install programs from people you trust.
 
 ## Pinning
 
@@ -90,7 +107,7 @@ Updates happen only when you ask:
 
 1. Choose **Refresh** on the marketplace. This fetches its latest list.
 2. Choose **Review the update** on an installed activity. The review shows the old and new version and commit, any permissions added or removed, and a highlighted **Source changed** row if the update comes from a different repository.
-3. Confirm to update. If you don't, nothing changes.
+3. Confirm to update. If you don't, nothing changes. For a third-party program, the update review shows the warning again, and you tick the box again before **Update** is available.
 
 ## Removing and uninstalling
 

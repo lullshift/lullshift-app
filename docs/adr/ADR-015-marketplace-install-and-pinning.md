@@ -64,6 +64,8 @@ Third-party code activities (`kind: app` from a non-built-in marketplace) can be
 
 All three constants stay blocked. Windows can be unblocked by the product owner. macOS and Linux need their proof run first.
 
+**Superseded by the amendment "Third-party code with consent (owner decision 27.5)" at the end of this ADR.**
+
 ### Built-in marketplace
 
 `lullshift` is always present, cannot be removed or refreshed, and its activities are the bundled ones. Each can be disabled and re-enabled; a disabled activity disappears from the library but keeps its saved state.
@@ -86,7 +88,7 @@ Recorded where the shipped crate differs from, or is stricter than, the text abo
 - **Content packs** may contain `manifest.json`, the manifest's `data` file, the manifest's `preview` image (at most 256 KiB) and `.md`/`.txt` files. Any other file, including any other `.json`, is refused. Manifests are checked with the host's own `parse_manifest` rules (moved into the crate and shared with the desktop crate) plus: no unknown top-level field, `offline: true`, unique known permissions, valid tags. The data file is at most 256 KiB and is checked with the host's engine data validator (also moved into the crate).
 - **`file://`** exists only behind `#[cfg(test)]` (`Git::for_tests`, `GitUrl::for_test_file`) and, for the desktop crate's command tests, behind the `unsafe-test-file-urls` feature **and** `debug_assertions`; the feature is requested only from a `[dev-dependencies]` entry (resolver 3 does not unify those into normal builds), so no release build contains it.
 - **Digest** is SHA-256 over `lullshift-pack-digest-v1\n` followed, for each file sorted by path, by `path NUL byte-length NUL sha256-hex(bytes) LF`. It covers file names and contents only, not modes or timestamps; `verify_install` also refuses links and anything that is not a plain file.
-- **Third-party code** (`kind: app`, non-built-in marketplace) is refused with `PackError::ThirdPartyCodeBlocked` right after the manifest is read, before any other file is read; no review preview is produced for it (the index entry is enough to list it).
+- **Third-party code** (`kind: app`, non-built-in marketplace) was refused with `PackError::ThirdPartyCodeBlocked` right after the manifest was read. Since owner decision 27.5 it is prepared and reviewed like a pack and needs consent at install; `ThirdPartyCodeBlocked` is gone (see the amendment at the end).
 - **Error messages** never carry `git` stderr, URLs from the index or `serde` messages (which can quote values); `IndexError::Parse` keeps only the kind of problem and its line and column.
 - **Review fixes (Sprint 08 security review).** The runner also sets `http.followRedirects=false` (an address must not hand the fetch to another host; a repository that moved must be re-added at its new address), `http.sslVerify=true` and `transfer.fsckObjects`/`fetch.fsckObjects=true` (Git rejects malformed or hostile trees before we read them). Inherited `GIT_SSL_NO_VERIFY`, `GIT_CURL_VERBOSE`, `GIT_CONFIG_GLOBAL`, `GIT_EXEC_PATH` and every `GIT_TRACE*` variable are removed. A fetch may add at most 200 MiB to a cache's `objects/` folder: the folder is polled while `git fetch` runs and checked once more when it ends, and past the cap the process tree is killed (`OutputTooLarge`). A cache that did not exist is fetched into a sibling staging folder and moved into place only on success, so a failed or oversized first fetch leaves nothing; an existing cache is fetched into in place (older commits that installs are pinned to must stay), and only temporary pack files are cleaned up after a failure. Re-adding a removed marketplace name from a different address is refused. Installed files are served from the bytes that were hashed. Index text uses the same invisible-character set as manifests (including U+2028/2029, the Hangul and Halfwidth filler characters and U+FFF9-FFFB) and refuses more than four combining marks in a row.
 
@@ -196,3 +198,40 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
 - **No plain http.** Plain http stays unsupported, even on a home network.
 - **Re-hashing cost.** Every load re-hashes the files it reads. Packs are at most 20 MiB, so this is milliseconds, but a large installed app would pay it on every file served.
 - **Kept foreign progress.** Keeping it is the user's choice. The new code can read what the old code saved, which is the risk the warning names.
+
+## Amendment: third-party code with consent (owner decision 27.5)
+
+- **Date:** 2026-11-06
+- **Decision by:** product owner, `sprints/DECISIONS_FOR_REVIEW.md` item 27.5. It replaces decision 15, the "Third-party code" section above, its Sprint 12 note and the gate described in ADR-012.
+
+### What changed
+
+Third-party code activities (`kind: app` from any marketplace other than the built-in one) can be installed on **every platform**: Windows, macOS and Linux. The mitigation is a clear risk warning and explicit consent at each install, and again at each update that changes the pinned commit. There is no extra setting. Claude recommended a one-time setting on macOS and Linux until their sandbox proof (M12-8) passes; the owner chose the consent warning only.
+
+**The sandbox is not weakened.** Third-party code runs exactly like bundled code: the same `lullact:` scheme and path rules, the same activity CSP and response headers, the same sandboxed iframe, the same WebRTC block, the same bridge and permissions model (`activity.storage` only), and the same re-hash of every installed file on each read (amendment item 5 above). Only the install gate opens. The pack checks are unchanged: regular files only, no executables, symlinks or submodules, allowlisted extensions (no native code, Wasm or scripts other than `.js`), size and count limits. A code activity must also contain its `index.html` entrypoint.
+
+### How it works
+
+- **Gate (`crates/marketplace/src/gate.rs`).** The per-OS `THIRD_PARTY_CODE_*` constants, `third_party_code_allowed` and `set_webrtc_confirmed_off` are gone, and so is `PackError::ThirdPartyCodeBlocked`. `needs_code_consent(kind, third_party)` says which installs need consent. The host's WebRTC state is kept as information only (`set_webrtc_block`, from `webrtc::State`), and `code_risk_status()` picks the warning's verification note:
+
+  | Platform and state | Note (`codeRisk.status`) | What the warning says |
+  |---|---|---|
+  | Windows, `Asserted` | `windowsNotReadBack` | The sandbox checks passed on a test computer; the WebRTC block is set by browser settings Lullshift can't read back on this computer. |
+  | macOS or Linux, `Off` (read back) | `unverified` | The WebRTC block is in place and read back, but the sandbox checks haven't been run on this platform. |
+  | Any, `Failed` | `blockFailed` | Lullshift couldn't turn off WebRTC on this computer; the program may be able to send data out. Shown as an alert. |
+  | Anything else (`Unknown`, or a state that doesn't fit the platform) | `notChecked` | Lullshift hasn't confirmed the block on this computer yet. |
+
+  No state is described as a guarantee, and no state blocks the install.
+- **Review.** `marketplace_preview_install` and `marketplace_preview_update` now produce a review for third-party code, with `codeRisk: { platform, status }` (null for everything else). The review shows a separate warning, "This is someone else's program", listing: it runs inside Lullshift's sandbox; by design it has no access to files, the network, the clipboard or the rest of the app; the permissions its manifest declares; the verification note above; and the worst case (if there is a sandbox gap, it could try to send out what it shows or what you type into it). Below it is an unticked checkbox, "I understand and want to install this program", described by the warning (`aria-describedby`). Install or Update stays disabled, and is described by a hint, until it is ticked. Every new review starts unticked; Cancel keeps the initial focus.
+- **Backend enforcement.** `marketplace_install` and `marketplace_update` take `acceptCodeRisk`. For third-party code anything but `true` (missing included) is refused with `codeRiskNotAccepted`, and the single-use token is spent, so the review must be opened again. An update that keeps the same commit is a no-op and needs nothing. Content packs and built-in code ignore the flag.
+- **Record.** The consent is stored with the install: `installed_activities.code_consent_at` and `code_consent_commit` (migration 0014). Both are set together, only for `kind = 'app'`, and the commit must be the install's own pinned commit (checked by the schema and by `local-store`). An update replaces them with the consent for the new commit.
+- **Running.** The library only serves third-party code whose record carries consent for its pinned commit; a record without it (not written by the install or update commands) is shown as damaged and never served. Where activities are listed, and in the activity's header, third-party code is labelled "Third-party program from <marketplace>" (packs: "From <marketplace>"). Manage shows "Third-party program · From <marketplace>", and the marketplace list shows "Third-party program" instead of "Code activity".
+
+### Residual risks (accepted by decision 27.5, stated in the warning)
+
+- **macOS and Linux are unverified.** WebRTC is turned off and read back there, but the full sandbox proof (M03-4, M03-5, M12-8) has not been run on those platforms.
+- **Windows is not read back.** The WebRTC block depends on browser arguments that WebView2 can't report back at run time. The proof passed on a test computer, not on the user's.
+- **Local overrides.** `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` or the WebView2 registry policy are appended after the app's arguments and can undo the Windows block (the negative control in ADR-012 shows it). Setting them needs the user's own account.
+- **DNS prefetch** from an activity frame has not been tested as a way to leak data by name lookups.
+- **Earlier Sprint 03 items** still listed under ADR-012 "Known gaps": an activity can navigate its frame to another activity's page under its own id (that page then runs with the first activity's identity and storage, not the other's), and the storage quota counts bytes, not rows. Neither gives access to another activity's data, but both were meant to be settled before third-party code.
+- **What the user types or sees.** Whatever a program shows, or is typed into it, is visible to that program. The sandbox stops it from sending that out by any known route; an unknown gap would let it. That is the worst case the warning names.

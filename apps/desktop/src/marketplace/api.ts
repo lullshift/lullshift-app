@@ -15,7 +15,8 @@ export type ErrorKind =
   | "invalidUrl"
   | "invalidIndex"
   | "invalidPack"
-  | "thirdPartyCodeBlocked"
+  /** Third-party code was sent to install or update without `acceptCodeRisk: true`. */
+  | "codeRiskNotAccepted"
   | "alreadyExists"
   | "builtinProtected"
   | "busy"
@@ -53,7 +54,7 @@ const KINDS: readonly string[] = [
   "invalidUrl",
   "invalidIndex",
   "invalidPack",
-  "thirdPartyCodeBlocked",
+  "codeRiskNotAccepted",
   "alreadyExists",
   "builtinProtected",
   "busy",
@@ -130,7 +131,28 @@ export interface MarketplaceEntry {
   external: boolean;
   featured: boolean;
   installed: { commit: string; version: string; enabled: boolean } | null;
-  blocked: "thirdPartyCode" | null;
+  /**
+   * Code from a third-party marketplace (owner decision 27.5): installing it shows the risk
+   * warning and asks for consent. Known up front only for same-repository entries.
+   */
+  thirdPartyCode: boolean;
+}
+
+/**
+ * What the WebRTC block is known to be on this computer, for the code-risk warning. None of
+ * these is a guarantee.
+ * - windowsNotReadBack: the sandbox proof passed on Windows; the block is set by browser
+ *   arguments Lullshift can't read back.
+ * - unverified: macOS or Linux; the block is in place and read back, but the sandbox proof
+ *   hasn't run on this platform.
+ * - blockFailed: the block couldn't be applied on this computer.
+ * - notChecked: not checked yet, or an unexpected state.
+ */
+export type CodeRiskStatus = "windowsNotReadBack" | "unverified" | "blockFailed" | "notChecked";
+
+export interface CodeRisk {
+  platform: "windows" | "macos" | "linux";
+  status: CodeRiskStatus;
 }
 
 export interface InstallPreview {
@@ -153,6 +175,11 @@ export interface InstallPreview {
   fileCount: number;
   /** True for any marketplace other than the built-in one. */
   thirdParty: boolean;
+  /**
+   * Set for third-party code only. Installing it, or updating it to a new commit, needs the
+   * user's consent (`acceptCodeRisk: true`). Missing on older hosts.
+   */
+  codeRisk?: CodeRisk | null;
   /** Saved progress from an earlier install of this id exists and will be used. */
   hasSavedState: boolean;
   /**
@@ -219,12 +246,16 @@ export const marketplacePreviewInstall = (marketplaceId: string, activityId: str
 /**
  * Installs a reviewed activity. `keepSavedState` only matters when the review said
  * `savedState: "foreign"`: true keeps that progress, false (the default) deletes it.
+ * `acceptCodeRisk` is the consent box under the third-party code warning; the host refuses
+ * third-party code without it.
  */
-export const marketplaceInstall = (token: string, keepSavedState = false) =>
-  call<null>("marketplace_install", { token, keepSavedState });
+export const marketplaceInstall = (token: string, keepSavedState = false, acceptCodeRisk = false) =>
+  call<null>("marketplace_install", { token, keepSavedState, acceptCodeRisk });
 export const marketplacePreviewUpdate = (activityId: string) =>
   call<UpdatePreview>("marketplace_preview_update", { activityId });
-export const marketplaceUpdate = (token: string) => call<null>("marketplace_update", { token });
+/** `acceptCodeRisk`: needed to update third-party code to a new commit. */
+export const marketplaceUpdate = (token: string, acceptCodeRisk = false) =>
+  call<null>("marketplace_update", { token, acceptCodeRisk });
 export const activityUninstall = (activityId: string, deleteSavedState: boolean) =>
   call<null>("activity_uninstall", { activityId, deleteSavedState });
 export const activitySetEnabled = (activityId: string, enabled: boolean) =>

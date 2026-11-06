@@ -11,7 +11,7 @@ This is the contract between the Tauri backend (`apps/desktop/src-tauri`) and th
 - `invalidUrl`
 - `invalidIndex`
 - `invalidPack`
-- `thirdPartyCodeBlocked`
+- `codeRiskNotAccepted` (owner decision 27.5: `marketplace_install` or `marketplace_update` for third-party code without `acceptCodeRisk: true`; nothing changed, and the token is spent)
 - `alreadyExists`
 - `builtinProtected`
 - `busy`
@@ -45,7 +45,7 @@ type MarketplaceEntry = {
   external: boolean;          // source is another git repo
   featured: boolean;
   installed: { commit: string; version: string; enabled: boolean } | null;
-  blocked: "thirdPartyCode" | null; // known up front for a same-repo kind:app entry in a third-party marketplace
+  thirdPartyCode: boolean;    // decision 27.5: a same-repo kind:app entry in a third-party marketplace (replaces `blocked`)
 };
 
 type InstallPreview = {
@@ -64,6 +64,10 @@ type InstallPreview = {
   sizeBytes: number;
   fileCount: number;
   thirdParty: boolean;        // true for any non-built-in marketplace
+  codeRisk: {                 // decision 27.5: set for third-party code only, else null
+    platform: "windows" | "macos" | "linux";
+    status: "windowsNotReadBack" | "unverified" | "blockFailed" | "notChecked"; // never a guarantee
+  } | null;
   hasSavedState: boolean;     // saved progress from an earlier install of this id exists and will be used
   savedState: "none" | "own" | "unknown" | "foreign"; // Sprint 12: "foreign" means the review asks delete or keep
 };
@@ -114,15 +118,17 @@ type UpdatePreview = InstallPreview & {
   - For the built-in, lists the bundled activities, excluding engines.
 - `marketplace_preview_install({ marketplaceId, activityId }) -> InstallPreview`
   - May fetch an external source.
-  - Fails with `thirdPartyCodeBlocked` for a third-party `kind: app`.
+  - Decision 27.5: a third-party `kind: app` is reviewed like a pack, with `codeRisk` set.
   - Prepares the pack in memory or in a temp dir, but installs nothing.
-- `marketplace_install({ token, keepSavedState? }) -> void`
+- `marketplace_install({ token, keepSavedState?, acceptCodeRisk? }) -> void`
   - Writes the pack, records it in the store, and makes it enabled.
+  - Decision 27.5: third-party code needs `acceptCodeRisk: true` (the consent box under the warning); missing or false returns `codeRiskNotAccepted` and installs nothing. The consent time and commit are recorded with the install (migration 0014). Other installs ignore it.
   - Sprint 12: `keepSavedState: true` keeps progress the review reported as `savedState: "foreign"`. Missing or false deletes it, as before. It has no effect for other values.
 - `marketplace_preview_update({ activityId }) -> UpdatePreview`
   - Uses the marketplace's last fetched index. The UI calls refresh first.
-- `marketplace_update({ token }) -> void`
+- `marketplace_update({ token, acceptCodeRisk? }) -> void`
   - Swaps atomically, removes the old commit folder, and keeps the enabled flag.
+  - Decision 27.5: updating third-party code to a new commit needs `acceptCodeRisk: true` again, otherwise `codeRiskNotAccepted` and nothing changes. The record's consent is replaced with the one for the new commit. A same-commit update is a no-op and needs nothing.
 - `activity_uninstall({ activityId, deleteSavedState }) -> void`
   - Works for installed activities only. Returns `builtinProtected` for bundled ones.
 - `activity_set_enabled({ activityId, enabled }) -> void`
@@ -149,7 +155,7 @@ Code: `apps/desktop/src-tauri/src/market.rs` (commands), `activities.rs` and `ac
 **Additions and clarifications (none changes a shape above)**
 
 - `activities_manage_list` is a new command (permission `allow-activities-manage-list`). Bundled engines are not items; in debug builds the sandbox probe appears like any bundled activity. `kind` is `"app"` or `"content"`; `name` is the manifest name (or the id if the files can't be read); `commit` is null for bundled ones.
-- `problem` is `"tampered"` when the install folder no longer matches the digest recorded at install, **and** also for a record this release must not run (a third-party `kind: app` record, which cannot be created through the commands). `"missingEngine"` is used when the bundled engine is gone **or no longer accepts the pack's data**.
+- `problem` is `"tampered"` when the install folder no longer matches the digest recorded at install, **and** also for a record this release must not run (since decision 27.5: a third-party `kind: app` record without consent for its own pinned commit, which the commands never create). `"missingEngine"` is used when the bundled engine is gone **or no longer accepts the pack's data**.
 - Tokens: an unknown, used, expired (10 minutes) or wrong-kind token returns `notFound` ("This review has expired or was already used"). Every token works once, even if the command then fails. At most 8 reviews are held in memory; the oldest is dropped.
 - `marketplace_update` returns `notFound` if the installed activity changed (commit or marketplace) since the review, and succeeds as a no-op when the previewed commit is the installed one (`unchanged: true`).
 - `sourceChanged` (update review): the install's recorded source address against the address the update would come from. It is set when they differ (for example an index entry that now points at another repository), counts toward "needs your approval", and the UI shows it as a highlighted "Source changed" row with both addresses.
@@ -175,7 +181,7 @@ Code: `apps/desktop/src-tauri/src/market.rs` (commands), `activities.rs` and `ac
 
 - Cache: `<app data>/marketplaces/<id>/repo.git` (+ `external/`, `source.json`). Installs: `<app data>/installed/<id>/<commit>/`. Installed files are never read from the cache.
 - Verification (Sprint 12): there is no per-session cache any more. Every snapshot build hashes every install and keeps only the per-file length and SHA-256. Install, update, uninstall, enable, disable and a damaged file all rebuild it.
-- Serving an installed pack: the bundled engine's files, under the same CSP and path rules. The pack's data is read, re-hashed and validated against the engine schema each time `activity_content` is called, so later edits on disk can't reach the engine. Installed code activities (not installable in this release) are read and re-hashed file by file from the install folder.
+- Serving an installed pack: the bundled engine's files, under the same CSP and path rules. The pack's data is read, re-hashed and validated against the engine schema each time `activity_content` is called, so later edits on disk can't reach the engine. Installed code activities (third-party, with consent) are read and re-hashed file by file from the install folder and served with the same CSP and headers as bundled ones.
 
 **Test support**
 

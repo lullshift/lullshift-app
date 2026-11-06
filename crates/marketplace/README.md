@@ -31,7 +31,7 @@ remove_install(root, id, commit)          uninstall, or drop the old version aft
   - After a redirect-like failure, one credential-free `info/refs` probe reports a move (`Error::Moved`). Git itself never follows redirects.
   - The ADR-015 amendment lists the residual risks.
 - **Plain text** (`manifest::text_ok`): the host's hidden-character set and combining-mark limit, shared with the schemas and the SDK through `tests/fixtures/plain-text/cases.json`.
-- **Third-party code** (`gate`): `kind: app` from a non-built-in marketplace is refused on every OS (the `THIRD_PARTY_CODE_*` constants are all `false`).
+- **Third-party code** (`gate`): `kind: app` from a non-built-in marketplace is reviewed like any pack and needs the user's consent to install or update (`needs_code_consent`; the desktop host enforces it, owner decision 27.5). `code_risk_status` turns the host's WebRTC state (`set_webrtc_block`) into the warning's honest verification note; it never blocks anything. The pack checks are the same for every kind.
 
 ## `file://` and tests
 

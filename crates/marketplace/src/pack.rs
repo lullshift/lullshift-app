@@ -9,7 +9,6 @@ use sha2::{Digest, Sha256};
 
 use crate::data_schema;
 use crate::error::{Error, PackError, PathError, show};
-use crate::gate::third_party_code_allowed;
 use crate::git::Git;
 use crate::manifest::{Manifest, parse_manifest, valid_id};
 use crate::repo::{ResolvedSource, TreeEntry, hex};
@@ -322,8 +321,12 @@ impl Git {
         } else {
             Kind::Content
         };
-        if kind == Kind::App && third_party && !third_party_code_allowed() {
-            return Err(PackError::ThirdPartyCodeBlocked.into());
+        // Third-party code is reviewed like everything else. Installing it needs the user's
+        // consent, which the host checks (`gate::needs_code_consent`, owner decision 27.5).
+
+        // An app's entrypoint (always `index.html`, checked by `parse_manifest`) must exist.
+        if kind == Kind::App && !listing.iter().any(|f| f.path == "index.html") {
+            return Err(PackError::DataMissing(show("index.html")).into());
         }
 
         // Engine (content packs): must be provided by this host, with a usable schema.

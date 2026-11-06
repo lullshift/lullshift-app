@@ -196,15 +196,15 @@ The full proof with the shipped arguments passes 48 of 48 with `--attention`.
 
 - **Local overrides.** Arguments in `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` or in the WebView2 registry policy are appended after the app's. The negative control shows they can undo this (`--no-proxy-server`, or another IP policy). Setting either needs the user's own account, which already controls the app.
 - **Windows depends on Edge keeping `--webrtc-ip-handling-policy`,** and on WebRTC TCP still going through the proxy. Re-run the proof on WebView2 runtime updates, as for Tauri upgrades. The proof fails if either changes.
-- **macOS relies on WebKit SPI.** If it goes away, `webrtc::state()` records the failure. Third-party code stays blocked by its own constant either way.
-- **Windows is asserted, not confirmed.** The arguments are applied when the webview is created and WebView2 gives no way to read them back, so `webrtc::state()` is `Asserted` there, not `Off`. The third-party code gate (ADR-015) needs both its per-OS constant and `state() == Off` (told to `marketplace::set_webrtc_confirmed_off`), so on Windows it stays closed even if the constant is flipped, until a run-time read-back exists (for example the activity probe run from the app). That is a deliberate extra lock; adding the read-back is the work needed before Windows can be unblocked.
+- **macOS relies on WebKit SPI.** If it goes away, `webrtc::state()` records the failure, and the third-party code warning says plainly that the block couldn't be applied on this computer (amendment below).
+- **Windows is asserted, not confirmed.** The arguments are applied when the webview is created and WebView2 gives no way to read them back, so `webrtc::state()` is `Asserted` there, not `Off`. Since owner decision 27.5 this no longer keeps third-party code out; the install warning says that the block can't be read back on this computer (amendment below). A run-time read-back (for example the activity probe run from the app) would still let the warning say more.
 - **macOS and Linux have not been run.** The runner needs the Chromium debug protocol. On those OSes, open the probe in a debug build and read its results page: every WebRTC line must say "blocked", with "API absent". Those are manual checks.
 
 ### Known gaps
 
-- **WebRTC.** Closed in Sprint 12 on Windows (proof passes in full), and turned off on macOS and Linux with their proof still to run (see "WebRTC is off in the webview" above). Third-party code activities stay blocked on every OS by one constant per OS (ADR-015) until the product owner unblocks an OS whose proof has passed.
+- **WebRTC.** Closed in Sprint 12 on Windows (proof passes in full), and turned off on macOS and Linux with their proof still to run (see "WebRTC is off in the webview" above). Third-party code activities can be installed on every OS after a risk warning and consent (owner decision 27.5, amendment below).
 - **Tauri globals in frames** (above): mitigated today, but by behaviour we don't control.
-- **Before third-party code activities (Sprint 08)**, these must also be settled. They were found in the Sprint 03 security review and are harmless while every activity is bundled and reviewed:
+- **Before third-party code activities (Sprint 08)**, these were to be settled. They were found in the Sprint 03 security review. They are still open; owner decision 27.5 opened third-party code with a consent warning, and the ADR-015 amendment lists them as residual risks. None of them reaches another activity's data or the host:
   - **Loading another activity.** An activity can navigate its own frame to another activity's page with the same nonce. That page would then run under the first activity's id and storage. The host should pin the frame to the launched activity's path, or serve each activity from its own host name.
   - **Storage quota.** The quota counts key and value bytes only. Many tiny keys still cost database space, and Rust has no write budget per activity. A cost per row or a cap on keys is needed, plus a write rate limit in Rust.
   - **"Nothing to save" looks like no answer.** An activity that has nothing to report is closed as unresponsive after three autosaves. The SDK's bridge client now answers with the last known state (Sprint 05). Activities that use their own client must still always return a state.
@@ -215,3 +215,15 @@ The full proof with the shipped arguments passes 48 of 48 with `--attention`.
 - Activities are static web pages that talk only through the bridge. The SDK, kits and engines (Sprints 05–07) build on protocol v1. A change that breaks the protocol needs protocol v2 and this ADR updated.
 - Because a pause unloads the page, activities must restore from a snapshot. Timers, audio and animation stop on every pause. That is the point.
 - The debug-only probe and the denial tests are part of the quality gate for any change to the host, the scheme handler, CSPs, capabilities, the webview's browser arguments, or Tauri or WebView2 runtime versions.
+
+## Amendment: third-party code with consent (owner decision 27.5, 2026-11-06)
+
+The product owner opened third-party code activities on Windows, macOS and Linux, with a risk warning and explicit consent at each install and at each update that changes the code's pinned commit (`sprints/DECISIONS_FOR_REVIEW.md` item 27.5; details in the ADR-015 amendment). This replaces the rule that third-party code is enabled **only where the per-OS sandbox proof passed**, and the Sprint 12 extra lock that needed `webrtc::state() == Off`.
+
+**Nothing in this ADR's sandbox changes.** Third-party code is served on `lullact:` with the same activity CSP, the same response headers, the same path rules and the same sandboxed iframe as bundled code. WebRTC stays off app-wide on every OS. The bridge, the permissions model (`activity.storage` only) and host-owned interruption are the same. The denial tests remain the quality gate for any change to them.
+
+**The WebRTC state is now information.** `webrtc::set_state` tells `marketplace::set_webrtc_block`, which only picks the warning's honest note: Windows `Asserted` says the proof passed on a test computer but the block can't be read back here; macOS and Linux `Off` say the block is in place and read back but the proof hasn't run on that platform; `Failed` says plainly that the block couldn't be applied on this computer; anything else says the block isn't confirmed yet. No note claims a guarantee, and none blocks the install.
+
+**Residual risks** (also in the ADR-015 amendment): macOS and Linux unverified; Windows not read back; `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` or the WebView2 registry policy can undo the Windows block; DNS prefetch untested; the Sprint 03 items under "Known gaps" (frame navigation to another activity's page, storage quota by bytes) still open.
+
+**Project rules.** The "only where the sandbox proof passed" rule came from Sprint 08 (S08-T05) and `docs/TECHNICAL_ARCHITECTURE.md` §6.4, which now point here. `CLAUDE.md` is changed only by the owner; the suggested wording for its activity rules is in this change's report.

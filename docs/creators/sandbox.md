@@ -38,8 +38,9 @@ Be aware of these when reviewing activities:
   - On macOS and Linux, `RTCPeerConnection` is absent.
   - On Windows it still exists, but it can't connect to anything, on the network or on this computer.
 
-  Don't use WebRTC. Third-party code activities **can't be installed from marketplaces in this release**: the sandbox tests pass on Windows but have not yet been run on macOS and Linux, and unblocking is the product owner's decision. Bundled activities are reviewed for any use of `RTCPeerConnection`.
-- Other items to settle before third-party code is allowed are listed under "Known gaps" in ADR-012.
+  Don't use WebRTC. Bundled activities are reviewed for any use of `RTCPeerConnection`.
+- **Third-party code is installed with consent, not review.** Code from a third-party marketplace can be installed on Windows, macOS and Linux after the user reads a risk warning and ticks a consent box (owner decision 27.5). Nobody reviews it. The sandbox is the same as for bundled code, but it is not proven everywhere: the full sandbox tests pass on Windows, where Lullshift can't read the WebRTC setting back at run time, and haven't been run on macOS and Linux. The warning tells users this. When you review a third-party activity, read every script for network, WebRTC, storage and frame-navigation tricks, as you would for any untrusted code.
+- Other open items from the Sprint 03 review are listed under "Known gaps" in ADR-012.
 
 ## If you think you need more
 

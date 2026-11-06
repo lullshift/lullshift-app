@@ -3,6 +3,7 @@
 // React as text only, never as HTML, a link or a URL we open.
 
 import type {
+  CodeRisk,
   CommandError,
   ErrorKind,
   InstallPreview,
@@ -15,8 +16,8 @@ import type {
 export const UNAVAILABLE_TEXT = "Marketplaces aren't available in this build.";
 export const UNREADABLE_TEXT =
   "Lullshift couldn't read its files just now. Another program, such as a virus scanner, may be using them. Nothing was changed; try again in a moment.";
-export const THIRD_PARTY_CODE_TEXT =
-  "Code activities from other marketplaces can't be installed in this version.";
+/** The short label for code from a third-party marketplace, wherever it is listed. */
+export const THIRD_PARTY_PROGRAM_LABEL = "Third-party program";
 export const SAVED_STATE_TEXT = "Saved progress from an earlier install of this id will be used.";
 export const PRIVATE_HOST_LABEL = "This marketplace is on my own computer or network";
 export const PRIVATE_HOST_TEXT =
@@ -36,7 +37,8 @@ const ERROR_TEXT: Record<ErrorKind, string> = {
   invalidUrl: "That doesn't look like a Git address Lullshift can use.",
   invalidIndex: "This repository doesn't have a valid Lullshift marketplace.",
   invalidPack: "This activity's files didn't pass Lullshift's checks, so it can't be installed.",
-  thirdPartyCodeBlocked: THIRD_PARTY_CODE_TEXT,
+  codeRiskNotAccepted:
+    "Lullshift didn't install this program, because the box under the warning wasn't ticked. Nothing was changed; review it again.",
   alreadyExists: "That marketplace is already added.",
   builtinProtected: "The built-in marketplace and its activities can't be removed.",
   busy: "Another operation on this marketplace is still running. Try again shortly.",
@@ -111,7 +113,8 @@ export function entryTitle(e: MarketplaceEntry): string {
 
 export function entryStatus(e: MarketplaceEntry): {
   installed: string | null;
-  blocked: string | null;
+  /** "Third-party program" for code from this (non-built-in) marketplace, else null. */
+  program: string | null;
 } {
   const installedBits = e.installed
     ? `Installed${e.installed.version ? `, version ${truncate(e.installed.version, 20)}` : ""}${
@@ -120,12 +123,12 @@ export function entryStatus(e: MarketplaceEntry): {
     : null;
   return {
     installed: installedBits,
-    blocked: e.blocked === "thirdPartyCode" ? THIRD_PARTY_CODE_TEXT : null,
+    program: e.thirdPartyCode === true ? THIRD_PARTY_PROGRAM_LABEL : null,
   };
 }
 
 export function canInstall(e: MarketplaceEntry): boolean {
-  return e.blocked === null && e.installed === null;
+  return e.installed === null;
 }
 
 export type UrlCheck =
@@ -249,7 +252,9 @@ export function changeAddressCheck(current: string, raw: string): UrlCheck {
 export function manageSubtitle(item: ManageItem): string {
   const source = item.builtin ? "Built in" : `From ${truncate(item.marketplaceId, 40)}`;
   const version = item.version ? `version ${truncate(item.version, 20)}` : null;
-  return [kindLabel(item.kind), source, version].filter(Boolean).join(" · ");
+  const kind =
+    !item.builtin && item.kind === "app" ? THIRD_PARTY_PROGRAM_LABEL : kindLabel(item.kind);
+  return [kind, source, version].filter(Boolean).join(" · ");
 }
 
 export function canCheckUpdate(item: ManageItem): boolean {
@@ -321,4 +326,103 @@ export function asksAboutSavedState(p: InstallPreview): boolean {
 
 export function installSummary(p: InstallPreview): string {
   return `${p.fileCount} ${p.fileCount === 1 ? "file" : "files"}, ${formatBytes(p.sizeBytes)}`;
+}
+
+// ---- third-party code: risk warning and consent (owner decision 27.5) ---------------------
+
+export const CODE_RISK_HEADING = "This is someone else's program";
+export const CODE_RISK_CONSENT_LABEL = "I understand and want to install this program";
+export const CODE_RISK_TICK_HINT = "Tick the box above to continue.";
+export const CODE_RISK_WORST_CASE =
+  "Worst case: if the sandbox has a gap Lullshift doesn't know about, this program could try to send out what it shows you or what you type into it. Don't type passwords, keys or other private information into it.";
+export const CODE_RISK_NO_GUARANTEE =
+  "Lullshift can't guarantee that its sandbox has no gaps. Only install programs from people you trust.";
+
+const PLATFORM_NAME: Record<CodeRisk["platform"], string> = {
+  windows: "Windows",
+  macos: "macOS",
+  linux: "Linux",
+};
+
+/** The verification line: honest about what is and isn't known on this computer. */
+export function codeRiskVerification(risk: CodeRisk): string {
+  const platform = PLATFORM_NAME[risk.platform] ?? "this system";
+  switch (risk.status) {
+    case "windowsNotReadBack":
+      return "On Windows, Lullshift's sandbox checks passed on a test computer. WebRTC, a way a web page could send data out, is blocked by settings Lullshift gives the browser engine when it starts. Lullshift can't read those settings back, so it can't confirm the block on this computer.";
+    case "unverified":
+      return `On ${platform}, Lullshift turned off WebRTC, a way a web page could send data out, and confirmed the setting. But Lullshift's full sandbox checks haven't been run on ${platform} yet, so the sandbox is not verified on this platform.`;
+    case "blockFailed":
+      return "Lullshift couldn't turn off WebRTC on this computer. WebRTC is a way a web page could send data out, so this program may be able to send data out.";
+    case "notChecked":
+    default:
+      return "Lullshift hasn't confirmed yet that WebRTC, a way a web page could send data out, is blocked on this computer.";
+  }
+}
+
+export interface CodeRiskView {
+  heading: string;
+  /** What the program can and can't do, in order. */
+  points: string[];
+  verification: string;
+  /** True when the block is known to have failed: show it with more weight. */
+  failed: boolean;
+  worstCase: string;
+  noGuarantee: string;
+  consentLabel: string;
+}
+
+/**
+ * Whether the review is for third-party code and so needs the consent box. A host that sent no
+ * `codeRisk` for third-party code still gets the warning (it refuses the install without
+ * consent anyway).
+ */
+export function needsCodeConsent(p: InstallPreview): boolean {
+  return Boolean(p.codeRisk) || (p.kind === "app" && p.thirdParty);
+}
+
+/** The warning for a third-party code review, or null when the review needs none. */
+export function codeRiskView(p: InstallPreview): CodeRiskView | null {
+  if (!needsCodeConsent(p)) return null;
+  // Without a status from the host, say only that nothing was confirmed.
+  const risk: CodeRisk = p.codeRisk ?? { platform: "linux", status: "notChecked" };
+  const perms =
+    p.permissions.length === 0
+      ? "It asks for no permissions."
+      : `It asks for: ${p.permissions.map((x) => permissionLabel(x)).join(", ")}.`;
+  return {
+    heading: CODE_RISK_HEADING,
+    points: [
+      "It runs inside Lullshift's sandbox, the same one the built-in activities use.",
+      "By design it has no access to your files, the network, your clipboard or the rest of Lullshift.",
+      perms,
+    ],
+    verification: codeRiskVerification(risk),
+    failed: risk.status === "blockFailed",
+    worstCase: CODE_RISK_WORST_CASE,
+    noGuarantee: CODE_RISK_NO_GUARANTEE,
+    consentLabel: CODE_RISK_CONSENT_LABEL,
+  };
+}
+
+/**
+ * Whether the review's Install or Update button may be pressed: third-party code needs the
+ * consent box ticked; everything else needs nothing more.
+ */
+export function canConfirmReview(p: InstallPreview, consented: boolean): boolean {
+  return !needsCodeConsent(p) || consented;
+}
+
+/**
+ * The label shown beside an activity in the library and in its header: "Third-party program
+ * from <marketplace>" for code from a non-built-in marketplace, "From <marketplace>" for a pack
+ * from one, null for built-in activities.
+ */
+export function activitySourceLabel(
+  source: { marketplaceId: string; builtin: boolean } | undefined,
+  engine: string | null,
+): string | null {
+  if (!source || source.builtin) return null;
+  const from = truncate(source.marketplaceId, 40);
+  return engine === null ? `${THIRD_PARTY_PROGRAM_LABEL} from ${from}` : `From ${from}`;
 }

@@ -4,7 +4,7 @@ import { relativeTime } from "../format";
 import { Banner } from "../ui/Banner";
 import { focusIfLost } from "../ui/focus";
 import { Icon } from "../ui/Icon";
-import { truncate } from "../marketplace/logic";
+import { activitySourceLabel } from "../marketplace/logic";
 import { ManagePanel } from "../marketplace/ManagePanel";
 import { MarketplacesPanel } from "../marketplace/MarketplacesPanel";
 import { ActivityHost, type ActivityInfo, type PauseRequest } from "./ActivityHost";
@@ -213,8 +213,8 @@ function ActivityCard({
         </div>
       )}
       <span className="activity-kind">{CATEGORY[a.category] ?? a.category}</span>
-      {a.source && !a.source.builtin && (
-        <span className="activity-source">From {truncate(a.source.marketplaceId, 40)}</span>
+      {activitySourceLabel(a.source, a.engine) && (
+        <span className="activity-source">{activitySourceLabel(a.source, a.engine)}</span>
       )}
       <h2 className="activity-name">{a.name}</h2>
       <p className="activity-desc">{a.description}</p>

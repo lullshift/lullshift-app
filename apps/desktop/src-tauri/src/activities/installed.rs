@@ -23,9 +23,7 @@ use std::sync::{Arc, RwLock};
 
 use local_store::{ActivityKind, InstalledActivity};
 use marketplace::manifest::{Manifest, parse_manifest};
-use marketplace::{
-    VerifiedHashes, VerifyError, install_dir, third_party_code_allowed, verified_hashes,
-};
+use marketplace::{VerifiedHashes, VerifyError, install_dir, verified_hashes};
 use serde::Serialize;
 use serde_json::Value;
 use time::OffsetDateTime;
@@ -45,8 +43,9 @@ const FILE_MAX: usize = 5 * 1024 * 1024;
 
 /// What an installed activity is when it runs.
 pub(crate) enum ServedRole {
-    /// A sandboxed web app with its own files in `dir`. (Unreachable in this release: code from
-    /// third-party marketplaces cannot be installed.)
+    /// A sandboxed web app with its own files in `dir`: code from a third-party marketplace,
+    /// installed after the user accepted the risk (owner decision 27.5). Served exactly like a
+    /// bundled app (same scheme, CSP and headers), with every file re-hashed on each read.
     App,
     /// A content pack: the bundled engine's files, plus the pack's data file, read, re-hashed
     /// and checked against the engine's schema on every load.
@@ -229,6 +228,17 @@ fn read_manifest(dir: &Path) -> Option<Manifest> {
     parse_manifest(std::str::from_utf8(&bytes).ok()?)
 }
 
+/// Whether a record may run as far as consent goes: packs and built-in code need none;
+/// third-party code needs the consent recorded for its own pinned commit.
+pub(crate) fn has_code_consent(rec: &InstalledActivity) -> bool {
+    let third_party_code = rec.kind == ActivityKind::App && rec.marketplace_id != BUILTIN_ID;
+    !third_party_code
+        || rec
+            .code_consent
+            .as_ref()
+            .is_some_and(|c| c.commit == rec.commit_sha)
+}
+
 /// Checks one install: digest, manifest, and for a pack its engine and data. Reads every file.
 fn evaluate(core: &Core, rec: &InstalledActivity) -> Evaluated {
     let fallback = |outcome| Evaluated {
@@ -236,12 +246,10 @@ fn evaluate(core: &Core, rec: &InstalledActivity) -> Evaluated {
         version: rec.manifest_version.clone(),
         outcome,
     };
-    // A code activity from a third-party marketplace can't be installed in this release, so a
-    // record for one is not something to run.
-    if rec.kind == ActivityKind::App
-        && rec.marketplace_id != BUILTIN_ID
-        && !third_party_code_allowed()
-    {
+    // Third-party code runs only if the user accepted the risk for exactly this commit (owner
+    // decision 27.5). The install and update commands always record that; a record without it
+    // was not made by them, so it is not something to run.
+    if !has_code_consent(rec) {
         return fallback(Err(Problem::Tampered));
     }
     let Ok(dir) = install_dir(&install_root(core), &rec.activity_id, &rec.commit_sha) else {
