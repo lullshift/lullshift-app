@@ -16,6 +16,11 @@ export const UNAVAILABLE_TEXT = "Marketplaces aren't available in this build.";
 export const THIRD_PARTY_CODE_TEXT =
   "Code activities from other marketplaces can't be installed in this version.";
 export const SAVED_STATE_TEXT = "Saved progress from an earlier install of this id will be used.";
+export const PRIVATE_HOST_LABEL = "This marketplace is on my own computer or network";
+export const PRIVATE_HOST_TEXT =
+  "This address is on your own computer or local network. If that's what you expect, tick the box below and try again.";
+export const PRIVATE_HOST_NOTE =
+  "Only tick this for a Git server you or your organisation runs. Lullshift will connect to it when you press Add, Refresh or Change address.";
 export const UNVERIFIED_TEXT =
   "Unverified: anyone can publish a marketplace. Lullshift checked the files but not who made them.";
 
@@ -34,6 +39,7 @@ const ERROR_TEXT: Record<ErrorKind, string> = {
   builtinProtected: "The built-in marketplace and its activities can't be removed.",
   busy: "Another operation on this marketplace is still running. Try again shortly.",
   tampered: "This activity's files changed after install, so Lullshift won't run it.",
+  privateHost: PRIVATE_HOST_TEXT,
   internal: "Something went wrong. Nothing was changed.",
   unavailable: UNAVAILABLE_TEXT,
 };
@@ -152,6 +158,42 @@ export function checkGitInput(raw: string): UrlCheck {
     return { ok: false, reason: "Use an https:// address, an SSH address, or owner/repo." };
   }
   return { ok: true, value: input, hint: null };
+}
+
+const LOCAL_SUFFIXES = new Set([
+  "localhost",
+  "local",
+  "internal",
+  "lan",
+  "localdomain",
+  "intranet",
+  "corp",
+  "home",
+  "private",
+  "arpa",
+]);
+
+/** The host part of an address the user typed, lowercased, or null if there isn't one. */
+export function hostOf(value: string): string | null {
+  const m =
+    /^(?:https|ssh):\/\/(?:[^@/]*@)?([^/:]+)(?::\d+)?\//i.exec(value) ??
+    /^git@([^:/]+):/i.exec(value);
+  return m?.[1] ? m[1].toLowerCase() : null;
+}
+
+/**
+ * True if the address names this computer or a private network the way the backend reads it: an
+ * IPv4 address, `localhost`, a one-label name or a local suffix such as `.local` or `.lan`. Such
+ * an address needs the "on my own computer or network" confirmation. A public-looking name can
+ * still resolve to a private address; the backend checks that and answers `privateHost`.
+ */
+export function looksPrivate(value: string): boolean {
+  const host = hostOf(value.trim());
+  if (!host) return false;
+  const labels = host.split(".");
+  const last = labels[labels.length - 1] ?? "";
+  if (/^\d/.test(last)) return true;
+  return labels.length < 2 || last.length < 2 || LOCAL_SUFFIXES.has(last);
 }
 
 export function problemText(problem: ManageProblem): string {

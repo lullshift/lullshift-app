@@ -39,10 +39,13 @@ fn invalid<T: std::fmt::Debug>(r: Result<T, StoreError>) {
 
 #[test]
 fn latest_is_8_and_fresh_install_has_builtin_row() {
-    assert_eq!(latest_version(), 10);
+    assert_eq!(latest_version(), 11);
     let (s, report) =
         Store::open(&tempfile::tempdir().expect("dir").path().join("l.db")).expect("open");
-    assert_eq!((report.from_version, report.to_version), (0, 10));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (0, latest_version())
+    );
     assert!(report.backup.is_none());
     let list = s.marketplaces().expect("list");
     assert_eq!(list.len(), 1);
@@ -78,7 +81,10 @@ fn version_5_database_upgrades_to_8_with_backup_and_keeps_data() {
         .expect("play");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (5, 10));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (5, latest_version())
+    );
     let backup = report.backup.expect("backup before upgrade");
     assert!(backup.exists());
     assert_eq!(s.sessions().expect("sessions").len(), 1);
@@ -262,6 +268,99 @@ fn builtin_row_cannot_be_deleted_or_marked_removed_even_in_sql() {
         [],
     )
     .expect("update");
+}
+
+// ---- Sprint 12: private-network marketplaces (decision 17) and migration 0011 ------------
+
+#[test]
+fn private_host_confirmation_is_recorded_and_revival_takes_the_new_answer() {
+    let mut s = Store::open_in_memory().expect("store");
+    let public = s
+        .add_marketplace("acme", "https://github.com/acme/market", T0)
+        .expect("add");
+    assert!(!public.private_host, "the default is a public host");
+    let private = s
+        .add_marketplace_with_host("home", "https://192.168.1.10/me/market", true, T0)
+        .expect("add private");
+    assert!(private.private_host);
+    assert!(
+        s.marketplace("home")
+            .expect("get")
+            .expect("row")
+            .private_host
+    );
+
+    // Removed while an install keeps the row, then added again without the confirmation.
+    s.put_installed_activity(&install("com.home.x", "home"), T0)
+        .expect("install");
+    s.remove_marketplace("home", T1).expect("remove");
+    let revived = s
+        .add_marketplace_with_host("home", "https://192.168.1.10/me/market", false, T1)
+        .expect("revive");
+    assert!(!revived.private_host, "the new answer replaces the old one");
+}
+
+#[test]
+fn version_10_database_upgrades_to_11_and_marks_existing_marketplaces_public() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("open raw");
+        migrate(&conn, &MIGRATIONS[..10], None).expect("v10");
+        conn.execute(
+            "INSERT INTO marketplaces (id, url, added_at, builtin)
+             VALUES ('acme', 'https://github.com/acme/market', '2026-11-05T10:00:00Z', 0)",
+            [],
+        )
+        .expect("row");
+    }
+    let (s, report) = Store::open(&path).expect("upgrade");
+    assert_eq!(report.from_version, 10);
+    assert!(report.to_version >= 11);
+    let backup = report.backup.expect("backup before upgrade");
+    let acme = s.marketplace("acme").expect("get").expect("kept");
+    assert!(!acme.private_host);
+    let b = Connection::open(&backup).expect("open backup");
+    let has: bool = b
+        .query_row(
+            "SELECT EXISTS (SELECT 1 FROM pragma_table_info('marketplaces') WHERE name = 'private_host')",
+            [],
+            |r| r.get(0),
+        )
+        .expect("q");
+    assert!(!has, "the backup is the untouched v10 database");
+}
+
+#[test]
+fn failed_version_11_migration_rolls_back_to_10() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("open raw");
+        migrate(&conn, &MIGRATIONS[..10], None).expect("v10");
+        conn.execute("ALTER TABLE marketplaces ADD COLUMN private_host TEXT", [])
+            .expect("clash");
+    }
+    assert!(matches!(
+        Store::open(&path),
+        Err(StoreError::Migration { version: 11, .. })
+    ));
+    let conn = Connection::open(&path).expect("reopen raw");
+    let v: i64 = conn
+        .query_row("SELECT max(version) FROM schema_version", [], |r| r.get(0))
+        .expect("version");
+    assert_eq!(v, 10, "left at the last good version");
+}
+
+#[test]
+fn private_host_column_only_takes_0_or_1() {
+    let (_d, conn) = raw_db();
+    let bad = conn.execute(
+        "INSERT INTO marketplaces (id, url, added_at, builtin, private_host)
+         VALUES ('x', 'https://a.example/b', '2026-11-05T10:00:00Z', 0, 2)",
+        [],
+    );
+    assert!(bad.is_err());
 }
 
 // ---- API: marketplaces -----------------------------------------------------------------
@@ -753,7 +852,10 @@ fn version_6_database_upgrades_to_8_with_backup_and_keeps_state() {
         .expect("snapshot");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (6, 10));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (6, latest_version())
+    );
     let backup = report.backup.expect("backup before upgrade");
     assert!(s.snapshot("app.x.game").expect("get").is_some());
     let b = Connection::open(&backup).expect("open backup");

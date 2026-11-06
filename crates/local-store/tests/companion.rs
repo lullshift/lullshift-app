@@ -41,12 +41,15 @@ fn open() -> Store {
 // -- migration
 
 #[test]
-fn latest_is_10_and_fresh_install_has_the_companion_tables_without_key_columns() {
-    assert_eq!(latest_version(), 10);
+fn latest_is_at_least_10_and_fresh_install_has_the_companion_tables_without_key_columns() {
+    assert!(latest_version() >= 10);
     let dir = tempfile::tempdir().expect("dir");
     let path = dir.path().join("l.db");
     let (s, report) = Store::open(&path).expect("open");
-    assert_eq!((report.from_version, report.to_version), (0, 10));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (0, latest_version())
+    );
     assert!(report.backup.is_none());
     assert!(s.companion_profiles().expect("p").is_empty());
     drop(s);
@@ -88,7 +91,10 @@ fn version_7_database_upgrades_to_8_with_backup_and_keeps_data() {
         .expect("pref");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (7, 10));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (7, latest_version())
+    );
     let backup = report.backup.expect("backup before upgrade");
     assert_eq!(s.preference("k").expect("pref").as_deref(), Some("1"));
     assert!(s.companion_profiles().expect("p").is_empty());
@@ -476,7 +482,10 @@ fn version_8_database_upgrades_to_9_with_backup_and_keeps_companion_data() {
         .expect("message");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (8, 10));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (8, latest_version())
+    );
     let backup = report.backup.expect("backup before upgrade");
     let msgs = s.companion_messages(1).expect("msgs");
     assert_eq!(msgs.len(), 1);

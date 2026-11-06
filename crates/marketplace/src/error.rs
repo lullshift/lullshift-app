@@ -36,8 +36,15 @@ pub enum UrlError {
     Credentials,
     /// Option-looking, malformed or oversized host.
     BadHost,
-    /// `localhost`, IP literals and local-network name suffixes.
+    /// A private host (IPv4 address, `localhost`, one-label name, local-network suffix) where
+    /// none may be used: an activity source listed in an index.
     LocalHost,
+    /// A private host, or a name that resolves to a private address, for a marketplace the
+    /// user has not confirmed as being on their own computer or network.
+    PrivateNotConfirmed,
+    /// An address that can never be a Git server: unspecified, link-local (cloud metadata),
+    /// multicast, broadcast or reserved.
+    SpecialAddress,
     BadPort,
     BadPath,
     BadShorthand,
@@ -56,7 +63,15 @@ impl fmt::Display for UrlError {
                 "the repository address must not contain a password or token; use your Git credential manager"
             }
             Self::BadHost => "the repository host name isn't valid",
-            Self::LocalHost => "addresses on this computer or a local network aren't allowed",
+            Self::LocalHost => {
+                "addresses on this computer or a local network can't be used as an activity's source"
+            }
+            Self::PrivateNotConfirmed => {
+                "this address is on your own computer or network; confirm that before Lullshift uses it"
+            }
+            Self::SpecialAddress => {
+                "this address can't be a Git server (it is link-local, multicast, broadcast or reserved)"
+            }
             Self::BadPort => "the repository port isn't valid",
             Self::BadPath => "the repository path isn't valid",
             Self::BadShorthand => "owner/repo shorthand isn't valid",

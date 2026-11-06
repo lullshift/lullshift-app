@@ -20,6 +20,8 @@ export type ErrorKind =
   | "builtinProtected"
   | "busy"
   | "tampered"
+  /** The address is on this computer or a private network and the user hasn't confirmed it. */
+  | "privateHost"
   | "internal"
   /** UI only: the backend does not have this command (older or partial build). */
   | "unavailable";
@@ -43,6 +45,7 @@ const KINDS: readonly string[] = [
   "builtinProtected",
   "busy",
   "tampered",
+  "privateHost",
   "internal",
 ];
 
@@ -85,6 +88,8 @@ export interface Marketplace {
   lastFetchedCommit: string | null;
   /** RFC 3339. */
   lastFetchedAt: string | null;
+  /** The user confirmed it is on their own computer or network. */
+  privateHost: boolean;
 }
 
 export type ActivityKind = "app" | "content";
@@ -152,7 +157,9 @@ export interface ManageItem {
 }
 
 export const marketplaceList = () => call<Marketplace[]>("marketplace_list");
-export const marketplaceAdd = (url: string) => call<Marketplace>("marketplace_add", { url });
+/** `confirmPrivate` is the "This marketplace is on my own computer or network" checkbox. */
+export const marketplaceAdd = (url: string, confirmPrivate = false) =>
+  call<Marketplace>("marketplace_add", { url, confirmPrivate });
 export const marketplaceRemove = (id: string) => call<null>("marketplace_remove", { id });
 export const marketplaceRefresh = (id: string) => call<Marketplace>("marketplace_refresh", { id });
 export const marketplaceEntries = (id: string) =>

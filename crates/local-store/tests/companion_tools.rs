@@ -1,7 +1,8 @@
 //! Companion tool-call storage (Sprint 12, S12-T16): migration 10, per-thread lookups, usage.
 
 use local_store::{
-    CompanionProfile, MIGRATIONS, NewToolCall, NewUserMessage, Store, StoreError, migrate, month_of,
+    CompanionProfile, MIGRATIONS, NewToolCall, NewUserMessage, Store, StoreError, latest_version,
+    migrate, month_of,
 };
 use rusqlite::Connection;
 use time::OffsetDateTime;
@@ -78,7 +79,10 @@ fn version_9_database_upgrades_to_10_with_backup_and_keeps_companion_data() {
         .expect("message");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (9, 10));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (9, latest_version())
+    );
     let backup = report.backup.expect("backup before upgrade");
     assert_eq!(
         s.companion_messages(1).expect("msgs")[0].text,

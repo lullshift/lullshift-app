@@ -28,18 +28,47 @@ const LOCAL_SUFFIXES: &[&str] = &[
 /// The name only the built-in marketplace may use.
 pub const RESERVED_NAME: &str = "lullshift";
 
+/// How a host name reads, before anything is resolved (decision 17).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HostClass {
+    /// A DNS name with at least two labels and a public-looking top-level label.
+    Public,
+    /// An IPv4 address, `localhost`, a single-label name or a local-network suffix such as
+    /// `.local`, `.lan`, `.internal`, `.corp` or `.home`. Usable only after the user confirms
+    /// that the marketplace is on their own computer or network.
+    Private,
+}
+
+/// The transport an address uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Scheme {
+    Https,
+    Ssh,
+    /// Tests only.
+    File,
+}
+
 /// A Git repository address that passed validation. `as_str` is what `git` receives;
 /// `display` is what the UI and logs show (no userinfo).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GitUrl {
     url: String,
     display: String,
+    scheme: Scheme,
+    host: String,
+    port: Option<u16>,
+    class: HostClass,
+    /// The user ticked "This marketplace is on my own computer or network" for this address.
+    /// Never set by parsing; only by [`GitUrl::confirm_private`].
+    private_confirmed: bool,
 }
 
 impl GitUrl {
     /// Parses `https://host/path`, `ssh://[user@]host[:port]/path`, `git@host:path` or the
     /// GitHub shorthand `owner/repo`. Nothing else is accepted, in particular not `file://`,
-    /// `http://`, `ext::`, credentials, IP literals or local hosts.
+    /// `http://`, `ext::`, credentials or non-canonical IP spellings. Private hosts (IPv4
+    /// addresses, `localhost`, single-label names, local-network suffixes) parse, but are
+    /// marked [`HostClass::Private`] and can't be fetched until [`GitUrl::confirm_private`].
     pub fn parse(input: &str) -> Result<Self, UrlError> {
         if input.is_empty() {
             return Err(UrlError::Empty);
@@ -57,13 +86,17 @@ impl GitUrl {
             if authority.contains('@') {
                 return Err(UrlError::Credentials);
             }
-            let (host, port) = host_port(authority)?;
+            let (host, port, class) = host_port(authority)?;
             check_url_path(path)?;
             let display = format!("https://{host}{}{path}", port_text(port));
-            return Ok(Self {
-                url: input.to_owned(),
+            return Ok(Self::build(
+                input.to_owned(),
                 display,
-            });
+                Scheme::Https,
+                host,
+                port,
+                class,
+            ));
         }
         if let Some(rest) = input.strip_prefix("ssh://") {
             let (authority, path) = split_authority(rest)?;
@@ -77,23 +110,27 @@ impl GitUrl {
                 }
                 None => (None, authority),
             };
-            let (host, port) = host_port(hostport)?;
+            let (host, port, class) = host_port(hostport)?;
             check_url_path(path)?;
             let display = format!("ssh://{host}{}{path}", port_text(port));
             let url = match user {
                 Some(user) => format!("ssh://{user}@{host}{}{path}", port_text(port)),
                 None => display.clone(),
             };
-            return Ok(Self { url, display });
+            return Ok(Self::build(url, display, Scheme::Ssh, host, port, class));
         }
         if let Some(rest) = input.strip_prefix("git@") {
             let (host, path) = rest.split_once(':').ok_or(UrlError::BadPath)?;
-            check_host(host)?;
+            let class = check_host(host)?;
             check_segments(path, 10).map_err(|()| UrlError::BadPath)?;
-            return Ok(Self {
-                url: format!("ssh://git@{host}/{path}"),
-                display: format!("{host}:{path}"),
-            });
+            return Ok(Self::build(
+                format!("ssh://git@{host}/{path}"),
+                format!("{host}:{path}"),
+                Scheme::Ssh,
+                host,
+                None,
+                class,
+            ));
         }
         if input.contains("://") {
             return Err(UrlError::UnsupportedScheme);
@@ -113,10 +150,33 @@ impl GitUrl {
             return Err(UrlError::BadShorthand);
         }
         let url = format!("https://github.com/{owner}/{repo}");
-        Ok(Self {
-            display: url.clone(),
+        Ok(Self::build(
+            url.clone(),
             url,
-        })
+            Scheme::Https,
+            "github.com",
+            None,
+            HostClass::Public,
+        ))
+    }
+
+    fn build(
+        url: String,
+        display: String,
+        scheme: Scheme,
+        host: &str,
+        port: Option<u16>,
+        class: HostClass,
+    ) -> Self {
+        Self {
+            url,
+            display,
+            scheme,
+            host: host.to_ascii_lowercase(),
+            port,
+            class,
+            private_confirmed: false,
+        }
     }
 
     /// The address passed to `git`. May contain an ssh user name (never a password).
@@ -129,6 +189,52 @@ impl GitUrl {
         &self.display
     }
 
+    pub fn scheme(&self) -> Scheme {
+        self.scheme
+    }
+
+    /// The host name or IPv4 address, lowercased. Empty for `file://`.
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
+    /// The port written in the address, if any.
+    pub fn port(&self) -> Option<u16> {
+        self.port
+    }
+
+    /// The port a connection uses: the written one, or 443 for https and 22 for ssh.
+    pub fn effective_port(&self) -> u16 {
+        self.port.unwrap_or(match self.scheme {
+            Scheme::Https | Scheme::File => 443,
+            Scheme::Ssh => 22,
+        })
+    }
+
+    /// How the host name reads (before resolving it).
+    pub fn host_class(&self) -> HostClass {
+        self.class
+    }
+
+    /// True if the address itself names a private host (decision 17).
+    pub fn is_private_host(&self) -> bool {
+        self.class == HostClass::Private
+    }
+
+    /// The same address, marked as confirmed by the user to be on their own computer or
+    /// network. Only the add-marketplace and change-address flows call this, and only when the
+    /// user ticked the confirmation; the confirmation is stored with the marketplace.
+    #[must_use]
+    pub fn confirm_private(mut self) -> Self {
+        self.private_confirmed = true;
+        self
+    }
+
+    /// True if the user confirmed this address as private.
+    pub fn private_confirmed(&self) -> bool {
+        self.private_confirmed
+    }
+
     /// A `file://` address, for tests only. Production code cannot build one: this function
     /// does not exist outside `cfg(test)`, and [`GitUrl::parse`] refuses `file://`.
     #[cfg(any(test, all(feature = "unsafe-test-file-urls", debug_assertions)))]
@@ -139,10 +245,7 @@ impl GitUrl {
         } else {
             format!("file:///{p}")
         };
-        Self {
-            display: url.clone(),
-            url,
-        }
+        Self::build(url.clone(), url, Scheme::File, "", None, HostClass::Public)
     }
 }
 
@@ -156,7 +259,7 @@ fn split_authority(rest: &str) -> Result<(&str, &str), UrlError> {
     Ok((&rest[..i], &rest[i..]))
 }
 
-fn host_port(authority: &str) -> Result<(&str, Option<u16>), UrlError> {
+fn host_port(authority: &str) -> Result<(&str, Option<u16>, HostClass), UrlError> {
     let mut parts = authority.split(':');
     let host = parts.next().unwrap_or_default();
     let port = parts.next();
@@ -164,7 +267,7 @@ fn host_port(authority: &str) -> Result<(&str, Option<u16>), UrlError> {
         // More than one colon: an IPv6 literal or garbage.
         return Err(UrlError::BadHost);
     }
-    check_host(host)?;
+    let class = check_host(host)?;
     let port = match port {
         None => None,
         Some(p) => {
@@ -181,7 +284,7 @@ fn host_port(authority: &str) -> Result<(&str, Option<u16>), UrlError> {
             }
         }
     };
-    Ok((host, port))
+    Ok((host, port, class))
 }
 
 fn check_ssh_user(user: &str) -> Result<(), UrlError> {
@@ -193,8 +296,13 @@ fn check_ssh_user(user: &str) -> Result<(), UrlError> {
     if ok { Ok(()) } else { Err(UrlError::BadHost) }
 }
 
-/// A public DNS name: at least two labels, no IP literal, no local-network suffix.
-fn check_host(host: &str) -> Result<(), UrlError> {
+/// Classifies a host: a public DNS name (at least two labels, a top-level label that starts
+/// with a letter and is not a local-network suffix), or a private host (a canonical dotted
+/// IPv4 address, `localhost`, a one-label name or a local-network suffix). Non-canonical IPv4
+/// spellings (`2130706433`, `0x7f.1`, `010.0.0.1`, `127.1`) are refused, because they hide what
+/// they point at; so are addresses that can never be a Git server (`0.0.0.0/8`, link-local
+/// `169.254.0.0/16` including cloud metadata services, multicast, reserved and broadcast).
+fn check_host(host: &str) -> Result<HostClass, UrlError> {
     if host.is_empty() || host.len() > 253 || host.starts_with('-') {
         return Err(UrlError::BadHost);
     }
@@ -212,14 +320,38 @@ fn check_host(host: &str) -> Result<(), UrlError> {
         .copied()
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if labels.len() < 2 || !tld.as_bytes()[0].is_ascii_alphabetic() || tld.len() < 2 {
-        // `localhost`, other one-label names, and every IPv4 spelling (decimal, octal, hex).
-        return Err(UrlError::LocalHost);
+    if tld.as_bytes()[0].is_ascii_digit() {
+        // Only the canonical dotted-quad spelling is an IP address we accept.
+        let ip = canonical_ipv4(host).ok_or(UrlError::BadHost)?;
+        return match crate::net::classify_ip(std::net::IpAddr::V4(ip)) {
+            crate::net::AddrClass::Never => Err(UrlError::SpecialAddress),
+            _ => Ok(HostClass::Private),
+        };
     }
-    if LOCAL_SUFFIXES.contains(&tld.as_str()) {
-        return Err(UrlError::LocalHost);
+    if labels.len() < 2 || tld.len() < 2 || LOCAL_SUFFIXES.contains(&tld.as_str()) {
+        return Ok(HostClass::Private);
     }
-    Ok(())
+    Ok(HostClass::Public)
+}
+
+/// `a.b.c.d` with four decimal parts of 0-255 and no leading zeros.
+fn canonical_ipv4(host: &str) -> Option<std::net::Ipv4Addr> {
+    let parts: Vec<&str> = host.split('.').collect();
+    if parts.len() != 4 {
+        return None;
+    }
+    let mut octets = [0_u8; 4];
+    for (slot, p) in octets.iter_mut().zip(&parts) {
+        if p.is_empty()
+            || p.len() > 3
+            || !p.bytes().all(|b| b.is_ascii_digit())
+            || (p.len() > 1 && p.starts_with('0'))
+        {
+            return None;
+        }
+        *slot = p.parse().ok()?;
+    }
+    Some(std::net::Ipv4Addr::from(octets))
 }
 
 fn check_url_path(path: &str) -> Result<(), UrlError> {
@@ -526,17 +658,28 @@ mod tests {
             ("https://github.com", UrlError::BadPath),
             ("git@github.com:../r", UrlError::BadPath),
             ("git@github.com:/o/r", UrlError::BadPath),
-            ("https://localhost/o/r", UrlError::LocalHost),
-            ("https://127.0.0.1/o/r", UrlError::LocalHost),
-            ("https://10.0.0.5/o/r", UrlError::LocalHost),
-            ("https://192.168.1.10/o/r", UrlError::LocalHost),
-            ("https://169.254.169.254/o/r", UrlError::LocalHost),
-            ("https://2130706433/o/r", UrlError::LocalHost),
-            ("https://0x7f.1/o/r", UrlError::LocalHost),
+            // Addresses that can never be a Git server, and IP spellings that hide what they
+            // point at, stay refused even with the private-network confirmation.
+            ("https://169.254.169.254/o/r", UrlError::SpecialAddress),
+            ("https://0.0.0.0/o/r", UrlError::SpecialAddress),
+            ("https://224.0.0.1/o/r", UrlError::SpecialAddress),
+            ("https://255.255.255.255/o/r", UrlError::SpecialAddress),
+            ("https://2130706433/o/r", UrlError::BadHost),
+            ("https://0x7f.1/o/r", UrlError::BadHost),
+            ("https://0x7f000001/o/r", UrlError::BadHost),
+            ("https://127.1/o/r", UrlError::BadHost),
+            ("https://010.0.0.1/o/r", UrlError::BadHost),
+            ("https://127.0.0.256/o/r", UrlError::BadHost),
+            ("https://1.2.3.4.5/o/r", UrlError::BadHost),
             ("https://[::1]/o/r", UrlError::ForbiddenCharacter),
-            ("https://printer.local/o/r", UrlError::LocalHost),
-            ("https://git.corp/o/r", UrlError::LocalHost),
-            ("https://server.lan/o/r", UrlError::LocalHost),
+            // Credentials, `%`, `=` and plain http stay refused for private hosts too.
+            ("https://user:pw@10.0.0.5/o/r", UrlError::Credentials),
+            ("https://tok@localhost/o/r", UrlError::Credentials),
+            ("http://192.168.1.10/o/r", UrlError::UnsupportedScheme),
+            ("http://localhost/o/r", UrlError::UnsupportedScheme),
+            ("https://gitserver/o/r%2e%2e", UrlError::ForbiddenCharacter),
+            ("https://gitserver/o/r?x=1", UrlError::ForbiddenCharacter),
+            ("https://gitsérver/o/r", UrlError::ForbiddenCharacter),
             ("https://-evil.example.com/o/r", UrlError::BadHost),
             ("https://exa_mple.com/o/r", UrlError::BadHost),
             ("https://example.com:0/o/r", UrlError::BadPort),
@@ -556,6 +699,103 @@ mod tests {
             ("HTTPS://github.com/o/r", UrlError::UnsupportedScheme),
         ] {
             assert_eq!(GitUrl::parse(input).err(), Some(why), "{input:?}");
+        }
+    }
+
+    #[test]
+    fn private_hosts_parse_but_are_marked_and_unconfirmed() {
+        for (input, git, host, port) in [
+            (
+                "https://localhost/o/r",
+                "https://localhost/o/r",
+                "localhost",
+                443,
+            ),
+            (
+                "https://127.0.0.1:8443/o/r.git",
+                "https://127.0.0.1:8443/o/r.git",
+                "127.0.0.1",
+                8443,
+            ),
+            (
+                "https://10.0.0.5/o/r",
+                "https://10.0.0.5/o/r",
+                "10.0.0.5",
+                443,
+            ),
+            (
+                "https://192.168.1.10/o/r",
+                "https://192.168.1.10/o/r",
+                "192.168.1.10",
+                443,
+            ),
+            // A public IP literal also needs the confirmation: it is not a name anyone vouches for.
+            ("https://8.8.8.8/o/r", "https://8.8.8.8/o/r", "8.8.8.8", 443),
+            (
+                "https://gitserver/o/r",
+                "https://gitserver/o/r",
+                "gitserver",
+                443,
+            ),
+            (
+                "https://printer.local/o/r",
+                "https://printer.local/o/r",
+                "printer.local",
+                443,
+            ),
+            (
+                "https://git.corp/o/r",
+                "https://git.corp/o/r",
+                "git.corp",
+                443,
+            ),
+            (
+                "https://Server.LAN/o/r",
+                "https://Server.LAN/o/r",
+                "server.lan",
+                443,
+            ),
+            (
+                "https://git.internal/o/r",
+                "https://git.internal/o/r",
+                "git.internal",
+                443,
+            ),
+            (
+                "https://nas.home/o/r",
+                "https://nas.home/o/r",
+                "nas.home",
+                443,
+            ),
+            (
+                "ssh://git@192.168.1.10:2222/o/r",
+                "ssh://git@192.168.1.10:2222/o/r",
+                "192.168.1.10",
+                2222,
+            ),
+            (
+                "git@gitserver:o/r.git",
+                "ssh://git@gitserver/o/r.git",
+                "gitserver",
+                22,
+            ),
+        ] {
+            let u = GitUrl::parse(input).unwrap_or_else(|e| panic!("{input}: {e:?}"));
+            assert_eq!(u.as_str(), git, "{input}");
+            assert_eq!(u.host(), host, "{input}");
+            assert_eq!(u.effective_port(), port, "{input}");
+            assert!(u.is_private_host(), "{input} is private");
+            assert!(!u.private_confirmed(), "{input}: parsing never confirms");
+            assert!(u.clone().confirm_private().private_confirmed());
+        }
+        for public in [
+            "https://github.com/o/r",
+            "owner/repo",
+            "git@gitlab.example.org:o/r",
+            "ssh://git@host.example.com:2222/o/r",
+        ] {
+            let u = GitUrl::parse(public).expect("public");
+            assert_eq!(u.host_class(), HostClass::Public, "{public}");
         }
     }
 

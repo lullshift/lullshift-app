@@ -26,6 +26,9 @@ pub struct MarketplaceRecord {
     pub last_fetched_commit: Option<String>,
     pub last_fetched_at: Option<OffsetDateTime>,
     pub builtin: bool,
+    /// The user confirmed that this marketplace is on their own computer or network
+    /// (decision 17); its address may be, or resolve to, a private address.
+    pub private_host: bool,
 }
 
 /// Whether an installed activity is a code activity or a content pack.
@@ -180,9 +183,18 @@ fn validate(a: &NewInstalledActivity) -> Result<()> {
     Ok(())
 }
 
-const MARKETPLACE_COLS: &str = "id, url, added_at, last_fetched_commit, last_fetched_at, builtin";
+const MARKETPLACE_COLS: &str =
+    "id, url, added_at, last_fetched_commit, last_fetched_at, builtin, private_host";
 
-type RawMarketplace = (String, String, String, Option<String>, Option<String>, i64);
+type RawMarketplace = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    i64,
+    i64,
+);
 
 fn marketplace_row(r: &Row<'_>) -> rusqlite::Result<RawMarketplace> {
     Ok((
@@ -192,11 +204,12 @@ fn marketplace_row(r: &Row<'_>) -> rusqlite::Result<RawMarketplace> {
         r.get(3)?,
         r.get(4)?,
         r.get(5)?,
+        r.get(6)?,
     ))
 }
 
 fn decode_marketplace(
-    (id, url, added, commit, fetched, builtin): RawMarketplace,
+    (id, url, added, commit, fetched, builtin, private_host): RawMarketplace,
 ) -> Result<MarketplaceRecord> {
     Ok(MarketplaceRecord {
         id,
@@ -205,6 +218,7 @@ fn decode_marketplace(
         last_fetched_commit: commit,
         last_fetched_at: fetched.as_deref().map(parse_ts).transpose()?,
         builtin: builtin != 0,
+        private_host: private_host != 0,
     })
 }
 
@@ -362,6 +376,19 @@ impl Store {
         url: &str,
         now: OffsetDateTime,
     ) -> Result<MarketplaceRecord> {
+        self.add_marketplace_with_host(id, url, false, now)
+    }
+
+    /// Like [`Store::add_marketplace`], recording whether the user confirmed the address as being
+    /// on their own computer or network (`private_host`, decision 17). A revived row takes the
+    /// new answer.
+    pub fn add_marketplace_with_host(
+        &mut self,
+        id: &str,
+        url: &str,
+        private_host: bool,
+        now: OffsetDateTime,
+    ) -> Result<MarketplaceRecord> {
         check_marketplace_id(id)?;
         check_url(url)?;
         if id == BUILTIN_MARKETPLACE_ID {
@@ -379,8 +406,9 @@ impl Store {
         match existing {
             None => {
                 tx.execute(
-                    "INSERT INTO marketplaces (id, url, added_at, builtin) VALUES (?1, ?2, ?3, 0)",
-                    params![id, url, at],
+                    "INSERT INTO marketplaces (id, url, added_at, builtin, private_host)
+                     VALUES (?1, ?2, ?3, 0, ?4)",
+                    params![id, url, at, i64::from(private_host)],
                 )?;
             }
             Some(None) => return Err(StoreError::AlreadyExists),
@@ -396,8 +424,9 @@ impl Store {
                 }
                 tx.execute(
                     "UPDATE marketplaces SET added_at = ?2, removed_at = NULL,
-                       last_fetched_commit = NULL, last_fetched_at = NULL WHERE id = ?1",
-                    params![id, at],
+                       last_fetched_commit = NULL, last_fetched_at = NULL, private_host = ?3
+                     WHERE id = ?1",
+                    params![id, at, i64::from(private_host)],
                 )?;
             }
         }

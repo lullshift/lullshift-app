@@ -20,6 +20,7 @@ pub mod git;
 pub mod index;
 pub mod install;
 pub mod manifest;
+pub mod net;
 pub mod pack;
 pub mod repo;
 pub mod validate;
@@ -41,4 +42,4 @@ pub use install::{
 };
 pub use pack::{AvailableEngine, InstallPreview, Kind, PackFile, PrepareRequest, PreparedPack};
 pub use repo::{MarketplaceRef, ResolvedSource};
-pub use validate::{Commit, GitRef, GitUrl, RelPath, scrub_url};
+pub use validate::{Commit, GitRef, GitUrl, HostClass, RelPath, Scheme, scrub_url};

@@ -85,6 +85,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 10,
         sql: include_str!("../migrations/0010_companion_tool_calls.sql"),
     },
+    Migration {
+        version: 11,
+        sql: include_str!("../migrations/0011_marketplace_private_host.sql"),
+    },
 ];
 
 pub fn latest_version() -> i64 {

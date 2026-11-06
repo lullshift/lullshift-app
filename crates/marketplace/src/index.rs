@@ -143,7 +143,17 @@ pub fn parse_index(bytes: &[u8], builtin: bool) -> Result<MarketplaceIndex, Erro
                 path: RelPath::parse(&l.path).map_err(|x| entry_err(&x))?,
             },
             RawSource::Git(g) => EntrySource::Git {
-                url: GitUrl::parse(&g.git).map_err(|x| entry_err(&x))?,
+                url: GitUrl::parse(&g.git)
+                    .and_then(|u| {
+                        // Only the user can say an address is on their own network, and they
+                        // do so for the marketplace they add, never for what its index lists.
+                        if u.is_private_host() {
+                            Err(crate::error::UrlError::LocalHost)
+                        } else {
+                            Ok(u)
+                        }
+                    })
+                    .map_err(|x| entry_err(&x))?,
                 git_ref: g
                     .r#ref
                     .as_deref()

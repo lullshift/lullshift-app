@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-use crate::error::{Error, GitFailureKind, IndexError, PackError, RefError};
+use crate::error::{Error, GitFailureKind, IndexError, PackError, RefError, UrlError};
 use crate::git::{Class, Git, SMALL_OUTPUT};
 use crate::index::{
     EntrySource, INDEX_MAX_BYTES, INDEX_PATH, IndexEntry, MarketplaceIndex, parse_index,
@@ -119,6 +119,10 @@ impl Git {
     /// place (its older commits are pinned by installs and must stay); a failed or killed fetch
     /// only ever leaves temporary pack files, which are removed, and never moves the fetched ref.
     pub fn fetch(&self, repo: &Path, url: &GitUrl, r: Option<&GitRef>) -> Result<Commit, Error> {
+        // A private host is fetched only after the user confirmed it (decision 17).
+        if url.is_private_host() && !url.private_confirmed() {
+            return Err(UrlError::PrivateNotConfirmed.into());
+        }
         if repo.join("HEAD").is_file() {
             let result = self.fetch_into(repo, url, r);
             if result.is_err() {

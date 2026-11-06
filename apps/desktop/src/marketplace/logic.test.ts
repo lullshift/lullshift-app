@@ -14,6 +14,8 @@ import {
   errorText,
   fetchedLine,
   formatBytes,
+  hostOf,
+  looksPrivate,
   manageSubtitle,
   permissionExplanation,
   shortCommit,
@@ -37,6 +39,7 @@ const KINDS: ErrorKind[] = [
   "builtinProtected",
   "busy",
   "tampered",
+  "privateHost",
   "internal",
   "unavailable",
 ];
@@ -146,6 +149,40 @@ describe("checkGitInput", () => {
     expect(checkGitInput("http://example.com/a/b").ok).toBe(false);
     expect(checkGitInput("file:///etc/passwd").ok).toBe(false);
     expect(checkGitInput("just-a-word").ok).toBe(false);
+  });
+});
+
+describe("looksPrivate", () => {
+  it("flags addresses on this computer or a private network, like the backend", () => {
+    for (const url of [
+      "https://localhost/a/b",
+      "https://127.0.0.1:8443/a/b.git",
+      "https://192.168.1.10/a/b",
+      "https://8.8.8.8/a/b",
+      "https://gitserver/a/b",
+      "https://printer.local/a/b",
+      "https://git.corp/a/b",
+      "https://Server.LAN/a/b",
+      "ssh://git@nas.home:2222/a/b",
+      "git@gitserver:a/b.git",
+    ]) {
+      expect(looksPrivate(url), url).toBe(true);
+    }
+    for (const url of [
+      "https://github.com/a/b",
+      "https://gitlab.example.org:8443/a/b",
+      "git@github.com:a/b.git",
+      "acme/games",
+      "",
+    ]) {
+      expect(looksPrivate(url), url).toBe(false);
+    }
+  });
+  it("reads the host from each address form", () => {
+    expect(hostOf("https://Git.Example.com:443/a")).toBe("git.example.com");
+    expect(hostOf("ssh://git@host.example/a")).toBe("host.example");
+    expect(hostOf("git@host.example:a/b")).toBe("host.example");
+    expect(hostOf("nonsense")).toBeNull();
   });
 });
 
@@ -290,6 +327,16 @@ describe("api error normalisation", () => {
     expect(invoke).toHaveBeenCalledWith("marketplace_preview_install", {
       marketplaceId: "m",
       activityId: "a",
+    });
+    await api.marketplaceAdd("https://10.0.0.5/a/b", true);
+    expect(invoke).toHaveBeenCalledWith("marketplace_add", {
+      url: "https://10.0.0.5/a/b",
+      confirmPrivate: true,
+    });
+    await api.marketplaceAdd("acme/games");
+    expect(invoke).toHaveBeenCalledWith("marketplace_add", {
+      url: "acme/games",
+      confirmPrivate: false,
     });
     await api.activityUninstall("a", true);
     expect(invoke).toHaveBeenCalledWith("activity_uninstall", {

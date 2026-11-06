@@ -25,7 +25,8 @@ use marketplace::manifest::{parse_manifest, plain};
 use marketplace::validate::{check_marketplace_name, windows_reserved};
 use marketplace::{
     Commit, EntrySource, Error, Git, GitFailureKind, GitUrl, IndexError, InstalledSummary, Kind,
-    MarketplaceRef, PackError, PrepareRequest, PreparedPack, diff_update, install, remove_install,
+    MarketplaceRef, PackError, PrepareRequest, PreparedPack, UrlError, diff_update, install,
+    remove_install,
 };
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -104,6 +105,7 @@ fn from_git_kind(kind: GitFailureKind) -> CommandError {
 impl From<Error> for CommandError {
     fn from(e: Error) -> Self {
         match e {
+            Error::Url(UrlError::PrivateNotConfirmed) => private_host_unconfirmed(),
             Error::Url(u) => Self::new("invalidUrl", u.to_string()),
             Error::Ref(_) | Error::Path(_) | Error::Name(_) => Self::new(
                 "invalidIndex",
@@ -155,6 +157,15 @@ impl From<StoreError> for CommandError {
             _ => Self::new("internal", "Lullshift couldn't read or save its data."),
         }
     }
+}
+
+/// The address is (or resolves to) this computer or a private network and the user hasn't
+/// confirmed that (decision 17). The UI shows the confirmation checkbox on this kind.
+fn private_host_unconfirmed() -> CommandError {
+    CommandError::new(
+        "privateHost",
+        "This address is on your own computer or local network. If that's what you expect, tick \"This marketplace is on my own computer or network\" and try again.",
+    )
 }
 
 fn third_party_blocked() -> CommandError {
@@ -375,19 +386,25 @@ fn parse_git_url(text: &str) -> Result<GitUrl, marketplace::UrlError> {
 }
 
 /// The address `git` is given for a marketplace: the sidecar's, or else the stored display form
-/// (which works for https and for ssh without a user name). Always re-validated.
+/// (which works for https and for ssh without a user name). Always re-validated. The sidecar's
+/// address must name the same host as the stored one, and the private-network confirmation
+/// comes only from the store (decision 17), never from the sidecar.
 fn git_url_of(core: &Core, rec: &MarketplaceRecord) -> Res<GitUrl> {
+    let stored = parse_git_url(&rec.url).ok();
     let from_sidecar = read_sidecar(core, &rec.id)
         .git_url
-        .and_then(|u| parse_git_url(&u).ok());
-    if let Some(u) = from_sidecar {
-        return Ok(u);
-    }
-    parse_git_url(&rec.url).map_err(|_| {
+        .and_then(|u| parse_git_url(&u).ok())
+        .filter(|u| stored.as_ref().is_none_or(|s| s.display() == u.display()));
+    let url = from_sidecar.or(stored).ok_or_else(|| {
         CommandError::new(
             "invalidUrl",
             "Lullshift can't tell where this marketplace lives. Remove it and add it again.",
         )
+    })?;
+    Ok(if rec.private_host {
+        url.confirm_private()
+    } else {
+        url
     })
 }
 
@@ -403,6 +420,8 @@ pub struct MarketplaceDto {
     owner: Option<String>,
     last_fetched_commit: Option<String>,
     last_fetched_at: Option<String>,
+    /// The user confirmed it is on their own computer or network (decision 17).
+    private_host: bool,
 }
 
 fn rfc3339(t: OffsetDateTime) -> Option<String> {
@@ -427,6 +446,7 @@ fn market_dto(core: &Core, rec: &MarketplaceRecord) -> MarketplaceDto {
         owner,
         last_fetched_commit: rec.last_fetched_commit.clone(),
         last_fetched_at: rec.last_fetched_at.and_then(rfc3339),
+        private_host: rec.private_host,
     }
 }
 
@@ -611,7 +631,9 @@ fn add_from(
     let commit_text = commit.to_string();
     // An id that already exists is left exactly as it was; anything this call created is undone
     // if a later step fails.
-    if let Err(e) = with_store(core, |s| s.add_marketplace(&id, url.display(), now)) {
+    if let Err(e) = with_store(core, |s| {
+        s.add_marketplace_with_host(&id, url.display(), url.private_confirmed(), now)
+    }) {
         // AlreadyExists is either "already added" or, for a name that was removed while its
         // installs stayed, "that name is tied to another address" (review M1).
         let active = with_store(core, |s| s.marketplace(&id))
@@ -1148,9 +1170,21 @@ pub async fn marketplace_list(core: tauri::State<'_, Arc<Core>>) -> Res<Vec<Mark
 pub async fn marketplace_add(
     core: tauri::State<'_, Arc<Core>>,
     url: String,
+    confirm_private: Option<bool>,
 ) -> Res<MarketplaceDto> {
-    let url = parse_git_url(url.trim()).map_err(|e| CommandError::from(Error::Url(e)))?;
+    let url = user_url(&url, confirm_private.unwrap_or(false))?;
     run(&core, move |c| add(c, &url)).await
+}
+
+/// Parses an address the user typed. `confirm_private` is the "This marketplace is on my own
+/// computer or network" checkbox (decision 17); it is recorded only when it was ticked.
+fn user_url(text: &str, confirm_private: bool) -> Res<GitUrl> {
+    let url = parse_git_url(text.trim()).map_err(|e| CommandError::from(Error::Url(e)))?;
+    Ok(if confirm_private {
+        url.confirm_private()
+    } else {
+        url
+    })
 }
 
 #[tauri::command]

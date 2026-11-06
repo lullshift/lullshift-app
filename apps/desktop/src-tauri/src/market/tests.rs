@@ -1263,3 +1263,69 @@ fn crc32(bytes: &[u8]) -> u32 {
     }
     !crc
 }
+
+// ---- Sprint 12: private-network marketplaces (decision 17) -------------------------------
+
+#[test]
+fn a_private_address_needs_the_confirmation_before_anything_is_fetched() {
+    let env = Env::new();
+    for text in [
+        "https://192.168.1.10/me/market",
+        "https://localhost/me/market",
+        "https://gitserver/me/market",
+        "git@nas.home:me/market.git",
+    ] {
+        let url = user_url(text, false).expect("private addresses parse");
+        let err = add(&env.core, &url).expect_err(text);
+        assert_eq!(err.kind, "privateHost", "{text}");
+        assert!(
+            err.message.contains("on my own computer or network"),
+            "{text}"
+        );
+    }
+    assert_eq!(list(&env.core).expect("list").len(), 1, "nothing was added");
+    assert!(!env.core.app_dir.join("marketplaces").join(MARKET).exists());
+
+    assert!(
+        user_url("https://192.168.1.10/me/market", true)
+            .expect("parse")
+            .private_confirmed()
+    );
+    // The confirmation never relaxes anything else.
+    for (text, kind) in [
+        ("https://user:pw@10.0.0.1/o/r", "invalidUrl"),
+        ("http://10.0.0.1/o/r", "invalidUrl"),
+        ("https://169.254.169.254/o/r", "invalidUrl"),
+        ("https://10.0.0.1/o/r%2e", "invalidUrl"),
+    ] {
+        assert_eq!(err_kind(user_url(text, true)), kind, "{text}");
+    }
+}
+
+#[test]
+fn a_confirmed_marketplace_records_it_and_later_fetches_carry_it() {
+    let env = Env::new();
+    let (repo, _) = standard_repo(&env);
+    let m = add(&env.core, &repo.url().confirm_private()).expect("add");
+    assert!(m.private_host);
+    let rec = active_market(&env.core, MARKET).expect("record");
+    assert!(rec.private_host);
+    assert!(
+        git_url_of(&env.core, &rec)
+            .expect("url")
+            .private_confirmed()
+    );
+    refresh(&env.core, MARKET).expect("refresh with the stored confirmation");
+
+    // An unconfirmed marketplace never gets the flag from its cache sidecar.
+    let env = Env::new();
+    let (repo, _) = standard_repo(&env);
+    let m = add(&env.core, &repo.url()).expect("add");
+    assert!(!m.private_host);
+    let rec = active_market(&env.core, MARKET).expect("record");
+    assert!(
+        !git_url_of(&env.core, &rec)
+            .expect("url")
+            .private_confirmed()
+    );
+}

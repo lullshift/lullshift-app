@@ -21,9 +21,45 @@ import {
   errorText,
   fetchedLine,
   kindLabel,
+  looksPrivate,
+  PRIVATE_HOST_LABEL,
+  PRIVATE_HOST_NOTE,
+  PRIVATE_HOST_TEXT,
   truncate,
   UNAVAILABLE_TEXT,
 } from "./logic";
+
+/** The explicit "on my own computer or network" confirmation (decision 17). Never pre-ticked. */
+export function PrivateHostBox({
+  id,
+  checked,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="mk-private">
+      <label className="mk-check" htmlFor={id}>
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          aria-describedby={`${id}-note`}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        <span>{PRIVATE_HOST_LABEL}</span>
+      </label>
+      <p id={`${id}-note`} className="field-note">
+        {PRIVATE_HOST_NOTE}
+      </p>
+    </div>
+  );
+}
 import { ReviewDialog, type ReviewRequest } from "./ReviewDialog";
 
 type ListState =
@@ -49,6 +85,10 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
   const [entries, setEntries] = useState<EntriesState | null>(null);
   const [input, setInput] = useState("");
   const [inputError, setInputError] = useState<string | null>(null);
+  /** The "on my own computer or network" box (decision 17). */
+  const [privateOk, setPrivateOk] = useState(false);
+  /** The backend said this address resolves to a private one, so the box must be shown. */
+  const [privateAsked, setPrivateAsked] = useState(false);
   /** Which marketplace is busy; "add" while adding. One git operation at a time per UI. */
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
@@ -92,6 +132,7 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
   const shown = entries && entries.id === selected ? entries : null;
   const check = checkGitInput(input);
   const hint = input.trim() === "" ? null : check.ok ? check.hint : check.reason;
+  const showPrivate = check.ok && (privateAsked || looksPrivate(check.value));
 
   const add = async () => {
     const c = checkGitInput(input);
@@ -99,18 +140,26 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
       setInputError(c.reason);
       return;
     }
+    if ((privateAsked || looksPrivate(c.value)) && !privateOk) {
+      setInputError(PRIVATE_HOST_TEXT);
+      return;
+    }
     setInputError(null);
     setMessage(null);
     setBusy("add");
     setLive("Adding marketplace. Fetching its list with your Git access…");
     try {
-      const m = await marketplaceAdd(c.value);
+      const m = await marketplaceAdd(c.value, showPrivate && privateOk);
       setInput("");
+      setPrivateOk(false);
+      setPrivateAsked(false);
       say("success", `${truncate(m.id, 60)} was added.`);
       await loadList();
       setSelected(m.id);
     } catch (err) {
-      say("danger", errorText(toCommandError(err)));
+      const e = toCommandError(err);
+      if (e.kind === "privateHost") setPrivateAsked(true);
+      say("danger", errorText(e));
     } finally {
       setBusy(null);
     }
@@ -200,12 +249,17 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
                 setInput(e.target.value);
                 setInputError(null);
                 setMessage(null);
+                // A new address needs its own answer.
+                setPrivateOk(false);
+                setPrivateAsked(false);
               }}
             />
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={busy !== null || input.trim() === "" || !check.ok}
+              disabled={
+                busy !== null || input.trim() === "" || !check.ok || (showPrivate && !privateOk)
+              }
             >
               {busy === "add" ? "Adding…" : "Add marketplace"}
             </button>
@@ -213,6 +267,17 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
           <p id="mk-url-hint" className="field-note">
             {inputError ?? hint ?? "Anyone can publish a marketplace; add only ones you trust."}
           </p>
+          {showPrivate && (
+            <PrivateHostBox
+              id="mk-private"
+              checked={privateOk}
+              disabled={busy !== null}
+              onChange={(v) => {
+                setPrivateOk(v);
+                setInputError(null);
+              }}
+            />
+          )}
         </form>
         {busy === "add" && (
           <p className="mk-progress" aria-hidden="true">
@@ -236,6 +301,7 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
               <div className="mk-item-head">
                 <h2 className="card-title">{truncate(m.id, 60)}</h2>
                 {m.builtin && <span className="activity-kind">Built in</span>}
+                {m.privateHost && <span className="activity-kind">On your network</span>}
               </div>
               {m.description && <p className="card-text">{truncate(m.description, 200)}</p>}
               <p className="mk-meta mk-wrap">{truncate(m.url, 200)}</p>
