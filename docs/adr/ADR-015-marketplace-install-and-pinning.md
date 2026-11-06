@@ -185,6 +185,10 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
   - the SDK.
 - **Activities and engines.** Their own data schemas were aligned later by the S12-T14 security review (LOW-2): the engine plain-text pattern is the same hidden-character class, and the combining-mark rule is applied to every string in pack data by the host's own check after the schema. See the ADR-016 amendment.
 
+### 8. Built-in Git when Git isn't installed (decision 28)
+
+When no `git` is on `PATH`, the same operations run on a built-in Git (gitoxide) for public https marketplaces only, with the same resolve check, pin, no redirects, object checks, size cap and timeouts, and the same cache layout. ssh, sign-in and proxy-only cases return `needsGit`. Installed Git is always preferred. Details and the parity table: ADR-023.
+
 ### Residual risks
 
 - **DNS rebinding, ssh.** ssh fetches are checked, but Git's ssh client resolves the name again. A name that answers differently the second time can still reach an inward address and port over ssh. The https pin closes this for https only. Since the S12-T14 review this applies only to a marketplace address the user typed (index entries are https only), so the name is one the user chose; a user who adds an ssh address on a name an attacker controls is still exposed.

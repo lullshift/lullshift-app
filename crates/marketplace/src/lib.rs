@@ -13,6 +13,7 @@
 //! 4. After the user confirms, [`install`] writes it; [`verify_install`] re-checks it later.
 //! 5. For updates, prepare the new commit and call [`diff_update`].
 
+mod builtin;
 pub mod data_schema;
 pub mod error;
 pub mod gate;
@@ -30,13 +31,15 @@ pub mod validate;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod testserver;
+#[cfg(test)]
 mod testutil;
 
 pub use error::{
     Error, GitFailureKind, IndexError, NameError, PackError, PathError, RefError, UrlError,
 };
 pub use gate::{set_webrtc_confirmed_off, third_party_code_allowed};
-pub use git::{Git, classify_failure};
+pub use git::{Backend, Git, classify_failure};
 pub use index::{EntrySource, IndexEntry, MarketplaceIndex, parse_index};
 pub use install::{
     Installed, InstalledSummary, UpdateDiff, VerifiedHashes, VerifyError, diff_update, install,

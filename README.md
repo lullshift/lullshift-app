@@ -20,7 +20,7 @@ Anyone can build more:
 - **Code activities**: any static web app using the Lullshift SDK, optionally built on our grid, card or arcade kits.
 - **Content packs**: just a JSON file for one of our engines (quiz, breathing, routine, …), no code.
 
-Activities are distributed through **Git repositories**. Publish a public or private repo with a `.lullshift/marketplace.json` index; users add it in the app by `owner/repo` or Git URL, and each install is pinned to a commit. Private repos use the user's own Git credentials; Lullshift stores none. This repository is the built-in marketplace. In this release, third-party marketplaces can supply content packs; third-party code activities can't be installed yet.
+Activities are distributed through **Git repositories**. Publish a public or private repo with a `.lullshift/marketplace.json` index; users add it in the app by `owner/repo` or Git URL, and each install is pinned to a commit. Private repos use the user's own Git credentials; Lullshift stores none. Git doesn't have to be installed for public https marketplaces: without it, Lullshift uses a built-in Git (gitoxide) for those; private and ssh marketplaces need Git installed ([ADR-023](docs/adr/ADR-023-bundled-git-fallback.md)). This repository is the built-in marketplace. In this release, third-party marketplaces can supply content packs; third-party code activities can't be installed yet.
 
 Start with the [creator guide](docs/creators/README.md).
 

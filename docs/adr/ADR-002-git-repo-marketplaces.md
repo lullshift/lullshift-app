@@ -20,6 +20,8 @@ Handoff v1.1 planned a hosted marketplace with accounts, server-side review and 
 7. **No central review.** Anyone can publish a marketplace. The install UI states clearly that third-party marketplaces are unverified and shows source repo, commit, kind (content vs code) and permissions before install. Only the built-in marketplace is reviewed (by pull request).
 8. **Package signing (e.g. Sigstore) is deferred** past v1; commit pinning + the activity sandbox is the v1 trust baseline.
 
+Amendment (decision 28, ADR-023): when Git isn't installed, a built-in Git (gitoxide) reads public https marketplaces; private and ssh marketplaces still need installed Git. Credentials are still never stored.
+
 ## Security consequences
 
 - The activity sandbox (architecture doc, "Activity sandbox and host bridge") is the primary safety boundary for third-party code and must be proven on Windows, macOS and Linux before third-party *code* activities can be installed. Content-only packs (ADR-003) can be enabled earlier.

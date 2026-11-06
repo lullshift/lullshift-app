@@ -30,6 +30,15 @@ sha2.workspace = true
 # so the lockfile gains no new crates.
 ureq = { version = "=3.5.1", default-features = false, features = ["rustls", "platform-verifier"] }
 
+# The built-in Git used when no `git` is on PATH (decision 28, ADR-023). Pure Rust, no default
+# features: only the blocking network client and SHA-1. No HTTP backend from gix: the
+# transport is ours (gix_transport's `Http` trait over the same ureq as the redirect probe), so
+# the address pin, redirects, TLS roots, the size cap and timeouts are all under our control.
+gix = { version = "=0.90.0", default-features = false, features = ["blocking-network-client", "sha1"] }
+# Only to switch on gix's backend-neutral HTTP layer (`http-client`: the `Http` trait and
+# `connect_http`), without curl or reqwest. Same version gix 0.90.0 depends on.
+gix-transport = { version = "=0.62.0", default-features = false, features = ["http-client"] }
+
 [dev-dependencies]
 tempfile.workspace = true
 

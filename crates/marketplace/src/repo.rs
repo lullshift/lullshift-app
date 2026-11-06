@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 
 use crate::error::{Error, GitFailureKind, IndexError, PackError, RefError};
-use crate::git::{Class, Git, SMALL_OUTPUT};
+use crate::git::{Backend, Class, Git, SMALL_OUTPUT};
 use crate::index::{
     EntrySource, INDEX_MAX_BYTES, INDEX_PATH, IndexEntry, MarketplaceIndex, parse_index,
 };
@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static STAGING_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// The ref the fetched commit is stored under inside a cache repository.
-const FETCH_REF: &str = "refs/lullshift/fetched";
+pub(crate) const FETCH_REF: &str = "refs/lullshift/fetched";
 
 /// One line of `git ls-tree -r -l`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +67,9 @@ impl Git {
         if repo.join("HEAD").is_file() {
             return Ok(());
         }
+        if self.backend() == Backend::Builtin {
+            return crate::builtin::ensure_repo(repo);
+        }
         if let Some(parent) = repo.parent() {
             std::fs::create_dir_all(parent).map_err(Error::io("create the cache folder"))?;
         }
@@ -94,6 +97,9 @@ impl Git {
     /// Git's own check of a ref name (S08-T06). Commit ids need none.
     pub fn check_ref_format(&self, r: &GitRef) -> Result<(), Error> {
         let GitRef::Name(name) = r else { return Ok(()) };
+        if self.backend() == Backend::Builtin {
+            return crate::builtin::check_ref_format(name);
+        }
         // check-ref-format has no option terminator, but a name can't start with '-' here.
         let out = self.run(
             None,
@@ -122,10 +128,16 @@ impl Git {
     ///
     /// Git never follows redirects. If an https fetch fails the way a moved repository makes it
     /// fail, the server is asked once where it went ([`crate::redirect::probe`]) and the call
-    /// fails with [`Error::Moved`] so the user can decide (decision 18.1).
+    /// fails with [`Error::Moved`] so the user can decide (decision 18.1). The built-in Git sees
+    /// the redirect itself and reports it the same way without a second request.
+    ///
+    /// With the built-in Git ([`Backend::Builtin`]) an ssh address, a repository that asks for
+    /// a sign-in, and a name only a proxy can resolve fail with
+    /// [`GitFailureKind::NeedsSystemGit`] (decision 28).
     pub fn fetch(&self, repo: &Path, url: &GitUrl, r: Option<&GitRef>) -> Result<Commit, Error> {
         let result = self.fetch_checked(repo, url, r);
         if let Err(Error::Git(GitFailureKind::NotFound | GitFailureKind::Failed)) = &result
+            && self.backend() == Backend::System
             && url.scheme() == Scheme::Https
             && let Some(moved) = crate::redirect::probe_with(url, self.resolver())
         {
@@ -143,8 +155,20 @@ impl Git {
         // A private host, or a name that resolves to a private address, is fetched only after
         // the user confirmed it (decisions 17 and 18.8). The checked addresses are pinned for
         // https so Git doesn't resolve the name again to something else.
+        let builtin = self.backend() == Backend::Builtin;
+        // The built-in Git has no ssh (and no keys or agent to use): installed Git is needed.
+        if builtin && url.scheme() == Scheme::Ssh {
+            return Err(GitFailureKind::NeedsSystemGit.into());
+        }
+        let mut addrs = Vec::new();
         let pin = match check_destination_with(url, self.resolver())? {
-            Destination::Resolved(addrs) => curl_resolve(url, &addrs),
+            Destination::Resolved(resolved) => {
+                let pin = curl_resolve(url, &resolved);
+                addrs = resolved;
+                pin
+            }
+            // `file://` exists only in tests, and only for the runner.
+            Destination::Local if builtin => return Err(GitFailureKind::Failed.into()),
             Destination::Local => None,
             // Git would resolve the name itself, unchecked and unpinned (security review
             // MEDIUM-1). Behind a proxy the proxy resolves it and no pin could apply anyway, so
@@ -155,12 +179,17 @@ impl Git {
                 if url.scheme() == Scheme::Https && !self.proxy_configured(url) {
                     return Err(GitFailureKind::Offline.into());
                 }
+                // The built-in Git never uses a proxy, so it never fetches unpinned
+                // (ADR-023): behind a proxy, installed Git is needed.
+                if builtin {
+                    return Err(GitFailureKind::NeedsSystemGit.into());
+                }
                 None
             }
         };
         let pin = pin.as_deref();
         if repo.join("HEAD").is_file() {
-            let result = self.fetch_into(repo, url, r, pin);
+            let result = self.fetch_into(repo, url, r, pin, &addrs);
             if result.is_err() {
                 remove_partial_objects(repo);
             }
@@ -175,12 +204,15 @@ impl Git {
             STAGING_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
         let _ = std::fs::remove_dir_all(&staging);
-        let result = self.fetch_into(&staging, url, r, pin).and_then(|commit| {
-            // A folder without HEAD is the leftover of an earlier failed attempt.
-            let _ = std::fs::remove_dir_all(repo);
-            std::fs::rename(&staging, repo).map_err(Error::io("move the new cache into place"))?;
-            Ok(commit)
-        });
+        let result = self
+            .fetch_into(&staging, url, r, pin, &addrs)
+            .and_then(|commit| {
+                // A folder without HEAD is the leftover of an earlier failed attempt.
+                let _ = std::fs::remove_dir_all(repo);
+                std::fs::rename(&staging, repo)
+                    .map_err(Error::io("move the new cache into place"))?;
+                Ok(commit)
+            });
         if result.is_err() {
             let _ = std::fs::remove_dir_all(&staging);
         }
@@ -193,10 +225,25 @@ impl Git {
         url: &GitUrl,
         r: Option<&GitRef>,
         pin: Option<&str>,
+        addrs: &[std::net::SocketAddr],
     ) -> Result<Commit, Error> {
         self.ensure_repo(repo)?;
         if let Some(r) = r {
             self.check_ref_format(r)?;
+        }
+        if self.backend() == Backend::Builtin {
+            return crate::builtin::fetch(
+                repo,
+                url,
+                r,
+                addrs,
+                &crate::builtin::FetchSettings {
+                    timeout: self.network_timeout(),
+                    cap: self.fetch_cap(),
+                    fsck: self.fsck_enabled(),
+                    plain_http_for_tests: self.plain_http_for_tests(),
+                },
+            );
         }
         let source = r.map_or("HEAD", GitRef::as_str);
         let refspec = format!("+{source}:{FETCH_REF}");
@@ -247,25 +294,7 @@ impl Git {
         commit: &Commit,
         builtin: bool,
     ) -> Result<MarketplaceIndex, Error> {
-        let listing = self.run(
-            Some(repo),
-            &[
-                "ls-tree",
-                "-z",
-                "-l",
-                "--end-of-options",
-                commit.as_str(),
-                "--",
-                INDEX_PATH,
-            ],
-            Class::Local,
-            None,
-            SMALL_OUTPUT,
-        )?;
-        if !listing.success() {
-            return Err(listing.failure().into());
-        }
-        let entries = parse_ls_tree(&listing.stdout)?;
+        let entries = self.ls_paths(repo, commit, &[INDEX_PATH.to_owned()])?;
         let entry = entries.first().ok_or(IndexError::Missing)?;
         if entries.len() != 1
             || entry.mode != "100644"
@@ -330,20 +359,7 @@ impl Git {
                 .iter()
                 .map(|p| format!("{}/manifest.json", p.as_str()))
                 .collect();
-            let mut args: Vec<&str> = vec![
-                "ls-tree",
-                "-z",
-                "-l",
-                "--end-of-options",
-                commit.as_str(),
-                "--",
-            ];
-            args.extend(files.iter().map(String::as_str));
-            let listing = self.run(Some(repo), &args, Class::Local, None, SMALL_OUTPUT)?;
-            if !listing.success() {
-                return Err(listing.failure().into());
-            }
-            let entries = parse_ls_tree(&listing.stdout)?;
+            let entries = self.ls_paths(repo, commit, &files)?;
             let found: Vec<Option<&TreeEntry>> = files
                 .iter()
                 .map(|f| {
@@ -371,6 +387,32 @@ impl Git {
         Ok(out)
     }
 
+    /// `ls-tree -z -l <commit> -- <paths>`: the entries at exactly those paths.
+    fn ls_paths(
+        &self,
+        repo: &Path,
+        commit: &Commit,
+        paths: &[String],
+    ) -> Result<Vec<TreeEntry>, Error> {
+        if self.backend() == Backend::Builtin {
+            return crate::builtin::ls_paths(repo, commit, paths);
+        }
+        let mut args: Vec<&str> = vec![
+            "ls-tree",
+            "-z",
+            "-l",
+            "--end-of-options",
+            commit.as_str(),
+            "--",
+        ];
+        args.extend(paths.iter().map(String::as_str));
+        let listing = self.run(Some(repo), &args, Class::Local, None, SMALL_OUTPUT)?;
+        if !listing.success() {
+            return Err(listing.failure().into());
+        }
+        parse_ls_tree(&listing.stdout)
+    }
+
     /// Every file under `path` at `commit` (recursively), as Git lists them. The folder must
     /// exist and be a tree.
     pub(crate) fn list_tree(
@@ -379,6 +421,9 @@ impl Git {
         commit: &Commit,
         path: Option<&RelPath>,
     ) -> Result<Vec<TreeEntry>, Error> {
+        if self.backend() == Backend::Builtin {
+            return crate::builtin::ls_tree_recursive(repo, commit, path, SMALL_OUTPUT);
+        }
         let spec = match path {
             Some(p) => format!("{commit}:{p}", p = p.as_str()),
             None => format!("{commit}^{{tree}}"),
@@ -420,6 +465,9 @@ impl Git {
     ) -> Result<Vec<Vec<u8>>, Error> {
         if wanted.is_empty() {
             return Ok(Vec::new());
+        }
+        if self.backend() == Backend::Builtin {
+            return crate::builtin::read_blobs(repo, wanted);
         }
         let total: u64 = wanted.iter().map(|(_, s)| *s).sum();
         let cap = usize::try_from(total)
@@ -466,6 +514,7 @@ impl Git {
 /// Removes what a killed or failed fetch leaves in an existing cache: temporary pack files and
 /// quarantine folders. Finished objects and refs are untouched.
 fn remove_partial_objects(repo: &Path) {
+    crate::builtin::remove_partial(repo);
     let objects = repo.join("objects");
     if let Ok(read) = std::fs::read_dir(objects.join("pack")) {
         for e in read.flatten() {

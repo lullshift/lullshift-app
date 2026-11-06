@@ -618,7 +618,7 @@ fn third_party_code_is_blocked_before_its_files_are_read() {
 #[test]
 fn nonexistent_repository_is_not_found() {
     let env = Env::new();
-    let missing = crate::validate::GitUrl::for_test_file(&env.path("no-such-repo"));
+    let missing = url_for(&env.path("no-such-repo"));
     let e = env
         .git
         .fetch(&env.path("cache/m/repo.git"), &missing, None)
@@ -642,7 +642,7 @@ fn nonexistent_ref_is_not_found() {
 #[test]
 fn errors_never_contain_git_stderr_or_the_path() {
     let env = Env::new();
-    let missing = crate::validate::GitUrl::for_test_file(&env.path("secret-folder-name"));
+    let missing = url_for(&env.path("secret-folder-name"));
     let e = env
         .git
         .fetch(&env.path("cache/m/repo.git"), &missing, None)

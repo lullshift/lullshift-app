@@ -247,6 +247,22 @@ impl GitUrl {
         };
         Self::build(url.clone(), url, Scheme::File, "", None, HostClass::Public)
     }
+
+    /// An https address on the loopback test server (`testserver`), already confirmed as
+    /// private because it resolves to 127.0.0.1. Tests only.
+    #[cfg(test)]
+    pub(crate) fn for_test_https(host: &str, port: u16, path: &str) -> Self {
+        let url = format!("https://{host}:{port}{path}");
+        Self::build(
+            url.clone(),
+            url,
+            Scheme::Https,
+            host,
+            Some(port),
+            HostClass::Private,
+        )
+        .confirm_private()
+    }
 }
 
 fn port_text(port: Option<u16>) -> String {

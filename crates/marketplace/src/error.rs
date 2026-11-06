@@ -180,6 +180,10 @@ pub enum GitFailureKind {
     Timeout,
     /// `git` isn't installed or isn't on `PATH`.
     GitMissing,
+    /// The built-in Git can't do this: the repository asks for a sign-in (private, or the
+    /// address is wrong), uses ssh, or is only reachable through a proxy. Installed Git can
+    /// (decision 28, ADR-023).
+    NeedsSystemGit,
     /// A command's output was larger than allowed and the call was stopped.
     OutputTooLarge,
     /// Anything else.
@@ -196,6 +200,9 @@ impl fmt::Display for GitFailureKind {
             Self::NotFound => "the repository, branch or tag wasn't found",
             Self::Timeout => "Git took too long and was stopped",
             Self::GitMissing => "Git isn't installed or isn't on your PATH",
+            Self::NeedsSystemGit => {
+                "this marketplace needs Git installed on this computer; the built-in Git reads public https marketplaces only"
+            }
             Self::OutputTooLarge => "Git returned more data than allowed and was stopped",
             Self::Failed => "Git couldn't complete the request",
         })
