@@ -37,6 +37,8 @@ You asked about Cursor, Codex and OpenCode. Cursor and Codex are in Sprint 10. O
 
 **Owner decision (2026-11-06):** add an OpenCode adapter now, observe-only like Codex and Cursor, with a security review. Built after this decision review so the answers to item 23 apply to it.
 
+**Owner follow-up (2026-11-06, after the S12-T01 research in ADR-022):** build an OpenCode adapter for OpenCode v2 only. It is marked experimental and uses the plugin fields seen in OpenCode's source. Status says "unknown" rather than "connected" until an event has arrived.
+
 ## 2. Summary labels can mimic host labels (Sprint 05, security review L4)
 
 An activity's paused-view stat label can say "Played" or "In total", like the host's own stats. It is look-alike text only, with no access gained. **Decision:** left as is and recorded as a low risk. **Alternative:** reserve host label words, or draw activity stats in a visually separate group.
@@ -226,6 +228,8 @@ Taken while the product owner was away; all fail closed. Please confirm or chang
 Decision 1 is still open, so Sprint 10 researches and builds only Codex and Cursor adapters, as the sprint says.
 
 **Owner decision (2026-11-06):** add an OpenCode adapter now, observe-only like Codex and Cursor, with a security review. Built after this decision review so the answers to item 23 apply to it.
+
+**Owner follow-up (2026-11-06, after the S12-T01 research in ADR-022):** build an OpenCode adapter for OpenCode v2 only. It is marked experimental and uses the plugin fields seen in OpenCode's source. Status says "unknown" rather than "connected" until an event has arrived.
 
 ## 23. Codex and Cursor adapters: conservative choices taken (ADR-021)
 
