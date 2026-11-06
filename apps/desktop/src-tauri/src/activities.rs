@@ -402,7 +402,8 @@ pub(crate) fn validate_data(
     }
     let data: Value = serde_json::from_slice(contents)
         .map_err(|_| ContentError::new("data_not_json", format!("{data_path} isn't valid JSON")))?;
-    let problems = data_schema::validate(schema, &data);
+    // The schema, then the host's plain-text rule on every string (security review LOW-2).
+    let problems = marketplace::pack_text::pack_data_problems(schema, &data);
     if !problems.is_empty() {
         let shown: Vec<String> = problems
             .iter()
@@ -1690,7 +1691,7 @@ mod tests {
                     checked += 1;
                     let text = std::fs::read(&path).expect("fixture");
                     let problems = match serde_json::from_slice::<Value>(&text) {
-                        Ok(data) => data_schema::validate(schema, &data),
+                        Ok(data) => marketplace::pack_text::pack_data_problems(schema, &data),
                         Err(_) => vec!["not JSON".to_owned()],
                     };
                     if problems.is_empty() != should_pass {

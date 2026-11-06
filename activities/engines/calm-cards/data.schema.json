@@ -10,13 +10,13 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 80,
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F-\\u1160\\u17B4-\\u17B5\\u180B-\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\u3164\\uFEFF\\uFFA0\\uFFF9-\\uFFFB\\u{1BCA0}-\\u{1BCA3}\\u{1D173}-\\u{1D17A}\\u{E0000}-\\u{E007F}]*$"
     },
     "intro": {
       "type": "string",
       "minLength": 1,
       "maxLength": 300,
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F-\\u1160\\u17B4-\\u17B5\\u180B-\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\u3164\\uFEFF\\uFFA0\\uFFF9-\\uFFFB\\u{1BCA0}-\\u{1BCA3}\\u{1D173}-\\u{1D17A}\\u{E0000}-\\u{E007F}]*$"
     },
     "cards": {
       "type": "array",
@@ -31,13 +31,13 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
-            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F-\\u1160\\u17B4-\\u17B5\\u180B-\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\u3164\\uFEFF\\uFFA0\\uFFF9-\\uFFFB\\u{1BCA0}-\\u{1BCA3}\\u{1D173}-\\u{1D17A}\\u{E0000}-\\u{E007F}]*$"
           },
           "back": {
             "type": "string",
             "minLength": 1,
             "maxLength": 400,
-            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F­؜᠎​-‏  ‪-‮⁠-⁤⁦-⁯﻿]*$"
+            "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F-\\u1160\\u17B4-\\u17B5\\u180B-\\u180E\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\u3164\\uFEFF\\uFFA0\\uFFF9-\\uFFFB\\u{1BCA0}-\\u{1BCA3}\\u{1D173}-\\u{1D17A}\\u{E0000}-\\u{E007F}]*$"
           }
         }
       }

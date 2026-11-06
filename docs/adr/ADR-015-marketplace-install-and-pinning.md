@@ -183,7 +183,7 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
   - agent-core;
   - the agent-protocol schema validators;
   - the SDK.
-- **Activities and engines.** Their own data schemas are not part of this change.
+- **Activities and engines.** Their own data schemas were aligned later by the S12-T14 security review (LOW-2): the engine plain-text pattern is the same hidden-character class, and the combining-mark rule is applied to every string in pack data by the host's own check after the schema. See the ADR-016 amendment.
 
 ### Residual risks
 

@@ -3,7 +3,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAjv } from "@lullshift/agent-protocol";
+import { hostDataCheck } from "./hostDataCheck";
 import { describe, expect, it } from "vitest";
 
 const root = fileURLToPath(new URL("../../../../../", import.meta.url));
@@ -53,7 +53,7 @@ const L = (globalThis as unknown as { ToyLogic: Logic }).ToyLogic;
 const schema = JSON.parse(
   readFileSync(join(root, "activities/engines/toy/data.schema.json"), "utf8"),
 );
-const validate = createAjv({ allErrors: true }).compile(schema);
+const validate = hostDataCheck(schema as object);
 
 function fixtures(kind: "valid" | "invalid"): [string, unknown][] {
   const dir = join(root, "tests/fixtures/engines/lullshift.toy@1", kind);
