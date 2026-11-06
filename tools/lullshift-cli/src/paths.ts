@@ -28,6 +28,17 @@ export const ENGINES_DIR = BUILT
   ? path.join(here, "assets", "engines")
   : path.join(REPO_ROOT, "activities/engines");
 export const TEMPLATES_DIR = path.join(CLI_ROOT, "templates");
+
+/**
+ * The folder to resolve the user's relative paths from, if not the current one. `pnpm lullshift`
+ * runs the sources from the repository root, so there INIT_CWD (the folder the command was typed
+ * in, set by pnpm and npm) is honoured. The installed CLI ignores it: it already runs where it was
+ * called, and an npm script that changes folder before calling `lullshift` would otherwise
+ * write somewhere else.
+ */
+export function startDir(env: NodeJS.ProcessEnv, built: boolean = BUILT): string | undefined {
+  return !built && env.INIT_CWD ? env.INIT_CWD : undefined;
+}
 export const HARNESS_DIR = BUILT ? path.join(here, "harness") : path.join(CLI_ROOT, "harness");
 /** The harness page's script: stripped to JavaScript by the build, or on request in the repo. */
 export const HARNESS_SCRIPT = path.join(HARNESS_DIR, BUILT ? "host.js" : "host.ts");

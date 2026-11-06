@@ -16,6 +16,7 @@ import {
   type KitName,
 } from "./create.ts";
 import { packFiles } from "./pack.ts";
+import { startDir } from "./paths.ts";
 import { startServers } from "./serve.ts";
 import { servedFiles, simulate } from "./simulate.ts";
 import { printReport, validateFolder } from "./validate.ts";
@@ -41,7 +42,9 @@ class Usage extends Error {}
 
 async function main(argv: string[]): Promise<number> {
   // `pnpm lullshift` runs from the repository root; resolve folders from where it was typed.
-  if (process.env.INIT_CWD) process.chdir(process.env.INIT_CWD);
+  // The installed CLI (dist/) ignores INIT_CWD (see startDir).
+  const start = startDir(process.env);
+  if (start) process.chdir(start);
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
