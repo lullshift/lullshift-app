@@ -8,6 +8,7 @@ mod companion_commands;
 mod context;
 mod market;
 mod notify;
+pub mod uninstall_hooks;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

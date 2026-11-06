@@ -51,6 +51,13 @@ The residual risk stays as in ADR-009: other local users can hold connection slo
 ## Consequences
 
 - An app move or update changes the executable path; the app shows "Needs repair" and offers to update the hooks.
-- If Lullshift is removed or moved without disconnecting, Claude Code keeps trying to run a missing executable. The consent panel warns about this; an uninstaller cleanup step is tracked for the release work (S11-T06). Manual cleanup: delete the handlers whose `args` start with `hook`, `claude-code` from the settings file.
+- If Lullshift is removed or moved without disconnecting, Claude Code keeps trying to run a missing executable. The consent panel warns about this; the OS uninstaller now runs the same cleanup (S11-T06, see the implementation notes below). Manual cleanup: delete the handlers whose `args` start with `hook`, `claude-code` from the settings file.
 - Sessions in folders Claude Code hasn't trusted send nothing (Claude Code holds hooks back), and interrupts send no event. The UI shows these sessions as stale, not as finished.
 - Every hook run starts a short-lived Lullshift process. Exec form and the 2-second cap keep this cheap.
+
+## Implementation notes: uninstaller cleanup (S11-T06)
+
+- **`lullshift-desktop --uninstall-hooks`** (`apps/desktop/src-tauri/src/uninstall_hooks.rs`) runs the same uninstall functions as Disconnect for Claude Code, Codex and Cursor, with no UI, no stdout or stderr, exit code 0 always, and no new IPC. For each adapter it uses the install record in `lullshift.db` (settings path, backup, created keys), or, without a record, removes only Lullshift's own entries from the default location. It marks the adapter uninstalled and ends tracked sessions, like Disconnect. It never creates a database or a settings file, leaves files that don't parse untouched, keeps the user's own hooks, and a failure for one agent doesn't stop the others. A second run changes nothing.
+- **Wiring:** Windows NSIS pre-uninstall hook (`windows/hooks.nsh`, skipped in `/UPDATE` mode), Linux deb `prerm` (`linux/prerm`, `remove` only, runs per user via `runuser`, never as root). macOS has no uninstaller: disconnect first. AppImage has none either. Details and caveats: `docs/RELEASING.md` section 4.
+- **Missing executable:** per the Claude Code hooks documentation, a command hook that can't be started is a non-blocking error (a "hook error" notice, the action proceeds). Only hooks with `onFailure: "block"` block, and Lullshift never sets it; async hooks can't block at all. So a leftover hook is noise, not a failure of Claude Code itself. Codex and Cursor aren't documented; assumed the same (Cursor `failClosed` is never set, Codex hooks are async) and to be confirmed by hand.
+- **Tests:** `uninstall_hooks::tests` (temp directories only) cover restore, later user edits, own hooks, missing database, unparsable file, idempotence and database state. `tests/release_config.rs` checks the wiring.

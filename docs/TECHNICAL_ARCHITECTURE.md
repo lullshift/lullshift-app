@@ -321,7 +321,7 @@ Accepted:
 - [ADR-001](adr/ADR-001-open-source-v1-no-accounts.md): Fully open-source v1 with no accounts and no hosted services.
 - [ADR-002](adr/ADR-002-git-repo-marketplaces.md): Git repositories as activity marketplaces.
 - [ADR-003](adr/ADR-003-activity-model-kits-engines-content.md): Activity model: code activities, kits, engines and content packs; v1 content target.
-- [ADR-004](adr/ADR-004-local-quality-checks-no-hosted-ci.md): Local quality checks instead of hosted CI (for now).
+- [ADR-004](adr/ADR-004-local-quality-checks-no-hosted-ci.md): Local quality checks instead of hosted CI (for now); amended with a manual-only release workflow.
 - [ADR-005](adr/ADR-005-toolchains-workspace-and-checks.md): Toolchains, workspace layout and local check tooling.
 - [ADR-006](adr/ADR-006-schema-first-contracts.md): Schema-first contracts and type generation.
 - [ADR-007](adr/ADR-007-sqlite-library.md): SQLite library (rusqlite).

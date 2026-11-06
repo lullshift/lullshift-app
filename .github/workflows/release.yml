@@ -1,0 +1,161 @@
+# Manual release build (S11-T01, ADR-004 amendment 2026-11-05).
+#
+# Runs ONLY when someone starts it by hand (Actions tab > Release build > Run workflow). It never
+# runs on push, pull request, merge or a schedule, so it cannot use up the free-plan quota on its
+# own. It builds unsigned installers for Windows, macOS and Linux and attaches them, with
+# SHA256SUMS and a build-provenance attestation, to a DRAFT GitHub Release. Nothing is published:
+# the owner reviews the draft and publishes it by hand. See docs/RELEASING.md.
+name: Release build
+
+on:
+  workflow_dispatch:
+
+# Least privilege by default; the release job raises what it needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-build
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            runner: windows-latest
+            args: --bundles nsis
+            targets: ""
+            bundle_dir: target/release/bundle
+          - name: macos-universal
+            runner: macos-latest
+            args: --target universal-apple-darwin --bundles dmg
+            targets: aarch64-apple-darwin x86_64-apple-darwin
+            bundle_dir: target/universal-apple-darwin/release/bundle
+          - name: linux
+            runner: ubuntu-22.04
+            args: --bundles deb,appimage
+            targets: ""
+            bundle_dir: target/release/bundle
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      - name: Enable pnpm (version pinned by package.json)
+        run: corepack enable
+
+      - name: Install Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils libfuse2
+
+      - name: Rust toolchain (version from rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          if [ -n "${{ matrix.targets }}" ]; then rustup target add ${{ matrix.targets }}; fi
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build installers
+        working-directory: apps/desktop
+        # No updater signing key is passed yet: the updater is not enabled, so the key would only
+        # be exposed to every build script. docs/RELEASING.md section 3 says how to add it (from a
+        # protected `release` environment) when the updater is turned on.
+        run: pnpm tauri build ${{ matrix.args }}
+
+      - name: Collect installers only
+        shell: bash
+        run: |
+          mkdir -p staged
+          find "${{ matrix.bundle_dir }}" -type f \
+            \( -name '*.exe' -o -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.sig' \) \
+            -exec cp -v {} staged/ \;
+          ls -l staged
+          test -n "$(ls -A staged)"
+
+      - name: Upload installers for the release job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installers-${{ matrix.name }}
+          path: staged/*
+          if-no-files-found: error
+          retention-days: 7
+
+  draft-release:
+    name: Draft release
+    needs: build
+    # A draft (and its provenance attestation) is made only from main; a run started on another
+    # branch builds the installers but never drafts a release. Verify with --source-ref (RELEASING.md).
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the draft release and attach files
+      id-token: write # sign the provenance attestation
+      attestations: write
+    steps:
+      - name: Check out (for the version only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download installers
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: installers-*
+          path: release
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: release
+        run: |
+          ls -l
+          sha256sum -- * > SHA256SUMS.tmp
+          mv SHA256SUMS.tmp SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release/*
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
+          tag="v${version}"
+          cat > notes.md <<'NOTES'
+          Draft: not published. Installers are UNSIGNED.
+
+          - Windows: SmartScreen shows "Windows protected your PC". Choose More info, then Run anyway.
+          - macOS: Gatekeeper blocks the first open. Open System Settings > Privacy & Security and choose Open Anyway.
+          - Linux: no signing prompt. Make the AppImage executable first.
+
+          Verify downloads against SHA256SUMS and the GitHub build-provenance attestation (gh attestation verify). See docs/RELEASING.md.
+          NOTES
+          gh release create "$tag" release/* \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "Lullshift ${version}" \
+            --notes-file notes.md
