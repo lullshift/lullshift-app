@@ -123,3 +123,40 @@ Acceptance checks passed/failed:
 Recommended next action (owner): review decision 27; run the manual checks (M01-M12); run
   the Release workflow once; then approve the 0.1.0 release.
 ```
+
+## Follow-up after the owner's review of decisions 27 to 29 (2026-11-06)
+
+Built after the sprint closed, at the owner's request ("Build them now", the bundled Git fallback, and npm publishing):
+
+- [x] Decision 27.1: Windows hook paths with letters such as В, Ñ and Ó are accepted (ADR-021).
+- [x] Decision 27.5: third-party code activities install on every platform after a risk warning and a consent tick, at each install and each update that changes the code (ADR-012, ADR-015 amendments). Migrations 0014 and 0015.
+- [x] Decision 27.6: refused Companion lookups show a notice (ADR-020). Migration 0013.
+- [x] Decision 27.8: in Moss Paths, turning a crossing is not a move (0.2.1).
+- [x] Decision 28: built-in Git (gitoxide) for public https marketplaces when Git isn't installed (ADR-023).
+- [x] Decision 29: the creator CLI, SDK and protocol packages can be published to npm through a manual, owner-approved workflow (ADR-017, ADR-004 amendments). Nothing is published.
+- [x] Security reviews of 27.5, 28 and 29 (security-qa-reviewer). Every high and medium finding is fixed with tests:
+  - 27.5: scheme flood (async handler, budget, small-file cache), cross-activity loads (per-launch keys, second-load freeze), storage rows (key cap, row cost, write budget), native IPC probe; lows: consent for every installed app row, more tests, dialog order and focus, "address changed" note.
+  - 28: tree-bomb traversal (visit budget, depth, deadline), proxy bypass (built-in Git refuses when a proxy is set); lows: alloc limit and threads, NTFS `.git` spellings, rejected-pack cleanup, honest 403 text.
+  - 29: publish job split from build (no credential near build tools; the checked tarballs are what is published, hash-verified), docs name the real controls and lead with the clone until `@lullshift` is registered; lows: guard pinned to this repo, integrity check on skip, stronger tarball checker, INIT_CWD, pnpm pinned by hash.
+- [x] Fixed a clock race in the `repair_hooks` tests (they failed when a second ticked between reading the clock and writing the marker).
+- [x] Manual checks M12-10 to M12-14 logged; M12-1 updated for 27.1.
+
+```text
+Commands run and results (Windows 11, after all merges, HEAD before this note):
+  pnpm check (full): all steps passed. protocol 306, kits 84, SDK 134, desktop 1233, CLI 61
+    TS tests; 41 cargo test suites ok, 0 failed (includes migrations 13-15 upgrade and
+    rollback, marketplace suite on both Git backends); bundled activities validate and
+    simulate; npm package checks; desktop build.
+  Windows sandbox proof (debug build, run-denial-tests.mjs --attention): 59/59, 0 known gaps.
+  Agents also ran: actionlint on both workflows; the npm tarballs installed outside the repo
+    with create/validate/simulate/pack (Node 24); corepack accepting the pnpm hash.
+Not run: macOS and Linux sandbox proof; Node 22; the publish workflow itself; real agents on
+  Windows paths with В/Ñ/Ó; live Companion providers. All are in M12-10 to M12-14.
+Open for the owner: decisions 30 (PRD and CLAUDE.md wording after 27.5) and 31 (npm package
+  versions); the 29 assumption that the published CLI supports Node 22.12+; register the
+  `lullshift` npm organization before the repo and docs are public.
+Remaining risks: macOS/Linux sandbox unverified (third-party code warns "not verified");
+  the Windows IPC barrier relies on wry behaviour, re-run the proof after upgrades; the
+  built-in Git can't see a proxy set only in Windows settings (installed Git can't either);
+  a compromised build tool could still alter what is packed (caught only by the checks).
+```
