@@ -40,3 +40,9 @@ obj/
 
 # Agent worktrees
 .claude/worktrees/
+
+# Licence copies and tarballs made for the npm packages (scripts/npm-build.mjs, decision 29)
+packages/agent-protocol/LICENSE
+packages/activity-sdk/LICENSE
+tools/lullshift-cli/LICENSE
+*.tgz

@@ -5,6 +5,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { BRIDGE_FILE, SDK_VERSION, packTextProblems } from "@lullshift/activity-sdk";
 import {
+  activityManifestSchema,
   createAjv,
   dataPath,
   friendlyErrors,
@@ -165,11 +166,7 @@ export function validateFolder(dir: string, opts: { engines?: string[] } = {}): 
 /** Like `validateActivityManifest`, but reporting every problem (tools want them all). */
 const allErrors = (() => {
   const ajv = createAjv({ allErrors: true });
-  const schemaPath = new URL(
-    "../../../reference/ACTIVITY_MANIFEST_V1.schema.json",
-    import.meta.url,
-  );
-  const validate = ajv.compile(JSON.parse(readFileSync(schemaPath, "utf8")) as object);
+  const validate = ajv.compile(activityManifestSchema);
   return (input: unknown): string[] =>
     validate(input)
       ? []

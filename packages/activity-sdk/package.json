@@ -1,9 +1,13 @@
 {
   "name": "@lullshift/activity-sdk",
   "version": "0.2.0",
-  "private": true,
   "license": "Apache-2.0",
   "description": "Build Lullshift activities: the bridge client, the host protocol, and manifest, help and summary types (ADR-012, ADR-017).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lullshift/lullshift-app.git",
+    "directory": "packages/activity-sdk"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -11,11 +15,35 @@
     "./bridge/lullshift-bridge-v1.js": "./bridge/lullshift-bridge-v1.js"
   },
   "files": [
+    "dist",
     "bridge",
-    "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./host": {
+        "types": "./dist/host/protocol.d.ts",
+        "default": "./dist/host/protocol.js"
+      },
+      "./bridge/lullshift-bridge-v1.js": "./bridge/lullshift-bridge-v1.js",
+      "./bridge/lullshift-bridge-v1.d.ts": "./bridge/lullshift-bridge-v1.d.ts",
+      "./package.json": "./package.json"
+    },
+    "types": "./dist/index.d.ts"
+  },
   "scripts": {
+    "build": "node ../../scripts/npm-build.mjs",
+    "prepack": "node ../../scripts/npm-build.mjs",
+    "prepublishOnly": "node ../../scripts/npm-publish-guard.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },

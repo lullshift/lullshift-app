@@ -6,11 +6,13 @@
 
 import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import { stripTypeScriptTypes } from "node:module";
+// A namespace import: stripTypeScriptTypes exists only on newer Node versions, and the installed
+// CLI (Node 22 and newer) never calls it because its harness is JavaScript already.
+import * as nodeModule from "node:module";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { readListed, SERVED_TYPES, type FileEntry } from "./files.ts";
-import { HARNESS_DIR, HOST_PROTOCOL_PATH } from "./paths.ts";
+import { HARNESS_DIR, HARNESS_SCRIPT, HOST_PROTOCOL_PATH } from "./paths.ts";
 
 /**
  * The activity CSP, identical to `activity_csp()` in `apps/desktop/src-tauri/src/activities.rs`
@@ -122,13 +124,9 @@ export async function startServers(files: FileEntry[], config: object): Promise<
           readFileSync(path.join(HARNESS_DIR, "harness.css")),
         );
       case "/host.js":
-        return send(
-          200,
-          "text/javascript; charset=utf-8",
-          tsToJs(path.join(HARNESS_DIR, "host.ts")),
-        );
+        return send(200, "text/javascript; charset=utf-8", browserJs(HARNESS_SCRIPT));
       case "/protocol.js":
-        return send(200, "text/javascript; charset=utf-8", tsToJs(HOST_PROTOCOL_PATH));
+        return send(200, "text/javascript; charset=utf-8", browserJs(HOST_PROTOCOL_PATH));
       case "/config.json":
         return send(200, "application/json", JSON.stringify({ ...config, activityOrigin }));
       default:
@@ -151,17 +149,23 @@ export async function startServers(files: FileEntry[], config: object): Promise<
   };
 }
 
-/** TypeScript to browser JavaScript: strip types, and point the SDK's host protocol import at `/protocol.js`. */
-function tsToJs(file: string): string {
-  // Node flags stripTypeScriptTypes as experimental; the output is checked by the simulator's own
-  // tests, so the warning is noise for creators.
-  const warn = process.emitWarning;
-  process.emitWarning = () => {};
-  let js: string;
-  try {
-    js = stripTypeScriptTypes(readFileSync(file, "utf8"), { mode: "strip" });
-  } finally {
-    process.emitWarning = warn;
+/**
+ * A harness script as browser JavaScript. TypeScript sources (in the repository) have their types
+ * stripped; the installed CLI's files are JavaScript already. Either way, the SDK's host protocol
+ * import points at `/protocol.js`.
+ */
+function browserJs(file: string): string {
+  let js = readFileSync(file, "utf8");
+  if (file.endsWith(".ts")) {
+    // Node flags stripTypeScriptTypes as experimental; the output is checked by the simulator's
+    // own tests, so the warning is noise for creators.
+    const warn = process.emitWarning;
+    process.emitWarning = () => {};
+    try {
+      js = nodeModule.stripTypeScriptTypes(js, { mode: "strip" });
+    } finally {
+      process.emitWarning = warn;
+    }
   }
   return js.replaceAll('from "@lullshift/activity-sdk/host"', 'from "/protocol.js"');
 }
