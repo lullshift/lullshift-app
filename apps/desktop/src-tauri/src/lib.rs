@@ -643,7 +643,7 @@ mod tests {
 
     #[test]
     fn only_the_main_window_may_change_agent_settings() {
-        const SENSITIVE: [&str; 19] = [
+        const SENSITIVE: [&str; 22] = [
             "allow-companion-set-tools-enabled",
             "allow-companion-tool-decision",
             "allow-companion-set-key",
@@ -661,6 +661,7 @@ mod tests {
             "allow-opencode-uninstall",
             "allow-marketplace-add",
             "allow-marketplace-remove",
+            "allow-marketplace-change-address",
             "allow-marketplace-install",
             "allow-marketplace-update",
             "allow-activity-uninstall",

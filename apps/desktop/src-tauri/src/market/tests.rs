@@ -1262,7 +1262,7 @@ fn an_installed_pack_serves_its_listed_pictures_and_nothing_else() {
     let repo = pictures_repo(&env, "pictures", HEXAGON);
     add(&env.core, &repo.url()).expect("add");
     let p = preview_install(&env.core, MARKET, PICTURES).expect("preview");
-    install_pending(&env.core, &p.token, Instant::now()).expect("install");
+    install_pending(&env.core, &p.token, false, Instant::now()).expect("install");
     assert!(listed_ids(&env).contains(&PICTURES.to_owned()));
     activities::content_for_core(&env.core, PICTURES).expect("content");
 
@@ -1299,7 +1299,7 @@ fn a_picture_changed_on_disk_after_the_check_is_refused_and_the_pack_shown_damag
     let repo = pictures_repo(&env, "pictures", HEXAGON);
     add(&env.core, &repo.url()).expect("add");
     let p = preview_install(&env.core, MARKET, PICTURES).expect("preview");
-    install_pending(&env.core, &p.token, Instant::now()).expect("install");
+    install_pending(&env.core, &p.token, false, Instant::now()).expect("install");
     let path = format!("/{PICTURES}/images/shape.png");
     assert_eq!(request(&env, &path).status(), StatusCode::OK);
 
@@ -1344,7 +1344,7 @@ fn a_pack_with_a_disguised_or_animated_picture_is_refused() {
         // The preview may already refuse; if not, the install must.
         let refused = match preview_install(&env.core, MARKET, PICTURES) {
             Err(e) => e,
-            Ok(p) => install_pending(&env.core, &p.token, Instant::now()).expect_err(name),
+            Ok(p) => install_pending(&env.core, &p.token, false, Instant::now()).expect_err(name),
         };
         assert_eq!(refused.kind, "invalidPack", "{name}");
         assert!(

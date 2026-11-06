@@ -29,8 +29,8 @@ use serde_json::Value;
 use time::OffsetDateTime;
 
 use super::{
-    Activity, ContentError, DATA_MAX, Role, catalog, check_images, find_engine, listed_image_type,
-    validate_data,
+    Activity, ContentError, DATA_MAX, FoundFile, Role, catalog, check_images, find_engine,
+    listed_image_type, validate_data,
 };
 use crate::Core;
 
@@ -412,7 +412,7 @@ impl Served {
         &self,
         file: &str,
         content_type: &'static str,
-    ) -> Result<Option<(std::borrow::Cow<'static, [u8]>, &'static str)>, VerifyError> {
+    ) -> Result<Option<FoundFile>, VerifyError> {
         match &self.role {
             ServedRole::Pack { .. } if file.starts_with(pack_media::IMAGE_DIR) => {
                 let Some(image_type) = listed_image_type(&self.manifest, file) else {

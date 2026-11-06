@@ -148,7 +148,7 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
 
 - **No bytes are kept.** The in-memory copy of verified file bytes and the per-session `(id, commit, digest)` cache are gone.
 - **The snapshot build.** Building the library snapshot hashes every installed file against the digest recorded at install (the first check, as before). It keeps only each file's length and SHA-256.
-- **Every later read.** The manifest, a pack's data for `init.content`, the preview image and an app's served files are each read again (never through a link, with a size cap) and hashed again before use.
+- **Every later read.** The manifest, a pack's data for `init.content`, the preview image, the pictures a pack lists under `images/` (S12-T11) and an app's served files are each read again (never through a link, with a size cap) and hashed again before use.
 - **On a mismatch.**
   - Nothing is served.
   - `activity_content` returns `damaged`.

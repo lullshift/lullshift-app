@@ -80,7 +80,7 @@ Progress from the same marketplace and repository is reused without asking.
 
 ## Pinning
 
-Every install is pinned to one commit. Lullshift stores its own copy of the files. It checks each file against what it installed every time it reads it, including when it starts the activity or shows its picture. If a file on disk no longer matches, the activity is turned off and **Manage** shows "Damaged, reinstall it." To use it again, uninstall it and install it again from its marketplace.
+Every install is pinned to one commit. Lullshift stores its own copy of the files. It checks each file against what it installed every time it reads it, including when it starts the activity or shows its preview or one of its pictures. If a file on disk no longer matches, the activity is turned off and **Manage** shows "Damaged, reinstall it." To use it again, uninstall it and install it again from its marketplace.
 
 Lullshift never runs an activity straight from a branch, and never updates anything on its own.
 

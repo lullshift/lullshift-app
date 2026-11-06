@@ -525,7 +525,7 @@ fn split_path(path: &str) -> Option<(&str, &str)> {
 }
 
 /// A file to serve and its content type.
-type FoundFile = (Cow<'static, [u8]>, &'static str);
+pub(crate) type FoundFile = (Cow<'static, [u8]>, &'static str);
 
 /// The bytes and content type for a request path, if it names an allowed file of a bundled
 /// activity, or of an installed one in `snap`.
