@@ -9,6 +9,7 @@ import {
   type ScopeKind,
   type StreamEvent,
   type ToolCallRecord,
+  type ToolNoticeReason,
   type Usage,
 } from "./api";
 
@@ -431,10 +432,12 @@ export interface StreamState {
   skipped: string[];
   /** Lookups answered during this request. */
   answered: { label: string; approved: boolean }[];
+  /** Lookups that were not run (unknown, malformed or over the limit): a notice, no button. */
+  notices: { reason: ToolNoticeReason; tool: string | null }[];
 }
 
 export function initialStream(requestId: string): StreamState {
-  return { requestId, text: "", round: 1, pending: null, skipped: [], answered: [] };
+  return { requestId, text: "", round: 1, pending: null, skipped: [], answered: [], notices: [] };
 }
 
 /**
@@ -465,6 +468,11 @@ export function reduceStream(s: StreamState, e: StreamEvent): StreamState {
       };
     case "toolSkipped":
       return { ...s, skipped: [...s.skipped, e.text] };
+    case "toolNotice":
+      return {
+        ...s,
+        notices: [...s.notices, { reason: e.reason, tool: safeToolName(e.tool) }],
+      };
     case "toolResolved": {
       // Only the lookup that is waiting can be resolved.
       if (s.pending?.approvalId !== e.approvalId) return s;
@@ -487,6 +495,10 @@ export function streamStatus(s: StreamState | null, host: string | null): string
   const where = host?.trim() || "the provider";
   if (s.pending) {
     return `${where} asked to look something up: ${s.pending.label}. It waits for your decision.`;
+  }
+  if (s.text.length === 0 && s.notices.length > 0) {
+    // One sentence, changing only when a notice is added; the notice text itself is in the flow.
+    return `${where} asked for something it can't have. Nothing was sent.`;
   }
   return s.text.length === 0 ? `Waiting for ${where}…` : "Companion is replying…";
 }
@@ -544,6 +556,28 @@ export function rememberedText(kind: ScopeKind): string {
 export const TOOLS_SETTING_LABEL = "Let the Companion look things up";
 export const TOOLS_SETTING_HELP =
   "Off by default. When on, the provider may ask for three read-only lookups: a summary of your agent sessions (tool, state and time in state; a session label only for tools where you allowed task text: your name for it, the agent's title or the first line of the captured prompt), a break suggestion, and an installed activity's help. You see the exact result and choose Approve or Decline for every single lookup, and nothing is sent until you do. Lookups never change anything and never start anything. They add a little to each request, so they count toward your token budget. Some servers don't support them; turn this off if replies fail.";
+
+/** A tool name is shown only if it is a short safe identifier; anything else is dropped. */
+export function safeToolName(name: string | null | undefined): string | null {
+  return typeof name === "string" && /^[a-z][a-z0-9_-]{0,31}$/.test(name) ? name : null;
+}
+
+/**
+ * The plain-text notice for a lookup that was not run (owner decision 27.6). Fixed wording per
+ * reason; the only variable part is a safe tool name, never anything the model wrote.
+ */
+export function toolNoticeText(reason: ToolNoticeReason, tool: string | null | undefined): string {
+  const name = safeToolName(tool);
+  const what = name ? ` (${name})` : "";
+  switch (reason) {
+    case "unknown":
+      return `The Companion asked for something it can't have (an unknown lookup${what}). Nothing was sent.`;
+    case "malformed":
+      return `The Companion asked for something it can't have (a lookup${what} that was not valid). Nothing was sent.`;
+    case "limit":
+      return `The Companion asked for something it can't have (more lookups${what} than one message allows). Nothing was sent.`;
+  }
+}
 
 export function toolDecisionNote(rec: Pick<ToolCallRecord, "status" | "host">): string {
   const to = rec.host?.trim() || "the provider";

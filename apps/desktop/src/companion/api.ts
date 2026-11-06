@@ -119,6 +119,20 @@ export interface Message {
   createdAt: string;
   /** Lookups made while answering a message of yours, oldest first. */
   toolCalls: ToolCallRecord[];
+  /** Lookups the model asked for that Lullshift did not run, oldest first. */
+  toolNotices: ToolNoticeRecord[];
+}
+
+export type ToolNoticeReason = "unknown" | "malformed" | "limit";
+
+/** A lookup that was not run. Never carries the model's arguments. */
+export interface ToolNoticeRecord {
+  id: number;
+  round: number;
+  reason: ToolNoticeReason;
+  /** The requested tool name, only if it was a short safe identifier. */
+  tool: string | null;
+  createdAt: string;
 }
 
 export type ToolName = "session_overview" | "suggest_break" | "activity_help";
@@ -161,7 +175,14 @@ export type StreamEvent =
       host: string;
     }
   | { type: "toolSkipped"; requestId: string; tool: string; text: string }
-  | { type: "toolResolved"; requestId: string; approvalId: string; approved: boolean };
+  | { type: "toolResolved"; requestId: string; approvalId: string; approved: boolean }
+  | {
+      type: "toolNotice";
+      requestId: string;
+      reason: ToolNoticeReason;
+      /** Only a short safe identifier; absent otherwise. */
+      tool?: string | null;
+    };
 
 export interface CompanionPrefs {
   /** "Let the Companion look things up". Off by default. */
