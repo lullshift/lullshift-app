@@ -50,7 +50,7 @@ Choose **Change address** on a marketplace, type the new address and confirm. Lu
 1. fetches the list from the new address. It must have the same name.
 2. checks that every commit you installed from it also exists at the new address.
 
-Your installs, pins and saved progress are kept. If an installed commit isn't at the new address, that activity keeps working as installed, and **Manage** shows "Not found at the new address" until you update it. If the new address can't be reached, nothing changes.
+Your installs, pins and saved progress are kept. A matching name doesn't prove it is the same publisher, so progress left behind by an activity you uninstalled stays tied to the old address: if you install that activity from the new address, Lullshift asks whether to delete or keep it. If an installed commit isn't at the new address, that activity keeps working as installed, and **Manage** shows "Not found at the new address" until you update it. If the new address can't be reached, nothing changes.
 
 ### Private repositories
 

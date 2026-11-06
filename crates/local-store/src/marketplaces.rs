@@ -523,7 +523,11 @@ impl Store {
     ///   address as their source and lose any earlier note; installs in `missing` keep their
     ///   source and get the `notFoundAtNewAddress` note. Pins, files and enabled state are
     ///   untouched;
-    /// - kept saved state recorded as belonging to the old address follows the marketplace.
+    /// - a saved-state owner record moves to the new address only for an install in `found`.
+    ///   Kept state of an activity that is not installed stays recorded as the old address's,
+    ///   so installing it from the new address is reviewed as `Foreign` and the user is asked
+    ///   (security review MEDIUM-2: the new address only shares the marketplace's name, which
+    ///   is not proof that it is the same publisher).
     pub fn change_marketplace_address(&mut self, c: &AddressChange<'_>) -> Result<()> {
         check_url(c.new_url)?;
         check_commit(c.commit)?;
@@ -550,6 +554,16 @@ impl Store {
                  WHERE activity_id = ?1 AND marketplace_id = ?2",
                 params![id, c.id, c.new_url],
             )?;
+            // Only for an install whose pinned commit was found at the new address. Kept state
+            // of an activity that isn't installed stays with the old address, so a later
+            // install from the new one is asked about it (security review MEDIUM-2).
+            tx.execute(
+                "UPDATE activity_state_owner SET source_url = ?3
+                 WHERE activity_id = ?4 AND marketplace_id = ?1 AND source_url = ?2
+                   AND EXISTS (SELECT 1 FROM installed_activities
+                               WHERE activity_id = ?4 AND marketplace_id = ?1)",
+                params![c.id, old, c.new_url, id],
+            )?;
         }
         for id in c.missing {
             tx.execute(
@@ -558,11 +572,6 @@ impl Store {
                 params![id, c.id],
             )?;
         }
-        tx.execute(
-            "UPDATE activity_state_owner SET source_url = ?3
-             WHERE marketplace_id = ?1 AND source_url = ?2",
-            params![c.id, old, c.new_url],
-        )?;
         tx.commit()?;
         Ok(())
     }

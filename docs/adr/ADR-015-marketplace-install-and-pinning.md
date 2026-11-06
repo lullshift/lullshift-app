@@ -144,7 +144,7 @@ Seven changes from the product owner's decisions 17 and 18. Each overrides the t
   - **Found:** the install's recorded source moves to the new address.
   - **Missing:** the install keeps its old source and gets the note `notFoundAtNewAddress` (`installed_activities.source_note`, migration 0012). Manage shows "Not found at the new address". The activity still runs as installed, and an update clears the note.
   - **Network or other failure:** the change is aborted and nothing is changed.
-- **What is kept.** Installs, pins and saved progress, including the saved-progress owner record, which moves with the source.
+- **What is kept.** Installs, pins and saved progress. A saved-progress owner record moves to the new address only for an install whose pinned commit was found there (S12-T14 security review, MEDIUM-2). Kept progress of an activity that isn't installed stays recorded as the old address's: the new address only shares the index `name`, which doesn't prove the same publisher, so installing that activity from the new address is reviewed as `foreign` and the user is asked (item 6).
 - **Writes.** The store changes in one transaction, then the cache folder is swapped.
 - **Re-adding a removed name.** Re-adding a removed name from a different address still fails with `alreadyExists`, and the message now points at Change address.
 

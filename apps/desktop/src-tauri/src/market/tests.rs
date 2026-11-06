@@ -1515,6 +1515,32 @@ fn change_address_keeps_pins_and_progress_and_moves_installs_whose_commit_is_the
 }
 
 #[test]
+fn progress_kept_from_an_uninstalled_activity_is_asked_about_after_a_change_of_address() {
+    // Security review MEDIUM-2: the new address only shares the marketplace's name. Kept
+    // progress of an activity that isn't installed stays the old address's, so installing it
+    // from the new address asks (decision 18.6) instead of silently handing it over.
+    let env = Env::new();
+    let (repo, _) = installed(&env);
+    save_state(&env, FACTS);
+    uninstall(&env.core, FACTS, false).expect("uninstall, keep state");
+    let moved = copy_of(&env, &repo, "moved");
+    change_address(&env.core, MARKET, &moved.url()).expect("change");
+    let review = preview_install(&env.core, MARKET, FACTS).expect("preview");
+    assert_eq!(
+        serde_json::to_value(&review).expect("json")["savedState"],
+        "foreign",
+        "the review asks"
+    );
+    install_pending(&env.core, &review.token, false, Instant::now()).expect("install");
+    assert!(
+        with_store(&env.core, |s| s.snapshot(FACTS))
+            .expect("get")
+            .is_none(),
+        "deleted by default"
+    );
+}
+
+#[test]
 fn a_pinned_commit_missing_at_the_new_address_leaves_the_install_as_is_with_a_note() {
     let env = Env::new();
     let (_repo, commit) = installed(&env);

@@ -458,9 +458,15 @@ fn changing_the_address_keeps_pins_marks_missing_commits_and_moves_owned_state()
     let c = s.installed_activity("com.other.c").expect("c").expect("c");
     assert_eq!(c.source_url, old, "other marketplaces are untouched");
 
-    // Saved progress kept from the old address still belongs to this marketplace.
+    // Saved progress kept from an uninstalled activity stays the old address's: installing it
+    // from the new address asks first (security review MEDIUM-2).
     assert_eq!(
         s.saved_state_for("com.acme.gone", "acme", new)
+            .expect("state"),
+        SavedState::Foreign
+    );
+    assert_eq!(
+        s.saved_state_for("com.acme.gone", "acme", old)
             .expect("state"),
         SavedState::Own
     );
