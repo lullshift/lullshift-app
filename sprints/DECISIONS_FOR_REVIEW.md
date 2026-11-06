@@ -34,6 +34,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 28 | 12 | Bundled Git fallback (gix, public https) | change: build it |
 | 29 | 12 | Publish the creator CLI and SDK to npm | change: build it |
 | 30 | 12 | Wording in PRD and CLAUDE.md after 27.5 | open |
+| 31 | 12 | npm package versions before the first publish | open |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -377,3 +378,12 @@ Decision 27.5 opened third-party code activities on every platform after a warni
 - **`CLAUDE.md`, under "Activities and creators"**, suggested new line: "Third-party code activities (`kind: app` from non-built-in marketplaces) are installable on all platforms only after the review's risk warning and explicit consent at each install and each code-changing update (owner decision 27.5, ADR-015 amendment). The backend must refuse them without `acceptCodeRisk: true`. Never weaken the sandbox, CSP, WebRTC block or permissions model to make third-party code work, and never describe the sandbox as guaranteed."
 
 **Question for the owner:** apply both changes as written, change the wording, or leave them?
+
+## 31. npm package versions before the first publish (open, for the owner)
+
+The CLI package is version 0.1.0, but `lullshift --version` prints the SDK's version, 0.2.0, and the creator docs call the CLI 0.2.0. Once a version is on npm it can't be reused, so this should be settled before the first publish.
+
+- **Option A (suggested):** publish all three packages at 0.2.0, so the CLI, the SDK and `--version` agree.
+- **Option B:** keep separate versions, and make `--version` print the CLI's own version.
+
+Also open: Node 22.12 is the reasoned minimum for the published CLI but was not tested (only Node 24 is installed here). It is in the manual checks.
