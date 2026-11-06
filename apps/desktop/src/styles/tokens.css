@@ -14,6 +14,8 @@
   --surface-hover: #f8f3ec;
   --border: #e6ded3;
   --border-strong: #d6ccbf;
+  /* Boundary of inputs and the switch track: 3:1 against the surfaces (WCAG 1.4.11). */
+  --control-border: #847c8f;
 
   --text: #2a2633;
   --text-muted: #625b6c;
@@ -81,6 +83,7 @@
     --surface-hover: #27232f;
     --border: #35303f;
     --border-strong: #463f52;
+    --control-border: #857c91;
 
     --text: #ece8f2;
     --text-muted: #b0a9bb;

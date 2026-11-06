@@ -11,7 +11,8 @@ import Integrations from "./Integrations";
 import SessionsView from "./SessionsView";
 import { healthProblems, sortSessions, type Dashboard } from "./sessions";
 import Settings from "./Settings";
-import { loadUiPrefs, useUiPrefs } from "./uiPrefsStore";
+import { Onboarding } from "./Onboarding";
+import { loadUiPrefs, updateUiPrefs, useShowWelcome, useUiPrefs } from "./uiPrefsStore";
 import { Icon, type IconName } from "./ui/Icon";
 import { Mascot } from "./ui/Mascot";
 
@@ -36,6 +37,8 @@ export default function App() {
   const refresh = useStore(dashboardStore, (s) => s.refresh);
   const [view, setView] = useState<ViewId>("sessions");
   const { contentWidth } = useUiPrefs();
+  const showWelcome = useShowWelcome();
+  const welcomeWas = useRef(false);
   useEffect(() => {
     void loadUiPrefs();
   }, []);
@@ -97,6 +100,13 @@ export default function App() {
     };
   }, [refresh]);
 
+  // When the welcome closes, focus would drop to the page body: put it on the view heading.
+  // (Choosing Connect or Try changes the view too; its heading then takes focus below.)
+  useEffect(() => {
+    if (welcomeWas.current && !showWelcome) headingRef.current?.focus();
+    welcomeWas.current = showWelcome;
+  }, [showWelcome]);
+
   // Move focus to the new view's heading so keyboard and screen-reader users land in it.
   useEffect(() => {
     if (firstRender.current) {
@@ -114,7 +124,7 @@ export default function App() {
 
   return (
     <div className="shell">
-      <aside className="sidebar">
+      <header className="sidebar">
         <div className="brand">
           <Mascot face="watching" size={36} />
           <span className="brand-name">Lullshift</span>
@@ -146,7 +156,7 @@ export default function App() {
           <Icon name="lock" size={16} />
           <span>Local only. Works offline, no account.</span>
         </p>
-      </aside>
+      </header>
 
       <main className={`content width-${contentWidth}`}>
         {view === "sessions" && (
@@ -189,6 +199,12 @@ export default function App() {
         {view === "integrations" && <Integrations headingRef={headingRef} />}
         {view === "settings" && <Settings headingRef={headingRef} />}
       </main>
+      <Onboarding
+        open={showWelcome}
+        onDone={() => void updateUiPrefs({ onboardingDone: true })}
+        onConnect={() => setView("integrations")}
+        onTryActivity={() => setView("activities")}
+      />
     </div>
   );
 }

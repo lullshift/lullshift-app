@@ -6,16 +6,23 @@ import { useSyncExternalStore } from "react";
 import { createStore } from "zustand/vanilla";
 import { setUiPrefs, uiPrefs, type UiPrefs } from "./context/api";
 
-export const DEFAULT_UI_PREFS: UiPrefs = { detailPanelPinned: true, contentWidth: "full" };
+export const DEFAULT_UI_PREFS: UiPrefs = {
+  detailPanelPinned: true,
+  contentWidth: "full",
+  onboardingDone: false,
+};
 
 interface UiPrefsState {
   prefs: UiPrefs;
   loaded: boolean;
+  /** The saved preferences couldn't be read, so the defaults are only a guess. */
+  loadFailed: boolean;
 }
 
 export const uiPrefsStore = createStore<UiPrefsState>()(() => ({
   prefs: DEFAULT_UI_PREFS,
   loaded: false,
+  loadFailed: false,
 }));
 
 let loading: Promise<void> | null = null;
@@ -24,7 +31,7 @@ let loading: Promise<void> | null = null;
 export function loadUiPrefs(read: () => Promise<UiPrefs> = uiPrefs): Promise<void> {
   loading ??= read()
     .then((p) => uiPrefsStore.setState({ prefs: { ...DEFAULT_UI_PREFS, ...p }, loaded: true }))
-    .catch(() => uiPrefsStore.setState({ loaded: true }));
+    .catch(() => uiPrefsStore.setState({ loaded: true, loadFailed: true }));
   return loading;
 }
 
@@ -45,8 +52,22 @@ export function useUiPrefs(): UiPrefs {
   return useSyncExternalStore(uiPrefsStore.subscribe, () => uiPrefsStore.getState().prefs);
 }
 
+/**
+ * The welcome shows only when the saved preferences were read and say it hasn't been closed yet.
+ * If they can't be read we can't tell, so it stays away rather than greeting the user every time.
+ */
+export function shouldShowWelcome(s: Pick<UiPrefsState, "loaded" | "loadFailed" | "prefs">) {
+  return s.loaded && !s.loadFailed && !s.prefs.onboardingDone;
+}
+
+export function useShowWelcome(): boolean {
+  return useSyncExternalStore(uiPrefsStore.subscribe, () =>
+    shouldShowWelcome(uiPrefsStore.getState()),
+  );
+}
+
 /** For tests. */
 export function resetUiPrefsForTests() {
   loading = null;
-  uiPrefsStore.setState({ prefs: DEFAULT_UI_PREFS, loaded: false });
+  uiPrefsStore.setState({ prefs: DEFAULT_UI_PREFS, loaded: false, loadFailed: false });
 }

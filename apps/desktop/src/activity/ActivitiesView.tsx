@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { relativeTime } from "../format";
 import { Banner } from "../ui/Banner";
+import { focusIfLost } from "../ui/focus";
 import { Icon } from "../ui/Icon";
 import { truncate } from "../marketplace/logic";
 import { ManagePanel } from "../marketplace/ManagePanel";
@@ -52,6 +53,14 @@ export default function ActivitiesView({ headingRef, active, pause, now, onGoToS
   }, []);
 
   useEffect(refresh, [refresh]);
+
+  // Closing an activity removes the player, so focus would drop to the page: put it back on the
+  // Activities heading. Only when it was lost, and only after a real close.
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (wasRunning.current && !running) focusIfLost(() => headingRef.current);
+    wasRunning.current = running !== null;
+  }, [running, headingRef]);
 
   const startOver = async (a: ActivityInfo) => {
     setMessage(null);

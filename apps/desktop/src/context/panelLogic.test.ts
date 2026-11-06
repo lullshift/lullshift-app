@@ -192,7 +192,7 @@ describe("nothing is sent to an agent", () => {
     await api.contextPrefs();
     await api.setContextPrefs({ retentionDays: 30, capture: {} });
     await api.uiPrefs();
-    await api.setUiPrefs({ detailPanelPinned: true, contentWidth: "full" });
+    await api.setUiPrefs({ detailPanelPinned: true, contentWidth: "full", onboardingDone: false });
 
     const commands = invoke.mock.calls.map((c) => c[0] as string);
     expect(commands).toHaveLength(18);

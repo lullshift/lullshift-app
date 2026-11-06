@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   adapterErrorText,
   adapterStatusText,
@@ -13,6 +13,7 @@ import {
 import { disconnectNotice, providerIcon, providerName } from "./format";
 import { Banner } from "./ui/Banner";
 import { Dialog } from "./ui/Dialog";
+import { useRestoreFocusAfterDialog } from "./ui/focus";
 import { Icon } from "./ui/Icon";
 
 type Agent = "codex" | "cursor";
@@ -49,6 +50,14 @@ export default function AgentCard({ agent }: { agent: Agent }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  // Connect and Disconnect swap places after a change; keep focus in the card, not on the page.
+  useRestoreFocusAfterDialog(
+    dialog !== null,
+    () => actionsRef.current?.querySelector("button") ?? titleRef.current,
+  );
 
   const refresh = () =>
     invoke<AdapterView>(`${agent}_status`)
@@ -118,7 +127,7 @@ export default function AgentCard({ agent }: { agent: Agent }) {
             <Icon name={providerIcon(agent)} />
           </span>
           <div className="integration-titles">
-            <h2 id={titleId} className="card-title">
+            <h2 id={titleId} ref={titleRef} tabIndex={-1} className="card-title">
               {name}
             </h2>
             <p className="card-sub">{SUB[agent]}</p>
@@ -160,7 +169,7 @@ export default function AgentCard({ agent }: { agent: Agent }) {
         </ul>
 
         {(canInstall || canRemove) && (
-          <div className="actions">
+          <div className="actions" ref={actionsRef}>
             {canInstall && (
               <button
                 type="button"

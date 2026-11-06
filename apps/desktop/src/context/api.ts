@@ -77,6 +77,8 @@ export interface UiPrefs {
   detailPanelPinned: boolean;
   /** Full width is the default; comfortable keeps text columns narrower. */
   contentWidth: ContentWidth;
+  /** The first-launch welcome was shown and closed or skipped; it is never shown again. */
+  onboardingDone: boolean;
 }
 
 const k = (s: SessionKey) => ({ provider: s.provider, sessionId: s.sessionId });

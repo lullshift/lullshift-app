@@ -295,7 +295,7 @@ strong {
 .field {
   min-height: 36px;
   padding: 0 var(--space-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
@@ -560,7 +560,7 @@ strong {
   min-width: 140px;
   min-height: 36px;
   padding: 0 var(--space-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
@@ -1276,7 +1276,7 @@ th[aria-sort="descending"] .sort {
   padding: 0;
   border: 0;
   border-radius: var(--radius-full);
-  background: var(--border-strong);
+  background: var(--control-border);
   cursor: pointer;
   transition: background var(--fast) var(--ease);
 }

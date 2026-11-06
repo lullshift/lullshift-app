@@ -53,3 +53,28 @@ describe.each(Object.entries(themes))("%s theme", (_name, t) => {
     }
   });
 });
+
+/** Non-text UI (WCAG 1.4.11, 3:1): input boundaries, the switch track, the focus ring. */
+const NON_TEXT: [string, string[]][] = [
+  ["control-border", ["bg", "surface"]],
+  ["accent", ["bg", "surface", "surface-2"]],
+];
+
+describe.each(Object.entries(themes))("%s theme, non-text contrast", (_name, t) => {
+  it.each(NON_TEXT)("%s is visible on its backgrounds", (fg, bgs) => {
+    for (const bg of bgs) {
+      const [f, b] = [t[fg], t[bg]];
+      if (!f || !b) throw new Error(`missing token ${f ? bg : fg}`);
+      expect(contrast(f, b), `${fg} on ${bg}`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("the switch thumb stands out from the track in both states", () => {
+    for (const track of ["control-border", "accent"]) {
+      expect(
+        contrast(t["surface"] ?? "", t[track] ?? ""),
+        `thumb on ${track}`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+});

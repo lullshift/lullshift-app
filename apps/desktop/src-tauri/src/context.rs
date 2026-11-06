@@ -109,6 +109,10 @@ pub struct UiPrefs {
     /// Missing in preferences saved before it existed; those read as full width.
     #[serde(default)]
     pub content_width: ContentWidth,
+    /// The first-launch welcome was shown and closed (or skipped). Missing in older preferences,
+    /// which read as not yet shown.
+    #[serde(default)]
+    pub onboarding_done: bool,
 }
 
 impl Default for UiPrefs {
@@ -116,6 +120,7 @@ impl Default for UiPrefs {
         Self {
             detail_panel_pinned: true,
             content_width: ContentWidth::Full,
+            onboarding_done: false,
         }
     }
 }
@@ -1364,6 +1369,23 @@ mod tests {
             UiPrefs::from_stored(Some(r#"{"detailPanelPinned":true,"contentWidth":"huge"}"#)),
             UiPrefs::default(),
             "unknown widths fall back to the defaults"
+        );
+        // Migration: preferences saved before the welcome existed have no flag and read as not
+        // yet shown; the flag round-trips; a damaged value falls back to the defaults.
+        assert!(
+            !UiPrefs::from_stored(Some(r#"{"detailPanelPinned":false,"contentWidth":"full"}"#))
+                .onboarding_done
+        );
+        let done = UiPrefs {
+            onboarding_done: true,
+            ..UiPrefs::default()
+        };
+        let json = serde_json::to_string(&done).expect("serialize");
+        assert_eq!(UiPrefs::from_stored(Some(&json)), done);
+        assert_eq!(
+            UiPrefs::from_stored(Some(r#"{"detailPanelPinned":true,"onboardingDone":"yes"}"#)),
+            UiPrefs::default(),
+            "a damaged flag falls back to the defaults"
         );
     }
 

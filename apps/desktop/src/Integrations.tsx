@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   adapterErrorText,
   adapterStatusText,
@@ -13,6 +13,7 @@ import { TaskContextSwitch } from "./context/TaskContextSwitch";
 import { disconnectNotice } from "./format";
 import { Banner } from "./ui/Banner";
 import { Dialog } from "./ui/Dialog";
+import { useRestoreFocusAfterDialog } from "./ui/focus";
 import { Icon } from "./ui/Icon";
 
 type Load = { status: "loading" } | { status: "ready"; view: AdapterView } | { status: "error" };
@@ -39,6 +40,13 @@ export default function Integrations({
   const [message, setMessage] = useState<Message | null>(null);
   /** How many sessions stopped being tracked after a disconnect (S05-T10); null if none. */
   const [notice, setNotice] = useState<string | null>(null);
+
+  const actionsRef = useRef<HTMLDivElement>(null);
+  // Connect and Disconnect swap places after a change; keep focus in the card, not on the page.
+  useRestoreFocusAfterDialog(
+    dialog !== null,
+    () => actionsRef.current?.querySelector("button") ?? headingRef.current,
+  );
 
   const refresh = () =>
     invoke<AdapterView>("claude_code_status")
@@ -148,7 +156,7 @@ export default function Integrations({
         <TaskContextSwitch />
 
         {(canInstall || canRemove) && (
-          <div className="actions">
+          <div className="actions" ref={actionsRef}>
             {canInstall && (
               <button
                 type="button"
