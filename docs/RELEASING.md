@@ -167,14 +167,14 @@ Everything else is defence in depth: the `if: github.ref == 'refs/heads/main'` l
 
 ### Trying it locally
 
-Nothing local can publish. To see exactly what would be uploaded:
+Nothing should be published from a local machine. To see exactly what would be uploaded, pack, check and inspect the tarballs without any publish command:
 
 ```bash
 node scripts/check-npm-packages.mjs --keep ../npm-tarballs
-npm publish --dry-run ../npm-tarballs/lullshift-cli-0.1.0.tgz
+tar -tzf ../npm-tarballs/lullshift-cli-0.1.0.tgz
 ```
 
-`pnpm publish --dry-run` in a package folder is refused by the guard outside the workflow, because pnpm gives lifecycle scripts no way to tell a dry run apart.
+**Don't use `npm publish <file>.tgz` locally, not even with `--dry-run`.** npm runs `prepublishOnly` only when publishing a folder, so a tarball publish skips the guard entirely; the same command without `--dry-run`, by a mistake in the flags, would really publish if your npm login can write to `@lullshift`. The guard covers folder publishes only: `pnpm publish` and `npm publish` in a package folder are refused outside the workflow, `npm publish --dry-run` in a folder is let through, and `pnpm publish --dry-run` is refused too, because pnpm gives lifecycle scripts no way to tell a dry run apart. `--ignore-scripts` skips it.
 
 ### Sources checked (2026-11-06)
 
