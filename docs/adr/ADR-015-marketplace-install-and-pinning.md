@@ -73,7 +73,7 @@ All three constants stay blocked. Windows can be unblocked by the product owner.
 - Private repositories work through whatever the user's `git` already uses; Lullshift never reads, stores or logs credentials, and scrubs URLs of userinfo before showing or logging them.
 - Reading blobs instead of checking out avoids a whole class of Git checkout attacks, at the cost of more `git` calls per install (fine for packs of at most 512 files).
 - Real private-repo installs can only be tested by a person with access (manual test).
-- The "no local hosts" URL rule is **text only**. It refuses `localhost`, IP literals and local-looking suffixes in the address, but a DNS name can still resolve to a loopback, link-local or private address (DNS rebinding, or a public name pointing inward). Lullshift does not resolve names itself, so it cannot stop that; redirects are off (see below), the fetch is size-capped, and nothing fetched is executed.
+- The "no local hosts" URL rule was **text only** in Sprint 08. Sprint 12 adds an explicit confirmation for private hosts and a check of where a name resolves before each fetch; see the amendment below for what that does and does not cover.
 
 ## Implementation notes and deviations (`crates/marketplace`)
 
@@ -89,3 +89,103 @@ Recorded where the shipped crate differs from, or is stricter than, the text abo
 - **Third-party code** (`kind: app`, non-built-in marketplace) is refused with `PackError::ThirdPartyCodeBlocked` right after the manifest is read, before any other file is read; no review preview is produced for it (the index entry is enough to list it).
 - **Error messages** never carry `git` stderr, URLs from the index or `serde` messages (which can quote values); `IndexError::Parse` keeps only the kind of problem and its line and column.
 - **Review fixes (Sprint 08 security review).** The runner also sets `http.followRedirects=false` (an address must not hand the fetch to another host; a repository that moved must be re-added at its new address), `http.sslVerify=true` and `transfer.fsckObjects`/`fetch.fsckObjects=true` (Git rejects malformed or hostile trees before we read them). Inherited `GIT_SSL_NO_VERIFY`, `GIT_CURL_VERBOSE`, `GIT_CONFIG_GLOBAL`, `GIT_EXEC_PATH` and every `GIT_TRACE*` variable are removed. A fetch may add at most 200 MiB to a cache's `objects/` folder: the folder is polled while `git fetch` runs and checked once more when it ends, and past the cap the process tree is killed (`OutputTooLarge`). A cache that did not exist is fetched into a sibling staging folder and moved into place only on success, so a failed or oversized first fetch leaves nothing; an existing cache is fetched into in place (older commits that installs are pinned to must stay), and only temporary pack files are cleaned up after a failure. Re-adding a removed marketplace name from a different address is refused. Installed files are served from the bytes that were hashed. Index text uses the same invisible-character set as manifests (including U+2028/2029, the Hangul and Halfwidth filler characters and U+FFF9-FFFB) and refuses more than four combining marks in a row.
+
+## Amendment (Sprint 12, S12-T14)
+
+Seven changes from the product owner's decisions 17 and 18. Each overrides the text above where they disagree. The fetch stays user-initiated: Add, Refresh, Change address, and the install or update review. Nothing here adds a background or automatic network call. Credentials are still never asked for, stored or sent by Lullshift.
+
+### 1. Private hosts after an explicit confirmation (decision 17)
+
+- **What counts as private.** A marketplace address is classed private when its host is any IP literal, has a single label, has a last label of one character, or ends in `localhost .local .internal .lan .localdomain .intranet .corp .home .private .arpa`. Everything else is public.
+- **Confirmation.** A private address is refused (`privateHost`) until the user ticks "This marketplace is on my own computer or network" in the Add, Refresh or Change address form. The store records the answer per marketplace (`marketplaces.private_host`, migration 0011).
+  - Re-adding a removed name takes the new answer.
+  - Refresh can record it for an existing marketplace once the fetch succeeds.
+  - The box is never ticked in advance.
+- **What stays strict.** No userinfo with a password or token. No `%`, `=` or non-ASCII. No plain `http://`, even on a private host.
+- **Addresses that are never allowed.** IP literals must be canonical dotted quads. These are always refused, confirmed or not (`SpecialAddress`):
+  - unspecified, link-local, multicast, broadcast and reserved addresses;
+  - the same ranges inside IPv4-mapped, IPv4-compatible, NAT64 and 6to4 IPv6 addresses.
+- **Index entries can't point inward.** An index entry's `git` source may never be private. A marketplace can't use the user's confirmation to send an external fetch onto their network. So the schema's entry URL pattern is unchanged.
+
+### 2. Resolved-address check before each fetch (decision 18.8)
+
+- **The check.** Before every `git fetch`, the host name is resolved with the system resolver.
+  - Every resulting address is classed as in item 1, with IPv4-mapped and similar IPv6 forms unwrapped.
+  - Any never-allowed address refuses the fetch.
+  - Any private address refuses it unless the marketplace was confirmed private.
+- **The pin.** For https, the checked addresses are passed to Git as `-c http.curloptResolve=host:port:addr[,addr]` (IPv6 in brackets), so curl connects to what was checked rather than resolving again. A test proves Git 2.53 honours the pin.
+- **When resolution fails.** Nothing is refused and nothing is pinned; Git reports the failure as before. This keeps proxy-only DNS setups working.
+- **What it does not change.** `http.followRedirects=false` and the rest of the hardened invocation are unchanged.
+
+### 3. Same-host redirects (decision 18.1)
+
+- **Git still never follows redirects.** `http.followRedirects=false` stays.
+- **When the probe runs.** It runs only after an https fetch fails with "not found" or a generic failure, which is what a redirect looks like to Git with redirects off.
+- **What the probe sends.** One `GET <url>/info/refs?service=git-upload-pack`:
+  - to the checked address only (item 2 applies);
+  - no redirects followed, 10 s timeout, platform certificate verifier;
+  - user agent `git/2 (Lullshift redirect check)`;
+  - no credentials, cookies or authorization headers of any kind.
+- **What counts as a move.** Only a 301, 302, 303, 307 or 308 whose `Location` (at most 2048 characters) is path-absolute or https, and ends exactly in `/info/refs?service=git-upload-pack`. The rest must pass `GitUrl::parse`, be https, and differ from the original.
+- **Same host and port.** The error carries `moved: { url, sameHost: true }`.
+  - The UI shows both addresses and offers "Use the new address": Add for a new marketplace, Change address (item 4) for an existing one.
+  - A private-host confirmation carries over only on the same host.
+- **Other host.** The UI shows the new address and puts it in the address box, so the user re-adds it deliberately. Nothing is fetched from it automatically.
+
+### 4. Change address (decision 18.4)
+
+- **The command.** `marketplace_change_address({ id, url, confirmPrivate })` applies the same validation as a typed address and refuses the built-in and the current address. The dialog shows the old and new address; Cancel has focus.
+- **The fetch.** It fetches the index from the new address into a staging folder and requires the same index `name`.
+- **Pinned commits.** For every install from this marketplace (same marketplace and same recorded source), the pinned commit is fetched by SHA from the new address.
+  - **Found:** the install's recorded source moves to the new address.
+  - **Missing:** the install keeps its old source and gets the note `notFoundAtNewAddress` (`installed_activities.source_note`, migration 0012). Manage shows "Not found at the new address". The activity still runs as installed, and an update clears the note.
+  - **Network or other failure:** the change is aborted and nothing is changed.
+- **What is kept.** Installs, pins and saved progress, including the saved-progress owner record, which moves with the source.
+- **Writes.** The store changes in one transaction, then the cache folder is swapped.
+- **Re-adding a removed name.** Re-adding a removed name from a different address still fails with `alreadyExists`, and the message now points at Change address.
+
+### 5. Re-check installed files on every load (decision 18.5)
+
+- **No bytes are kept.** The in-memory copy of verified file bytes and the per-session `(id, commit, digest)` cache are gone.
+- **The snapshot build.** Building the library snapshot hashes every installed file against the digest recorded at install (the first check, as before). It keeps only each file's length and SHA-256.
+- **Every later read.** The manifest, a pack's data for `init.content`, the preview image and an app's served files are each read again (never through a link, with a size cap) and hashed again before use.
+- **On a mismatch.**
+  - Nothing is served.
+  - `activity_content` returns `damaged`.
+  - The activity is turned off in the store, and the next snapshot shows it as `tampered`. The UI says "Damaged, reinstall it."
+- **Recovery.** Turning it back on re-verifies, so a restored file works again.
+
+### 6. Saved progress from another source (decision 18.6)
+
+- **The review field.** The install review has `savedState: "none" | "own" | "unknown" | "foreign"`.
+- **The question.** For `foreign` (progress recorded as another marketplace's or repository's), the review asks:
+  - "Delete that saved progress (recommended)", which is selected and focused;
+  - "Keep it for this install", which shows a warning that the new activity can read everything the old one saved.
+- **The answer.** `marketplace_install({ token, keepSavedState })` passes it. Without it, the progress is deleted as before.
+- **Unowned progress.** Progress with no recorded owner (older than migration 0007) keeps the old behaviour: kept, announced, no question.
+- **No schema change.**
+
+### 7. One hidden-character set (decision 18.7)
+
+- **The set.** These all use the host's set (`marketplace::manifest::hidden_char`, which agent-core's `is_invisible` covers), plus the rule against more than four combining marks in a row:
+  - the manifest and marketplace schemas' plain-text pattern (`^(?![\s\S]*[marks]{5})[^hidden]*$`, compiled with the `u` flag);
+  - the SDK's `isPlainText`, and through it the CLI;
+  - the friendly-error key cleaner.
+- **The corpus.** `tests/fixtures/plain-text/cases.json` (ASCII-only, with escapes) runs in:
+  - the marketplace crate, which also checks that every host range has a case;
+  - agent-core;
+  - the agent-protocol schema validators;
+  - the SDK.
+- **Activities and engines.** Their own data schemas are not part of this change.
+
+### Residual risks
+
+- **DNS rebinding, ssh.** ssh fetches are checked, but Git's ssh client resolves the name again. A name that answers differently the second time can still reach an inward address over ssh. The https pin closes this for https only.
+- **DNS rebinding, redirect probe.** The probe resolves on its own (a separate client), so its check and its connection are not pinned together. It sends no credentials and only reads a status and a `Location`, and any new address goes through the full check before Git fetches it.
+- **Proxies.** With an HTTP proxy configured for Git, the proxy resolves the host, so neither the check nor the pin binds the connection.
+- **Older Git.** Git older than 2.37 doesn't have `http.curloptResolve`, so the pin is ignored (the check still runs). The app does not refuse older Git.
+- **Unresolvable names.** When the system resolver fails, the fetch proceeds unchecked (so proxy-only DNS works) and Git does its own resolution.
+- **Public IP literals.** A public IP literal also needs the private-host confirmation, because it is classed by text before resolution. This is a little stricter than needed.
+- **No plain http.** Plain http stays unsupported, even on a home network.
+- **Re-hashing cost.** Every load re-hashes the files it reads. Packs are at most 20 MiB, so this is milliseconds, but a large installed app would pay it on every file served.
+- **Kept foreign progress.** Keeping it is the user's choice. The new code can read what the old code saved, which is the risk the warning names.

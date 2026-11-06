@@ -27,7 +27,7 @@
 
 **"This pack's data doesn't match its engine", or "Engine missing" in Manage.** The content pack's data isn't valid for the engine bundled with this version of Lullshift. Update the pack from its marketplace, or uninstall it.
 
-**"Changed after install" in Manage.** The installed files no longer match what was installed, so Lullshift turned the activity off. Uninstall it and install it again.
+**"Damaged, reinstall it" in Manage, or "This pack's files changed on disk".** A file of the installed activity no longer matches what was installed (Lullshift checks every time it reads one), so it turned the activity off. Uninstall it and install it again.
 
 ## Marketplaces
 
@@ -40,7 +40,7 @@
 | This marketplace hasn't been fetched yet. Refresh it first | Choose **Refresh** on the marketplace, then browse again |
 | This review has expired or was already used | Reviews last 10 minutes and work once. Open the review again |
 
-A repository that moved must be added again at its new address. Lullshift does not follow redirects.
+A repository that moved: Lullshift does not let Git follow redirects, but it shows the new address. On the same server, choose **Use the new address** (or **Change address** on the marketplace). On a different server, check the address and add it yourself. A private address (an IP address, `localhost` or a local network name) needs the **This marketplace is on my own computer or network** box ticked.
 
 ## Companion
 

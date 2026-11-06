@@ -23,7 +23,7 @@ This writes `my-market/.lullshift/marketplace.json`:
 ```
 
 - `name` is 2 to 40 characters of `a-z`, `0-9` and `-`, and becomes the marketplace's id in the app. `lullshift` is reserved for the built-in marketplace. Keep the name stable: the app refuses a refresh if it changes.
-- `description` (up to 500 characters) and `owner` (up to 100) are plain text. `owner` is shown as self-declared and unverified.
+- `description` (up to 500 characters) and `owner` (up to 100) are plain text. That means no control characters, line or paragraph separators, bidirectional controls, zero-width or other invisible characters, and no more than four combining marks in a row. The schema, `lullshift validate` and the app all apply the same rule. `owner` is shown as self-declared and unverified.
 
 The schema is [reference/MARKETPLACE_V1.schema.json](../../reference/MARKETPLACE_V1.schema.json).
 
@@ -46,7 +46,7 @@ A folder in another Git repository:
 }
 ```
 
-- `git` is `https://host/path`, `ssh://host/path`, `git@host:path` or GitHub shorthand `owner/repo`. No passwords or tokens in the address, no IP addresses, `localhost` or local network names.
+- `git` is `https://host/path`, `ssh://host/path`, `git@host:path` or GitHub shorthand `owner/repo`. No passwords or tokens in the address, no IP addresses, `localhost` or local network names. A user can confirm that a whole marketplace lives on their own network, but an entry can never send their app to a private address.
 - `ref` is a tag, branch or commit. Prefer a tag or a commit. Whatever you give, the install is pinned to the commit it resolves to.
 - Paths use `/`, at most 12 parts. Each part starts with a letter, digit or underscore, so `..`, `.git` and hidden folders are impossible.
 - At most 1000 entries.
@@ -83,7 +83,14 @@ Commit and push. Users add the repository in **Activities**, **Marketplaces**, t
 
 For a private repository, each user needs their own Git access to it (credential manager, SSH key or `gh`). Lullshift never handles credentials.
 
-Lullshift does not follow HTTP redirects. If you move the repository, users must add it again at the new address.
+Lullshift does not let Git follow HTTP redirects. If you move the repository:
+
+- **Same server**, for example a rename on GitHub: when a fetch fails, the app asks the server once where the repository went, without credentials. It offers users the new address. They can switch with **Change address**, which keeps their installs and progress.
+- **Different server**: users see the new address and must add it deliberately.
+
+Either way, keep every commit that users installed reachable at the new address. **Change address** checks each pinned commit there. Installs whose commit is missing are flagged "Not found at the new address".
+
+Users can also add a marketplace hosted on their own computer or network after an explicit confirmation. Plain `http://` is never accepted.
 
 ## How users get updates
 
