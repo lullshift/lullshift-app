@@ -811,3 +811,210 @@ Go through Sessions (Live and History tabs, open a session's detail panel), Acti
 **Expected:** no check happens until you ask; the genuine update installs; the tampered one is refused.
 
 **Result:** \_\_\_
+
+## Sprint 12: Owner review changes
+
+### M12-1: Codex, Cursor and OpenCode hooks on real installs
+
+1. Cursor: start from an older six-hook install (connected before Sprint 12) and open Integrations. Connect again, then make a Cursor session end with an error.
+2. Windows: install Lullshift into a folder whose name contains `'` and `$` (and one with `%`). Connect Codex and Cursor and run a prompt in each. Check whether either agent wraps the command in `cmd.exe /c`.
+3. Windows, non-ASCII profile path: try one that should be accepted (for example `ü`) and one that should be refused (for example Cyrillic `В`).
+4. Windows PowerShell 5.1: try an install folder containing `[` or `]`.
+5. OpenCode 2.x:
+   1. Choose Connect OpenCode.
+   2. Restart OpenCode and run a session, including one permission request and one subagent.
+   3. Quit Lullshift and keep using OpenCode.
+   4. Disconnect.
+   5. Pre-create an unrelated `lullshift-observer.js` and try Connect.
+   6. Move the app, or change `OPENCODE_CONFIG_DIR`, and check the card.
+   7. Run an OpenCode 1.x instance once and note what it shows.
+6. Linux AppImage: connect an agent, quit and restart Lullshift. Time one hook run. Rename the AppImage and restart. Try fish as `$SHELL`.
+
+**Expected:**
+
+- **Cursor (step 1):** shows as partly installed and gets the three new hooks. A session that ends with an error shows as failed.
+- **Folders and paths (steps 2 to 4):**
+  - The `'` and `$` folders fire hooks normally.
+  - `ü` works.
+  - `В`, `[` and `]` are refused with a clear message.
+- **OpenCode (step 5):**
+  - The dialog names the plugin file and says Experimental / 2.x only.
+  - The card shows Unknown until the first event, then Connected.
+  - A permission request shows "needs you". Subagents are not listed separately.
+  - OpenCode never stalls and shows no plugin error on 2.x.
+  - Disconnect deletes the file.
+  - The foreign file is left alone and the card says it can't connect.
+  - After the move, the card says Needs repair.
+- **AppImage (step 6):**
+  - Hooks use the AppImage path and stay Installed after a restart.
+  - A hook run finishes in under about 2 seconds.
+  - A renamed AppImage shows Needs repair.
+
+**Result:** \_\_\_
+
+### M12-2: Task text for Codex, Cursor and OpenCode
+
+1. For each of Codex, Cursor and OpenCode:
+   1. Turn Task context on and send two prompts.
+   2. Turn it off and send another.
+   3. Choose **Clear all captured text**.
+2. With Companion lookups on, ask for a session overview, then turn capture off and reopen that thread.
+
+**Expected:**
+
+- **Step 1:**
+  - Only the first prompt per session appears on the card and in the panel.
+  - Nothing new is stored while capture is off.
+  - Clearing removes it all.
+  - Cursor's prompt still goes through.
+  - Codex doesn't ask you to re-trust its hooks in `/hooks`.
+- **Step 2:** the stored lookup shows the removal note.
+
+**Result:** \_\_\_
+
+### M12-3: Windows install, reinstall and uninstall keep hooks right
+
+1. Connect all agents, then run the same setup again. On the reinstall page choose **Uninstall Lullshift**, then cancel the wizard.
+2. Reinstall, then upgrade into a different install folder.
+3. Upgrade again using the passive `/P` flag, then do one silent run.
+4. Delete `lullshift.db` and reinstall.
+5. Uninstall from Settings > Apps.
+6. Do an in-place update (`/UPDATE`).
+
+**Expected:**
+
+- **Step 1:** no Lullshift hooks remain anywhere.
+- **Steps 2 and 3:** hooks come back pointing at the new path, and your own hooks are intact.
+- **Step 4:** nothing is restored.
+- **Step 5:** hooks and records are gone, and no `hook-restore.pending` file is left in the app data folder.
+- **Step 6:** hooks are untouched.
+
+**Result:** \_\_\_
+
+### M12-4: Welcome, skip link, dialogs and paused stats
+
+1. On a fresh profile, press Tab once, then Enter on **Skip to main content**, then Tab again.
+2. Welcome: check Skip is focused first and Esc closes the dialog. Choose **Connect an agent**. Check that the button is hidden once every agent is connected, and shown when a status can't be read.
+3. With NVDA or Narrator, open each consent dialog: connect, disconnect, uninstall, delete, clear, and the Companion send preview.
+4. Pause an activity that reports its own stats. Repeat in dark mode.
+
+**Expected:**
+
+- **Step 1:** the skip link becomes visible and moves focus into the main area. The next Tab reaches its first control.
+- **Step 2:** **Connect an agent** opens Integrations listing every agent.
+- **Step 3:** each dialog's title is read, then its explanation.
+- **Step 4:**
+  - A "From <activity name>" heading sits apart from "Played this time" and can be reached as a heading.
+  - The skip link and the stat group border have enough contrast.
+
+**Result:** \_\_\_
+
+### M12-5: Changed games
+
+Use the keyboard only, and check each game again after an interruption and a restart.
+
+1. **Size buttons:**
+   - Play Fog Garden at all three sizes; check the 12x12 cells are readable and focus is visible.
+   - Check that the controls row stays on one line at the narrowest window in Thread Picture, Brook Links, Island Bridges, Fog Garden, Moss Paths and Firefly Catch.
+2. **Tide Pairs:**
+   - With a screen reader, check how cards are announced.
+   - Check arrows, Home/End and PageUp/PageDown on the 4- and 6-column boards.
+   - Check the reduced-motion mismatch rule.
+3. **Moss Paths:** turn a crossing and undo it, at 4x4, 6x6 and 8x8.
+4. **Firefly Catch:** try all four lengths, including untimed.
+5. **Kite Drift:** change the pace mid-flight.
+6. **Ridge Walk:** play a King on an Ace, deal again, and open an older saved game.
+7. **Lantern Pond:** play it, and restore an older save.
+8. **Teacup Tidy:** check the new name in the list and in help.
+
+**Expected:**
+
+- No crashes.
+- Old saves restore, or start a fresh game cleanly.
+- Untimed Firefly Catch shows no timer and no best score, and a timed best survives a restart.
+- Brisk Kite Drift gaps are reachable.
+- New Ridge Walk deals are instant.
+
+**Result:** \_\_\_
+
+### M12-6: Content packs: listening steps and pictures
+
+1. Read Guided Pause "Near and Far" and the other rewritten packs: Notice Five, four Away packs and two Calm Cards decks.
+2. Open Quick Quiz "Shapes and Sides" in light and dark themes, at a small window, and with a screen reader.
+3. Delete one picture from a dev copy and open the quiz.
+4. Add a real-world PNG and two WebP pictures (lossy and lossless) to a test pack and validate it.
+5. Install a third-party pack with pictures, then edit one installed picture on disk and restart.
+6. Try installing a pack containing a renamed SVG or an animated PNG.
+
+**Expected:**
+
+- **Step 1:** each step works for someone who can't hear, and the text is in British spelling.
+- **Step 2:**
+  - Each picture shows with its description.
+  - A screen reader reads the alt text.
+  - Every question can be answered without the picture.
+- **Step 3:** the quiz shows "Picture not available. It shows: …".
+- **Step 4:** genuine pictures are not refused.
+- **Step 5:** the pack is reported as damaged ("Damaged, reinstall it").
+- **Step 6:** the install is refused with a calm message.
+
+**Result:** \_\_\_
+
+### M12-7: Marketplaces: private hosts, moves and progress
+
+1. Add a LAN marketplace (an IP address or `name.local`), first without ticking "This marketplace is on my own computer or network", then with it.
+2. Add a public-looking name that resolves to 127.0.0.1 or a private address (for example a `nip.io` name).
+3. Rename a GitHub repository you have added as a marketplace, then choose Refresh.
+4. Change address to a mirror that is missing one pinned commit, then update the activity.
+5. Uninstall a pack and keep its progress. Install the same id from another marketplace. Repeat after changing the first marketplace's address.
+6. Run `lullshift validate` on a manifest whose name contains U+2028 or six stacked combining marks.
+
+**Expected:**
+
+- **Step 1:** refused without the tick. Added with it, and shows the "On your network" badge.
+- **Step 2:** refused until confirmed.
+- **Step 3:** a "moved on the same server" card appears, and **Use the new address** works.
+- **Step 4:** Manage shows "Not found at the new address" and the activity still runs. The update clears the note.
+- **Step 5:**
+  - The review asks what to do with the old progress, with Delete selected and focused.
+  - Keep shows a warning.
+  - After the address change it still asks.
+- **Step 6:** validation refuses it.
+
+**Result:** \_\_\_
+
+### M12-8: Sandbox on macOS, Linux and dev mode
+
+1. macOS and Linux debug builds: run the sandbox probe (extends M03-4 and M03-5).
+2. Windows: run `pnpm desktop:dev`, open an activity and use hot reload, then run the probe.
+3. Check that a release Windows build works normally (Companion, marketplaces). After any WebView2 or Tauri upgrade, run `node tests/sandbox/run-denial-tests.mjs --attention`.
+
+**Expected:**
+
+- **Step 1:** every WebRTC line says blocked: on macOS "API absent" in the activity frame and in the nested frame. Every other line is still blocked.
+- **Step 2:** dev mode loads and WebRTC is still blocked.
+- **Step 3:** the release build works normally, and the denial tests pass 48/48.
+
+**Result:** \_\_\_
+
+### M12-9: Companion streaming and lookups (live providers)
+
+1. Against Anthropic, OpenAI and a compatible server (for example Ollama), stream a reply and cancel one mid-stream.
+2. With a screen reader running, stream a reply.
+3. Turn on "Let the Companion look things up". Ask for a session overview, a break suggestion and help for an activity. Approve one lookup and decline another. Make a reply use all three lookups so the final no-lookup request runs. Try a server without tool support.
+4. Quit the app mid-stream.
+5. Send with a session summary attached, end that session, then reopen the composer.
+
+**Expected:**
+
+- **Step 1:** text streams, and cancelling frees the conversation at once.
+- **Step 2:** you hear the status once, then the final reply once, not every word.
+- **Step 3:**
+  - Each lookup card shows the exact text before it is sent.
+  - The break card starts an activity only when clicked.
+  - The final request is accepted.
+  - A server without tool support fails with a clear message.
+- **Step 4:** no message is left stuck after quitting.
+- **Step 5:** the remembered context falls back to "No context", with a note.
+
+**Result:** \_\_\_
