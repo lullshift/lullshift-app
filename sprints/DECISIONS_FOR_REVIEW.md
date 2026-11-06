@@ -31,6 +31,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 25 | 11 | First-launch welcome | change |
 | 26 | 11 | Release packaging | change: 26.3, 26.7, 26.8, 26.12 |
 | 27 | 12 | Sprint 12 build and review choices | change: 27.1, 27.5, 27.6, 27.8 |
+| 28 | 12 | Bundled Git fallback (gix, public https) | change: build it |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -347,3 +348,12 @@ These were taken during Sprint 12, mostly to fix security review findings. Pleas
 - 27.7: accept, documented.
 - 27.8: change. Turning a Moss Paths crossing is announced and undoable but doesn't count as a move.
 - 27.9: OK.
+
+## 28. Bundled Git fallback (owner request, 2026-11-06)
+
+**Owner decision:** when Git isn't installed on the computer, Lullshift falls back to a bundled Git library, so marketplaces still work.
+- **Library:** gitoxide (`gix`), which is pure Rust. libgit2 was considered and rejected.
+- **Scope:** public https marketplaces only. Private and ssh marketplaces still need Git installed, and the app says so.
+- **Hardening:** the same as with installed Git: the address pin, no redirects, object checks and the size cap.
+- **Installed Git comes first** whenever it is available.
+- **Record:** ADR-023.
