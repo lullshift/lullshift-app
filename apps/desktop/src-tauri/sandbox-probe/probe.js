@@ -50,13 +50,49 @@ function attemptAsync(name, fn, ms) {
 
 var REMOTE = "https://example.com/";
 
+// Another bundled activity whose files really exist (see the checks on cross-activity loads).
+var OTHER_ID = "app.lullshift.games.lantern-pond";
+
+/** This launch's key: the first path segment of /<launch key>/<activity id>/<file>. */
+function launchKey() {
+  return location.pathname.split("/")[1] || "";
+}
+
+function ownScript() {
+  return "/" + launchKey() + "/" + location.pathname.split("/")[2] + "/ipc.js";
+}
+
+function otherScript(key) {
+  return "/" + key + "/" + OTHER_ID + "/logic.js";
+}
+
+/** Loads a script by URL: loading is "not blocked" (a control must load, a denial must not). */
+function scriptCheck(name, src) {
+  return attemptAsync(
+    name,
+    function (finish) {
+      var s = document.createElement("script");
+      s.onload = function () {
+        finish(false, "script loaded");
+      };
+      s.onerror = function () {
+        finish(true, "error event");
+      };
+      s.src = src;
+      document.head.appendChild(s);
+    },
+    4000,
+  );
+}
+
 /** A srcdoc frame nested in the probe that runs rtc.js and nested.js in its own realm. */
 function nestedFrame(onMessage) {
   var f = document.createElement("iframe");
   window.addEventListener("message", function (e) {
     if (e.source === f.contentWindow && e.data && e.data.probeNested) onMessage(e.data, f);
   });
-  f.srcdoc = '<script src="rtc.js"></script><script src="nested.js"></script>';
+  f.srcdoc =
+    '<script src="rtc.js"></script><script src="ipc.js"></script><script src="nested.js"></script>';
   document.body.appendChild(f);
   return f;
 }
@@ -389,6 +425,71 @@ function runChecks() {
         };
       },
       3000,
+    ),
+    // Other activities' files (ADR-012, MEDIUM-2). Every launch is served under its own key:
+    // /<launch key>/<activity id>/<file>. The same origin serves every activity, so the key is
+    // what keeps this one from loading another's page or script.
+    scriptCheck("control: own script loads under its own key", ownScript()),
+    scriptCheck("script from another activity (own key)", otherScript(launchKey())),
+    scriptCheck("script from another activity (guessed key)", otherScript("0".repeat(32))),
+    scriptCheck("script with the key left out", "/" + OTHER_ID + "/logic.js"),
+    attemptAsync(
+      "stylesheet from another activity",
+      function (finish) {
+        var l = document.createElement("link");
+        l.rel = "stylesheet";
+        l.onload = function () {
+          finish(false, "stylesheet loaded");
+        };
+        l.onerror = function () {
+          finish(true, "error event");
+        };
+        l.href = "/" + launchKey() + "/" + OTHER_ID + "/style.css";
+        document.head.appendChild(l);
+      },
+      4000,
+    ),
+    // Native IPC (MEDIUM-4): which channels this frame and a nested frame can reach, and a
+    // forged invoke through each. Refusal is shown by the runner's canary and attention checks.
+    attemptAsync(
+      "native IPC channels reachable from the activity frame",
+      function (finish) {
+        var surface = ipcSurface(window);
+        window.probeIpc = { frame: surface };
+        finish(true, describeSurface(surface));
+      },
+      1000,
+    ),
+    attemptAsync(
+      "forged native IPC call from the activity frame",
+      function (finish) {
+        var via = forgeIpc(window);
+        finish(
+          true,
+          via.length
+            ? "posted via " + via.join(", ") + "; refusal checked by the runner"
+            : "no channel to post to",
+        );
+      },
+      1500,
+    ),
+    attemptAsync(
+      "native IPC channels and forged call from a nested frame",
+      function (finish) {
+        nestedFrame(function (m) {
+          if (m.probeNested !== "ipc") return;
+          window.probeIpc = window.probeIpc || {};
+          window.probeIpc.nested = m.surface;
+          finish(
+            true,
+            describeSurface(m.surface) +
+              (m.via.length
+                ? "; forged call posted via " + m.via.join(", ")
+                : "; nothing to post to"),
+          );
+        });
+      },
+      8000,
     ),
     attemptAsync(
       "forged host message (wrong nonce)",

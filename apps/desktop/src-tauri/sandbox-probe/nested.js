@@ -17,4 +17,11 @@ window.addEventListener("message", function (e) {
   });
 });
 
+// Native IPC reachable from a nested frame, and a forged call through it (MEDIUM-4).
+(function () {
+  var surface = ipcSurface(window);
+  var via = forgeIpc(window);
+  parent.postMessage({ probeNested: "ipc", surface: surface, via: via }, "*");
+})();
+
 parent.postMessage({ probeNested: "ready", api: typeof RTCPeerConnection }, "*");

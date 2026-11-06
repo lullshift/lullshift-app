@@ -188,6 +188,11 @@ console.log(
   `\nActivity security origin: ${probe.origin}; frame ${frameSession ? "out of process" : "in process"}; ` +
     `Tauri globals present: ${globals.length ? globals.join(", ") : "none"}`,
 );
+// Native IPC channels the frame and a nested frame can reach (ADR-012, MEDIUM-4). Reaching one
+// is not an escape by itself; the forged calls through them are what the canary and attention
+// checks below must show were refused.
+const ipcSurface = await inFrame("window.probeIpc || null");
+console.log(`Native IPC reachable from the frame: ${JSON.stringify(ipcSurface)}`);
 for (const r of probe.results) {
   if (KNOWN_GAPS.has(r.name) && !r.blocked) {
     console.log(`GAP   ${r.name}  (${r.detail}) - known, see ADR-012`);
@@ -345,6 +350,34 @@ check(
 if (realSave)
   await invoke("activity_save_snapshot", { id: CANARY_ID, snapshot: realSave.snapshot });
 else await invoke("activity_clear_snapshot", { id: CANARY_ID });
+
+// 4c. The frame can't move to another activity's page (ADR-012, MEDIUM-2). All activities share
+// one origin, so this is refused by the launch key in the address (the server answers 403) and,
+// in the UI, a second load in the frame stops it ("navigated").
+{
+  const OTHER = "app.lullshift.games.lantern-pond";
+  await click(button("Close"));
+  await waitFor("list", () => click(button("Sandbox probe")));
+  await waitFor("probe frame (fresh launch)", () => inFrame("typeof window.probe === 'object'"));
+  const key = await inFrame("location.pathname.split('/')[1]");
+  check("launch address carries a 128-bit key", /^[0-9a-f]{32}$/.test(key), String(key));
+  await inFrame(
+    `location.href = '/' + location.pathname.split('/')[1] + '/${OTHER}/index.html'; true`,
+  ).catch(() => undefined);
+  await sleep(2500);
+  const card = await main("document.querySelector('.host-card')?.textContent ?? ''");
+  const stillThere = await main("!!document.querySelector('.host-frame')");
+  check(
+    "navigating to another activity's page is refused and the frame stopped",
+    !stillThere && /was stopped/.test(card),
+    `frame present: ${stillThere}; card: ${card.slice(0, 70)}`,
+  );
+  // The paused probe still resumes (a new launch, a new key).
+  await click(button("Resume"));
+  await waitFor("probe after navigation stop", () => inFrame("typeof window.probe === 'object'"));
+  const key2 = await inFrame("location.pathname.split('/')[1]");
+  check("a resumed launch gets a new key", /^[0-9a-f]{32}$/.test(key2) && key2 !== key);
+}
 
 // 5. Optional: a real "needs you" event pauses the activity (end to end).
 if (withAttention) {
