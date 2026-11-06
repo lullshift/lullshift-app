@@ -10,6 +10,8 @@
 //! 1. [`Git::new`], then [`Git::fetch`] the marketplace into its cache and [`Git::read_index`].
 //! 2. [`Git::resolve_entry`] pins an entry to a commit (fetching an external source if needed).
 //! 3. [`Git::prepare_pack`] validates everything and returns an [`InstallPreview`] to show.
+//!    Third-party code ([`needs_code_consent`]) also needs the user's acceptance of the code
+//!    risk, which the host checks before it calls [`install`].
 //! 4. After the user confirms, [`install`] writes it; [`verify_install`] re-checks it later.
 //! 5. For updates, prepare the new commit and call [`diff_update`].
 
@@ -35,7 +37,10 @@ mod testutil;
 pub use error::{
     Error, GitFailureKind, IndexError, NameError, PackError, PathError, RefError, UrlError,
 };
-pub use gate::{set_webrtc_confirmed_off, third_party_code_allowed};
+pub use gate::{
+    CodeRiskStatus, Os, WebrtcBlock, code_risk_status, code_risk_status_for, needs_code_consent,
+    set_webrtc_block, webrtc_block,
+};
 pub use git::{Git, classify_failure};
 pub use index::{EntrySource, IndexEntry, MarketplaceIndex, parse_index};
 pub use install::{

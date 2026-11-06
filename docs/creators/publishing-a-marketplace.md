@@ -2,7 +2,7 @@
 
 A marketplace is any Git repository, public or private, with `.lullshift/marketplace.json` at its root (ADR-002). There is nothing to register and nothing to upload. Users add your repository in the app and install from it with their own Git access.
 
-In this release, users can install **content packs** from third-party marketplaces. Code activities (`kind: app`) are listed but can't be installed yet; see [Sandbox rules](sandbox.md#known-limits).
+Users can install **content packs** and **code activities** (`kind: app`) from third-party marketplaces. A code activity is listed as a "Third-party program". Before it installs, the user sees a warning, "This is someone else's program", and must tick "I understand and want to install this program". The warning lists the permissions your manifest declares and what Lullshift has verified on their platform. They tick it again for every update that changes your code (a new commit), so push code changes deliberately. See [Sandbox rules](sandbox.md#known-limits).
 
 ## 1. Create the index
 

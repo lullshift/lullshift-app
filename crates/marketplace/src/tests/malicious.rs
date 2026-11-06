@@ -582,7 +582,9 @@ fn missing_or_non_folder_path() {
 }
 
 #[test]
-fn third_party_code_activity_is_blocked() {
+fn third_party_code_is_reviewed_and_marked_as_needing_consent() {
+    // Owner decision 27.5: a third-party app is prepared for review like a pack; installing it
+    // needs the user's consent, which the host enforces (`needs_code_consent`).
     let app = || {
         vec![
             F::new("packs/x/manifest.json", app_manifest(ID).to_string()),
@@ -590,8 +592,19 @@ fn third_party_code_activity_is_blocked() {
             F::new("packs/x/main.js", "console.log(1)"),
         ]
     };
-    assert_eq!(pack_err(app()), PackError::ThirdPartyCodeBlocked);
-    assert!(!crate::third_party_code_allowed());
+    let env = Env::new();
+    let src = env.src("src");
+    let mut f = app();
+    f.push(index_file("acme-tools", &[(ID, json!({"path": DIR}))]));
+    src.commit(&f);
+    let p = pipeline(&env, &src, ID, false).expect("third-party app is reviewable");
+    assert!(p.preview.third_party);
+    assert_eq!(p.preview.kind, crate::Kind::App);
+    assert_eq!(p.preview.file_count, 3);
+    assert!(crate::needs_code_consent(
+        p.preview.kind,
+        p.preview.third_party
+    ));
 
     // The built-in marketplace's own apps are not third-party code.
     let env = Env::new();
@@ -601,12 +614,55 @@ fn third_party_code_activity_is_blocked() {
     src.commit(&f);
     let p = pipeline(&env, &src, ID, true).expect("built-in app");
     assert!(!p.preview.third_party);
+    assert!(!crate::needs_code_consent(
+        p.preview.kind,
+        p.preview.third_party
+    ));
 }
 
 #[test]
-fn third_party_code_is_blocked_before_its_files_are_read() {
-    // An app with an executable file and a symlink: the gate answers first only if the listing
-    // is fine; the listing check still runs first and names the real problem.
+fn a_third_party_app_without_its_entrypoint_is_refused() {
+    let f = vec![
+        F::new("packs/x/manifest.json", app_manifest(ID).to_string()),
+        F::new("packs/x/main.js", "console.log(1)"),
+    ];
+    assert_eq!(pack_err(f), PackError::DataMissing("index.html".to_owned()));
+}
+
+#[test]
+fn third_party_code_gets_the_same_file_checks_as_everything_else() {
+    // Consent never relaxes the pack checks: no executables, no native code, no unknown types.
+    let base = || {
+        vec![
+            F::new("packs/x/manifest.json", app_manifest(ID).to_string()),
+            F::new("packs/x/index.html", "x"),
+        ]
+    };
+    let mut exe = base();
+    exe.push(F::new("packs/x/run.js", "x").mode("100755"));
+    assert!(matches!(pack_err(exe), PackError::Executable(_)));
+    for name in [
+        "tool.exe",
+        "lib.dll",
+        "lib.so",
+        "lib.dylib",
+        "x.wasm",
+        "run.sh",
+        "a.node",
+    ] {
+        let mut f = base();
+        f.push(F::new(&format!("packs/x/{name}"), "x"));
+        assert!(
+            matches!(pack_err(f), PackError::DisallowedFile(_)),
+            "{name} must be refused"
+        );
+    }
+}
+
+#[test]
+fn third_party_code_listing_problems_are_named_first() {
+    // An app with a symlink: the listing check runs before anything else and names the real
+    // problem.
     let mut f = vec![
         F::new("packs/x/manifest.json", app_manifest(ID).to_string()),
         F::new("packs/x/index.html", "x"),

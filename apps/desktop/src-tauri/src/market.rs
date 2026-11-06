@@ -8,6 +8,10 @@
 //! - Git work runs on blocking threads, one operation per marketplace at a time (`busy`).
 //! - Nothing is installed or updated without a single-use, 10-minute token that a preview
 //!   produced; the token holds the already validated files in memory.
+//! - Third-party code (`kind: app` from any marketplace but the built-in one) is installed, or
+//!   updated to a new commit, only when the command carries `acceptCodeRisk: true`: the user
+//!   ticked the consent box under the review's risk warning (owner decision 27.5). Without it
+//!   the command refuses and the token is used up. The consent is recorded with its commit.
 //! - Errors reach the UI as `{ kind, message }` with fixed, friendly text. `git` stderr, URLs
 //!   with userinfo and raw parser messages never get that far (the crate does not keep them).
 //! - The app never logs URLs, credentials or task data.
@@ -18,15 +22,15 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use local_store::{
-    ActivityKind, AddressChange, BUILTIN_MARKETPLACE_ID, InstalledActivity, MarketplaceRecord,
-    NewInstalledActivity, SavedState, StoreError,
+    ActivityKind, AddressChange, BUILTIN_MARKETPLACE_ID, CodeConsent, InstalledActivity,
+    MarketplaceRecord, NewInstalledActivity, SavedState, StoreError,
 };
 use marketplace::manifest::{parse_manifest, plain};
 use marketplace::validate::{check_marketplace_name, windows_reserved};
 use marketplace::{
-    Commit, EntrySource, Error, Git, GitFailureKind, GitRef, GitUrl, IndexError, InstalledSummary,
-    Kind, MarketplaceRef, PackError, PrepareRequest, PreparedPack, UrlError, diff_update, install,
-    remove_install,
+    CodeRiskStatus, Commit, EntrySource, Error, Git, GitFailureKind, GitRef, GitUrl, IndexError,
+    InstalledSummary, Kind, MarketplaceRef, Os, PackError, PrepareRequest, PreparedPack, UrlError,
+    code_risk_status, diff_update, install, needs_code_consent, remove_install,
 };
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -160,7 +164,6 @@ impl From<Error> for CommandError {
                 "invalidIndex",
                 "The marketplace index isn't valid, so nothing was added or changed.",
             ),
-            Error::Pack(PackError::ThirdPartyCodeBlocked) => third_party_blocked(),
             Error::Pack(PackError::NotFound) => Self::new(
                 "notFound",
                 "The activity's folder wasn't found in the repository.",
@@ -205,10 +208,12 @@ fn private_host_unconfirmed() -> CommandError {
     )
 }
 
-fn third_party_blocked() -> CommandError {
+/// Third-party code without the user's consent (owner decision 27.5). The UI only sends the
+/// install or update once the box is ticked, so this means the flag was missing.
+fn code_risk_not_accepted() -> CommandError {
     CommandError::new(
-        "thirdPartyCodeBlocked",
-        "Code activities from third-party marketplaces can't be installed on this system yet. Content packs can.",
+        "codeRiskNotAccepted",
+        "This is someone else's program. It is installed only after you read the warning and tick \"I understand and want to install this program\". Nothing was installed; review it again.",
     )
 }
 
@@ -505,7 +510,9 @@ pub struct EntryDto {
     external: bool,
     featured: bool,
     installed: Option<InstalledMark>,
-    blocked: Option<&'static str>,
+    /// Code from a third-party marketplace: installing it shows the risk warning and asks for
+    /// consent (owner decision 27.5). Known up front only for same-repository entries.
+    third_party_code: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -526,12 +533,41 @@ pub struct InstallPreviewDto {
     size_bytes: u64,
     file_count: usize,
     third_party: bool,
+    /// Third-party code only: what the risk warning says about this computer (owner decision
+    /// 27.5). Installing or updating it needs `acceptCodeRisk: true`. Null otherwise.
+    code_risk: Option<CodeRiskDto>,
     /// Saved progress from an earlier install of this id exists and this install will use it.
     has_saved_state: bool,
     /// Kept saved progress for this id: `none`, `own` (same marketplace and source, used),
     /// `unknown` (no recorded source, kept and used), or `foreign` (recorded as another
     /// marketplace's or source's: deleted at install unless the user chooses to keep it).
     saved_state: &'static str,
+}
+
+/// What the review's risk warning needs to know about this computer. Never a guarantee.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeRiskDto {
+    /// `windows`, `macos` or `linux`.
+    platform: &'static str,
+    /// `windowsNotReadBack`, `unverified`, `blockFailed` or `notChecked`.
+    status: CodeRiskStatus,
+}
+
+fn platform_str(os: Os) -> &'static str {
+    match os {
+        Os::Windows => "windows",
+        Os::MacOs => "macos",
+        Os::Linux => "linux",
+    }
+}
+
+fn code_risk_of(pack: &PreparedPack) -> Option<CodeRiskDto> {
+    let p = &pack.preview;
+    needs_code_consent(p.kind, p.third_party).then(|| CodeRiskDto {
+        platform: platform_str(Os::current()),
+        status: code_risk_status(),
+    })
 }
 
 fn saved_state_str(s: SavedState) -> &'static str {
@@ -620,6 +656,7 @@ fn preview_dto(
         size_bytes: p.size_bytes,
         file_count: p.file_count,
         third_party: p.third_party,
+        code_risk: code_risk_of(pack),
         has_saved_state: matches!(saved, SavedState::Own | SavedState::Unknown),
         saved_state: saved_state_str(saved),
     }
@@ -937,7 +974,7 @@ pub fn entries(core: &Core, id: &str) -> Res<Vec<EntryDto>> {
                 external: false,
                 featured: false,
                 installed: None,
-                blocked: None,
+                third_party_code: false,
             })
             .collect());
     }
@@ -975,8 +1012,6 @@ pub fn entries(core: &Core, id: &str) -> Res<Vec<EntryDto>> {
             let kind = manifest
                 .as_ref()
                 .map(|m| if m.kind == "app" { "app" } else { "content" });
-            let blocked = (kind == Some("app") && !marketplace::third_party_code_allowed())
-                .then_some("thirdPartyCode");
             EntryDto {
                 activity_id: e.id.clone(),
                 name: manifest.as_ref().map(|m| m.name.clone()),
@@ -995,7 +1030,7 @@ pub fn entries(core: &Core, id: &str) -> Res<Vec<EntryDto>> {
                         version: i.manifest_version.clone(),
                         enabled: i.enabled,
                     }),
-                blocked,
+                third_party_code: kind == Some("app"),
             }
         })
         .collect())
@@ -1114,7 +1149,23 @@ pub fn preview_install(
     Ok(preview_dto(token, &rec.id, &source_path, &pack, saved))
 }
 
-fn record_of(pending: &Pending) -> NewInstalledActivity {
+/// Refuses third-party code unless the user accepted the risk for this review, and returns the
+/// consent to record (owner decision 27.5). Content packs and built-in code need none.
+fn code_consent_for(pending: &Pending, accept_code_risk: bool) -> Res<Option<CodeConsent>> {
+    let p = &pending.pack.preview;
+    if !needs_code_consent(p.kind, p.third_party) {
+        return Ok(None);
+    }
+    if !accept_code_risk {
+        return Err(code_risk_not_accepted());
+    }
+    Ok(Some(CodeConsent {
+        at: OffsetDateTime::now_utc(),
+        commit: p.commit.clone(),
+    }))
+}
+
+fn record_of(pending: &Pending, code_consent: Option<CodeConsent>) -> NewInstalledActivity {
     let p = &pending.pack.preview;
     NewInstalledActivity {
         activity_id: p.activity_id.clone(),
@@ -1131,6 +1182,7 @@ fn record_of(pending: &Pending) -> NewInstalledActivity {
         permissions: p.permissions.clone(),
         digest: p.digest.clone(),
         size_bytes: p.size_bytes,
+        code_consent,
     }
 }
 
@@ -1143,7 +1195,15 @@ fn refresh_library(core: &Core) {
 /// Installs a previewed activity. `keep_saved_state` is the user's answer when the review said
 /// kept progress belongs to another marketplace or source (`savedState: "foreign"`): `true`
 /// keeps it for this install, `false` (the default) deletes it. It changes nothing otherwise.
-pub fn install_pending(core: &Core, token: &str, keep_saved_state: bool, now: Instant) -> Res<()> {
+/// `accept_code_risk` is the consent box under the third-party code warning; third-party code is
+/// refused without it (and the token is used up), and anything else ignores it.
+pub fn install_pending(
+    core: &Core,
+    token: &str,
+    keep_saved_state: bool,
+    accept_code_risk: bool,
+    now: Instant,
+) -> Res<()> {
     let pending = take_pending(core, token, now)?;
     if !matches!(pending.kind, PendingKind::Install) {
         return Err(CommandError::new(
@@ -1161,10 +1221,7 @@ pub fn install_pending(core: &Core, token: &str, keep_saved_state: bool, now: In
     {
         return Err(already_in_library());
     }
-    // Checked again here, not only at preview time.
-    if p.kind == Kind::App && p.third_party && !marketplace::third_party_code_allowed() {
-        return Err(third_party_blocked());
-    }
+    let consent = code_consent_for(&pending, accept_code_risk)?;
     let root = install_root(core);
     install(&root, &pending.pack)?;
     // Saved state kept from a different marketplace or source is deleted here, not handed to
@@ -1182,7 +1239,7 @@ pub fn install_pending(core: &Core, token: &str, keep_saved_state: bool, now: In
         let _ = remove_install(&root, &p.activity_id, &p.commit);
     })?;
     let recorded = with_store(core, |s| {
-        s.put_installed_activity(&record_of(&pending), OffsetDateTime::now_utc())
+        s.put_installed_activity(&record_of(&pending, consent), OffsetDateTime::now_utc())
     });
     if let Err(e) = recorded {
         let _ = remove_install(&root, &p.activity_id, &p.commit);
@@ -1257,7 +1314,9 @@ pub fn preview_update(core: &Core, activity_id: &str) -> Res<UpdatePreviewDto> {
 }
 
 /// Applies a previewed update: new commit folder first, then the record, then the old folder.
-pub fn update_pending(core: &Core, token: &str, now: Instant) -> Res<()> {
+/// An update that changes the pinned commit of third-party code needs `accept_code_risk` again,
+/// like an install; the new consent replaces the old one in the record.
+pub fn update_pending(core: &Core, token: &str, accept_code_risk: bool, now: Instant) -> Res<()> {
     let pending = take_pending(core, token, now)?;
     let PendingKind::Update { old_commit } = &pending.kind else {
         return Err(CommandError::new(
@@ -1281,13 +1340,11 @@ pub fn update_pending(core: &Core, token: &str, now: Instant) -> Res<()> {
     if p.commit == current.commit_sha {
         return Ok(());
     }
-    if p.kind == Kind::App && p.third_party && !marketplace::third_party_code_allowed() {
-        return Err(third_party_blocked());
-    }
+    let consent = code_consent_for(&pending, accept_code_risk)?;
     let root = install_root(core);
     install(&root, &pending.pack)?;
     let recorded = with_store(core, |s| {
-        s.put_installed_activity(&record_of(&pending), OffsetDateTime::now_utc())
+        s.put_installed_activity(&record_of(&pending, consent), OffsetDateTime::now_utc())
     });
     if let Err(e) = recorded {
         let _ = remove_install(&root, &p.activity_id, &p.commit);
@@ -1460,15 +1517,18 @@ pub async fn marketplace_preview_install(
     .await
 }
 
+/// `accept_code_risk` must be `Some(true)` for third-party code; missing counts as no.
 #[tauri::command]
 pub async fn marketplace_install(
     core: tauri::State<'_, Arc<Core>>,
     token: String,
     keep_saved_state: Option<bool>,
+    accept_code_risk: Option<bool>,
 ) -> Res<()> {
     let keep = keep_saved_state.unwrap_or(false);
+    let accept = accept_code_risk == Some(true);
     run(&core, move |c| {
-        install_pending(c, &token, keep, Instant::now())
+        install_pending(c, &token, keep, accept, Instant::now())
     })
     .await
 }
@@ -1481,9 +1541,18 @@ pub async fn marketplace_preview_update(
     run(&core, move |c| preview_update(c, &activity_id)).await
 }
 
+/// `accept_code_risk` must be `Some(true)` to update third-party code to a new commit.
 #[tauri::command]
-pub async fn marketplace_update(core: tauri::State<'_, Arc<Core>>, token: String) -> Res<()> {
-    run(&core, move |c| update_pending(c, &token, Instant::now())).await
+pub async fn marketplace_update(
+    core: tauri::State<'_, Arc<Core>>,
+    token: String,
+    accept_code_risk: Option<bool>,
+) -> Res<()> {
+    let accept = accept_code_risk == Some(true);
+    run(&core, move |c| {
+        update_pending(c, &token, accept, Instant::now())
+    })
+    .await
 }
 
 #[tauri::command]

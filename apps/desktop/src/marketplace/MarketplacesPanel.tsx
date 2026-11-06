@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { relativeTime } from "../format";
 import { Banner } from "../ui/Banner";
 import { Dialog } from "../ui/Dialog";
-import { Icon } from "../ui/Icon";
 import {
   marketplaceAdd,
   marketplaceEntries,
@@ -480,15 +479,10 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
                         <span className="row-desc">{truncate(e.description, 200)}</span>
                       )}
                       <span className="mk-meta">
-                        {kindLabel(e.kind)}
+                        {status.program ?? kindLabel(e.kind)}
                         {e.external && " · from another repository"}
                         {status.installed && ` · ${status.installed}`}
                       </span>
-                      {status.blocked && (
-                        <span className="mk-blocked">
-                          <Icon name="info" size={16} /> {status.blocked}
-                        </span>
-                      )}
                     </div>
                     {canInstall(e) && (
                       <button

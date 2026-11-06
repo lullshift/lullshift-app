@@ -55,6 +55,15 @@ impl ActivityKind {
     }
 }
 
+/// The user's acceptance of the risk of a third-party code activity (owner decision 27.5): when
+/// they ticked "I understand and want to install this program", and the commit they accepted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeConsent {
+    pub at: OffsetDateTime,
+    /// The pinned commit the consent was given for; always the install's own commit.
+    pub commit: String,
+}
+
 /// What the installer knows when it installs or updates an activity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewInstalledActivity {
@@ -70,6 +79,9 @@ pub struct NewInstalledActivity {
     pub permissions: Vec<String>,
     pub digest: String,
     pub size_bytes: u64,
+    /// Code activities only: the consent given in the review for this commit. Replaced on every
+    /// update, so an update to a new commit records its own consent (or none for a pack).
+    pub code_consent: Option<CodeConsent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +100,8 @@ pub struct InstalledActivity {
     pub enabled: bool,
     pub installed_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
+    /// The consent recorded for this install's commit; None for packs and older rows.
+    pub code_consent: Option<CodeConsent>,
 }
 
 fn is_lower_hex(s: &str, len: usize) -> bool {
@@ -180,6 +194,18 @@ fn validate(a: &NewInstalledActivity) -> Result<()> {
     if i64::try_from(a.size_bytes).is_err() {
         return Err(StoreError::InvalidInput("size"));
     }
+    if let Some(c) = &a.code_consent {
+        if a.kind != ActivityKind::App {
+            return Err(StoreError::InvalidInput(
+                "only code activities record code consent",
+            ));
+        }
+        if c.commit != a.commit_sha {
+            return Err(StoreError::InvalidInput(
+                "code consent must be for the installed commit",
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -224,7 +250,7 @@ fn decode_marketplace(
 
 const INSTALL_COLS: &str = "activity_id, marketplace_id, source_url, source_path, commit_sha, \
      manifest_version, kind, engine, permissions, digest, size_bytes, enabled, installed_at, \
-     updated_at";
+     updated_at, code_consent_at, code_consent_commit";
 
 type RawInstall = (
     String,
@@ -241,6 +267,8 @@ type RawInstall = (
     i64,
     String,
     String,
+    Option<String>,
+    Option<String>,
 );
 
 fn install_row(r: &Row<'_>) -> rusqlite::Result<RawInstall> {
@@ -259,6 +287,8 @@ fn install_row(r: &Row<'_>) -> rusqlite::Result<RawInstall> {
         r.get(11)?,
         r.get(12)?,
         r.get(13)?,
+        r.get(14)?,
+        r.get(15)?,
     ))
 }
 
@@ -278,7 +308,17 @@ fn decode_install(raw: RawInstall) -> Result<InstalledActivity> {
         enabled,
         installed,
         updated,
+        consent_at,
+        consent_commit,
     ) = raw;
+    let code_consent = match (consent_at, consent_commit) {
+        (Some(at), Some(commit)) => Some(CodeConsent {
+            at: parse_ts(&at)?,
+            commit,
+        }),
+        (None, None) => None,
+        _ => return Err(StoreError::Corrupt("stored code consent")),
+    };
     Ok(InstalledActivity {
         activity_id,
         marketplace_id,
@@ -295,6 +335,7 @@ fn decode_install(raw: RawInstall) -> Result<InstalledActivity> {
         enabled: enabled != 0,
         installed_at: parse_ts(&installed)?,
         updated_at: parse_ts(&updated)?,
+        code_consent,
     })
 }
 
@@ -627,20 +668,24 @@ impl Store {
             .map_err(|_| StoreError::InvalidInput("permissions"))?;
         let at = fmt_ts(now)?;
         let size = i64::try_from(a.size_bytes).map_err(|_| StoreError::InvalidInput("size"))?;
+        let consent_at = a.code_consent.as_ref().map(|c| fmt_ts(c.at)).transpose()?;
+        let consent_commit = a.code_consent.as_ref().map(|c| c.commit.as_str());
         self.conn
             .execute(
                 "INSERT INTO installed_activities
                    (activity_id, marketplace_id, source_url, source_path, commit_sha,
                     manifest_version, kind, engine, permissions, digest, size_bytes, enabled,
-                    installed_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12, ?12)
+                    installed_at, updated_at, code_consent_at, code_consent_commit)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12, ?12, ?13, ?14)
                  ON CONFLICT (activity_id) DO UPDATE SET
                    marketplace_id = excluded.marketplace_id, source_url = excluded.source_url,
                    source_path = excluded.source_path, commit_sha = excluded.commit_sha,
                    manifest_version = excluded.manifest_version, kind = excluded.kind,
                    engine = excluded.engine, permissions = excluded.permissions,
                    digest = excluded.digest, size_bytes = excluded.size_bytes,
-                   updated_at = excluded.updated_at, source_note = NULL",
+                   updated_at = excluded.updated_at, source_note = NULL,
+                   code_consent_at = excluded.code_consent_at,
+                   code_consent_commit = excluded.code_consent_commit",
                 params![
                     a.activity_id,
                     a.marketplace_id,
@@ -653,7 +698,9 @@ impl Store {
                     permissions,
                     a.digest,
                     size,
-                    at
+                    at,
+                    consent_at,
+                    consent_commit
                 ],
             )
             .map_err(|e| match e {

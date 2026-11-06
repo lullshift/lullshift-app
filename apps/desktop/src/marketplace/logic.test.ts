@@ -4,10 +4,25 @@ const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 import * as api from "./api";
-import type { ErrorKind, ManageItem, MarketplaceEntry, UpdatePreview } from "./api";
+import type {
+  CodeRisk,
+  CodeRiskStatus,
+  ErrorKind,
+  ManageItem,
+  MarketplaceEntry,
+  UpdatePreview,
+} from "./api";
 import {
+  activitySourceLabel,
   addressChangedText,
   asksAboutSavedState,
+  canConfirmReview,
+  CODE_RISK_CONSENT_LABEL,
+  CODE_RISK_HEADING,
+  codeRiskVerification,
+  codeRiskView,
+  needsCodeConsent,
+  THIRD_PARTY_PROGRAM_LABEL,
   FOREIGN_STATE_DELETE,
   FOREIGN_STATE_KEEP_WARNING,
   FOREIGN_STATE_TEXT,
@@ -27,7 +42,6 @@ import {
   problemLabel,
   problemText,
   shortCommit,
-  THIRD_PARTY_CODE_TEXT,
   truncate,
   savedStateLine,
   updateView,
@@ -42,7 +56,7 @@ const KINDS: ErrorKind[] = [
   "invalidUrl",
   "invalidIndex",
   "invalidPack",
-  "thirdPartyCodeBlocked",
+  "codeRiskNotAccepted",
   "alreadyExists",
   "builtinProtected",
   "busy",
@@ -295,17 +309,18 @@ describe("entries", () => {
     external: false,
     featured: false,
     installed: null,
-    blocked: null,
+    thirdPartyCode: false,
     ...over,
   });
   it("falls back to the id and truncates long names", () => {
     expect(entryTitle(entry())).toBe("a-b");
     expect(entryTitle(entry({ name: "n".repeat(200) })).length).toBe(80);
   });
-  it("blocks third-party code with the stated reason and no install", () => {
-    const e = entry({ blocked: "thirdPartyCode" });
-    expect(entryStatus(e).blocked).toBe(THIRD_PARTY_CODE_TEXT);
-    expect(canInstall(e)).toBe(false);
+  it("labels third-party code and still offers to review it (decision 27.5)", () => {
+    const e = entry({ thirdPartyCode: true });
+    expect(entryStatus(e).program).toBe(THIRD_PARTY_PROGRAM_LABEL);
+    expect(canInstall(e)).toBe(true);
+    expect(entryStatus(entry({ kind: "content" })).program).toBeNull();
   });
   it("does not offer install when already installed", () => {
     const e = entry({ installed: { commit: COMMIT, version: "1.0.0", enabled: false } });
@@ -343,6 +358,10 @@ describe("manage helpers", () => {
   it("describes the source", () => {
     expect(manageSubtitle(item())).toBe("Content pack · From friends · version 1.0.0");
     expect(manageSubtitle(item({ builtin: true, kind: "app" }))).toContain("Built in");
+    expect(manageSubtitle(item({ builtin: true, kind: "app" }))).not.toContain("Third-party");
+    expect(manageSubtitle(item({ kind: "app" }))).toBe(
+      "Third-party program · From friends · version 1.0.0",
+    );
   });
 });
 
@@ -441,11 +460,116 @@ describe("api error normalisation", () => {
     expect(invoke).toHaveBeenCalledWith("marketplace_install", {
       token: "t",
       keepSavedState: false,
+      acceptCodeRisk: false,
     });
     await api.marketplaceInstall("t", true);
     expect(invoke).toHaveBeenCalledWith("marketplace_install", {
       token: "t",
       keepSavedState: true,
+      acceptCodeRisk: false,
     });
+    await api.marketplaceInstall("t", false, true);
+    expect(invoke).toHaveBeenCalledWith("marketplace_install", {
+      token: "t",
+      keepSavedState: false,
+      acceptCodeRisk: true,
+    });
+    await api.marketplaceUpdate("u");
+    expect(invoke).toHaveBeenCalledWith("marketplace_update", {
+      token: "u",
+      acceptCodeRisk: false,
+    });
+    await api.marketplaceUpdate("u", true);
+    expect(invoke).toHaveBeenCalledWith("marketplace_update", {
+      token: "u",
+      acceptCodeRisk: true,
+    });
+  });
+});
+
+describe("third-party code warning and consent (owner decision 27.5)", () => {
+  const code = (status: CodeRiskStatus, platform: CodeRisk["platform"] = "windows") =>
+    preview({
+      kind: "app",
+      engine: null,
+      thirdParty: true,
+      codeRisk: { platform, status },
+    });
+
+  it("needs consent only for third-party code", () => {
+    expect(needsCodeConsent(code("windowsNotReadBack"))).toBe(true);
+    expect(needsCodeConsent(preview())).toBe(false);
+    expect(needsCodeConsent(preview({ kind: "app", engine: null, thirdParty: false }))).toBe(false);
+    // A host that forgot the note still gets the warning and the box.
+    expect(needsCodeConsent(preview({ kind: "app", engine: null, codeRisk: null }))).toBe(true);
+  });
+
+  it("keeps Install disabled until the box is ticked", () => {
+    expect(canConfirmReview(code("windowsNotReadBack"), false)).toBe(false);
+    expect(canConfirmReview(code("windowsNotReadBack"), true)).toBe(true);
+    expect(canConfirmReview(preview(), false)).toBe(true);
+  });
+
+  it("lists the sandbox, the missing access and the declared permissions", () => {
+    const view = codeRiskView(code("unverified", "macos"));
+    expect(view?.heading).toBe(CODE_RISK_HEADING);
+    expect(view?.heading).toBe("This is someone else's program");
+    expect(view?.consentLabel).toBe(CODE_RISK_CONSENT_LABEL);
+    expect(view?.consentLabel).toBe("I understand and want to install this program");
+    const points = view?.points.join(" ") ?? "";
+    expect(points).toMatch(/inside Lullshift's sandbox/);
+    expect(points).toMatch(/no access to your files, the network, your clipboard/);
+    expect(points).toContain("It asks for: activity.storage.");
+    expect(codeRiskView(code("unverified"))?.worstCase).toMatch(
+      /send out what it shows you or what you type into it/,
+    );
+    const none = codeRiskView({ ...code("unverified"), permissions: [] });
+    expect(none?.points).toContain("It asks for no permissions.");
+    expect(codeRiskView(preview())).toBeNull();
+  });
+
+  it("says honestly what is known on each platform and never claims a guarantee", () => {
+    const win = codeRiskVerification({ platform: "windows", status: "windowsNotReadBack" });
+    expect(win).toMatch(/passed on a test computer/);
+    expect(win).toMatch(/can't read those settings back/);
+    const mac = codeRiskVerification({ platform: "macos", status: "unverified" });
+    expect(mac).toMatch(/haven't been run on macOS/);
+    expect(mac).toMatch(/not verified/);
+    const linux = codeRiskVerification({ platform: "linux", status: "unverified" });
+    expect(linux).toMatch(/haven't been run on Linux/);
+    const failed = codeRiskVerification({ platform: "linux", status: "blockFailed" });
+    expect(failed).toMatch(/couldn't turn off WebRTC on this computer/);
+    expect(failed).toMatch(/may be able to send data out/);
+    const unknown = codeRiskVerification({ platform: "windows", status: "notChecked" });
+    expect(unknown).toMatch(/hasn't confirmed/);
+    const all = [win, mac, linux, failed, unknown];
+    expect(new Set(all).size).toBe(all.length);
+    for (const text of all) {
+      expect(text).not.toMatch(/\bguarantee[sd]?\b|\bsafe\b|\bsecure\b|\bproven\b/i);
+    }
+    // An unknown status from a newer host reads as "not confirmed", never as better news.
+    expect(
+      codeRiskVerification({ platform: "windows", status: "nope" as unknown as CodeRiskStatus }),
+    ).toBe(unknown);
+    const view = codeRiskView(code("blockFailed"));
+    expect(view?.failed).toBe(true);
+    expect(view?.noGuarantee).toMatch(/can't guarantee/);
+    expect(codeRiskView(code("windowsNotReadBack"))?.failed).toBe(false);
+  });
+});
+
+describe("where an activity came from", () => {
+  it("labels third-party code, packs from a marketplace, and nothing for built-ins", () => {
+    expect(activitySourceLabel({ marketplaceId: "friends", builtin: false }, null)).toBe(
+      "Third-party program from friends",
+    );
+    expect(activitySourceLabel({ marketplaceId: "friends", builtin: false }, "quiz@1")).toBe(
+      "From friends",
+    );
+    expect(activitySourceLabel({ marketplaceId: "lullshift", builtin: true }, null)).toBeNull();
+    expect(activitySourceLabel(undefined, null)).toBeNull();
+    expect(
+      activitySourceLabel({ marketplaceId: "m".repeat(100), builtin: false }, null)?.length,
+    ).toBeLessThan(80);
   });
 });

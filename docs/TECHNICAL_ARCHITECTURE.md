@@ -56,7 +56,7 @@ There is no telemetry by default; any future diagnostics must be opt-in (ADR-001
 | Local database | SQLite | versioned migrations, WAL, transactions; no secrets |
 | Local agent IPC | Unix domain socket / Windows named pipe | authenticated local endpoint; no unauthenticated TCP listener |
 | Adapter packaging | Native hook forwarder + Rust adapter registry | explicit capability reporting |
-| Activity runtime | Isolated WebViews + versioned host bridge | per-OS sandbox proof before third-party code (§6.4) |
+| Activity runtime | Isolated WebViews + versioned host bridge | per-OS sandbox proof; third-party code with risk warning and consent (§6.4) |
 | Secrets | OS keychain via native API | BYOK provider keys only; never browser storage, SQLite or logs |
 | Local AI | Provider abstraction, BYOK HTTP clients | user-initiated calls only |
 | Marketplaces | System `git` executable (hardened invocation) | uses the user's existing Git credentials; library alternative evaluated by ADR |
@@ -222,6 +222,8 @@ Treat all third-party and AI-generated activity JavaScript as attacker-controlle
 
 **Per-OS proof gate:** WebView isolation guarantees differ across WebView2 (Windows), WKWebView (macOS) and WebKitGTK (Linux). Third-party **code** activities (`kind: "app"` from any non-built-in marketplace) stay disabled until sandbox denial tests pass on all three targets. If the guarantees are insufficient on an OS, block third-party code there rather than shipping a cosmetic sandbox. **Content packs can be enabled earlier** because they contain no code; their data is still untrusted input to a first-party engine (§6.6).
 
+**Amended by owner decision 27.5 (ADR-015 and ADR-012 amendments):** third-party code activities can be installed on all three platforms after a clear risk warning and explicit consent at each install and at each update that changes their pinned commit. The sandbox itself is unchanged; the warning states honestly what is verified on the user's platform (Windows: proof passed, WebRTC block not read back; macOS and Linux: block in place, proof not yet run; or that the block failed).
+
 ### 6.5 Kits
 
 Kits (`packages/activity-kits/{grid,card,arcade}`) are optional first-party TypeScript libraries **compiled into the activity bundle**; the host never loads kit code separately or trusts an activity because it uses a kit. Kits share tested implementations of keyboard navigation, undo, seeded generation, forced pause and resume countdown.
@@ -269,7 +271,7 @@ Every invocation is hardened:
 3. **Pin** the resolved commit SHA for the pack source.
 4. **Copy** the pack folder from the pinned tree into an app-owned install directory (never execute from the cache).
 5. **Validate strictly**: manifest against schema; `kind` rules; canonical relative paths only (no `..`, absolute paths, drive letters, case-collisions, reserved names); no symlinks or hard links escaping the pack folder (v1: reject all links); file count and total/per-file size limits; allowlisted file types; **no executables in content packs**; content data against the referenced engine major's data schema; referenced engine must exist in the host; declared permissions must be known.
-6. **Install review** shows source marketplace and repo URL, commit SHA, kind (content vs code), engine, requested permissions, size, and an **"unverified third-party"** notice for non-built-in sources. Third-party code is blocked here if the per-OS sandbox gate (§6.4) is not satisfied.
+6. **Install review** shows source marketplace and repo URL, commit SHA, kind (content vs code), engine, requested permissions, size, and an **"unverified third-party"** notice for non-built-in sources. For third-party code it also shows a risk warning ("This is someone else's program") and an unticked consent checkbox; Install stays disabled, and the host refuses the install, until the user ticks it (owner decision 27.5, ADR-015 amendment).
 7. **Enable** on explicit user confirmation; record `InstalledActivity` with the installed digest.
 
 **Updates** are explicit: fetch, show a diff summary (version, commit, permission and kind/engine changes), re-validate, swap atomically, keep the previous version until the new one works. Removal deletes the install directory and, with consent, its `ActivityState`.
