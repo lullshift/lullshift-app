@@ -17,6 +17,7 @@
 | 09 | Companion (BYOK) | Privacy-scoped conversations, keys in OS keychain |
 | 10 | More adapters and content completion | Codex/Cursor adapters; content to 20 games / ~100 activities |
 | 11 | v1.0 release | Installers, signed updater, cross-platform QA, audits, docs |
+| 12 | Owner review changes | Decisions reviewed 2026-11-06: OpenCode adapter, sandbox, marketplace, Companion, game and content changes; the release follows |
 
 ## Tracks and parallelism
 
