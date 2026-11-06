@@ -22,6 +22,7 @@ pub mod install;
 pub mod manifest;
 pub mod net;
 pub mod pack;
+pub mod redirect;
 pub mod repo;
 pub mod validate;
 

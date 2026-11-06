@@ -40,6 +40,7 @@ const ERROR_TEXT: Record<ErrorKind, string> = {
   busy: "Another operation on this marketplace is still running. Try again shortly.",
   tampered: "This activity's files changed after install, so Lullshift won't run it.",
   privateHost: PRIVATE_HOST_TEXT,
+  moved: "This repository has moved. Lullshift didn't follow the redirect.",
   internal: "Something went wrong. Nothing was changed.",
   unavailable: UNAVAILABLE_TEXT,
 };
@@ -48,7 +49,7 @@ const ERROR_TEXT: Record<ErrorKind, string> = {
 const DETAILED: ReadonlySet<ErrorKind> = new Set(["invalidUrl", "invalidIndex", "invalidPack"]);
 
 /** Kinds whose backend sentence is fixed text that says more than ours, so it replaces ours. */
-const REPLACED: ReadonlySet<ErrorKind> = new Set(["alreadyExists"]);
+const REPLACED: ReadonlySet<ErrorKind> = new Set(["alreadyExists", "moved"]);
 
 export function truncate(text: string, max: number): string {
   const chars = Array.from(text);

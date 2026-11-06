@@ -47,9 +47,23 @@ const META_MAX: usize = 500;
 
 /// What every marketplace command returns on failure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommandError {
     pub kind: &'static str,
     pub message: String,
+    /// Only for `moved`: where the repository's server says it went (decision 18.1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub moved: Option<MovedDto>,
+}
+
+/// A redirect Lullshift did not follow. `url` is https with no userinfo, already checked by the
+/// same rules as a typed address; the UI shows it as text and sends it back only if the user
+/// accepts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MovedDto {
+    pub url: String,
+    pub same_host: bool,
 }
 
 impl CommandError {
@@ -57,6 +71,28 @@ impl CommandError {
         Self {
             kind,
             message: message.into(),
+            moved: None,
+        }
+    }
+
+    fn moved(to: &GitUrl, same_host: bool) -> Self {
+        let shown = to.display();
+        let message = if same_host {
+            format!(
+                "This marketplace moved to {shown} on the same server. Lullshift didn't follow the redirect. Use the new address?"
+            )
+        } else {
+            format!(
+                "This repository now points to a different server: {shown}. Lullshift didn't follow it. If you trust that address, add it or use Change address."
+            )
+        };
+        Self {
+            kind: "moved",
+            message,
+            moved: Some(MovedDto {
+                url: shown.to_owned(),
+                same_host,
+            }),
         }
     }
 
@@ -139,6 +175,7 @@ impl From<Error> for CommandError {
                 "Lullshift couldn't read or write files for this marketplace.",
             ),
             Error::NotACommit => Self::new("notFound", "The repository didn't return a commit."),
+            Error::Moved { to, same_host } => Self::moved(&to, same_host),
         }
     }
 }
@@ -863,6 +900,14 @@ fn prepare(
                     "This activity's source repository is on a private network address, so Lullshift won't fetch it.",
                 )
             }
+            // Only the marketplace's own address can be changed by the user.
+            Error::Moved { to, .. } => CommandError::new(
+                "invalidIndex",
+                format!(
+                    "This activity's source repository moved to {}. Lullshift didn't follow it; the marketplace needs to list the new address.",
+                    to.display()
+                ),
+            ),
             other => other.into(),
         })?;
     let source_path = resolved

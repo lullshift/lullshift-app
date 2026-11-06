@@ -26,6 +26,9 @@ regex = "1.13"
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+# The one-request redirect probe (decision 18.1). Same version and features as the Companion's,
+# so the lockfile gains no new crates.
+ureq = { version = "=3.5.1", default-features = false, features = ["rustls", "platform-verifier"] }
 
 [dev-dependencies]
 tempfile.workspace = true

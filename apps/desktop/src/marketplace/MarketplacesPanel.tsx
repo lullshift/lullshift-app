@@ -12,6 +12,7 @@ import {
   toCommandError,
   type Marketplace,
   type MarketplaceEntry,
+  type MovedTo,
 } from "./api";
 import {
   canInstall,
@@ -91,6 +92,15 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
   const [privateAsked, setPrivateAsked] = useState(false);
   /** A refresh answered `privateHost`: the box shown under that marketplace. */
   const [refreshPrivate, setRefreshPrivate] = useState<{ id: string; ok: boolean } | null>(null);
+  /**
+   * A redirect Lullshift reported instead of following (decision 18.1). `context` is "add" or
+   * the id of the marketplace that was refreshed.
+   */
+  const [moved, setMoved] = useState<{
+    to: MovedTo;
+    context: string;
+    confirmPrivate: boolean;
+  } | null>(null);
   /** Which marketplace is busy; "add" while adding. One git operation at a time per UI. */
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
@@ -136,6 +146,30 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
   const hint = input.trim() === "" ? null : check.ok ? check.hint : check.reason;
   const showPrivate = check.ok && (privateAsked || looksPrivate(check.value));
 
+  const addAddress = async (value: string, confirmPrivate: boolean) => {
+    setInputError(null);
+    setMessage(null);
+    setMoved(null);
+    setBusy("add");
+    setLive("Adding marketplace. Fetching its list with your Git access…");
+    try {
+      const m = await marketplaceAdd(value, confirmPrivate);
+      setInput("");
+      setPrivateOk(false);
+      setPrivateAsked(false);
+      say("success", `${truncate(m.id, 60)} was added.`);
+      await loadList();
+      setSelected(m.id);
+    } catch (err) {
+      const e = toCommandError(err);
+      if (e.kind === "privateHost") setPrivateAsked(true);
+      if (e.kind === "moved" && e.moved) setMoved({ to: e.moved, context: "add", confirmPrivate });
+      say("danger", errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const add = async () => {
     const c = checkGitInput(input);
     if (!c.ok) {
@@ -146,29 +180,12 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
       setInputError(PRIVATE_HOST_TEXT);
       return;
     }
-    setInputError(null);
-    setMessage(null);
-    setBusy("add");
-    setLive("Adding marketplace. Fetching its list with your Git access…");
-    try {
-      const m = await marketplaceAdd(c.value, showPrivate && privateOk);
-      setInput("");
-      setPrivateOk(false);
-      setPrivateAsked(false);
-      say("success", `${truncate(m.id, 60)} was added.`);
-      await loadList();
-      setSelected(m.id);
-    } catch (err) {
-      const e = toCommandError(err);
-      if (e.kind === "privateHost") setPrivateAsked(true);
-      say("danger", errorText(e));
-    } finally {
-      setBusy(null);
-    }
+    await addAddress(c.value, showPrivate && privateOk);
   };
 
   const refresh = async (m: Marketplace, confirmPrivate = false) => {
     setMessage(null);
+    setMoved(null);
     setBusy(m.id);
     setLive(`Refreshing ${truncate(m.id, 60)}…`);
     try {
@@ -181,6 +198,9 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
       const e = toCommandError(err);
       // Its name now resolves to a private address: ask, never assume (decision 18.8).
       if (e.kind === "privateHost") setRefreshPrivate({ id: m.id, ok: false });
+      if (e.kind === "moved" && e.moved) {
+        setMoved({ to: e.moved, context: m.id, confirmPrivate: m.privateHost });
+      }
       say("danger", errorText(e));
     } finally {
       setBusy(null);
@@ -218,6 +238,54 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
         {live}
       </p>
       {message && <Banner tone={message.tone}>{message.text}</Banner>}
+      {moved && (
+        <div className="card mk-moved" role="group" aria-label="Repository moved">
+          <p className="card-text">
+            {moved.to.sameHost
+              ? "The server says this repository is now at:"
+              : "The server points to an address on a different server:"}
+          </p>
+          <p className="mk-meta mk-wrap">
+            <code>{truncate(moved.to.url, 300)}</code>
+          </p>
+          <div className="activity-actions">
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={busy !== null}
+              onClick={() => setMoved(null)}
+            >
+              Dismiss
+            </button>
+            {moved.context === "add" && moved.to.sameHost && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy !== null}
+                onClick={() => void addAddress(moved.to.url, moved.confirmPrivate)}
+              >
+                Use the new address
+              </button>
+            )}
+            {!moved.to.sameHost && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy !== null}
+                onClick={() => {
+                  // Nothing is fetched: the user reviews it and adds it deliberately.
+                  setInput(moved.to.url);
+                  setPrivateOk(false);
+                  setPrivateAsked(false);
+                  setMoved(null);
+                }}
+              >
+                Put it in the address box
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <section className="card" aria-labelledby="mk-add-title">
         <h2 className="card-title" id="mk-add-title">

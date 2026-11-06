@@ -342,6 +342,12 @@ pub enum Error {
     },
     /// Something other than a pinned commit came back where a commit was required.
     NotACommit,
+    /// The repository answered with a redirect to `to` (decision 18.1). Never followed; the
+    /// user decides. `same_host`: same host name and port.
+    Moved {
+        to: Box<crate::validate::GitUrl>,
+        same_host: bool,
+    },
 }
 
 impl Error {
@@ -373,6 +379,17 @@ impl fmt::Display for Error {
             Self::Pack(e) => e.fmt(f),
             Self::Io { what, kind } => write!(f, "couldn't {what}: {kind}"),
             Self::NotACommit => f.write_str("Git didn't return a commit"),
+            Self::Moved { to, same_host } => {
+                if *same_host {
+                    write!(
+                        f,
+                        "the repository moved to {} on the same host",
+                        to.display()
+                    )
+                } else {
+                    write!(f, "the repository moved to another host: {}", to.display())
+                }
+            }
         }
     }
 }

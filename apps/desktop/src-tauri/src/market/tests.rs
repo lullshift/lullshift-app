@@ -1339,3 +1339,37 @@ fn a_confirmed_marketplace_records_it_and_later_fetches_carry_it() {
             .private_confirmed()
     );
 }
+
+// ---- Sprint 12: redirects are reported, never followed (decision 18.1) -------------------
+
+#[test]
+fn a_redirect_reaches_the_ui_as_moved_with_the_checked_address() {
+    let to = GitUrl::parse("https://github.com/new/market").expect("url");
+    let same = CommandError::from(Error::Moved {
+        to: Box::new(to.clone()),
+        same_host: true,
+    });
+    assert_eq!(same.kind, "moved");
+    assert!(same.message.contains("https://github.com/new/market"));
+    assert!(same.message.contains("same server"));
+    let json = serde_json::to_value(&same).expect("json");
+    assert_eq!(
+        json["moved"],
+        json!({"url": "https://github.com/new/market", "sameHost": true})
+    );
+
+    let other = CommandError::from(Error::Moved {
+        to: Box::new(to),
+        same_host: false,
+    });
+    assert!(other.message.contains("different server"));
+    assert_eq!(
+        serde_json::to_value(&other).expect("json")["moved"]["sameHost"],
+        json!(false)
+    );
+
+    // Every other error has no `moved` field at all.
+    let plain = serde_json::to_value(CommandError::from(Error::Git(GitFailureKind::NotFound)))
+        .expect("json");
+    assert!(plain.get("moved").is_none());
+}

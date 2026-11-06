@@ -40,6 +40,7 @@ const KINDS: ErrorKind[] = [
   "busy",
   "tampered",
   "privateHost",
+  "moved",
   "internal",
   "unavailable",
 ];
@@ -312,6 +313,30 @@ describe("api error normalisation", () => {
       kind: "offline",
       message: "No network.",
     });
+  });
+  it("keeps a checked redirect target only on moved errors", () => {
+    expect(
+      api.toCommandError({
+        kind: "moved",
+        message: "m",
+        moved: { url: "https://github.com/n/r", sameHost: true },
+      }),
+    ).toEqual({
+      kind: "moved",
+      message: "m",
+      moved: { url: "https://github.com/n/r", sameHost: true },
+    });
+    // Anything that isn't https is dropped; so is `moved` on another kind.
+    expect(
+      api.toCommandError({ kind: "moved", message: "", moved: { url: "javascript:x" } }).moved,
+    ).toBeUndefined();
+    expect(
+      api.toCommandError({ kind: "offline", message: "", moved: { url: "https://x.example/a" } })
+        .moved,
+    ).toBeUndefined();
+    expect(errorText({ kind: "moved", message: "Moved to https://a.example/b." })).toBe(
+      "Moved to https://a.example/b.",
+    );
   });
   it("maps a missing command to unavailable", async () => {
     invoke.mockRejectedValue("Command marketplace_list not found");

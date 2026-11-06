@@ -22,13 +22,24 @@ export type ErrorKind =
   | "tampered"
   /** The address is on this computer or a private network and the user hasn't confirmed it. */
   | "privateHost"
+  /** The repository's server redirected; Lullshift didn't follow. See `moved`. */
+  | "moved"
   | "internal"
   /** UI only: the backend does not have this command (older or partial build). */
   | "unavailable";
 
+/** A redirect Lullshift reported instead of following. `url` is checked https; show as text. */
+export interface MovedTo {
+  url: string;
+  /** Same host and port: the user can accept it in one step. */
+  sameHost: boolean;
+}
+
 export interface CommandError {
   kind: ErrorKind;
   message: string;
+  /** Only for `moved`. */
+  moved?: MovedTo;
 }
 
 const KINDS: readonly string[] = [
@@ -46,18 +57,31 @@ const KINDS: readonly string[] = [
   "busy",
   "tampered",
   "privateHost",
+  "moved",
   "internal",
 ];
+
+function movedOf(v: unknown): MovedTo | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const m = v as { url?: unknown; sameHost?: unknown };
+  if (typeof m.url !== "string" || !m.url.startsWith("https://") || m.url.length > 300) {
+    return undefined;
+  }
+  return { url: m.url, sameHost: m.sameHost === true };
+}
 
 /** Turns whatever `invoke` rejected with into a `CommandError`. Never throws. */
 export function toCommandError(err: unknown): CommandError {
   if (err && typeof err === "object" && "kind" in err) {
-    const e = err as { kind?: unknown; message?: unknown };
+    const e = err as { kind?: unknown; message?: unknown; moved?: unknown };
     if (typeof e.kind === "string" && KINDS.includes(e.kind)) {
-      return {
+      const out: CommandError = {
         kind: e.kind as ErrorKind,
         message: typeof e.message === "string" ? e.message : "",
       };
+      const moved = e.kind === "moved" ? movedOf(e.moved) : undefined;
+      if (moved) out.moved = moved;
+      return out;
     }
   }
   const text = typeof err === "string" ? err : err instanceof Error ? err.message : "";

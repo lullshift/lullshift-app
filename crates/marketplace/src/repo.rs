@@ -14,7 +14,7 @@ use crate::index::{
 };
 use crate::manifest::{Manifest, parse_manifest};
 use crate::net::{check_destination, curl_resolve};
-use crate::validate::{Commit, GitRef, GitUrl, RelPath};
+use crate::validate::{Commit, GitRef, GitUrl, RelPath, Scheme};
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -119,7 +119,27 @@ impl Git {
     /// oversized or failed first fetch leaves nothing behind. An existing cache is fetched into in
     /// place (its older commits are pinned by installs and must stay); a failed or killed fetch
     /// only ever leaves temporary pack files, which are removed, and never moves the fetched ref.
+    ///
+    /// Git never follows redirects. If an https fetch fails the way a moved repository makes it
+    /// fail, the server is asked once where it went ([`crate::redirect::probe`]) and the call
+    /// fails with [`Error::Moved`] so the user can decide (decision 18.1).
     pub fn fetch(&self, repo: &Path, url: &GitUrl, r: Option<&GitRef>) -> Result<Commit, Error> {
+        let result = self.fetch_checked(repo, url, r);
+        if let Err(Error::Git(GitFailureKind::NotFound | GitFailureKind::Failed)) = &result
+            && url.scheme() == Scheme::Https
+            && let Some(moved) = crate::redirect::probe(url)
+        {
+            return Err(moved.into());
+        }
+        result
+    }
+
+    fn fetch_checked(
+        &self,
+        repo: &Path,
+        url: &GitUrl,
+        r: Option<&GitRef>,
+    ) -> Result<Commit, Error> {
         // A private host, or a name that resolves to a private address, is fetched only after
         // the user confirmed it (decisions 17 and 18.8). The checked addresses are pinned for
         // https so Git doesn't resolve the name again to something else.
