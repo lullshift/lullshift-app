@@ -37,3 +37,6 @@ obj/
 *.sqlite
 *.sqlite3
 *.sqlite-*
+
+# Agent worktrees
+.claude/worktrees/
