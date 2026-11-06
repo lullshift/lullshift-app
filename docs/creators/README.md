@@ -1,0 +1,60 @@
+# Creator guide
+
+Build games and activities for Lullshift and share them from a Git repository. Everything here runs locally. There is no account, upload or central review.
+
+| Page | What it covers |
+|---|---|
+| [Tutorial: your first content pack](tutorial-content-pack.md) | Create, validate, simulate and pack a quiz pack, start to finish |
+| [SDK and bridge contract](sdk-and-bridge.md) | What every code activity must do: start, save, restore, pause, summary, keyboard, reduced motion |
+| [Kits](kits.md) | Grid, card and arcade kits for games |
+| [Engines and content packs](engines-and-content-packs.md) | The bundled engines and their data schemas |
+| [CLI reference](cli.md) | `create`, `validate`, `simulate`, `dev`, `pack`, `marketplace init` |
+| [Sandbox rules](sandbox.md) | What an activity can't do, and why |
+| [Publishing a marketplace](publishing-a-marketplace.md) | `.lullshift/marketplace.json`, pinning and review |
+
+## Three kinds of activity
+
+Choose the lightest kind that fits (ADR-003). Kits and engines are optional conveniences.
+
+| Kind | What you ship | Runs code? | Manifest |
+|---|---|---|---|
+| **Content pack** | JSON data, a preview image and optional notes, for one of the bundled engines | No | `"kind": "content"`, with `engine` and `data` |
+| **Code activity on a kit** | A static web app whose game rules use the grid, card or arcade kit | Yes, in the sandbox | `"kind": "app"` |
+| **Custom code activity** | Any static web app (HTML, CSS, classic-script JavaScript) that implements the bridge | Yes, in the sandbox | `"kind": "app"` |
+
+**Who can install what today.** Content packs from any marketplace can be installed in the app. Code activities run when they are bundled in this repository. Code activities from third-party marketplaces can be listed and reviewed but **not installed** in this release, because the sandbox has not yet passed its checks on every operating system (ADR-015). If you want to share a code activity with users now, contribute it to the built-in marketplace by pull request (see [CONTRIBUTING.md](../../CONTRIBUTING.md)).
+
+Context Keeper, Next Move and Companion are app features, not activities. Activities never see agent sessions, notes or keys.
+
+## The creator journey
+
+Describe, generate, preview (`dev`), simulate, validate, pack, then publish to a Git repository that users add.
+
+## Rules for every activity
+
+- Works offline and declares `"offline": true`.
+- Can be paused at any moment and loses nothing: the app, not the activity, controls pausing.
+- Fully playable with the keyboard, with visible focus and text labels.
+- Honours reduced motion and the light or dark theme.
+- Has `help` and a `preview` image in its manifest.
+- Declares only the permissions it uses. Today the only permission is `activity.storage`.
+- Uses original names and art. Generic mechanics are fine; copies of branded games (names, characters, art, level designs, look) are not.
+- You must hold the rights to what you publish and declare the licence of your activity and any third-party assets. Bundled activities are Apache-2.0.
+
+## Using an AI tool
+
+Generated code is untrusted, whichever tool made it. The sandbox and the CLI checks decide, not the generator.
+
+- **Claude Code:** use the `/activity-creator` skill (`.claude/skills/activity-creator/SKILL.md`) and `/marketplace-publishing` for marketplace repositories.
+- **Other tools:** give them `creator/ACTIVITY_CREATOR_PROMPT.md`, `packages/activity-sdk/README.md` and `reference/ACTIVITY_MANIFEST_V1.schema.json`. See `creator/TOOL_COMPATIBILITY.md`.
+
+The tool, or you, must run `validate` and `simulate` and read the real output. Don't treat an activity as done until both pass.
+
+## Reference material
+
+- SDK guide: [packages/activity-sdk/README.md](../../packages/activity-sdk/README.md)
+- Kits guide: [packages/activity-kits/README.md](../../packages/activity-kits/README.md)
+- Manifest schema: [reference/ACTIVITY_MANIFEST_V1.schema.json](../../reference/ACTIVITY_MANIFEST_V1.schema.json)
+- Marketplace schema: [reference/MARKETPLACE_V1.schema.json](../../reference/MARKETPLACE_V1.schema.json)
+- Writing style for content: [docs/CONTENT_STYLE_GUIDE.md](../CONTENT_STYLE_GUIDE.md)
+- Decisions: ADR-003 (activity model), ADR-012 (sandbox and bridge), ADR-015 (marketplace install and pinning), ADR-016 (engines and packs), ADR-017 (CLI and simulator), ADR-019 (kits) in [docs/adr/](../adr/)

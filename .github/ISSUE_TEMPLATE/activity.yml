@@ -1,0 +1,29 @@
+name: Activity or content problem
+description: A game, break or content pack has a mistake, an accessibility problem or doesn't play well.
+labels: [content]
+body:
+  - type: input
+    id: activity
+    attributes:
+      label: Activity name
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of problem
+      options:
+        - Wrong fact or answer
+        - Accessibility (keyboard, screen reader, colour, motion)
+        - Bug in play
+        - Wording or tone
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: What you saw, and what you think it should be.
+    validations:
+      required: true

@@ -1,0 +1,50 @@
+name: Bug report
+description: Something in Lullshift doesn't work as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please leave out anything private: no prompts, source code, API keys or personal paths you'd rather not share. Lullshift never sends this information anywhere itself.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Lullshift version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Sessions and agent status
+        - Connecting an agent (Claude Code, Codex, Cursor)
+        - Activities and games
+        - Marketplaces
+        - Companion
+        - Install, update or uninstall
+        - Accessibility
+        - Other
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
