@@ -96,7 +96,7 @@ The owner decided to publish the CLI and the SDK to npm. This replaces "The CLI 
 ### What is published
 
 - **`@lullshift/agent-protocol`** (types, validators and the schemas), **`@lullshift/activity-sdk`** (bridge script, host protocol, types) and **`@lullshift/cli`** (the `lullshift` command). All Apache-2.0, public, under the `@lullshift` scope.
-- **The CLI is not bundled with the desktop installer.** Creators get it from npm (`npx @lullshift/cli ...`) or from a clone.
+- **The CLI is not bundled with the desktop installer.** Creators get it from a clone or, after the first release, from npm (`npx @lullshift/cli ...`). The owner registers the `lullshift` npm organization before docs naming `@lullshift/cli` are public, so nobody else can take the scope; the docs lead with the clone path and mark the npm commands "after the first release" until then.
 - **Nothing else.** `@lullshift/activity-kits` and the desktop app stay private workspace packages. The CLI carries copies of the kit scripts and the bundled engines instead (below).
 
 ### Build

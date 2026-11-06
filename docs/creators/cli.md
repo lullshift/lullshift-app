@@ -4,24 +4,28 @@
 
 ## Getting it
 
-**From npm, after the first release.** The owner has approved publishing the CLI as `@lullshift/cli` (decision 29), but it isn't on npm yet. Once it is, you need only Node.js 22.12 or newer:
+**From a clone (works today).** You need Node.js 24 and pnpm (see [CONTRIBUTING.md](../../CONTRIBUTING.md)):
 
 ```bash
+git clone https://github.com/lullshift/lullshift-app.git
+cd lullshift-app
+pnpm install
+pnpm lullshift --help
+```
+
+`pnpm lullshift` runs from the repository root but resolves folders from where you typed the command. From another folder, use `pnpm --dir <path to clone> lullshift <command>`. The CLI is not part of the desktop app's installer.
+
+**From npm: only after the first release.** The owner has approved publishing the CLI as `@lullshift/cli` (decision 29), but **it is not on npm yet. Don't run these commands until it is.** Before you do, open the package page on npmjs.com and check that it links to `github.com/lullshift/lullshift-app` and shows a provenance badge; if not, it isn't ours. Then you need only Node.js 22.12 or newer:
+
+```bash
+# After the first release only
 npx @lullshift/cli create my-activity --name "My Activity" --id dev.you.my-activity
 npx @lullshift/cli validate my-activity
 ```
 
-or install it once with `npm install --global @lullshift/cli` and run `lullshift <command>`. The npm package carries the bundled engines and kits of its release, so it works offline after the install. The CLI is not part of the desktop app's installer.
+or install it once with `npm install --global @lullshift/cli` and run `lullshift <command>`. The npm package carries the bundled engines and kits of its release, so it works offline after the install.
 
-**From a clone, until then** (and for working on Lullshift itself). You need Node.js 24 and pnpm (see [CONTRIBUTING.md](../../CONTRIBUTING.md)):
-
-```bash
-pnpm lullshift --help
-```
-
-`pnpm lullshift` runs from the repository root but resolves folders from where you typed the command. From another folder, use `pnpm --dir <path to clone> lullshift <command>`.
-
-The examples below use `pnpm lullshift`; with the npm package, type `npx @lullshift/cli` or `lullshift` instead.
+The examples below use `pnpm lullshift`; with the npm package (after the first release), type `npx @lullshift/cli` or `lullshift` instead.
 
 Exit codes: `0` ok, `1` problems found, `2` usage or environment error (for example, no browser found).
 

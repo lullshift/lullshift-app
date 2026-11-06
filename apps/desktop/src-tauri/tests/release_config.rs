@@ -385,3 +385,38 @@ fn npm_docs_name_the_real_controls() {
     assert!(adr.contains("configured **with environment `npm`**"));
     assert!(adr.contains("defence in depth only"));
 }
+
+#[test]
+fn creator_docs_lead_with_the_clone_until_npm_is_released() {
+    // Medium 4: `npx @lullshift/cli` runs whatever holds that name, so the docs lead with the
+    // clone path and mark npm as after the first release; the owner registers the scope first.
+    let root = manifest_dir().join("..").join("..").join("..");
+    for rel in [
+        "docs/creators/cli.md",
+        "tools/lullshift-cli/README.md",
+        "packages/activity-sdk/README.md",
+        "docs/creators/sdk-and-bridge.md",
+    ] {
+        let text = read(&root.join(rel));
+        let lower = text.to_lowercase();
+        assert!(
+            lower.contains("after the first release")
+                || lower.contains("once it has been released"),
+            "{rel}: npm use must be marked as after the first release"
+        );
+        assert!(
+            text.contains("provenance badge"),
+            "{rel}: how to tell it's ours"
+        );
+        if let Some(npx) = text.find("npx @lullshift/cli") {
+            let clone = text.find("clone").expect("clone path");
+            assert!(clone < npx, "{rel}: the clone path comes first");
+        }
+    }
+    let releasing = read(&root.join("docs").join("RELEASING.md"));
+    assert!(
+        releasing.contains(
+            "**Register the scope first, before the repository and its docs are public.**"
+        )
+    );
+}

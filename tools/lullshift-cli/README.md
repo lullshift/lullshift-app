@@ -2,7 +2,11 @@
 
 `lullshift` is the creator CLI for [Lullshift](https://github.com/lullshift/lullshift-app) activities (ADR-017). It creates, checks, simulates and packs activities on your computer. It never uses the network and needs no account.
 
-Node 22.12 or newer. `simulate` and `dev` also need Microsoft Edge, Google Chrome or Chromium already installed.
+`simulate` and `dev` need Microsoft Edge, Google Chrome or Chromium already installed.
+
+**From a clone** of [lullshift/lullshift-app](https://github.com/lullshift/lullshift-app) (Node 24 and pnpm): `pnpm install`, then `pnpm lullshift <command>`.
+
+**From npm, only once it has been released there.** This package is published only by the lullshift/lullshift-app repository's publish workflow, with npm provenance. Before running it, check that its npmjs.com page links to `github.com/lullshift/lullshift-app` and shows a provenance badge; if it doesn't, it isn't ours. Node 22.12 or newer:
 
 ```bash
 npx @lullshift/cli create my-activity --name "My Activity" --id dev.you.my-activity

@@ -6,7 +6,7 @@ Generated code is untrusted. Follow the sandbox rules below. Never ask for more 
 
 ## Where it lives
 
-The SDK is in this repository. Publishing it to npm as `@lullshift/activity-sdk` is approved (decision 29) but hasn't happened yet. After the first release, `npm install @lullshift/activity-sdk` and `npx @lullshift/cli` work without a clone; until then, use a clone. In the npm package, the paths below are relative to the package: `bridge/` as here, and `dist/` (compiled JavaScript and types) instead of `src/`.
+The SDK is in this repository; use a clone. Publishing it to npm as `@lullshift/activity-sdk` is approved (decision 29) but hasn't happened yet. **Only after the first release** do `npm install @lullshift/activity-sdk` and `npx @lullshift/cli` work without a clone; before using them, check that the npmjs.com page links to `github.com/lullshift/lullshift-app` and shows a provenance badge. In the npm package, the paths below are relative to the package: `bridge/` as here, and `dist/` (compiled JavaScript and types) instead of `src/`.
 
 | Path | What it is |
 |---|---|

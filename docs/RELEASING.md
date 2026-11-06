@@ -155,15 +155,15 @@ Everything else is defence in depth: the `if: github.ref == 'refs/heads/main'` l
 
 ### Owner steps before the first publish
 
-1. **Make sure the repository is public.** npm provenance is not generated for private repositories.
-2. **Register the scope.** Sign in to npmjs.com (with two-factor authentication), and create the free organization `lullshift`, which owns the `@lullshift` scope.
+1. **Register the scope first, before the repository and its docs are public.** Sign in to npmjs.com (with two-factor authentication), and create the free organization `lullshift`, which owns the `@lullshift` scope. The creator docs and READMEs name `npx @lullshift/cli`; until the scope is ours, anyone could register it and publish a package under that name, which those commands would then run.
+2. **Make sure the repository is public.** npm provenance is not generated for private repositories.
 3. **Choose how the workflow signs in.** One of these two:
    - **Trusted publisher (preferred, no token):** on npmjs.com, open each package's settings and add a trusted publisher. Choose GitHub Actions, organization or user `lullshift`, repository `lullshift-app`, workflow file `publish-npm.yml` and environment `npm`. **The environment is mandatory here**, although npm's form says optional (see above). A package must exist before it can be configured, so the very first publish of each package needs a token (next option); add the trusted publisher straight after and delete the token. With trusted publishing, leave the `NPM_TOKEN` secret unset.
    - **Granular access token:** npmjs.com > Access Tokens > Generate New Token > Granular Access Token. Give it read and write access to the `@lullshift` packages only (or to the `lullshift` organization for the first publish), and the shortest expiry that suits you. Never put it in `.npmrc`, `.env` or the repository.
 4. **Create the environment.** GitHub > Settings > Environments > New environment, named `npm`. Add yourself as a **required reviewer**, and under **Deployment branches and tags** choose **Selected branches and tags** with the single rule `main`. If you use a token, add it as the environment secret `NPM_TOKEN`. Do not add it as a repository or organization secret. Then start the workflow once from another branch (a dry run) and confirm GitHub refuses the `npm` deployment.
 5. **Bump versions** in the three `package.json` files when needed and merge to `main`. The SDK version also lives in `SDK_VERSION` (`packages/activity-sdk/src/index.ts`). The CLI prints the SDK version for `--version`.
 6. Run the workflow once as a **dry run**, read the file lists it prints, then run it again with dry run off and approve it.
-7. **After publishing,** check each package page on npmjs.com for the provenance badge, and run `npx @lullshift/cli@<version> --help` on a clean machine.
+7. **After publishing,** check each package page on npmjs.com for the provenance badge, and run `npx @lullshift/cli@<version> --help` on a clean machine. Then the "after the first release" notes in `docs/creators/cli.md`, `docs/creators/sdk-and-bridge.md`, `packages/activity-sdk/README.md` and `tools/lullshift-cli/README.md` can be reworded.
 
 ### Trying it locally
 
