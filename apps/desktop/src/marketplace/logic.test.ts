@@ -109,8 +109,11 @@ describe("errorText", () => {
 
   it("tells the user to install Git when the built-in Git can't read a marketplace", () => {
     const text = errorText({ kind: "needsGit", message: "ignored detail" });
-    expect(text).toMatch(/^Install Git to use this marketplace\./);
-    expect(text).toContain("public https");
+    expect(text).toMatch(/^Lullshift's built-in Git couldn't read this marketplace\./);
+    // Honest about 403: it may be rate limiting, and Git only helps for private repositories.
+    expect(text).toContain("limiting requests");
+    expect(text).toContain("only for private repositories");
+    expect(text).not.toContain("asks for a sign-in");
     // Different from the generic "Git is missing" message, and never a link.
     expect(text).not.toBe(errorText({ kind: "gitMissing" }));
     expect(text).not.toMatch(/https?:\/\//);

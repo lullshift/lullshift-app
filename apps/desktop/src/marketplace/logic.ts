@@ -36,7 +36,7 @@ const ERROR_TEXT: Record<ErrorKind, string> = {
   timeout: "Git took too long to answer. Try again in a moment.",
   gitMissing: "Git isn't installed or can't be found. Install Git, then try again.",
   needsGit:
-    "Install Git to use this marketplace. Lullshift's built-in Git only reads public https marketplaces; this one needs a sign-in, uses ssh, or is only reachable through a proxy. After installing Git, restart Lullshift and try again.",
+    "Lullshift's built-in Git couldn't read this marketplace. The server refused the request. If it is a public repository, the host may be limiting requests, so wait a while and try again. Installing Git helps only for private repositories, ssh addresses or networks that need a proxy; after installing it, restart Lullshift.",
   invalidUrl: "That doesn't look like a Git address Lullshift can use.",
   invalidIndex: "This repository doesn't have a valid Lullshift marketplace.",
   invalidPack: "This activity's files didn't pass Lullshift's checks, so it can't be installed.",

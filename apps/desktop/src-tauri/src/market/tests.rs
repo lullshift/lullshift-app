@@ -2034,7 +2034,7 @@ fn needs_git_is_a_distinct_error_and_the_backend_is_reported() {
     assert_eq!(e.kind, "needsGit");
     assert!(
         e.message
-            .starts_with("Install Git to use this marketplace.")
+            .starts_with("Lullshift's built-in Git couldn't read this marketplace.")
     );
     assert!(!e.message.contains("://"), "{}", e.message);
     let missing = CommandError::from(Error::Git(GitFailureKind::GitMissing));

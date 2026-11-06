@@ -133,7 +133,7 @@ fn from_git_kind(kind: GitFailureKind) -> CommandError {
         // Decision 28: the built-in Git reads public https marketplaces only.
         GitFailureKind::NeedsSystemGit => (
             "needsGit",
-            "Install Git to use this marketplace. Lullshift's built-in Git only reads public https marketplaces; this one asks for a sign-in, uses ssh, or is only reachable through a proxy.",
+            "Lullshift's built-in Git couldn't read this marketplace. The server refused the request: it may be a private repository (which needs Git installed), or a public host that is limiting requests, so try again later. The built-in Git can't use ssh or a proxy either.",
         ),
         GitFailureKind::OutputTooLarge => (
             "invalidPack",

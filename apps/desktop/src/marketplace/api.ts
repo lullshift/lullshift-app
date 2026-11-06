@@ -13,8 +13,9 @@ export type ErrorKind =
   | "timeout"
   | "gitMissing"
   /**
-   * Lullshift's built-in Git (used when Git isn't installed) can't read this marketplace: it
-   * asks for a sign-in, uses ssh, or is only reachable through a proxy (decision 28).
+   * Lullshift's built-in Git (used when Git isn't installed) can't read this marketplace: the
+   * server refused the request (a private repository, or a public host limiting requests),
+   * or it uses ssh or needs a proxy (decision 28).
    */
   | "needsGit"
   | "invalidUrl"

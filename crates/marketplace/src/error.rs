@@ -201,7 +201,7 @@ impl fmt::Display for GitFailureKind {
             Self::Timeout => "Git took too long and was stopped",
             Self::GitMissing => "Git isn't installed or isn't on your PATH",
             Self::NeedsSystemGit => {
-                "this marketplace needs Git installed on this computer; the built-in Git reads public https marketplaces only"
+                "the built-in Git couldn't read this marketplace; the server refused the request (a private repository, or a public host limiting requests), or it needs ssh or a proxy, which only installed Git supports"
             }
             Self::OutputTooLarge => "Git returned more data than allowed and was stopped",
             Self::Failed => "Git couldn't complete the request",
