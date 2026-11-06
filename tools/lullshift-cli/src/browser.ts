@@ -98,7 +98,14 @@ export async function launchBrowser(
   for (let i = 0; i < 300 && !wsPath; i++) {
     await sleep(100);
     if (existsSync(portFile)) {
-      const [port, p] = readFileSync(portFile, "utf8").split("\n");
+      let text: string;
+      try {
+        text = readFileSync(portFile, "utf8");
+      } catch {
+        // On Windows the browser may still hold the file open (EBUSY): try again shortly.
+        continue;
+      }
+      const [port, p] = text.split("\n");
       if (port && p) wsPath = `ws://127.0.0.1:${port}${p}`;
     }
   }
