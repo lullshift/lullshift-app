@@ -15,6 +15,7 @@ import { Banner } from "./ui/Banner";
 import { Dialog } from "./ui/Dialog";
 import { useRestoreFocusAfterDialog } from "./ui/focus";
 import { Icon } from "./ui/Icon";
+import { TaskContextSwitch } from "./context/TaskContextSwitch";
 
 type Agent = "codex" | "cursor";
 type Load = { status: "loading" } | { status: "ready"; view: AdapterView } | { status: "error" };
@@ -150,8 +151,8 @@ export default function AgentCard({ agent }: { agent: Agent }) {
           <li>
             <Icon name="lock" size={18} />
             <span>
-              Only the session ID, event type and time reach Lullshift. Never your prompts, code,
-              replies or email.
+              Only the session ID, event type and time reach Lullshift. Never your code, replies or
+              email. Your first prompt is kept only if you turn on Task context below.
             </span>
           </li>
           {CAPABILITY_SUMMARY[agent].map((line) => (
@@ -167,6 +168,8 @@ export default function AgentCard({ agent }: { agent: Agent }) {
             </li>
           )}
         </ul>
+
+        <TaskContextSwitch agent={agent} />
 
         {(canInstall || canRemove) && (
           <div className="actions" ref={actionsRef}>

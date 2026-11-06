@@ -29,7 +29,7 @@ Each hook runs the Lullshift executable with `hook <agent> --data-dir <app data>
 
 Only the session ID, the event type and the time. Never your prompts, code, file paths, the agent's replies or your email address.
 
-One exception, for Claude Code only, and off by default: **Task context** in Settings. When you turn it on, Lullshift also keeps the first prompt of each session and what Claude Code asks you, so you can pick up where you left off. The consent dialog lists exactly what is kept. Strings that look like secrets are hidden, but that is a safety net, not a guarantee. You can clear captured text at any time.
+One exception, off by default and separate for each tool: **Task context** on the Claude Code, Codex and Cursor cards in Integrations. When you turn it on for a tool, Lullshift also keeps the first prompt of each session (for Claude Code also what it asks you), so you can pick up where you left off. For Codex and Cursor nothing else is kept: not their replies, tool inputs, commands, files or your email. The consent dialog lists exactly what is kept. Strings that look like secrets are hidden, but that is a safety net, not a guarantee. You can clear captured text at any time.
 
 ## What each agent can report
 

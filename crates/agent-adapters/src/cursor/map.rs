@@ -8,8 +8,11 @@
 //! `needs_attention`, and the capabilities don't claim it.
 
 use agent_core::EventType;
+use agent_ipc::{EventContext, MAX_INTENT_CHARS};
 use serde::Deserialize;
 use serde_json::{Map, Value};
+
+use crate::redact;
 
 pub const PROVIDER: &str = "cursor";
 pub const CAPABILITIES: [&str; 2] = ["lifecycle", "turn_end"];
@@ -91,6 +94,33 @@ pub fn map_hook(stdin: &[u8]) -> Option<Mapped> {
         event_type,
         metadata,
     })
+}
+
+/// The only field read in capture mode (ADR-013, ADR-021): the `prompt` of `beforeSubmitPrompt`. Nothing
+/// else is declared, so tool data, paths, messages, transcripts and the rest are skipped while
+/// parsing and never held. Call this only when the user opted in to capture for `cursor`
+/// (the marker file exists); [`map_hook`] never reads the prompt.
+#[derive(Deserialize)]
+struct ContextInput {
+    hook_event_name: String,
+    #[serde(default)]
+    prompt: Option<Value>,
+}
+
+/// Task text for one Cursor hook, cleaned and limited: `beforeSubmitPrompt.prompt` is the intent. Every
+/// other event returns `None` without looking at a prompt.
+pub fn map_context(stdin: &[u8]) -> Option<EventContext> {
+    let input: ContextInput = serde_json::from_slice(stdin).ok()?;
+    if input.hook_event_name != "beforeSubmitPrompt" {
+        return None;
+    }
+    let prompt = input.prompt.as_ref().and_then(Value::as_str)?;
+    EventContext {
+        intent: Some(redact::clean(prompt, MAX_INTENT_CHARS)),
+        ask: None,
+        title: None,
+    }
+    .normalized()
 }
 
 /// Enum-like provider values only: never free text.
@@ -238,5 +268,56 @@ mod tests {
         ))
         .expect("mapped");
         assert!(!m.metadata.contains_key("reason"));
+    }
+
+    #[test]
+    fn map_context_reads_only_the_prompt_of_beforesubmitprompt() {
+        let ok = format!(
+            "{{{COMMON},\"hook_event_name\":\"beforeSubmitPrompt\",\"prompt\":\"fix the bug password=hunter2\",\"extra\":\"SECRET\"}}"
+        );
+        let c = map_context(ok.as_bytes()).expect("intent");
+        assert_eq!(c.intent.as_deref(), Some("fix the bug password=[hidden]"));
+        assert!(c.ask.is_none() && c.title.is_none());
+        for other in [
+            "Stop",
+            "stop",
+            "PostToolUse",
+            "postToolUse",
+            "SessionStart",
+            "sessionStart",
+            "PermissionRequest",
+            "afterAgentResponse",
+        ] {
+            let json = format!(
+                "{{{COMMON},\"hook_event_name\":\"{other}\",\"prompt\":\"SECRET\",\"message\":\"SECRET\"}}"
+            );
+            assert!(map_context(json.as_bytes()).is_none(), "{other}");
+        }
+        let bad = [
+            format!("{{{COMMON},\"hook_event_name\":\"beforeSubmitPrompt\",\"prompt\":5}}"),
+            format!(
+                "{{{COMMON},\"hook_event_name\":\"beforeSubmitPrompt\",\"prompt\":\"\\u0007\\u200b\"}}"
+            ),
+            format!("{{{COMMON},\"hook_event_name\":\"beforeSubmitPrompt\"}}"),
+            "not json".to_owned(),
+        ];
+        for b in bad {
+            assert!(map_context(b.as_bytes()).is_none(), "{b}");
+        }
+        let long = "word ".repeat(1000);
+        let json = format!(
+            "{{{COMMON},\"hook_event_name\":\"beforeSubmitPrompt\",\"prompt\":\"{long}\"}}"
+        );
+        let c = map_context(json.as_bytes()).expect("long");
+        assert_eq!(c.intent.map(|s| s.chars().count()), Some(1999));
+    }
+
+    #[test]
+    fn map_hook_never_holds_the_prompt() {
+        let json = format!(
+            "{{{COMMON},\"hook_event_name\":\"beforeSubmitPrompt\",\"prompt\":\"SENTINEL\"}}"
+        );
+        let m = map_hook(json.as_bytes()).expect("mapped");
+        assert!(!format!("{m:?}").contains("SENTINEL"));
     }
 }

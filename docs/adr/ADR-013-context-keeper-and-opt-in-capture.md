@@ -110,5 +110,5 @@ Disconnecting a tool ends tracking of its open sessions at once. `sessions.disco
 
 - Users who opt in get a useful return card without typing; users who don't, still get notes, decisions, checklist and Next Move, typed by them.
 - Captured text is sensitive local data. It is never logged, never part of the event log, never in notifications, and can be cleared or deleted at any time.
-- Other adapters (Cursor, Codex) must map their own fields to `intent` and `ask` under the same limits and gates, and update this ADR if they need anything else.
+- Codex and Cursor use the same opt-in, limits, redaction, storage and clear controls (owner decision 23.8, 2026-11-06; details in ADR-021): the first `UserPromptSubmit.prompt` (Codex) or `beforeSubmitPrompt.prompt` (Cursor) becomes the intent. Neither has an `ask` or a title. Each tool has its own switch and marker, off by default. Any further adapter must map its own fields under the same limits and gates and update this ADR if it needs anything else.
 - The redaction list will need maintenance; it is tested with fixtures in `agent-adapters`.

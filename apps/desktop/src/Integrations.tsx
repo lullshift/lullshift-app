@@ -143,8 +143,9 @@ export default function Integrations({
           <li>
             <Icon name="lock" size={18} />
             <span>
-              Only the session ID, event type and time reach Lullshift. Never your prompts, code or
-              files.
+              Only the session ID, event type and time reach Lullshift. Never your code or files.
+              Your first prompt and Claude's questions are kept only if you turn on Task context
+              below.
             </span>
           </li>
           <li>
@@ -153,7 +154,7 @@ export default function Integrations({
           </li>
         </ul>
 
-        <TaskContextSwitch />
+        <TaskContextSwitch agent="claude-code" />
 
         {(canInstall || canRemove) && (
           <div className="actions" ref={actionsRef}>

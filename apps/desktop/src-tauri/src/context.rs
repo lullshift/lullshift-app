@@ -19,6 +19,7 @@ use std::time::Duration;
 use agent_adapters::claude_code::ADAPTER_ID;
 use agent_adapters::forward::CAPTURE_DIR;
 use agent_adapters::redact;
+use agent_adapters::{codex, cursor};
 use agent_core::{AgentEvent, SessionRecord, SessionState, SessionView};
 use agent_ipc::{EventContext, MAX_ASK_CHARS, MAX_INTENT_CHARS, MAX_TITLE_CHARS};
 use local_store::{
@@ -40,7 +41,7 @@ pub const UI_PREFS_KEY: &str = "ui";
 pub const RETENTION_CHOICES: [u32; 4] = [7, 30, 90, 365];
 pub const DEFAULT_RETENTION_DAYS: u32 = 30;
 /// Adapters that can capture task text. Marker file names come only from this list.
-pub const CAPTURE_ADAPTERS: [&str; 1] = [ADAPTER_ID];
+pub const CAPTURE_ADAPTERS: [&str; 3] = [ADAPTER_ID, codex::ADAPTER_ID, cursor::ADAPTER_ID];
 /// Timeline entries returned to the panel (the newest).
 pub const TIMELINE_LIMIT: usize = 500;
 const PURGE_EVERY: Duration = Duration::from_secs(60 * 60);
@@ -1555,6 +1556,115 @@ mod tests {
         ))
         .expect("json");
         assert!(json.get("needsReview").is_some() && json.get("providerSessionId").is_some());
+    }
+
+    // -- Codex and Cursor prompts (ADR-013, ADR-021)
+
+    fn ev_for(provider: &str, n: u32, kind: &str, session: &str) -> AgentEvent {
+        parse_event(&format!(
+            r#"{{"schemaVersion":1,"eventId":"00000000-0000-4000-8000-{n:012}","provider":"{provider}","providerSessionId":"{session}","eventType":"{kind}","timestampUtc":"2026-11-05T10:00:00Z"}}"#
+        ))
+        .expect("event")
+    }
+
+    fn only(adapter: &str) -> ContextPrefs {
+        ContextPrefs {
+            retention_days: 30,
+            capture: BTreeMap::from([(adapter.to_owned(), true)]),
+        }
+    }
+
+    #[test]
+    fn codex_and_cursor_have_their_own_capture_setting_and_marker() {
+        for adapter in ["codex", "cursor"] {
+            let on = only(adapter);
+            assert!(on.validate().is_ok(), "{adapter}");
+            assert!(on.capture_on(adapter) && !on.capture_on(P));
+            let dir = tempfile::tempdir().expect("tempdir");
+            create_markers(dir.path(), &on).expect("create");
+            assert!(marker_path(dir.path(), adapter).is_file());
+            assert!(!marker_path(dir.path(), P).exists(), "only its own marker");
+            assert_eq!(
+                marker_path(dir.path(), adapter),
+                dir.path().join("context-capture").join(adapter),
+                "the path the forwarder checks"
+            );
+            remove_markers(dir.path(), &ContextPrefs::default()).expect("remove");
+            assert!(!marker_path(dir.path(), adapter).exists());
+        }
+    }
+
+    #[test]
+    fn codex_and_cursor_prompts_are_stored_only_when_their_capture_is_on() {
+        for adapter in ["codex", "cursor"] {
+            let mut store = Store::open_in_memory().expect("open");
+            // Off (no setting): the arriving text is discarded, the event is kept.
+            let out = ingest_with_context(
+                &mut store,
+                &ev_for(adapter, 1, "working", "s"),
+                Some(ctx(Some("SENTINEL_PROMPT"), None)),
+                T0,
+            )
+            .expect("ingest");
+            assert!(matches!(out, IngestOutcome::Stored { .. }));
+            assert!(
+                store.context(adapter, "s").expect("ctx").is_none(),
+                "{adapter}: opt-in off, nothing stored"
+            );
+            // Claude Code's setting does not switch on another agent.
+            set_prefs(&store, &capture_on_prefs());
+            ingest_with_context(
+                &mut store,
+                &ev_for(adapter, 2, "working", "s"),
+                Some(ctx(Some("SENTINEL_PROMPT"), None)),
+                T0,
+            )
+            .expect("ingest");
+            assert!(store.context(adapter, "s").expect("ctx").is_none());
+            // On for this agent: first prompt kept, cleaned; later prompts are not.
+            set_prefs(&store, &only(adapter));
+            ingest_with_context(
+                &mut store,
+                &ev_for(adapter, 3, "working", "s"),
+                Some(ctx(Some("fix it password=hunter2"), None)),
+                T0,
+            )
+            .expect("ingest");
+            ingest_with_context(
+                &mut store,
+                &ev_for(adapter, 4, "working", "s"),
+                Some(ctx(Some("second prompt"), None)),
+                T0 + time::Duration::minutes(1),
+            )
+            .expect("ingest");
+            let c = store.context(adapter, "s").expect("ctx").expect("row");
+            assert_eq!(
+                c.captured_intent.clone().expect("intent").text,
+                "fix it password=[hidden]"
+            );
+            assert!(!format!("{c:?}").contains("second prompt"));
+            // The existing clear control removes it.
+            store.clear_all_captured().expect("clear");
+            let c = store.context(adapter, "s").expect("ctx");
+            assert!(c.is_none_or(|c| c.captured_intent.is_none()));
+        }
+    }
+
+    #[test]
+    fn event_log_never_holds_codex_or_cursor_prompts() {
+        for adapter in ["codex", "cursor"] {
+            let mut store = Store::open_in_memory().expect("open");
+            set_prefs(&store, &only(adapter));
+            ingest_with_context(
+                &mut store,
+                &ev_for(adapter, 1, "working", "s"),
+                Some(ctx(Some("SENTINEL_PROMPT"), None)),
+                T0,
+            )
+            .expect("ingest");
+            let timeline = format!("{:?}", store.timeline(adapter, "s", 500).expect("timeline"));
+            assert!(!timeline.contains("SENTINEL_PROMPT"), "{adapter}");
+        }
     }
 
     // -- capture gates (S04-A04)

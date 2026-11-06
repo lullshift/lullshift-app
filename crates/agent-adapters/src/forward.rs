@@ -109,13 +109,22 @@ fn run_inner(args: &HookArgs, mut stdin: impl Read, started: OffsetDateTime) -> 
             }
             None => return Outcome::Ignored,
         },
-        // Codex and Cursor: session id, event type and enum hints only; task text is never read.
+        // Codex and Cursor: session id, event type and enum hints only. The prompt is read in a
+        // second step, and only with the consent marker (ADR-013, ADR-021).
         codex::ADAPTER_ID => match build_codex_event(&buf, started) {
-            Some(e) => (e, None),
+            Some(e) => {
+                let context =
+                    prompt_context_for(&args.data_dir, &args.adapter, &buf, codex::map_context);
+                (e, context)
+            }
             None => return Outcome::Ignored,
         },
         cursor::ADAPTER_ID => match build_cursor_event(&buf, started) {
-            Some(e) => (e, None),
+            Some(e) => {
+                let context =
+                    prompt_context_for(&args.data_dir, &args.adapter, &buf, cursor::map_context);
+                (e, context)
+            }
             None => return Outcome::Ignored,
         },
         _ => return Outcome::BadArguments,
@@ -140,6 +149,21 @@ pub fn context_for(
     context.title = claude_code::transcript_ref(payload)
         .and_then(|(path, session)| read_title(&path, &session));
     context.normalized()
+}
+
+/// The optional task text for one Codex or Cursor hook (ADR-013): the prompt, as the intent.
+/// Without the consent marker this returns `None` before `map` is called, so the prompt field is
+/// never read. `map` is a parameter so tests can prove that.
+pub fn prompt_context_for(
+    data_dir: &Path,
+    adapter: &str,
+    payload: &[u8],
+    map: impl FnOnce(&[u8]) -> Option<EventContext>,
+) -> Option<EventContext> {
+    if !capture_enabled(data_dir, adapter) {
+        return None;
+    }
+    map(payload)
 }
 
 /// Builds and validates the agent event JSON for one Claude Code hook payload.
@@ -340,6 +364,35 @@ mod tests {
             ),
             Outcome::BadArguments
         );
+    }
+
+    #[test]
+    fn prompt_is_not_read_without_the_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        for adapter in ["codex", "cursor"] {
+            let ctx = prompt_context_for(dir.path(), adapter, b"{}", |_| {
+                panic!("the prompt must not be read without consent")
+            });
+            assert!(ctx.is_none());
+            let marker = dir.path().join(CAPTURE_DIR);
+            std::fs::create_dir_all(&marker).expect("mkdir");
+            std::fs::write(marker.join(adapter), b"").expect("marker");
+            let got = prompt_context_for(dir.path(), adapter, b"{}", |_| {
+                Some(EventContext {
+                    intent: Some("x".into()),
+                    ask: None,
+                    title: None,
+                })
+            });
+            assert!(got.is_some(), "{adapter} with marker");
+        }
+        // One adapter's marker never opens another's gate.
+        let other = tempfile::tempdir().expect("tempdir");
+        let m = other.path().join(CAPTURE_DIR);
+        std::fs::create_dir_all(&m).expect("mkdir");
+        std::fs::write(m.join("claude-code"), b"").expect("marker");
+        assert!(prompt_context_for(other.path(), "codex", b"{}", |_| panic!("gate")).is_none());
+        assert!(prompt_context_for(other.path(), "cursor", b"{}", |_| panic!("gate")).is_none());
     }
 
     #[test]
