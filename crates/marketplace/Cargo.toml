@@ -15,7 +15,11 @@ publish = false
 unsafe-test-file-urls = []
 
 [dependencies]
-# Moved here with the engine data-schema validator (ADR-016); already in the lockfile via Tauri.
+# Engine data-schema checks (ADR-016, Sprint 12 amendment). Pinned exactly: 0.x releases break
+# often and every bump must re-run the shared Ajv/Rust corpus. No default features: that drops
+# the HTTP and file retrievers (reqwest, rustls) and IDNA; the host also runs it offline.
+jsonschema = { version = "=0.60.2", default-features = false }
+# JavaScript-faithful `pattern` translation (data_schema.rs); already in the lockfile via Tauri.
 regex = "1.13"
 serde.workspace = true
 serde_json.workspace = true

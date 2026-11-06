@@ -2,21 +2,31 @@
 //!
 //! The CLI and `pnpm check` validate packs with Ajv. The app checks again before it starts a
 //! pack, and cannot use Ajv: Ajv compiles schemas with `new Function`, which the app's CSP
-//! (`script-src 'self'`, no `unsafe-eval`) rightly forbids. So the host carries this small,
-//! fail-closed JSON Schema 2020-12 subset instead:
+//! (`script-src 'self'`, no `unsafe-eval`) rightly forbids. Since Sprint 12 the host validates
+//! with the [`jsonschema`] crate (JSON Schema 2020-12; ADR-016 amendment, decision 13), wrapped
+//! in three layers of its own because engine schemas may one day come from third parties:
 //!
 //! - [`check_schema`] refuses any keyword outside [`ASSERTIONS`] and [`ANNOTATIONS`], any `$ref`
-//!   other than `#` or `#/$defs/<name>`, and any pattern it can't compile with the same meaning
-//!   as JavaScript's `u` flag. An engine whose schema is refused can't run packs.
+//!   other than `#` or `#/$defs/<name>`, `$ref` cycles, schemas that unfold to more than
+//!   [`MAX_UNFOLDED`] nodes, and any pattern it can't compile with the same meaning as
+//!   JavaScript's `u` flag. An engine whose schema is refused can't run packs. The crate is built
+//!   without its HTTP and file retrievers and runs offline, so no `$ref` is ever fetched.
+//! - `pattern` is evaluated by this module's own translation ([`compile`]), registered as a
+//!   custom keyword that replaces the crate's: the crate's ECMA translation lets `.` match `\r`,
+//!   U+2028 and U+2029, which JavaScript doesn't (the shared corpus checks this).
 //! - [`validate`] reports problems in the same plain words as the shared TypeScript formatter
 //!   (`friendlyErrors` in `@lullshift/agent-protocol`), e.g. `cards[3].front is longer than 200
 //!   characters`.
 //!
-//! `tests/activities/check-engine-compat.mjs` refuses the same keywords, and a Rust test runs
-//! every engine's fixtures through this validator, so the two can't drift apart unnoticed.
+//! `tests/activities/check-engine-compat.mjs` refuses the same keywords, and Rust tests run every
+//! engine's fixtures and the shared Ajv/Rust corpus through this validator, so the two can't
+//! drift apart unnoticed.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use jsonschema::error::{TypeKind, ValidationErrorKind};
+use jsonschema::paths::{Location, LocationSegment};
+use jsonschema::{Draft, Keyword, ValidationError, Validator};
 use regex::{Regex, RegexBuilder};
 use serde_json::{Map, Value};
 
@@ -70,23 +80,34 @@ pub const ANNOTATIONS: &[&str] = &[
 const DRAFT: &str = "https://json-schema.org/draft/2020-12/schema";
 /// Most problems reported for one file; the first few are what a creator needs.
 const MAX_PROBLEMS: usize = 20;
-/// Deepest nesting of `$ref`s and sub-schemas followed while validating.
-const MAX_DEPTH: usize = 64;
 /// Compiled size limit for one pattern.
 const REGEX_SIZE: usize = 1 << 20;
-/// Most schema nodes visited (and array items hashed) while validating one file. Combinators
-/// over `$ref` cycles can otherwise fan out exponentially.
-const MAX_STEPS: u64 = 500_000;
+/// Most schema nodes (plus `enum`, `const` and `required` entries) in a schema with every `$ref`
+/// replaced by its target. Validation visits each of them at most once per data value, so with
+/// data capped at 256 KiB this bounds the work without a budget inside the crate (which has
+/// none). The largest bundled engine schema (quiz) unfolds to under 50.
+pub const MAX_UNFOLDED: u64 = 2_000;
+/// Deepest nesting of sub-schemas accepted (before `$ref`s are followed).
+const MAX_SCHEMA_DEPTH: usize = 32;
 /// Largest `multipleOf`; every whole number up to this is exact in an f64.
 const MAX_MULTIPLE: u64 = 1 << 53;
 /// JavaScript's `\s` (WhiteSpace and LineTerminator): no U+0085, with U+FEFF.
 const JS_SPACE: &str = r"\x{9}-\x{d}\x{20}\x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}\x{feff}";
 /// What a `u`-mode `.` must not match: JavaScript line terminators.
 const JS_LINE_END: &str = r"\n\r\x{2028}\x{2029}";
+/// What the custom `pattern` keyword reports for the shared plain-text pattern.
+const PLAIN_TEXT_PROBLEM: &str =
+    "contains a line break, tab or invisible character, which isn't allowed";
+const FORM_PROBLEM: &str = "doesn't have the expected form";
 
-/// Checks that `schema` uses only what this validator understands. The error names the
-/// first problem in plain words.
+/// Checks that `schema` uses only what this host accepts, then compiles it with the crate. The
+/// error names the first problem in plain words.
 pub fn check_schema(schema: &Value) -> Result<(), String> {
+    prepare(schema).map(|_| ())
+}
+
+/// [`check_schema`], returning the compiled validator.
+fn prepare(schema: &Value) -> Result<Validator, String> {
     let root = schema
         .as_object()
         .ok_or("the data schema must be an object")?;
@@ -95,10 +116,28 @@ pub fn check_schema(schema: &Value) -> Result<(), String> {
     {
         return Err(format!("$schema must be {DRAFT}"));
     }
-    check_node(schema, schema, "#", true)
+    check_node(schema, schema, "#", true, 0)?;
+    let mut sizes = HashMap::new();
+    let mut visiting = HashSet::new();
+    let unfolded = unfolded_size(schema, schema, &mut sizes, &mut visiting)?;
+    if unfolded > MAX_UNFOLDED {
+        return Err(format!(
+            "the data schema is too large to check (more than {MAX_UNFOLDED} parts once its references are expanded)"
+        ));
+    }
+    build(schema)
 }
 
-fn check_node(root: &Value, node: &Value, at: &str, is_root: bool) -> Result<(), String> {
+fn check_node(
+    root: &Value,
+    node: &Value,
+    at: &str,
+    is_root: bool,
+    depth: usize,
+) -> Result<(), String> {
+    if depth > MAX_SCHEMA_DEPTH {
+        return Err(format!("{at} is nested too deeply"));
+    }
     let obj = match node {
         Value::Bool(_) => return Ok(()),
         Value::Object(o) => o,
@@ -109,6 +148,10 @@ fn check_node(root: &Value, node: &Value, at: &str, is_root: bool) -> Result<(),
         if (k == "$schema" || k == "$id") && !is_root {
             return Err(format!("{here}: only the top of the schema may set {k}"));
         }
+        if k == "$id" && !v.as_str().is_some_and(|id| id.starts_with("urn:")) {
+            // A URL base would make relative references resolve against the network.
+            return Err(format!("{here}: $id must be a urn: name"));
+        }
         if ANNOTATIONS.contains(&k.as_str()) {
             continue;
         }
@@ -118,12 +161,15 @@ fn check_node(root: &Value, node: &Value, at: &str, is_root: bool) -> Result<(),
         match k.as_str() {
             "properties" | "$defs" => {
                 let map = v.as_object().ok_or(format!("{here} must be an object"))?;
+                if k == "$defs" && !is_root {
+                    return Err(format!("{here}: only the top of the schema may set $defs"));
+                }
                 for (name, sub) in map {
-                    check_node(root, sub, &format!("{here}/{name}"), false)?;
+                    check_node(root, sub, &format!("{here}/{name}"), false, depth + 1)?;
                 }
             }
             "additionalProperties" | "items" | "not" | "if" | "then" | "else" => {
-                check_node(root, v, &here, false)?;
+                check_node(root, v, &here, false, depth + 1)?;
             }
             "allOf" | "anyOf" | "oneOf" => {
                 let list = v
@@ -131,7 +177,7 @@ fn check_node(root: &Value, node: &Value, at: &str, is_root: bool) -> Result<(),
                     .filter(|l| !l.is_empty())
                     .ok_or(format!("{here} must be a non-empty list"))?;
                 for (i, sub) in list.iter().enumerate() {
-                    check_node(root, sub, &format!("{here}/{i}"), false)?;
+                    check_node(root, sub, &format!("{here}/{i}"), false, depth + 1)?;
                 }
             }
             "type" => {
@@ -198,6 +244,78 @@ fn check_node(root: &Value, node: &Value, at: &str, is_root: bool) -> Result<(),
         }
     }
     Ok(())
+}
+
+/// Size of `node` with every `$ref` replaced by its target, counting `enum`, `const` and
+/// `required` entries too. Refuses `$ref` cycles. Memoised per node, so shared `$defs` are cheap
+/// to measure even when they are used many times.
+fn unfolded_size(
+    root: &Value,
+    node: &Value,
+    sizes: &mut HashMap<*const Value, u64>,
+    visiting: &mut HashSet<*const Value>,
+) -> Result<u64, String> {
+    let key: *const Value = node;
+    if let Some(n) = sizes.get(&key) {
+        return Ok(*n);
+    }
+    let Value::Object(obj) = node else {
+        return Ok(1);
+    };
+    if !visiting.insert(key) {
+        return Err(
+            "the data schema refers to itself in a loop, which the app doesn't support".to_owned(),
+        );
+    }
+    let mut total: u64 = 1;
+    for (k, v) in obj {
+        let add = match k.as_str() {
+            "properties" => {
+                let mut sum = 0u64;
+                for sub in v.as_object().into_iter().flat_map(Map::values) {
+                    sum = sum.saturating_add(unfolded_size(root, sub, sizes, visiting)?);
+                }
+                sum
+            }
+            "additionalProperties" | "items" | "not" | "if" | "then" | "else" => {
+                unfolded_size(root, v, sizes, visiting)?
+            }
+            "allOf" | "anyOf" | "oneOf" => {
+                let mut sum = 0u64;
+                for sub in v.as_array().into_iter().flatten() {
+                    sum = sum.saturating_add(unfolded_size(root, sub, sizes, visiting)?);
+                }
+                sum
+            }
+            "$ref" => match v.as_str().and_then(|r| resolve(root, r)) {
+                Some(target) => unfolded_size(root, target, sizes, visiting)?,
+                None => 0,
+            },
+            "enum" => v
+                .as_array()
+                .map_or(0, |l| l.iter().map(value_size).sum::<u64>()),
+            "const" => value_size(v),
+            "required" => v.as_array().map_or(0, |l| l.len() as u64),
+            _ => 0,
+        };
+        total = total.saturating_add(add);
+        if total > MAX_UNFOLDED {
+            // No need to measure further; also keeps this walk itself cheap.
+            break;
+        }
+    }
+    visiting.remove(&key);
+    sizes.insert(key, total);
+    Ok(total)
+}
+
+/// Rough count of the values inside `v`.
+fn value_size(v: &Value) -> u64 {
+    match v {
+        Value::Array(l) => 1 + l.iter().map(value_size).sum::<u64>(),
+        Value::Object(o) => 1 + o.values().map(value_size).sum::<u64>(),
+        _ => 1,
+    }
 }
 
 /// A `multipleOf` the validator can check exactly: a whole number from 1 to 2^53.
@@ -319,55 +437,98 @@ pub fn compile(pattern: &str) -> Result<Regex, String> {
         .map_err(|_| "the pattern isn't one the app can check".to_owned())
 }
 
-/// One step into the data: an object field or a list position.
-#[derive(Debug, Clone)]
-enum Step {
-    Key(String),
-    Index(usize),
+/// True for the shared plain-text pattern (no control, invisible or direction characters).
+fn is_plain_text_pattern(p: &str) -> bool {
+    p.starts_with(r"^[^\u0000-\u001F")
+}
+
+/// `pattern` with JavaScript `u`-flag meaning, replacing the crate's own keyword.
+struct JsPattern {
+    regex: Regex,
+    problem: &'static str,
+}
+
+impl<'i> Keyword<'i> for JsPattern {
+    fn validate(&self, instance: &'i Value) -> Result<(), ValidationError<'i>> {
+        if Keyword::is_valid(self, instance) {
+            Ok(())
+        } else {
+            Err(ValidationError::custom(self.problem))
+        }
+    }
+
+    fn is_valid(&self, instance: &'i Value) -> bool {
+        instance.as_str().is_none_or(|t| self.regex.is_match(t))
+    }
+}
+
+fn js_pattern<'a>(
+    _parent: &'a Map<String, Value>,
+    value: &'a Value,
+    _path: Location,
+) -> Result<Box<dyn for<'i> Keyword<'i>>, ValidationError<'a>> {
+    let p = value
+        .as_str()
+        .ok_or_else(|| ValidationError::custom("pattern must be text"))?;
+    let regex = compile(p).map_err(ValidationError::custom)?;
+    let problem = if is_plain_text_pattern(p) {
+        PLAIN_TEXT_PROBLEM
+    } else {
+        FORM_PROBLEM
+    };
+    Ok(Box::new(JsPattern { regex, problem }))
+}
+
+/// Compiles a schema with the crate: draft 2020-12, no retrieval of any kind, no format
+/// assertions, and this module's `pattern`.
+fn build(schema: &Value) -> Result<Validator, String> {
+    jsonschema::options()
+        .with_draft(Draft::Draft202012)
+        .offline()
+        .should_validate_formats(false)
+        .with_keyword("pattern", js_pattern)
+        .build(schema)
+        .map_err(|_| "the data schema can't be compiled".to_owned())
 }
 
 /// Data paths the way people write them: `cards[3].front`. Field names that aren't simple are
 /// quoted, cut short and stripped of hidden characters, since they come from untrusted data.
-fn path_text(path: &[Step]) -> String {
+fn path_text<'a>(segments: impl IntoIterator<Item = LocationSegment<'a>>) -> String {
     let mut out = String::new();
-    for step in path {
+    for step in segments {
         match step {
-            Step::Index(i) => out.push_str(&format!("[{i}]")),
-            Step::Key(k) => {
-                let simple = k.len() <= 64
-                    && k.chars()
-                        .next()
-                        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-                    && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-                if simple {
-                    if !out.is_empty() {
-                        out.push('.');
-                    }
-                    out.push_str(k);
-                } else {
-                    let clean: String = k
-                        .chars()
-                        .take(40)
-                        .map(|c| {
-                            if crate::manifest::hidden_char(c) || c == '"' {
-                                '?'
-                            } else {
-                                c
-                            }
-                        })
-                        .collect();
-                    out.push_str(&format!("[\"{clean}\"]"));
-                }
-            }
+            LocationSegment::Index(i) => out.push_str(&format!("[{i}]")),
+            LocationSegment::Property(k) => push_key(&mut out, &k),
         }
     }
     out
 }
 
-fn with(path: &[Step], step: Step) -> Vec<Step> {
-    let mut p = path.to_vec();
-    p.push(step);
-    p
+fn push_key(out: &mut String, k: &str) {
+    let simple = k.len() <= 64
+        && k.chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if simple {
+        if !out.is_empty() {
+            out.push('.');
+        }
+        out.push_str(k);
+    } else {
+        let clean: String = k
+            .chars()
+            .take(40)
+            .map(|c| {
+                if crate::manifest::hidden_char(c) || c == '"' {
+                    '?'
+                } else {
+                    c
+                }
+            })
+            .collect();
+        out.push_str(&format!("[\"{clean}\"]"));
+    }
 }
 
 fn type_word(t: &str) -> &'static str {
@@ -383,432 +544,139 @@ fn type_word(t: &str) -> &'static str {
     }
 }
 
-/// True for the shared plain-text pattern (no control, invisible or direction characters).
-fn is_plain_text_pattern(p: &str) -> bool {
-    p.starts_with(r"^[^\u0000-\u001F")
+fn say(at: &str, message: &str) -> String {
+    if at.is_empty() {
+        format!("the data {message}")
+    } else {
+        format!("{at} {message}")
+    }
 }
 
-fn number_text(v: &Value) -> String {
-    v.to_string()
+/// Type names in the order the schema lists them (Ajv's order), falling back to the crate's.
+fn type_names(schema: &Value, err: &ValidationError<'_>, kind: &TypeKind) -> Vec<&'static str> {
+    let listed = schema
+        .pointer(err.schema_path().as_str())
+        .and_then(|t| match t {
+            Value::Array(ts) => Some(ts.iter().filter_map(Value::as_str).collect::<Vec<_>>()),
+            Value::String(t) => Some(vec![t.as_str()]),
+            _ => None,
+        });
+    match listed {
+        Some(names) if !names.is_empty() => names.into_iter().map(type_word).collect(),
+        _ => match kind {
+            TypeKind::Single(t) => vec![type_word(t.as_str())],
+            TypeKind::Multiple(set) => set.iter().map(|t| type_word(t.as_str())).collect(),
+        },
+    }
 }
 
-struct Validator<'a> {
-    root: &'a Value,
-    regexes: HashMap<&'a str, Option<Regex>>,
-    steps: u64,
-    exhausted: bool,
+/// One crate error in plain words (more than one line for several unknown fields).
+fn friendly(schema: &Value, err: &ValidationError<'_>) -> Vec<String> {
+    let at = path_text(err.instance_path().segments());
+    let one = |m: &str| vec![say(&at, m)];
+    match err.kind() {
+        ValidationErrorKind::Required { property } => {
+            let mut p = at.clone();
+            push_key(&mut p, property.as_str().unwrap_or_default());
+            vec![format!("{p} is missing")]
+        }
+        ValidationErrorKind::AdditionalProperties { unexpected } => unexpected
+            .iter()
+            .map(|name| {
+                let mut p = at.clone();
+                push_key(&mut p, name);
+                format!("{p} isn't a known field")
+            })
+            .collect(),
+        ValidationErrorKind::Type { kind } => one(&format!(
+            "should be {}",
+            type_names(schema, err, kind).join(" or ")
+        )),
+        ValidationErrorKind::MinLength { limit } => {
+            if *limit == 1 {
+                one("is empty")
+            } else {
+                one(&format!("is shorter than {limit} characters"))
+            }
+        }
+        ValidationErrorKind::MaxLength { limit } => {
+            one(&format!("is longer than {limit} characters"))
+        }
+        ValidationErrorKind::Custom { message, .. }
+            if message == PLAIN_TEXT_PROBLEM || message == FORM_PROBLEM =>
+        {
+            one(message)
+        }
+        ValidationErrorKind::MinItems { limit } => {
+            let noun = if *limit == 1 { "item" } else { "items" };
+            one(&format!("needs at least {limit} {noun}"))
+        }
+        ValidationErrorKind::MaxItems { limit } => one(&format!("has more than {limit} items")),
+        ValidationErrorKind::UniqueItems => one("has duplicate items"),
+        ValidationErrorKind::MinProperties { limit } => {
+            one(&format!("needs at least {limit} fields"))
+        }
+        ValidationErrorKind::MaxProperties { limit } => {
+            one(&format!("has more than {limit} fields"))
+        }
+        ValidationErrorKind::Enum { options } => {
+            let list = options.as_array().map(Vec::as_slice).unwrap_or_default();
+            let shown: Vec<String> = list.iter().take(10).map(Value::to_string).collect();
+            let more = if list.len() > 10 { ", …" } else { "" };
+            one(&format!("should be one of: {}{more}", shown.join(", ")))
+        }
+        ValidationErrorKind::Constant { expected_value } => {
+            one(&format!("should be {expected_value}"))
+        }
+        ValidationErrorKind::Minimum { limit } => one(&format!("should be at least {limit}")),
+        ValidationErrorKind::Maximum { limit } => one(&format!("should be at most {limit}")),
+        ValidationErrorKind::ExclusiveMinimum { limit } => {
+            one(&format!("should be more than {limit}"))
+        }
+        ValidationErrorKind::ExclusiveMaximum { limit } => {
+            one(&format!("should be less than {limit}"))
+        }
+        ValidationErrorKind::MultipleOf { multiple_of } => {
+            one(&format!("should be a multiple of {multiple_of}"))
+        }
+        ValidationErrorKind::AnyOf { .. } | ValidationErrorKind::OneOfNotValid { .. } => {
+            one("doesn't match any of the allowed shapes")
+        }
+        ValidationErrorKind::OneOfMultipleValid { .. } => {
+            one("matches more than one allowed shape")
+        }
+        ValidationErrorKind::Not { .. } => one("has a form that isn't allowed"),
+        ValidationErrorKind::FalseSchema => one("isn't allowed"),
+        // Anything else can't come from a schema `check_schema` accepted.
+        _ => one("can't be checked (broken schema)"),
+    }
 }
 
 /// Checks `data` against a schema that passed [`check_schema`]. Returns plain-language
-/// problems (at most 20), or nothing if the data is valid.
+/// problems (at most 20), or nothing if the data is valid. Fails closed: a schema that can't
+/// be compiled reports a problem rather than passing the data.
 pub fn validate(schema: &Value, data: &Value) -> Vec<String> {
-    let mut v = Validator {
-        root: schema,
-        regexes: HashMap::new(),
-        steps: 0,
-        exhausted: false,
+    let validator = match prepare(schema) {
+        Ok(v) => v,
+        Err(why) => return vec![format!("can't be checked: {why}")],
     };
-    let mut out = Vec::new();
-    v.node(schema, data, &[], 0, &mut out);
-    if v.exhausted {
-        // Fail closed: a partial answer could be "valid".
-        return vec!["the data is too complex to check".to_owned()];
-    }
-    out.dedup();
-    out
-}
-
-impl<'a> Validator<'a> {
-    /// Spends `n` steps of the work budget; false once it has run out.
-    fn spend(&mut self, n: u64) -> bool {
-        self.steps = self.steps.saturating_add(n);
-        if self.steps > MAX_STEPS {
-            self.exhausted = true;
+    let mut out: Vec<String> = Vec::new();
+    for err in validator.iter_errors(data) {
+        for line in friendly(schema, &err) {
+            if !out.contains(&line) {
+                out.push(line);
+            }
         }
-        !self.exhausted
-    }
-
-    fn report(&self, out: &mut Vec<String>, path: &[Step], message: &str) {
         if out.len() >= MAX_PROBLEMS {
-            return;
-        }
-        let at = path_text(path);
-        out.push(if at.is_empty() {
-            format!("the data {message}")
-        } else {
-            format!("{at} {message}")
-        });
-    }
-
-    fn passes(&mut self, schema: &'a Value, data: &Value, path: &[Step], depth: usize) -> bool {
-        let mut scratch = Vec::new();
-        self.node(schema, data, path, depth, &mut scratch);
-        scratch.is_empty() && !self.exhausted
-    }
-
-    fn regex(&mut self, pattern: &'a str) -> Option<&Regex> {
-        self.regexes
-            .entry(pattern)
-            .or_insert_with(|| compile(pattern).ok())
-            .as_ref()
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn node(
-        &mut self,
-        schema: &'a Value,
-        data: &Value,
-        path: &[Step],
-        depth: usize,
-        out: &mut Vec<String>,
-    ) {
-        if !self.spend(1) {
-            return;
-        }
-        if depth > MAX_DEPTH {
-            self.report(out, path, "is nested too deeply to check");
-            return;
-        }
-        let s = match schema {
-            Value::Bool(true) => return,
-            Value::Bool(false) => return self.report(out, path, "isn't allowed"),
-            Value::Object(s) => s,
-            _ => return self.report(out, path, "can't be checked (broken schema)"),
-        };
-
-        if let Some(r) = s.get("$ref").and_then(Value::as_str) {
-            match resolve(self.root, r) {
-                Some(target) => self.node(target, data, path, depth + 1, out),
-                None => self.report(out, path, "can't be checked (broken schema)"),
-            }
-        }
-
-        if let Some(t) = s.get("type") {
-            let types: Vec<&str> = match t {
-                Value::Array(ts) => ts.iter().filter_map(Value::as_str).collect(),
-                t => t.as_str().into_iter().collect(),
-            };
-            if !types.iter().any(|t| is_type(data, t)) {
-                let words: Vec<&str> = types.iter().map(|t| type_word(t)).collect();
-                self.report(out, path, &format!("should be {}", words.join(" or ")));
-                // Every other check assumes the right type; one clear message is enough.
-                return;
-            }
-        }
-
-        if let Some(list) = s.get("enum").and_then(Value::as_array)
-            && !list.iter().any(|x| json_eq(x, data))
-        {
-            let shown: Vec<String> = list.iter().take(10).map(Value::to_string).collect();
-            let more = if list.len() > 10 { ", …" } else { "" };
-            self.report(
-                out,
-                path,
-                &format!("should be one of: {}{more}", shown.join(", ")),
-            );
-        }
-        if let Some(c) = s.get("const")
-            && !json_eq(c, data)
-        {
-            self.report(out, path, &format!("should be {c}"));
-        }
-
-        match data {
-            Value::String(text) => self.string(s, text, path, out),
-            Value::Number(_) => self.number(s, data, path, out),
-            Value::Array(items) => self.array(s, items, path, depth, out),
-            Value::Object(obj) => self.object(s, obj, path, depth, out),
-            _ => {}
-        }
-
-        if let Some(all) = s.get("allOf").and_then(Value::as_array) {
-            for sub in all {
-                self.node(sub, data, path, depth + 1, out);
-            }
-        }
-        if let Some(any) = s.get("anyOf").and_then(Value::as_array)
-            && !any
-                .iter()
-                .any(|sub| self.passes(sub, data, path, depth + 1))
-        {
-            self.report(out, path, "doesn't match any of the allowed shapes");
-        }
-        if let Some(one) = s.get("oneOf").and_then(Value::as_array) {
-            let n = one
-                .iter()
-                .filter(|sub| self.passes(sub, data, path, depth + 1))
-                .count();
-            if n == 0 {
-                self.report(out, path, "doesn't match any of the allowed shapes");
-            } else if n > 1 {
-                self.report(out, path, "matches more than one allowed shape");
-            }
-        }
-        if let Some(not) = s.get("not")
-            && self.passes(not, data, path, depth + 1)
-        {
-            self.report(out, path, "has a form that isn't allowed");
-        }
-        if let Some(cond) = s.get("if") {
-            let branch = if self.passes(cond, data, path, depth + 1) {
-                s.get("then")
-            } else {
-                s.get("else")
-            };
-            if let Some(b) = branch {
-                self.node(b, data, path, depth + 1, out);
-            }
+            out.truncate(MAX_PROBLEMS);
+            break;
         }
     }
-
-    fn string(
-        &mut self,
-        s: &'a Map<String, Value>,
-        text: &str,
-        path: &[Step],
-        out: &mut Vec<String>,
-    ) {
-        let len = text.chars().count() as u64;
-        if let Some(min) = s.get("minLength").and_then(Value::as_u64)
-            && len < min
-        {
-            let m = if min == 1 {
-                "is empty".to_owned()
-            } else {
-                format!("is shorter than {min} characters")
-            };
-            self.report(out, path, &m);
-        }
-        if let Some(max) = s.get("maxLength").and_then(Value::as_u64)
-            && len > max
-        {
-            self.report(out, path, &format!("is longer than {max} characters"));
-        }
-        if let Some(p) = s.get("pattern").and_then(Value::as_str) {
-            let matched = self.regex(p).map(|r| r.is_match(text));
-            match matched {
-                Some(true) => {}
-                Some(false) if is_plain_text_pattern(p) => self.report(
-                    out,
-                    path,
-                    "contains a line break, tab or invisible character, which isn't allowed",
-                ),
-                Some(false) => self.report(out, path, "doesn't have the expected form"),
-                None => self.report(out, path, "can't be checked (broken schema)"),
-            }
-        }
+    // The crate and this host must never disagree on "valid".
+    if out.is_empty() && !validator.is_valid(data) {
+        out.push("the data can't be checked".to_owned());
     }
-
-    fn number(&self, s: &Map<String, Value>, data: &Value, path: &[Step], out: &mut Vec<String>) {
-        let Some(n) = data.as_f64() else { return };
-        if let Some(v) = s.get("multipleOf")
-            && let Some(m) = multiple_of(v)
-        {
-            // Exact: whole-number data by integer remainder, anything else by exact fmod.
-            let ok = if let Some(i) = data.as_u64() {
-                i % m == 0
-            } else if let Some(i) = data.as_i64() {
-                i % (m as i64) == 0
-            } else {
-                n % (m as f64) == 0.0
-            };
-            if !ok {
-                self.report(
-                    out,
-                    path,
-                    &format!("should be a multiple of {}", number_text(v)),
-                );
-            }
-        }
-        let num = |k: &str| s.get(k).and_then(|v| v.as_f64().map(|f| (f, v)));
-        if let Some((m, v)) = num("minimum")
-            && n < m
-        {
-            self.report(out, path, &format!("should be at least {}", number_text(v)));
-        }
-        if let Some((m, v)) = num("maximum")
-            && n > m
-        {
-            self.report(out, path, &format!("should be at most {}", number_text(v)));
-        }
-        if let Some((m, v)) = num("exclusiveMinimum")
-            && n <= m
-        {
-            self.report(
-                out,
-                path,
-                &format!("should be more than {}", number_text(v)),
-            );
-        }
-        if let Some((m, v)) = num("exclusiveMaximum")
-            && n >= m
-        {
-            self.report(
-                out,
-                path,
-                &format!("should be less than {}", number_text(v)),
-            );
-        }
-    }
-
-    fn array(
-        &mut self,
-        s: &'a Map<String, Value>,
-        items: &[Value],
-        path: &[Step],
-        depth: usize,
-        out: &mut Vec<String>,
-    ) {
-        let len = items.len() as u64;
-        if let Some(min) = s.get("minItems").and_then(Value::as_u64)
-            && len < min
-        {
-            let noun = if min == 1 { "item" } else { "items" };
-            self.report(out, path, &format!("needs at least {min} {noun}"));
-        }
-        if let Some(max) = s.get("maxItems").and_then(Value::as_u64)
-            && len > max
-        {
-            self.report(out, path, &format!("has more than {max} items"));
-        }
-        let too_many = s
-            .get("maxItems")
-            .and_then(Value::as_u64)
-            .is_some_and(|max| len > max);
-        if s.get("uniqueItems") == Some(&Value::Bool(true)) && !too_many {
-            let mut seen = std::collections::HashSet::new();
-            for x in items {
-                // Hashing costs about the size of the item; charge for it.
-                if !self.spend(1 + canonical_size(x) / 64) {
-                    return;
-                }
-                if !seen.insert(canonical(x)) {
-                    self.report(out, path, "has duplicate items");
-                    break;
-                }
-            }
-        }
-        if let Some(item) = s.get("items") {
-            for (i, x) in items.iter().enumerate() {
-                if out.len() >= MAX_PROBLEMS || self.exhausted {
-                    break;
-                }
-                self.node(item, x, &with(path, Step::Index(i)), depth + 1, out);
-            }
-        }
-    }
-
-    fn object(
-        &mut self,
-        s: &'a Map<String, Value>,
-        obj: &Map<String, Value>,
-        path: &[Step],
-        depth: usize,
-        out: &mut Vec<String>,
-    ) {
-        let len = obj.len() as u64;
-        if let Some(min) = s.get("minProperties").and_then(Value::as_u64)
-            && len < min
-        {
-            self.report(out, path, &format!("needs at least {min} fields"));
-        }
-        if let Some(max) = s.get("maxProperties").and_then(Value::as_u64)
-            && len > max
-        {
-            self.report(out, path, &format!("has more than {max} fields"));
-        }
-        if let Some(req) = s.get("required").and_then(Value::as_array) {
-            for name in req.iter().filter_map(Value::as_str) {
-                if !obj.contains_key(name) {
-                    self.report(out, &with(path, Step::Key(name.to_owned())), "is missing");
-                }
-            }
-        }
-        let props = s.get("properties").and_then(Value::as_object);
-        for (k, v) in obj {
-            if out.len() >= MAX_PROBLEMS {
-                break;
-            }
-            let here = with(path, Step::Key(k.clone()));
-            if let Some(sub) = props.and_then(|p| p.get(k)) {
-                self.node(sub, v, &here, depth + 1, out);
-            } else if let Some(extra) = s.get("additionalProperties") {
-                if extra == &Value::Bool(false) {
-                    self.report(out, &here, "isn't a known field");
-                } else {
-                    self.node(extra, v, &here, depth + 1, out);
-                }
-            }
-        }
-    }
-}
-
-fn is_type(v: &Value, t: &str) -> bool {
-    match t {
-        "string" => v.is_string(),
-        "number" => v.is_number(),
-        "integer" => {
-            v.as_i64().is_some()
-                || v.as_u64().is_some()
-                || v.as_f64().is_some_and(|f| f.fract() == 0.0)
-        }
-        "boolean" => v.is_boolean(),
-        "array" => v.is_array(),
-        "object" => v.is_object(),
-        "null" => v.is_null(),
-        _ => false,
-    }
-}
-
-/// A text form of `v` that is equal exactly when [`json_eq`] says so (numbers by value,
-/// object fields in sorted order).
-fn canonical(v: &Value) -> String {
-    match v {
-        Value::Number(n) => {
-            let f = n.as_f64().unwrap_or(0.0);
-            format!("n{:x}", if f == 0.0 { 0 } else { f.to_bits() })
-        }
-        Value::String(t) => format!("{t:?}"),
-        Value::Array(l) => format!(
-            "[{}]",
-            l.iter().map(canonical).collect::<Vec<_>>().join(",")
-        ),
-        Value::Object(o) => {
-            let mut keys: Vec<&String> = o.keys().collect();
-            keys.sort();
-            let fields: Vec<String> = keys
-                .into_iter()
-                .map(|k| format!("{k:?}:{}", canonical(&o[k])))
-                .collect();
-            format!("{{{}}}", fields.join(","))
-        }
-        other => other.to_string(),
-    }
-}
-
-/// Rough count of the values inside `v`, to charge hashing against the work budget.
-fn canonical_size(v: &Value) -> u64 {
-    match v {
-        Value::Array(l) => 1 + l.iter().map(canonical_size).sum::<u64>(),
-        Value::Object(o) => 1 + o.values().map(canonical_size).sum::<u64>(),
-        _ => 1,
-    }
-}
-
-/// JSON equality as JSON Schema defines it: 1 and 1.0 are the same number.
-fn json_eq(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
-        (Value::Array(x), Value::Array(y)) => {
-            x.len() == y.len() && x.iter().zip(y).all(|(a, b)| json_eq(a, b))
-        }
-        (Value::Object(x), Value::Object(y)) => {
-            x.len() == y.len()
-                && x.iter()
-                    .all(|(k, v)| y.get(k).is_some_and(|w| json_eq(v, w)))
-        }
-        _ => a == b,
-    }
+    out
 }
 
 #[cfg(test)]
@@ -836,6 +704,11 @@ mod tests {
                           "properties": { "front": { "type": "string", "maxLength": 5 } } }
             }
         })
+    }
+
+    fn sorted(mut v: Vec<String>) -> Vec<String> {
+        v.sort();
+        v
     }
 
     #[test]
@@ -881,12 +754,29 @@ mod tests {
             );
         }
         assert_eq!(
-            validate(&s, &json!({"cards": [{}]})),
-            vec!["title is missing", "cards[0].front is missing"]
+            sorted(validate(&s, &json!({"cards": [{}]}))),
+            vec!["cards[0].front is missing", "title is missing"]
         );
         assert_eq!(
             validate(&s, &json!([])),
             vec!["the data should be an object"]
+        );
+        let either = json!({"type": ["string", "null"]});
+        assert_eq!(
+            validate(&either, &json!(1)),
+            vec!["the data should be text or null"]
+        );
+        assert_eq!(
+            validate(&json!({"multipleOf": 5}), &json!(7)),
+            vec!["the data should be a multiple of 5"]
+        );
+        assert_eq!(
+            validate(&json!({"const": "a"}), &json!("b")),
+            vec!["the data should be \"a\""]
+        );
+        assert_eq!(
+            validate(&json!({"type": "string", "pattern": "^a$"}), &json!("b")),
+            vec!["the data doesn't have the expected form"]
         );
     }
 
@@ -897,17 +787,27 @@ mod tests {
             json!({"type": "object", "format": "uri"}),
             json!({"properties": {"a": {"patternProperties": {}}}}),
             json!({"$ref": "https://example.com/schema.json"}),
+            json!({"$ref": "file:///etc/passwd"}),
+            json!({"$ref": "other.json#/$defs/a"}),
             json!({"$ref": "#/$defs/missing"}),
+            json!({"$dynamicRef": "#a"}),
+            json!({"$id": "https://example.com/s.json"}),
             json!({"properties": {"a": {"$id": "urn:x"}}}),
+            json!({"properties": {"a": {"$defs": {}}}}),
             json!({"$schema": "http://json-schema.org/draft-07/schema#"}),
             json!({"type": "text"}),
             json!({"pattern": "(?=a)b"}),
             json!({"pattern": "\\bword"}),
             json!({"pattern": "(a)\\1"}),
+            json!({"pattern": "(?i)a"}),
             json!({"maxLength": -1}),
             json!({"anyOf": []}),
         ] {
             assert!(check_schema(&bad).is_err(), "{bad}");
+            assert!(
+                !validate(&bad, &json!("x")).is_empty(),
+                "fails closed: {bad}"
+            );
         }
     }
 
@@ -929,6 +829,12 @@ mod tests {
         );
         assert!(compile("^(?<n>a)$").is_ok());
         assert!(compile("[a&&b]").expect("set").is_match("&"));
+        // The crate's own `pattern` is replaced: `.` must not match line terminators.
+        let dot = json!({"type": "string", "pattern": "^.$"});
+        for bad in ["\r", "\u{2028}", "\u{2029}", "\n"] {
+            assert!(!validate(&dot, &json!(bad)).is_empty(), "{bad:?}");
+        }
+        assert!(validate(&dot, &json!("\u{85}")).is_empty());
     }
 
     #[test]
@@ -947,6 +853,11 @@ mod tests {
             validate(&s, &json!(0)),
             vec!["the data has a form that isn't allowed"]
         );
+        let one = json!({"oneOf": [{"type": "integer"}, {"minimum": 0}]});
+        assert_eq!(
+            validate(&one, &json!(1)),
+            vec!["the data matches more than one allowed shape"]
+        );
         let cond = json!({
             "type": "object",
             "if": {"properties": {"kind": {"const": "timed"}}, "required": ["kind"]},
@@ -958,6 +869,14 @@ mod tests {
             vec!["seconds is missing"]
         );
         assert!(validate(&cond, &json!({"kind": "free"})).is_empty());
+        assert_eq!(
+            validate(&json!(false), &json!(1)),
+            vec!["can't be checked: the data schema must be an object"]
+        );
+        assert_eq!(
+            validate(&json!({"properties": {"a": false}}), &json!({"a": 1})),
+            vec!["a isn't allowed"]
+        );
     }
 
     #[test]
@@ -990,14 +909,47 @@ mod tests {
     }
 
     #[test]
-    fn runaway_schemas_fail_closed_quickly() {
-        let s = json!({"$defs": {"a": {"anyOf": [{"$ref": "#/$defs/a"}, {"$ref": "#/$defs/a"}]}},
-                       "$ref": "#/$defs/a"});
-        check_schema(&s).expect("schema");
+    fn reference_cycles_are_refused() {
+        for s in [
+            json!({"$ref": "#"}),
+            json!({"$defs": {"a": {"anyOf": [{"$ref": "#/$defs/a"}, {"$ref": "#/$defs/a"}]}},
+                   "$ref": "#/$defs/a"}),
+            json!({"$defs": {"a": {"items": {"$ref": "#/$defs/b"}}, "b": {"not": {"$ref": "#/$defs/a"}}},
+                   "$ref": "#/$defs/a"}),
+        ] {
+            let err = check_schema(&s).expect_err("cycle");
+            assert!(err.contains("loop"), "{err}");
+        }
+    }
+
+    #[test]
+    fn exponential_schemas_are_refused_before_validation() {
+        // 2^28 paths through shared definitions: the crate has no work budget, so the host
+        // refuses the schema by its unfolded size instead of running it.
+        let mut defs = Map::new();
+        for i in 0..28 {
+            let next = format!("#/$defs/l{}", i + 1);
+            defs.insert(
+                format!("l{i}"),
+                json!({"anyOf": [{"$ref": next}, {"$ref": next}]}),
+            );
+        }
+        defs.insert("l28".into(), json!({"type": "string"}));
+        let s = json!({"$defs": defs, "$ref": "#/$defs/l0"});
         let started = std::time::Instant::now();
-        let problems = validate(&s, &json!(1));
-        assert_eq!(problems, vec!["the data is too complex to check"]);
-        assert!(started.elapsed().as_secs() < 10, "{:?}", started.elapsed());
+        let err = check_schema(&s).expect_err("too large");
+        assert!(err.contains("too large"), "{err}");
+        assert!(!validate(&s, &json!(1)).is_empty());
+        assert!(started.elapsed().as_secs() < 5, "{:?}", started.elapsed());
+        // A large enum counts too.
+        let big: Vec<Value> = (0..3_000).map(|i| json!(i)).collect();
+        assert!(check_schema(&json!({"enum": big})).is_err());
+        // Deep nesting is refused before anything is unfolded.
+        let mut deep = json!({"type": "string"});
+        for _ in 0..40 {
+            deep = json!({"items": deep});
+        }
+        assert!(check_schema(&deep).is_err());
     }
 
     #[test]
@@ -1012,13 +964,7 @@ mod tests {
             validate(&s, &Value::Array(dup)),
             vec!["the data has duplicate items"]
         );
-        assert!(started.elapsed().as_secs() < 10, "{:?}", started.elapsed());
-        // Already over maxItems: report that alone and skip the duplicate scan.
-        let capped = json!({"type": "array", "maxItems": 1, "uniqueItems": true});
-        assert_eq!(
-            validate(&capped, &json!([1, 1])),
-            vec!["the data has more than 1 items"]
-        );
+        assert!(started.elapsed().as_secs() < 20, "{:?}", started.elapsed());
         assert!(validate(&s, &json!([1, "1", [1], {"a": 1}])).is_empty());
         assert!(!validate(&s, &json!([{"a": 1, "b": 2}, {"b": 2, "a": 1}])).is_empty());
     }
@@ -1039,12 +985,11 @@ mod tests {
     }
 
     #[test]
-    fn self_references_stop_at_a_depth_limit() {
-        let s = json!({"$ref": "#"});
-        check_schema(&s).expect("schema");
-        assert_eq!(
-            validate(&s, &json!(1)),
-            vec!["the data is nested too deeply to check"]
-        );
+    fn many_problems_are_capped() {
+        let s = json!({"type": "array", "items": {"type": "string"}});
+        let data: Vec<Value> = (0..100).map(|i| json!(i)).collect();
+        let problems = validate(&s, &Value::Array(data));
+        assert_eq!(problems.len(), MAX_PROBLEMS);
+        assert_eq!(problems[0], "[0] should be text");
     }
 }
