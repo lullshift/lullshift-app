@@ -19,6 +19,7 @@ import {
   entryTitle,
   errorText,
   fetchedLine,
+  gitBackendText,
   formatBytes,
   hostOf,
   looksPrivate,
@@ -39,6 +40,7 @@ const KINDS: ErrorKind[] = [
   "notFound",
   "timeout",
   "gitMissing",
+  "needsGit",
   "invalidUrl",
   "invalidIndex",
   "invalidPack",
@@ -89,6 +91,23 @@ describe("errorText", () => {
     const texts = KINDS.map((kind) => errorText({ kind }));
     expect(new Set(texts).size).toBe(KINDS.length);
     for (const t of texts) expect(t.length).toBeGreaterThan(10);
+  });
+
+  it("tells the user to install Git when the built-in Git can't read a marketplace", () => {
+    const text = errorText({ kind: "needsGit", message: "ignored detail" });
+    expect(text).toMatch(/^Install Git to use this marketplace\./);
+    expect(text).toContain("public https");
+    // Different from the generic "Git is missing" message, and never a link.
+    expect(text).not.toBe(errorText({ kind: "gitMissing" }));
+    expect(text).not.toMatch(/https?:\/\//);
+    expect(api.toCommandError({ kind: "needsGit", message: "x" }).kind).toBe("needsGit");
+  });
+
+  it("describes which Git is in use, and nothing when unknown", () => {
+    expect(gitBackendText("system")).toBe("Using Git installed on this computer.");
+    expect(gitBackendText("builtin")).toMatch(/^Using Lullshift's built-in Git \(public https only\)\./);
+    expect(gitBackendText("builtin")).not.toMatch(/https?:\/\//);
+    expect(gitBackendText(null)).toBeNull();
   });
 
   it("uses the exact auth-denied wording", () => {
@@ -401,6 +420,17 @@ describe("api error normalisation", () => {
     expect(errorText({ kind: "moved", message: "Moved to https://a.example/b." })).toBe(
       "Moved to https://a.example/b.",
     );
+  });
+  it("reads the Git backend and treats anything unexpected as unknown", async () => {
+    invoke.mockResolvedValue({ backend: "builtin" });
+    expect(await api.marketplaceGitBackend()).toBe("builtin");
+    expect(invoke).toHaveBeenCalledWith("marketplace_git_backend", undefined);
+    invoke.mockResolvedValue({ backend: "system" });
+    expect(await api.marketplaceGitBackend()).toBe("system");
+    invoke.mockResolvedValue({ backend: "<b>other</b>" });
+    expect(await api.marketplaceGitBackend()).toBeNull();
+    invoke.mockResolvedValue(null);
+    expect(await api.marketplaceGitBackend()).toBeNull();
   });
   it("maps a missing command to unavailable", async () => {
     invoke.mockRejectedValue("Command marketplace_list not found");

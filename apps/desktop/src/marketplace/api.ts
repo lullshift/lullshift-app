@@ -12,6 +12,11 @@ export type ErrorKind =
   | "notFound"
   | "timeout"
   | "gitMissing"
+  /**
+   * Lullshift's built-in Git (used when Git isn't installed) can't read this marketplace: it
+   * asks for a sign-in, uses ssh, or is only reachable through a proxy (decision 28).
+   */
+  | "needsGit"
   | "invalidUrl"
   | "invalidIndex"
   | "invalidPack"
@@ -50,6 +55,7 @@ const KINDS: readonly string[] = [
   "notFound",
   "timeout",
   "gitMissing",
+  "needsGit",
   "invalidUrl",
   "invalidIndex",
   "invalidPack",
@@ -202,6 +208,16 @@ export interface AddressChanged {
 }
 
 export const marketplaceList = () => call<Marketplace[]>("marketplace_list");
+
+/**
+ * Which Git marketplaces use: "system" (Git installed on this computer) or "builtin"
+ * (Lullshift's built-in Git, public https only). Anything else reads as unknown (null).
+ */
+export type GitBackend = "system" | "builtin";
+export const marketplaceGitBackend = async (): Promise<GitBackend | null> => {
+  const r = await call<{ backend?: unknown }>("marketplace_git_backend");
+  return r && (r.backend === "system" || r.backend === "builtin") ? r.backend : null;
+};
 /** `confirmPrivate` is the "This marketplace is on my own computer or network" checkbox. */
 export const marketplaceAdd = (url: string, confirmPrivate = false) =>
   call<Marketplace>("marketplace_add", { url, confirmPrivate });

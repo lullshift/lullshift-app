@@ -36,6 +36,7 @@
 | Message | What to do |
 |---|---|
 | Git isn't installed, or isn't on your PATH | Install Git, then restart Lullshift |
+| Install Git to use this marketplace | Lullshift is using its built-in Git, which reads public https marketplaces only. This one needs a sign-in, uses ssh, or is only reachable through a proxy. Install Git, restart Lullshift, then try again. A mistyped address can also cause this on some hosts (GitHub answers "sign in" for repositories that don't exist), so check the address too |
 | Can't reach the repository | Check your network connection |
 | Access was denied | For a private repository, set up Git credentials on this computer first (credential manager, SSH key or `gh auth login`) |
 | Code activities from third-party marketplaces can't be installed on this system yet | Expected in this release. Content packs can be installed |

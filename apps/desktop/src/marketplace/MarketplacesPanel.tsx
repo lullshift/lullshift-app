@@ -6,10 +6,12 @@ import { Icon } from "../ui/Icon";
 import {
   marketplaceAdd,
   marketplaceEntries,
+  marketplaceGitBackend,
   marketplaceList,
   marketplaceRefresh,
   marketplaceRemove,
   toCommandError,
+  type GitBackend,
   type Marketplace,
   type MarketplaceEntry,
   type MovedTo,
@@ -21,6 +23,7 @@ import {
   entryTitle,
   errorText,
   fetchedLine,
+  gitBackendText,
   kindLabel,
   addressChangedText,
   looksPrivate,
@@ -77,6 +80,8 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
   const [removing, setRemoving] = useState<Marketplace | null>(null);
   const [review, setReview] = useState<ReviewRequest | null>(null);
   const [changing, setChanging] = useState<ChangeAddressRequest | null>(null);
+  /** Which Git is in use (decision 28); null while unknown or if the build can't say. */
+  const [gitBackend, setGitBackend] = useState<GitBackend | null>(null);
 
   const say = useCallback((tone: "success" | "danger", text: string) => {
     setMessage({ tone, text });
@@ -99,6 +104,21 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
   useEffect(() => {
     void loadList();
   }, [loadList]);
+
+  useEffect(() => {
+    let live = true;
+    marketplaceGitBackend()
+      .then((b) => {
+        if (live) setGitBackend(b);
+      })
+      .catch(() => {
+        // Unknown is shown as nothing; errors surface on Add or Refresh.
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const backendLine = gitBackendText(gitBackend);
 
   const loadEntries = useCallback((id: string) => {
     return marketplaceEntries(id)
@@ -325,6 +345,11 @@ export function MarketplacesPanel({ now, onChanged }: Props) {
           <p id="mk-url-hint" className="field-note">
             {inputError ?? hint ?? "Anyone can publish a marketplace; add only ones you trust."}
           </p>
+          {backendLine && (
+            <p className="field-note mk-git-backend" data-backend={gitBackend ?? undefined}>
+              {backendLine}
+            </p>
+          )}
           {showPrivate && (
             <PrivateHostBox
               id="mk-private"

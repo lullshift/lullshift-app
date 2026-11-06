@@ -8,6 +8,7 @@ This is the contract between the Tauri backend (`apps/desktop/src-tauri`) and th
 - `notFound`
 - `timeout`
 - `gitMissing`
+- `needsGit` (decision 28, ADR-023: Lullshift is using its built-in Git, and this marketplace needs installed Git: it asks for a sign-in, uses ssh, or is only reachable through a proxy)
 - `invalidUrl`
 - `invalidIndex`
 - `invalidPack`
@@ -87,6 +88,7 @@ type UpdatePreview = InstallPreview & {
 ## Commands
 
 - `marketplace_list() -> Marketplace[]`
+- `marketplace_git_backend() -> { backend: "system" | "builtin" }` (ADR-023: which Git marketplaces use; chosen once per run, no network)
   - The built-in marketplace comes first.
 - `marketplace_add({ url, confirmPrivate? }) -> Marketplace`
   - Sprint 12: a private address needs `confirmPrivate: true`, otherwise `privateHost`. A redirect returns `moved`.

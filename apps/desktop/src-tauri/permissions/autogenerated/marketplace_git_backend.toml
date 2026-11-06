@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-marketplace-git-backend"
+description = "Enables the marketplace_git_backend command without any pre-configured scope."
+commands.allow = ["marketplace_git_backend"]
+
+[[permission]]
+identifier = "deny-marketplace-git-backend"
+description = "Denies the marketplace_git_backend command without any pre-configured scope."
+commands.deny = ["marketplace_git_backend"]

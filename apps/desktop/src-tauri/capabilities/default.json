@@ -22,6 +22,7 @@
     "allow-activities-list",
     "allow-activities-manage-list",
     "allow-marketplace-list",
+    "allow-marketplace-git-backend",
     "allow-marketplace-add",
     "allow-marketplace-remove",
     "allow-marketplace-refresh",

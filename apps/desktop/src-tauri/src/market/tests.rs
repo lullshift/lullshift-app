@@ -1738,3 +1738,24 @@ fn a_redirect_reaches_the_ui_as_moved_with_the_checked_address() {
         .expect("json");
     assert!(plain.get("moved").is_none());
 }
+
+/// Decision 28 (ADR-023): the built-in Git's "install Git" answer is its own kind, distinct
+/// from `gitMissing`, with fixed text and no link; and the backend in use is reported.
+#[test]
+fn needs_git_is_a_distinct_error_and_the_backend_is_reported() {
+    let e = CommandError::from(Error::Git(GitFailureKind::NeedsSystemGit));
+    assert_eq!(e.kind, "needsGit");
+    assert!(e.message.starts_with("Install Git to use this marketplace."));
+    assert!(!e.message.contains("://"), "{}", e.message);
+    let missing = CommandError::from(Error::Git(GitFailureKind::GitMissing));
+    assert_ne!(missing.kind, e.kind);
+
+    let env = Env::new();
+    let dto = git_backend(&env.core).expect("backend");
+    // Tests run with git on PATH, and installed Git always comes first.
+    assert_eq!(dto.backend, "system");
+    assert_eq!(
+        serde_json::to_value(&dto).expect("json"),
+        json!({ "backend": "system" })
+    );
+}
