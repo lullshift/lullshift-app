@@ -10,6 +10,9 @@ import {
   type ManageItem,
 } from "./api";
 import {
+  ADDRESS_CHANGED_SINCE_CONSENT,
+  ADDRESS_CHANGED_SINCE_CONSENT_TEXT,
+  addressChangedSinceConsent,
   canCheckUpdate,
   errorText,
   manageSubtitle,
@@ -136,6 +139,12 @@ export function ManagePanel({ onChanged }: Props) {
                   <Banner tone="attention">
                     <strong>{problemLabel(item.problem)}</strong>
                     {problemText(item.problem)}
+                  </Banner>
+                )}
+                {addressChangedSinceConsent(item) && (
+                  <Banner tone="attention">
+                    <strong>{ADDRESS_CHANGED_SINCE_CONSENT}. </strong>
+                    {ADDRESS_CHANGED_SINCE_CONSENT_TEXT}
                   </Banner>
                 )}
                 {item.sourceNote === "notFoundAtNewAddress" && (

@@ -25,6 +25,8 @@ export const PRIVATE_HOST_TEXT =
   "This address is on your own computer or local network. If that's what you expect, tick the box below and try again.";
 export const PRIVATE_HOST_NOTE =
   "Only tick this for a Git server you or your organisation runs. Lullshift will connect to it when you press Add, Refresh or Change address.";
+/** Label above text the publisher wrote (a manifest description), which Lullshift didn't check. */
+export const PUBLISHER_TEXT_LABEL = "From the publisher";
 export const UNVERIFIED_TEXT =
   "Unverified: anyone can publish a marketplace. Lullshift checked the files but not who made them.";
 
@@ -241,6 +243,16 @@ export function problemLabel(problem: ManageProblem): string {
 export const NOT_FOUND_AT_NEW_ADDRESS_TEXT =
   "Its marketplace moved, and this version wasn't found at the new address. It keeps working as installed, with your saved progress; it may not get updates.";
 
+/** Shown in Manage for a third-party program whose address changed after the user accepted it. */
+export const ADDRESS_CHANGED_SINCE_CONSENT = "Address changed since you accepted";
+export const ADDRESS_CHANGED_SINCE_CONSENT_TEXT =
+  "You accepted this program from a different address. Its files still match what you installed, but any update would now come from the new address, which you haven't reviewed. An update asks for your consent again.";
+
+/** Whether Manage shows the "address changed since you accepted" note for this row. */
+export function addressChangedSinceConsent(item: ManageItem): boolean {
+  return !item.builtin && item.kind === "app" && item.addressChanged === true;
+}
+
 /** The summary after a change of address. */
 export function addressChangedText(id: string, notFound: string[]): string {
   const name = truncate(id, 60);
@@ -346,7 +358,7 @@ export const CODE_RISK_HEADING = "This is someone else's program";
 export const CODE_RISK_CONSENT_LABEL = "I understand and want to install this program";
 export const CODE_RISK_TICK_HINT = "Tick the box above to continue.";
 export const CODE_RISK_WORST_CASE =
-  "Worst case: if the sandbox has a gap Lullshift doesn't know about, this program could try to send out what it shows you or what you type into it. Don't type passwords, keys or other private information into it.";
+  "Worst case: if the sandbox has a gap Lullshift doesn't know about, this program could try to send out what it shows you or what you type into it, or use a gap in the sandbox to reach more of your computer. Don't type passwords, keys or other private information into it.";
 export const CODE_RISK_NO_GUARANTEE =
   "Lullshift can't guarantee that its sandbox has no gaps. Only install programs from people you trust.";
 

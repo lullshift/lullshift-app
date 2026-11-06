@@ -31,7 +31,6 @@ export interface ActivityInfo {
   description: string;
   category: string;
   version: string;
-  url: string;
   storage: boolean;
   savedUtc: string | null;
   /** How-to-play help from the manifest; null if it has none. */
@@ -53,7 +52,7 @@ export interface PauseRequest {
   provider: string;
 }
 
-type PauseReason = "attention" | "user" | "away" | "unresponsive";
+type PauseReason = "attention" | "user" | "away" | "unresponsive" | "navigated";
 
 type Phase =
   | { kind: "loading" }
@@ -103,6 +102,12 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
   const [phase, setPhaseState] = useState<Phase>({ kind: "loading" });
   // Empty until the saved state is loaded; the iframe is created only after that.
   const [nonce, setNonce] = useState("");
+  // This launch's address, under a key the host just issued (ADR-012): the scheme handler
+  // serves only this activity's files to it, and stops when the launch ends.
+  const [frameUrl, setFrameUrl] = useState("");
+  // How many times the frame has loaded a document in this launch. A second load means the
+  // activity navigated itself (or was sent) somewhere else.
+  const frameLoads = useRef(0);
   // The activity's latest stats for the paused view; this visit only, never stored.
   const [summary, setSummary] = useState<SummaryItem[] | null>(null);
   // Seconds played this visit (shown) and not yet added to the stored total.
@@ -189,7 +194,9 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
       )
         return;
       let saved = false;
-      if (current === "running") {
+      // A frame that navigated away no longer runs the activity's bridge, so there is nothing
+      // to ask: keep the last save and remove it at once.
+      if (current === "running" && reason !== "navigated") {
         setPhase({ kind: "pausing" });
         post({ type: "pause" });
         saved = await requestSave();
@@ -221,8 +228,16 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
               restoreRef.current = restore;
               missed.current = 0;
               pending.current.clear();
-              setNonce(newNonce());
-              setPhase({ kind: "loading" });
+              // A fresh key per launch; it replaces any earlier key for this activity.
+              return invoke<string>("activity_launch", { id: activityId }).then(
+                (url) => {
+                  frameLoads.current = 0;
+                  setFrameUrl(url);
+                  setNonce(newNonce());
+                  setPhase({ kind: "loading" });
+                },
+                () => setPhase({ kind: "failed" }),
+              );
             });
         }),
     [activityId, engine, setPhase],
@@ -388,6 +403,28 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [freeze]);
 
+  const live =
+    nonce !== "" &&
+    frameUrl !== "" &&
+    (phase.kind === "loading" || phase.kind === "running" || phase.kind === "pausing");
+  // The launch key stops working as soon as the frame is gone (paused, failed, closed or
+  // replaced by a newer launch).
+  useEffect(() => {
+    if (!live) return;
+    return () => {
+      void invoke("activity_launch_end", { id: activityId }).catch(() => {
+        // Nothing to undo: a newer launch already replaced the key.
+      });
+    };
+  }, [live, activityId]);
+
+  // The frame loads its page once per launch. A second load means it navigated (to another
+  // activity's page, say): freeze it. Server-side the key already refuses other activities.
+  const onFrameLoad = () => {
+    frameLoads.current += 1;
+    if (frameLoads.current > 1) void freeze("navigated");
+  };
+
   const close = async () => {
     if (phaseRef.current.kind === "running") await freeze("user");
     onClose();
@@ -401,9 +438,6 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
 
   // Third-party code and packs say where they came from (owner decision 27.5).
   const sourceLabel = activitySourceLabel(activity.source, activity.engine);
-  const live =
-    nonce !== "" &&
-    (phase.kind === "loading" || phase.kind === "running" || phase.kind === "pausing");
 
   return (
     <section className="host" aria-label={activity.name}>
@@ -444,7 +478,8 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
             ref={frameRef}
             className="host-frame"
             title={activity.name}
-            src={`${activity.url}#n=${nonce}`}
+            src={`${frameUrl}#n=${nonce}`}
+            onLoad={onFrameLoad}
             sandbox="allow-scripts"
             allow={FRAME_ALLOW}
             referrerPolicy="no-referrer"
@@ -564,16 +599,20 @@ function PausedCard({
           ? `${providerName(phase.provider ?? "")} needs you`
           : phase.reason === "unresponsive"
             ? `${name} stopped responding`
-            : `${name} is paused`}
+            : phase.reason === "navigated"
+              ? `${name} was stopped`
+              : `${name} is paused`}
       </h3>
       <p>
         {attention
           ? `${name} is paused. ${savedText}`
           : phase.reason === "unresponsive"
             ? `Lullshift closed it so it can't slow anything down. ${savedText}`
-            : phase.reason === "away"
-              ? `Paused while you were away. ${savedText}`
-              : savedText}
+            : phase.reason === "navigated"
+              ? `It tried to open another page, which Lullshift doesn't allow. ${savedText}`
+              : phase.reason === "away"
+                ? `Paused while you were away. ${savedText}`
+                : savedText}
       </p>
       <PausedStats
         name={name}

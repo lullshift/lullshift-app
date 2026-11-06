@@ -26,6 +26,7 @@ import {
   kindLabel,
   needsCodeConsent,
   permissionExplanation,
+  PUBLISHER_TEXT_LABEL,
   permissionLabel,
   savedStateLine,
   truncate,
@@ -210,22 +211,33 @@ export function ConfirmButton({
   label,
   blocked,
   onConfirm,
+  onBlockedClick = focusConsentBox,
 }: {
   label: string;
   blocked: boolean;
   onConfirm: () => void;
+  /** What pressing the button does while it is blocked. Defaults to focusing the consent box. */
+  onBlockedClick?: () => void;
 }) {
+  // aria-disabled, not disabled: the button stays focusable, so a keyboard or screen-reader
+  // user lands on it, hears why it can't be used, and pressing it takes them to the box.
   return (
     <button
       type="button"
       className="btn btn-primary"
-      disabled={blocked}
+      aria-disabled={blocked ? "true" : undefined}
       aria-describedby={blocked ? "review-code-risk-hint" : undefined}
-      onClick={onConfirm}
+      onClick={blocked ? onBlockedClick : onConfirm}
     >
       {label}
     </button>
   );
+}
+
+export const CONSENT_BOX_ID = "review-code-risk-consent";
+
+function focusConsentBox() {
+  document.getElementById(CONSENT_BOX_ID)?.focus();
 }
 
 /**
@@ -243,6 +255,22 @@ export function CodeRiskSection({
   disabled: boolean;
   onChange: (consented: boolean) => void;
 }) {
+  if (!codeRiskView(preview)) return null;
+  return (
+    <>
+      <CodeRiskWarning preview={preview} />
+      <CodeRiskConsent
+        preview={preview}
+        consented={consented}
+        disabled={disabled}
+        onChange={onChange}
+      />
+    </>
+  );
+}
+
+/** The warning text. It comes before anything the publisher wrote. */
+export function CodeRiskWarning({ preview }: { preview: InstallPreview }) {
   const view = codeRiskView(preview);
   if (!view) return null;
   return (
@@ -264,9 +292,30 @@ export function CodeRiskSection({
           <p>{view.noGuarantee}</p>
         </div>
       </Banner>
+    </section>
+  );
+}
+
+/** The consent box, the last thing in the review before the buttons. Never ticked in advance. */
+export function CodeRiskConsent({
+  preview,
+  consented,
+  disabled,
+  onChange,
+}: {
+  preview: InstallPreview;
+  consented: boolean;
+  disabled: boolean;
+  onChange: (consented: boolean) => void;
+}) {
+  const view = codeRiskView(preview);
+  if (!view) return null;
+  return (
+    <div className="review-code-risk">
       <label className="mk-check review-code-risk-consent">
         <input
           type="checkbox"
+          id={CONSENT_BOX_ID}
           checked={consented}
           disabled={disabled}
           aria-describedby="review-code-risk-text"
@@ -279,7 +328,7 @@ export function CodeRiskSection({
           {CODE_RISK_TICK_HINT}
         </p>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -332,7 +381,7 @@ export function ForeignStateChoice({
   );
 }
 
-function ReviewBody({
+export function ReviewBody({
   preview: p,
   update,
   keepSaved,
@@ -360,14 +409,19 @@ function ReviewBody({
   const added = new Set(update?.addedPermissions ?? []);
   return (
     <>
+      {/* The warning comes first: everything the publisher wrote (name, description) is below it. */}
+      <CodeRiskWarning preview={p} />
+      {p.thirdParty && <Banner tone="attention">{UNVERIFIED_TEXT}</Banner>}
       <p className="review-name">
         <strong>{truncate(p.name, 80)}</strong>{" "}
         <span className="review-version">{truncate(p.version, 20)}</span>
       </p>
-      {p.description && <p>{truncate(p.description, 400)}</p>}
-
-      {p.thirdParty && <Banner tone="attention">{UNVERIFIED_TEXT}</Banner>}
-      <CodeRiskSection preview={p} consented={consented} disabled={disabled} onChange={onConsent} />
+      {p.description && (
+        <div className="review-publisher">
+          <p className="review-publisher-label">{PUBLISHER_TEXT_LABEL}</p>
+          <p>{truncate(p.description, 400)}</p>
+        </div>
+      )}
       {savedStateLine(p) && <Banner tone="attention">{savedStateLine(p)}</Banner>}
       {!update && asksAboutSavedState(p) && (
         <ForeignStateChoice keep={keepSaved} disabled={disabled} onChange={onKeepSaved} />
@@ -460,6 +514,8 @@ function ReviewBody({
           {update.removedPermissions.map((perm) => permissionLabel(perm)).join(", ")}.
         </p>
       )}
+      {/* Last, just before the buttons. */}
+      <CodeRiskConsent preview={p} consented={consented} disabled={disabled} onChange={onConsent} />
     </>
   );
 }

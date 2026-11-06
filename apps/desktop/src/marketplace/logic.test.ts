@@ -25,6 +25,8 @@ import {
   THIRD_PARTY_PROGRAM_LABEL,
   FOREIGN_STATE_DELETE,
   FOREIGN_STATE_KEEP_WARNING,
+  ADDRESS_CHANGED_SINCE_CONSENT,
+  addressChangedSinceConsent,
   FOREIGN_STATE_TEXT,
   canCheckUpdate,
   canInstall,
@@ -365,7 +367,21 @@ describe("manage helpers", () => {
     version: "1.0.0",
     problem: null,
     sourceNote: null,
+    addressChanged: false,
     ...over,
+  });
+  it("flags a third-party program whose address changed since the user accepted it", () => {
+    expect(addressChangedSinceConsent(item({ kind: "app", addressChanged: true }))).toBe(true);
+    expect(addressChangedSinceConsent(item({ kind: "app", addressChanged: false }))).toBe(false);
+    // Packs and built-ins never show it, and an older host sends no field at all.
+    expect(addressChangedSinceConsent(item({ kind: "content", addressChanged: true }))).toBe(false);
+    expect(
+      addressChangedSinceConsent(item({ kind: "app", builtin: true, addressChanged: true })),
+    ).toBe(false);
+    expect(
+      addressChangedSinceConsent({ ...item({ kind: "app" }), addressChanged: undefined } as never),
+    ).toBe(false);
+    expect(ADDRESS_CHANGED_SINCE_CONSENT).toBe("Address changed since you accepted");
   });
   it("offers update checks only for installed, untampered items", () => {
     expect(canCheckUpdate(item())).toBe(true);

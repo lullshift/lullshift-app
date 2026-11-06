@@ -367,7 +367,8 @@ strong {
   transform: translateY(1px);
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled="true"] {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -378,7 +379,7 @@ strong {
   box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
-.btn-primary:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--accent-hover);
 }
 
@@ -2341,6 +2342,16 @@ button.session.tone-attention:hover {
   display: grid;
   gap: var(--space-1);
   margin-bottom: var(--space-2);
+}
+
+.review-publisher {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.review-publisher-label {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
 }
 
 .review-code-risk-hint {

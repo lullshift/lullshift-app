@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import type { CodeRiskStatus, InstallPreview } from "./api";
-import { CodeRiskSection, ConfirmButton } from "./ReviewDialog";
+import { CodeRiskSection, ConfirmButton, ReviewBody } from "./ReviewDialog";
 
 const preview = (over: Partial<InstallPreview> = {}): InstallPreview => ({
   token: "t",
@@ -89,16 +89,75 @@ describe("Install button", () => {
   const button = (blocked: boolean) =>
     renderToStaticMarkup(<ConfirmButton label="Install" blocked={blocked} onConfirm={() => {}} />);
 
-  it("is disabled and says why until the box is ticked", () => {
+  it("is aria-disabled, still focusable, and says why until the box is ticked", () => {
     const html = button(true);
-    expect(html).toMatch(/<button[^>]*disabled=""/);
+    expect(html).toContain('aria-disabled="true"');
+    // `disabled` would take it out of the tab order and hide the reason.
+    expect(html).not.toMatch(/\sdisabled(=|\s|>)/);
     expect(html).toContain('aria-describedby="review-code-risk-hint"');
   });
 
-  it("is enabled once ticked", () => {
+  it("is plainly enabled once ticked", () => {
     const html = button(false);
     expect(html).not.toContain("disabled");
     expect(html).not.toContain("aria-describedby");
     expect(html).toContain(">Install</button>");
+  });
+
+  it("moves focus to the consent box instead of confirming while blocked", () => {
+    const confirm = vi.fn();
+    const toBox = vi.fn();
+    const blocked = ConfirmButton({
+      label: "Install",
+      blocked: true,
+      onConfirm: confirm,
+      onBlockedClick: toBox,
+    });
+    blocked.props.onClick();
+    expect(toBox).toHaveBeenCalledTimes(1);
+    expect(confirm).not.toHaveBeenCalled();
+    const open = ConfirmButton({ label: "Install", blocked: false, onConfirm: confirm });
+    open.props.onClick();
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("review layout", () => {
+  const body = (p: InstallPreview) =>
+    renderToStaticMarkup(
+      <ReviewBody
+        preview={p}
+        update={null}
+        keepSaved={false}
+        consented={false}
+        disabled={false}
+        onKeepSaved={() => {}}
+        onConsent={() => {}}
+      />,
+    );
+
+  it("puts the warning above anything the publisher wrote and the consent box last", () => {
+    const html = body(preview({ name: "PublisherName", description: "Publisher words." }));
+    const at = (s: string) => html.indexOf(s);
+    expect(at("This is someone else")).toBeGreaterThan(-1);
+    expect(at("This is someone else")).toBeLessThan(at("PublisherName"));
+    expect(at("PublisherName")).toBeLessThan(at("Publisher words."));
+    expect(html).toContain("From the publisher");
+    expect(at("From the publisher")).toBeLessThan(at("Publisher words."));
+    // The consent box comes after the facts and the permissions.
+    expect(at("Permissions")).toBeLessThan(at('type="checkbox"'));
+    expect(at("Marketplace")).toBeLessThan(at('type="checkbox"'));
+    expect(html.match(/type="checkbox"/g)).toHaveLength(1);
+    expect(html.lastIndexOf("<li")).toBeLessThan(at('type="checkbox"'));
+  });
+
+  it("says the worst case includes reaching more of the computer", () => {
+    expect(body(preview())).toContain("use a gap in the sandbox to reach more of your computer");
+  });
+
+  it("shows no warning, label or box for a pack without a description", () => {
+    const html = body(preview({ kind: "content", thirdParty: false, codeRisk: null }));
+    expect(html).not.toContain('type="checkbox"');
+    expect(html).not.toContain("From the publisher");
   });
 });

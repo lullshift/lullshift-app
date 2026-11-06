@@ -226,6 +226,8 @@ export interface ManageItem {
   problem: ManageProblem | null;
   /** Its marketplace moved and this pinned version wasn't found at the new address. */
   sourceNote: "notFoundAtNewAddress" | null;
+  /** A third-party program whose marketplace address changed since the user accepted it. */
+  addressChanged: boolean;
 }
 
 /** The result of a confirmed change of address. */
