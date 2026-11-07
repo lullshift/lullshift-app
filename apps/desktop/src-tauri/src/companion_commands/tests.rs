@@ -564,7 +564,10 @@ fn key_never_reaches_sqlite_results_or_errors_across_a_full_flow() {
     assert!(ok.requests.lock().expect("log")[0].contains("DESKTOPSECRET"));
     assert!(!shown.contains("DESKTOPSECRET"), "results and errors");
     // The provider's reason is shown (sanitised) in the failed message, never the raw body.
-    assert!(shown.contains("said: \\\"PROVIDER-BODY\\\""), "{shown}");
+    assert!(
+        shown.contains(r#""providerReason":{"speaker":"The provider","text":"PROVIDER-BODY"}"#),
+        "{shown}"
+    );
 
     // Close the store (checkpointing the WAL), then look at every file in the data folder.
     *core.store.lock().expect("lock") = None;
@@ -945,7 +948,12 @@ fn errors_are_stored_with_fixed_messages_only() {
     let err = ms[0].error.as_ref().expect("error");
     // The echoed header is shown only with the key hidden.
     assert!(!err.message.contains("DESKTOPSECRET"), "{}", err.message);
-    assert!(err.message.contains("[hidden]"), "{}", err.message);
+    // The message stays Lullshift's fixed sentence; the provider's words are kept apart,
+    // with the key hidden, and survive in the stored row.
+    assert!(!err.message.contains("[hidden]"), "{}", err.message);
+    let said = err.provider_reason.as_ref().expect("provider words kept");
+    assert!(said.text.contains("[hidden]") && !said.text.contains("DESKTOPSECRET"));
+    assert_eq!(said.speaker, "The provider");
 }
 
 #[test]

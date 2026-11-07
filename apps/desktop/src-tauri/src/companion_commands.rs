@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ::companion::models_dev::{self, CatalogCache, CatalogModel};
-use ::companion::provider::{MAX_OUTPUT_TOKENS, TEST_OUTPUT_TOKENS};
+use ::companion::provider::TEST_OUTPUT_TOKENS;
 use ::companion::scope::{ItemFacts, Selection, SessionFacts, compose_user_content, trim_history};
 use ::companion::tools::{
     DECLINED_TEXT, LIMIT_TEXT, MAX_TOOL_CALLS, MAX_TOOL_ROUNDS, Rejection, ToolName,
@@ -27,8 +27,8 @@ use ::companion::tools::{
 };
 use ::companion::url_check::check_base_url;
 use ::companion::{
-    CancelToken, ChatMessage, CompanionError, HttpConfig, KeyStore, KeyringStore, ProviderKind,
-    ProviderSpec, RequestPlan, Role, Secret, ToolExchange, budget, chat, chat_stream,
+    CancelToken, ChatMessage, CompanionError, HttpConfig, KeyStore, KeyringStore, Learned,
+    ProviderKind, ProviderSpec, RequestPlan, Role, Secret, ToolExchange, budget, chat, chat_stream,
 };
 use local_store::{
     CompanionMessage, CompanionModel, CompanionProfile, CompanionThread, CompanionToolCall,
@@ -94,6 +94,9 @@ pub struct CompanionState {
     next_seq: AtomicU64,
     approvals: ApprovalMap,
     late_usage: Arc<Mutex<Vec<QueuedUsage>>>,
+    /// What a model refused (`reasoning`, `stream: true`), by provider and model, for this app run
+    /// only: the next send starts without it instead of failing once first.
+    hints: Mutex<HashMap<(String, String), Learned>>,
     /// The models.dev model list, in memory for this app run only (decision 32).
     pub(crate) catalog: CatalogCache,
 }
@@ -112,6 +115,7 @@ impl CompanionState {
             next_seq: AtomicU64::new(1),
             approvals: Arc::new(Mutex::new(HashMap::new())),
             late_usage: Arc::new(Mutex::new(Vec::new())),
+            hints: Mutex::new(HashMap::new()),
             catalog: CatalogCache::new(),
         }
     }
@@ -242,7 +246,19 @@ fn flush_late_usage(core: &Core) {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommandError {
     pub kind: &'static str,
+    /// Lullshift's own fixed sentence.
     pub message: String,
+    /// What the provider said about a refused request: sanitised, capped, and shown by the UI
+    /// as plain text in its own element, labelled as the provider's words.
+    #[serde(rename = "providerReason")]
+    pub provider_reason: Option<ProviderReasonDto>,
+}
+
+/// The provider's words: `speaker` ("OpenAI", "Anthropic", "The provider") and `text`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProviderReasonDto {
+    pub speaker: String,
+    pub text: String,
 }
 
 impl CommandError {
@@ -260,6 +276,10 @@ impl From<CompanionError> for CommandError {
         Self {
             kind: e.kind.as_str(),
             message: e.message,
+            provider_reason: e.reason.map(|r| ProviderReasonDto {
+                speaker: r.speaker.to_owned(),
+                text: r.text,
+            }),
         }
     }
 }
@@ -347,6 +367,8 @@ impl From<CompanionThread> for ThreadDto {
 pub struct MessageErrorDto {
     kind: String,
     message: String,
+    #[serde(rename = "providerReason")]
+    provider_reason: Option<ProviderReasonDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -373,6 +395,9 @@ pub struct MessageDto {
     tool_calls: Vec<ToolCallDto>,
     /// Calls the model made that Lullshift did not run, oldest first.
     tool_notices: Vec<ToolNoticeDto>,
+    /// The reply arrived all at once because the request was not streamed (a delivery note
+    /// only; never part of the text and never replayed).
+    not_streamed: bool,
 }
 
 /// A call that was not run: why, and the tool name only if it was a short safe identifier.
@@ -521,11 +546,20 @@ pub enum StreamEvent {
 
 impl From<CompanionMessage> for MessageDto {
     fn from(m: CompanionMessage) -> Self {
+        let provider_reason = match (m.error_reason_by, m.error_reason) {
+            (Some(speaker), Some(text)) => Some(ProviderReasonDto { speaker, text }),
+            _ => None,
+        };
         let error = match (m.error_kind, m.error_message) {
-            (Some(kind), Some(message)) => Some(MessageErrorDto { kind, message }),
+            (Some(kind), Some(message)) => Some(MessageErrorDto {
+                kind,
+                message,
+                provider_reason,
+            }),
             (Some(kind), None) => Some(MessageErrorDto {
                 kind,
                 message: String::new(),
+                provider_reason,
             }),
             _ => None,
         };
@@ -546,6 +580,7 @@ impl From<CompanionMessage> for MessageDto {
             created_at: m.created_utc,
             tool_calls: Vec::new(),
             tool_notices: Vec::new(),
+            not_streamed: m.no_stream,
         }
     }
 }
@@ -1011,14 +1046,25 @@ pub fn test_connection(core: &Core, profile_id: &str) -> Res<TestResultDto> {
         role: Role::User,
         content: "Reply with the single word: ok".to_owned(),
     }];
-    let reply = chat(
+    let reply = match chat(
         &core.companion.http,
         &p.spec,
         &p.key,
         &messages,
         TEST_OUTPUT_TOKENS,
         &CancelToken::new(),
-    )?;
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            // A call that failed after the provider worked on it still counts.
+            if let Some((i, o)) = e.usage {
+                let _ = with_store(core, |s| {
+                    s.companion_record_usage(&p.profile.id, OffsetDateTime::now_utc(), i, o)
+                });
+            }
+            return Err(e.into());
+        }
+    };
     with_store(core, |s| {
         s.companion_record_usage(
             &p.profile.id,
@@ -1447,8 +1493,37 @@ fn await_decision(
 
 fn fail_message(core: &Core, user_message: i64, e: &CompanionError) {
     let _ = with_store(core, |s| {
-        s.companion_fail_message(user_message, e.kind.as_str(), &e.message)
+        s.companion_fail_message_with(
+            user_message,
+            e.kind.as_str(),
+            &e.message,
+            e.reason.as_ref().map(|r| (r.speaker, r.text.as_str())),
+        )
     });
+}
+
+/// What this model refused earlier in this app run (OpenAI Responses `reasoning`, `stream`).
+fn hints_for(core: &Core, profile_id: &str, model: &str) -> Learned {
+    core.companion
+        .hints
+        .lock()
+        .ok()
+        .and_then(|h| h.get(&(profile_id.to_owned(), model.to_owned())).copied())
+        .unwrap_or_default()
+}
+
+/// Remembers a refusal a call just taught, for the rest of this app run. Nothing is stored.
+fn learn(core: &Core, profile_id: &str, model: &str, learned: Learned) {
+    if !(learned.reasoning_refused || learned.stream_refused) {
+        return;
+    }
+    if let Ok(mut h) = core.companion.hints.lock() {
+        let e = h
+            .entry((profile_id.to_owned(), model.to_owned()))
+            .or_default();
+        e.reasoning_refused |= learned.reasoning_refused;
+        e.stream_refused |= learned.stream_refused;
+    }
 }
 
 struct Turn<'a> {
@@ -1613,6 +1688,8 @@ fn deliver(
     let mut calls_used = 0usize;
     let (mut total_in, mut total_out) = (0i64, 0i64);
     let mut round_no: u32 = 0;
+    // Any call of this message arrived all at once (shown as a note next to the reply).
+    let mut not_streamed = false;
     let err: CompanionError = loop {
         round_no += 1;
         if round_no > 1 {
@@ -1625,12 +1702,15 @@ fn deliver(
             });
         }
         let offer = tools_on && rounds.len() < MAX_TOOL_ROUNDS && calls_used < MAX_TOOL_CALLS;
+        let kind = prepared.spec.kind;
+        let hint = hints_for(core, &prepared.profile.id, &prepared.model);
         let plan = RequestPlan {
             messages: &messages,
             rounds: &rounds,
             tools: offer,
-            stream: true,
-            max_output_tokens: MAX_OUTPUT_TOKENS,
+            stream: !hint.stream_refused,
+            reasoning: kind == ProviderKind::OpenAi && !hint.reasoning_refused,
+            max_output_tokens: kind.chat_output_cap(),
         };
         let queue = Arc::clone(&core.companion.late_usage);
         let profile_id = prepared.profile.id.clone();
@@ -1659,6 +1739,7 @@ fn deliver(
         );
         match result {
             Err(f) => {
+                learn(core, &prepared.profile.id, &prepared.model, f.learned);
                 // Zero for a call the worker will book itself (cancelled or silent) or one that
                 // never produced bytes; otherwise the provider's numbers or an estimate that
                 // includes the partial reply.
@@ -1666,6 +1747,8 @@ fn deliver(
                 break f.error;
             }
             Ok(reply) => {
+                learn(core, &prepared.profile.id, &prepared.model, reply.learned);
+                not_streamed |= !reply.streamed;
                 // A cancel that raced the end of the stream: discard the reply, keep the cost.
                 if guard.token().is_cancelled() {
                     book(
@@ -1692,14 +1775,13 @@ fn deliver(
                     // the store lock: a cancel that came after the check above, followed by a
                     // newer message, can no longer let this reply land after that message.
                     let done = with_store(core, |s| {
-                        s.companion_complete_send_if(
+                        s.companion_complete_send_flagged(
                             user_message,
                             &reply.text,
-                            total_in,
-                            total_out,
-                            reply.input_tokens,
-                            reply.output_tokens,
+                            (total_in, total_out),
+                            (reply.input_tokens, reply.output_tokens),
                             OffsetDateTime::now_utc(),
+                            not_streamed,
                             &|| !guard.token().is_cancelled(),
                         )
                     });

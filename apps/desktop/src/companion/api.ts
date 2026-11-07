@@ -29,6 +29,7 @@ export type ErrorKind =
 export interface CommandError {
   kind: ErrorKind;
   message: string;
+  providerReason?: ProviderReason | null;
 }
 
 export const ERROR_KINDS: readonly ErrorKind[] = [
@@ -109,9 +110,17 @@ export interface ContextPreview {
   sha256: string | null;
 }
 
+/** What the provider itself said about a refused request, apart from Lullshift's sentence. */
+export interface ProviderReason {
+  /** "OpenAI", "Anthropic" or "The provider". */
+  speaker: string;
+  text: string;
+}
+
 export interface MessageError {
   kind: string;
   message: string;
+  providerReason?: ProviderReason | null;
 }
 
 export interface Message {
@@ -137,6 +146,8 @@ export interface Message {
   toolCalls: ToolCallRecord[];
   /** Lookups the model asked for that Lullshift did not run, oldest first. */
   toolNotices: ToolNoticeRecord[];
+  /** A reply that arrived all at once because the request was not streamed. */
+  notStreamed?: boolean;
 }
 
 export type ToolNoticeReason = "unknown" | "malformed" | "limit";
@@ -224,6 +235,14 @@ export interface Usage {
   budget: number | null;
 }
 
+/** The provider's words from an error, or null: two strings, cut to the sizes the core sends. */
+export function toProviderReason(v: unknown): ProviderReason | null {
+  if (!v || typeof v !== "object") return null;
+  const r = v as { speaker?: unknown; text?: unknown };
+  if (typeof r.speaker !== "string" || typeof r.text !== "string" || !r.text.trim()) return null;
+  return { speaker: r.speaker.slice(0, 24), text: r.text.slice(0, 300) };
+}
+
 /** Turns whatever `invoke` rejected with into a `CommandError`. Never throws, never echoes input. */
 export function toCommandError(err: unknown): CommandError {
   if (err && typeof err === "object" && "kind" in err) {
@@ -232,6 +251,7 @@ export function toCommandError(err: unknown): CommandError {
       return {
         kind: e.kind as ErrorKind,
         message: typeof e.message === "string" ? e.message.slice(0, 300) : "",
+        providerReason: toProviderReason((err as { providerReason?: unknown }).providerReason),
       };
     }
   }

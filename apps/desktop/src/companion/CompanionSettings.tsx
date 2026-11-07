@@ -21,6 +21,7 @@ import {
   toCommandError,
   type CompanionPrefs,
   type ProfileInput,
+  type ProviderReason,
   type ProviderKind,
   type ProviderProfile,
   type Usage,
@@ -46,10 +47,16 @@ import {
 } from "./logic";
 import { modelIdProblem, modelsOf } from "./modelChoice";
 import { ModelPickerDialog } from "./ModelPicker";
+import { ProviderSaid } from "./ProviderSaid";
 import "./companion.css";
 
 type Editing = { mode: "new" } | { mode: "edit"; id: string } | null;
-type Notice = { tone: "success" | "danger" | "info"; text: string };
+type Notice = {
+  tone: "success" | "danger" | "info";
+  text: string;
+  /** What the provider said, shown apart from Lullshift's sentence. */
+  reason?: ProviderReason | null;
+};
 type Boot =
   | { status: "loading" }
   | { status: "ready" }
@@ -446,7 +453,8 @@ function KeyPanel({
       const r = await companionTest(profile.id);
       setResult(`Connected to ${profile.host}. It answered using ${r.model}.`);
     } catch (err) {
-      say({ tone: "danger", text: errorText(toCommandError(err), profile.host) });
+      const e = toCommandError(err);
+      say({ tone: "danger", text: errorText(e, profile.host), reason: e.providerReason });
     } finally {
       setBusy(null);
     }
@@ -689,7 +697,12 @@ export function CompanionSettings() {
   return (
     <div className="companion-settings">
       <div role="status" aria-live="polite">
-        {notice && <Banner tone={notice.tone}>{notice.text}</Banner>}
+        {notice && (
+          <Banner tone={notice.tone}>
+            {notice.text}
+            <ProviderSaid reason={notice.reason} />
+          </Banner>
+        )}
       </div>
       {keychainDown && <Banner tone="attention">{KEYCHAIN_MISSING_TEXT}</Banner>}
 

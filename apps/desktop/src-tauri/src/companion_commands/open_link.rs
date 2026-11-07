@@ -62,6 +62,7 @@ pub fn open(raw: &str) -> Res<()> {
     tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|_| CommandError {
         kind: "internal",
         message: "The browser couldn't be opened. Copy the address instead.".to_owned(),
+        provider_reason: None,
     })
 }
 

@@ -911,3 +911,16 @@
 .settings-disclosure-desc {
   margin: 0;
 }
+
+/* The provider's own words after a refusal: set apart from Lullshift's sentence, plain text. */
+.provider-said {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.provider-said-by {
+  font-weight: 600;
+}
+.provider-said-text {
+  font-style: normal;
+}

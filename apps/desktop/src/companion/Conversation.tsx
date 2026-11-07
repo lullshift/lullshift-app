@@ -19,6 +19,7 @@ import {
 import { Composer, type SendResult } from "./Composer";
 import { acknowledge, runRequest, useIsWatching, useThreadInflight } from "./inflight";
 import { answerBadgeText, effectiveChoice, retryChoice, type ModelChoice } from "./modelChoice";
+import { NotStreamedNote, ProviderSaid } from "./ProviderSaid";
 import { ReplyText } from "./ReplyText";
 import {
   CONTEXT_CHANGED_NOTE,
@@ -95,6 +96,7 @@ function MessageItem({
           {answerBadgeText(message, profiles)}
         </p>
       )}
+      {!mine && <NotStreamedNote show={message.notStreamed} />}
       {mine && message.attachedContext !== null && message.scopeKind !== "none" && (
         <details className="msg-shared">
           <summary>{sharedLabel(message.scopeKind, host)}</summary>
@@ -121,6 +123,7 @@ function MessageItem({
             {failed && message.error
               ? errorText(message.error, host)
               : "This message may not have reached the provider."}
+            {failed && message.error && <ProviderSaid reason={message.error.providerReason} />}
             {failed && message.error && needsSettings(message.error.kind) && (
               <>
                 {" "}
@@ -493,6 +496,7 @@ export function Conversation({
       {problem && (
         <Banner tone="danger">
           <strong>Not sent.</strong> {errorText(problem, host)}
+          <ProviderSaid reason={problem.providerReason} />
           {needsSettings(problem.kind) && (
             <>
               {" "}
