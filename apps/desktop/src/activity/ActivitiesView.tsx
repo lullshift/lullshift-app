@@ -99,6 +99,7 @@ export default function ActivitiesView({
   const [running, setRunning] = useState<{ activity: ActivityInfo; nonce: number } | null>(null);
   const runningRef = useRef(running);
   const launches = useRef(0);
+  const beginSeq = useRef(0);
   const controlRef = useRef<HostControl | null>(null);
   // False while the list is showing over a paused (or pausing) launch, after a sidebar click.
   const [hostVisible, setHostVisible] = useState(true);
@@ -129,13 +130,22 @@ export default function ActivitiesView({
   const begin = useCallback(async (a: ActivityInfo) => {
     setMessage(null);
     setManage(null);
+    // Only the latest click counts: a second click while the first waits for a pause wins.
+    const seq = (beginSeq.current += 1);
     const current = runningRef.current;
     if (current && current.activity.id === a.id) {
       setHostVisible(true);
       controlRef.current?.resume();
       return;
     }
-    if (current) await controlRef.current?.pauseNow();
+    if (current) {
+      try {
+        await controlRef.current?.pauseNow();
+      } catch {
+        // A pause that fails must not leave the new activity unable to start.
+      }
+      if (seq !== beginSeq.current) return;
+    }
     launches.current += 1;
     const next = { activity: a, nonce: launches.current };
     runningRef.current = next;

@@ -35,6 +35,9 @@ pub struct WaitEvent {
     pub provider: String,
     pub session: String,
     pub kind: String,
+    /// `metadata.source` of a `session_started` event (an enum word such as startup, resume
+    /// or compact), if it has one.
+    pub source: Option<String>,
     pub at: OffsetDateTime,
 }
 
@@ -50,6 +53,15 @@ pub fn fold_stretches(events: &[(String, OffsetDateTime)], max_gap: Duration) ->
     for (kind, ts) in events {
         match kind.as_str() {
             "session_started" => open = None,
+            // Same session carried on (compact, resume): not a restart, so nothing resets.
+            "session_continued" => {}
+            // Proof of life: refreshes the stretch's last-seen time, never opens one, so a long
+            // tool call with heartbeats is not mistaken for idle time.
+            "heartbeat" => {
+                if let Some((start, _)) = open {
+                    open = Some((start, *ts));
+                }
+            }
             "working" => {
                 open = match open {
                     Some((start, last)) if *ts - last <= max_gap => Some((start, *ts)),
@@ -71,6 +83,15 @@ pub fn fold_stretches(events: &[(String, OffsetDateTime)], max_gap: Duration) ->
     out
 }
 
+/// A `session_started` that only continues the same session (resume, compact) must not
+/// reset a stretch.
+fn kind_for_fold(e: &WaitEvent) -> String {
+    match (e.kind.as_str(), e.source.as_deref()) {
+        ("session_started", Some("resume" | "compact")) => "session_continued".to_owned(),
+        _ => e.kind.clone(),
+    }
+}
+
 /// Finished stretches from events grouped by session (any order across sessions, oldest first
 /// within one). Pure, so it can run after the store lock is released.
 pub fn stretches_from_events(events: &[WaitEvent], max_gap: Duration) -> Vec<WorkStretch> {
@@ -79,7 +100,7 @@ pub fn stretches_from_events(events: &[WaitEvent], max_gap: Duration) -> Vec<Wor
         by_session
             .entry((&e.provider, &e.session))
             .or_default()
-            .push((e.kind.clone(), e.at));
+            .push((kind_for_fold(e), e.at));
     }
     let mut out = Vec::new();
     for ((provider, _), list) in by_session {
@@ -165,16 +186,16 @@ impl Store {
         Ok(found)
     }
 
-    /// Working-related events received at or after `since` (no heartbeats), read-only. Only the
-    /// window is scanned. Hand the result to [`stretches_from_events`] after releasing the lock.
+    /// Working-related events received at or after `since`, read-only. Heartbeats are included
+    /// (they only keep a stretch alive). Only the window is scanned. Hand the result to [`stretches_from_events`] after releasing the lock.
     pub fn wait_events(&self, since: OffsetDateTime) -> Result<Vec<WaitEvent>> {
         let Some(first) = self.first_seq_since(since)? else {
             return Ok(Vec::new());
         };
         let mut stmt = self.conn.prepare(
-            "SELECT provider, provider_session_id, event_type, timestamp_utc FROM events
-             WHERE receipt_seq >= ?1 AND event_type <> 'heartbeat'
-               AND unixepoch(received_utc) >= unixepoch(?2)
+            "SELECT provider, provider_session_id, event_type, timestamp_utc,
+                    json_extract(event_json, '$.metadata.source') FROM events
+             WHERE receipt_seq >= ?1 AND unixepoch(received_utc) >= unixepoch(?2)
              ORDER BY receipt_seq",
         )?;
         let rows = stmt.query_map(params![first, fmt_ts(since)?], |r| {
@@ -183,14 +204,16 @@ impl Store {
                 r.get::<_, String>(1)?,
                 r.get::<_, String>(2)?,
                 r.get::<_, String>(3)?,
+                r.get::<_, Option<String>>(4)?,
             ))
         })?;
         rows.map(|r| {
-            let (provider, session, kind, ts) = r?;
+            let (provider, session, kind, ts, source) = r?;
             Ok(WaitEvent {
                 provider,
                 session,
                 kind,
+                source,
                 at: parse_ts(&ts)?,
             })
         })
@@ -241,6 +264,48 @@ mod tests {
             ),
             vec![660]
         );
+    }
+
+    #[test]
+    fn heartbeats_keep_a_long_stretch_alive_but_never_open_one() {
+        // A 25 minute tool call: working, then heartbeats every 5 minutes, then the turn ends.
+        let mut events = vec![ev("working", 0)];
+        events.extend([5, 10, 15, 20, 24].map(|m| ev("heartbeat", m)));
+        events.push(ev("turn_ended", 25));
+        assert_eq!(fold_stretches(&events, GAP), vec![1500]);
+        // Heartbeats alone open nothing.
+        let alone = [ev("heartbeat", 0), ev("heartbeat", 5), ev("turn_ended", 6)];
+        assert!(fold_stretches(&alone, GAP).is_empty());
+        // Heartbeats do not hide a real hour of silence before the end.
+        let silent = [ev("working", 0), ev("turn_ended", 62)];
+        assert!(fold_stretches(&silent, GAP).is_empty());
+    }
+
+    #[test]
+    fn a_resumed_or_compacted_session_start_does_not_reset_a_stretch() {
+        let e = |kind: &str, source: Option<&str>, min: i64| WaitEvent {
+            provider: "claude-code".to_owned(),
+            session: "s".to_owned(),
+            kind: kind.to_owned(),
+            source: source.map(str::to_owned),
+            at: at(min),
+        };
+        let stretch = |source: Option<&str>| {
+            let events = [
+                e("working", None, 0),
+                e("session_started", source, 2),
+                e("turn_ended", None, 4),
+            ];
+            stretches_from_events(&events, GAP)
+                .iter()
+                .map(|s| s.seconds)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(stretch(Some("compact")), vec![240]);
+        assert_eq!(stretch(Some("resume")), vec![240]);
+        // A real start (or no source) resets the stretch.
+        assert!(stretch(Some("startup")).is_empty());
+        assert!(stretch(None).is_empty());
     }
 
     #[test]
@@ -312,15 +377,13 @@ mod tests {
     }
 
     #[test]
-    fn stretches_come_from_stored_events_per_session_without_heartbeats() {
+    fn stretches_come_from_stored_events_per_session() {
         let mut store = Store::open_in_memory().expect("store");
         send(&mut store, 1, "a", "working", 0, 0);
         send(&mut store, 2, "b", "working", 1, 1);
         send(&mut store, 3, "a", "heartbeat", 2, 2);
         send(&mut store, 4, "a", "turn_ended", 4, 4);
         send(&mut store, 5, "b", "completed", 3, 3);
-        let events = store.wait_events(at(-10)).expect("events");
-        assert!(events.iter().all(|e| e.kind != "heartbeat"));
         assert_eq!(secs(&store, at(-10)), vec![120, 240]);
         assert!(store.wait_events(at(100)).expect("none").is_empty());
         let empty = Store::open_in_memory().expect("empty");
