@@ -329,17 +329,80 @@ fn clean_title(t: &str) -> Result<String> {
 /// The longest a title taken from a first message gets, before the ellipsis.
 const AUTO_TITLE_CHARS: usize = 48;
 
+/// Control characters and the invisible formatting characters the rest of the app refuses
+/// (bidi controls, zero-width characters, fillers such as U+3164, tag characters).
 fn is_invisible(c: char) -> bool {
-    c.is_control()
+    agent_core::text::is_invisible(c) || c.is_control()
+}
+
+const ZWJ: char = '\u{200D}';
+
+fn is_regional_indicator(c: char) -> bool {
+    matches!(c, '\u{1F1E6}'..='\u{1F1FF}')
+}
+
+/// True for a character that continues the cluster before it: combining marks (an approximation
+/// of general category M for the common scripts, without a Unicode table dependency), variation
+/// selectors, emoji skin-tone modifiers and the zero-width joiner.
+fn extends_cluster(c: char) -> bool {
+    c == ZWJ
         || matches!(
             c,
-            '\u{00AD}'
-                | '\u{200B}'..='\u{200F}'
-                | '\u{202A}'..='\u{202E}'
-                | '\u{2060}'..='\u{2064}'
-                | '\u{2066}'..='\u{2069}'
-                | '\u{FEFF}'
+            '\u{0300}'..='\u{036F}'
+                | '\u{0483}'..='\u{0489}'
+                | '\u{0591}'..='\u{05BD}'
+                | '\u{05BF}'
+                | '\u{05C1}'..='\u{05C2}'
+                | '\u{05C4}'..='\u{05C5}'
+                | '\u{05C7}'
+                | '\u{0610}'..='\u{061A}'
+                | '\u{064B}'..='\u{065F}'
+                | '\u{0670}'
+                | '\u{06D6}'..='\u{06DC}'
+                | '\u{06DF}'..='\u{06E4}'
+                | '\u{06E7}'..='\u{06E8}'
+                | '\u{06EA}'..='\u{06ED}'
+                | '\u{0900}'..='\u{0903}'
+                | '\u{093A}'..='\u{094F}'
+                | '\u{0E31}'
+                | '\u{0E34}'..='\u{0E3A}'
+                | '\u{0E47}'..='\u{0E4E}'
+                | '\u{1AB0}'..='\u{1AFF}'
+                | '\u{1DC0}'..='\u{1DFF}'
+                | '\u{20D0}'..='\u{20FF}'
+                | '\u{302A}'..='\u{302F}'
+                | '\u{3099}'..='\u{309A}'
+                | '\u{FE00}'..='\u{FE0F}'
+                | '\u{FE20}'..='\u{FE2F}'
+                | '\u{1F3FB}'..='\u{1F3FF}'
+                | '\u{E0100}'..='\u{E01EF}'
         )
+}
+
+/// Moves a cut point back so it doesn't fall inside a cluster: not before a combining mark,
+/// variation selector, emoji modifier or joiner, not right after a joiner, and not between the
+/// two halves of a flag (or after a lone regional indicator).
+fn cluster_safe_cut(chars: &[char], mut end: usize) -> usize {
+    loop {
+        let before = end;
+        while end > 1 && end < chars.len() && extends_cluster(chars[end]) {
+            end -= 1;
+        }
+        while end > 1 && chars[end - 1] == ZWJ {
+            end -= 1;
+        }
+        let run = chars[..end]
+            .iter()
+            .rev()
+            .take_while(|c| is_regional_indicator(**c))
+            .count();
+        if run % 2 == 1 && end > 1 {
+            end -= 1;
+        }
+        if end == before {
+            return end;
+        }
+    }
 }
 
 /// A thread title made from its first message: whitespace collapsed, invisible and control
@@ -377,6 +440,7 @@ pub fn title_from_message(text: &str) -> Option<String> {
             .rposition(|c| *c == ' ')
             .unwrap_or(AUTO_TITLE_CHARS)
     };
+    let end = cluster_safe_cut(&chars, end);
     let mut title: String = chars[..end].iter().collect();
     title.truncate(title.trim_end().len());
     title.push('…');
@@ -755,6 +819,9 @@ impl Store {
         )?;
         // The first message names a thread that still has the default title. A title the user
         // changed is never touched; the title is a local label and goes nowhere.
+        // Known edge, kept on purpose (no migration, no extra column): a thread the user renamed
+        // to exactly "New conversation" is indistinguishable from an untouched one, so its first
+        // message still names it. Pinned by a test in tests/companion_titles.rs.
         let user_messages: i64 = tx.query_row(
             "SELECT count(*) FROM companion_messages WHERE thread_id = ?1 AND role = 'user'",
             [m.thread_id],

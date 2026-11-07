@@ -103,3 +103,69 @@ fn titles_are_cut_on_a_word_boundary_with_an_ellipsis() {
     // Characters are counted, not bytes.
     assert_eq!(t(&"é".repeat(60)).expect("title").chars().count(), 49);
 }
+
+#[test]
+fn fillers_and_tag_characters_are_not_visible_text() {
+    // U+3164 (Hangul filler), U+061C (Arabic letter mark) and tag characters draw nothing.
+    assert_eq!(title_from_message("\u{3164}"), None);
+    assert_eq!(title_from_message("\u{3164}\u{3164} \u{061C}"), None);
+    assert_eq!(title_from_message("\u{E0041}\u{E0042}"), None);
+    assert_eq!(
+        title_from_message("a\u{E0041}\u{3164}b").as_deref(),
+        Some("ab")
+    );
+
+    let mut s = store_with_profile();
+    let t = s.companion_new_thread(None, T0).expect("thread");
+    s.companion_add_user_message(&msg(t.id, "\u{3164}"), T0)
+        .expect("first");
+    assert_eq!(title(&s, t.id), local_store::DEFAULT_THREAD_TITLE);
+}
+
+#[test]
+fn a_cut_never_splits_a_cluster() {
+    let t = title_from_message;
+    // 47 letters, then "e" + combining acute exactly at the limit, then more text.
+    let accent = format!("{}e\u{0301}fghij klm", "a".repeat(47));
+    let cut = t(&accent).expect("title");
+    assert_eq!(cut, format!("{}…", "a".repeat(47)));
+    assert!(!cut.contains('\u{0301}'));
+    // The cluster fits whole when the limit allows it.
+    let fits = format!("{}e\u{0301}", "a".repeat(46));
+    assert_eq!(t(&fits).as_deref(), Some(fits.as_str()));
+    // Skin tone modifier, variation selector and joiner stay with their base.
+    let tone = format!("{}\u{1F44D}\u{1F3FD}xyz", "a".repeat(47));
+    assert_eq!(t(&tone).expect("title"), format!("{}…", "a".repeat(47)));
+    let vs = format!("{}\u{2764}\u{FE0F}xyz", "a".repeat(47));
+    assert_eq!(t(&vs).expect("title"), format!("{}…", "a".repeat(47)));
+    // The joiner is an invisible character and is removed before the cut, so the two emoji
+    // are separate characters by then; the cut never ends on a joiner.
+    let zwj = format!("{}\u{1F468}\u{200D}\u{1F469}xyz", "a".repeat(47));
+    assert_eq!(
+        t(&zwj).expect("title"),
+        format!("{}\u{1F468}…", "a".repeat(47))
+    );
+    // A flag (two regional indicators) is kept whole or dropped whole.
+    let flag = format!("{}\u{1F1E9}\u{1F1EA}xyz", "a".repeat(47));
+    assert_eq!(t(&flag).expect("title"), format!("{}…", "a".repeat(47)));
+    let flag_inside = format!("{}\u{1F1E9}\u{1F1EA}xyz", "a".repeat(46));
+    assert_eq!(
+        t(&flag_inside).expect("title"),
+        format!("{}\u{1F1E9}\u{1F1EA}…", "a".repeat(46))
+    );
+    // A lone indicator at the end of the cut is dropped too.
+    let lone = format!("{}\u{1F1E9}xyz1234", "a".repeat(47));
+    assert_eq!(t(&lone).expect("title"), format!("{}…", "a".repeat(47)));
+}
+
+#[test]
+fn renaming_to_the_default_title_still_lets_the_first_message_name_the_thread() {
+    // Known edge, kept on purpose: a renamed "New conversation" looks like an untouched thread.
+    let mut s = store_with_profile();
+    let t = s.companion_new_thread(None, T0).expect("thread");
+    s.companion_rename_thread(t.id, local_store::DEFAULT_THREAD_TITLE)
+        .expect("rename");
+    s.companion_add_user_message(&msg(t.id, "hello there"), T0)
+        .expect("first");
+    assert_eq!(title(&s, t.id), "hello there");
+}
