@@ -50,7 +50,9 @@ export function DockSplitter({ value, stageWidth, onPreview, onCommit }: Props) 
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize the session panel"
+      aria-controls="session-detail"
       aria-valuenow={value}
+      aria-valuetext={`Panel width ${value} pixels`}
       aria-valuemin={DOCK_MIN_PX}
       aria-valuemax={dockMax(stageWidth)}
       tabIndex={0}

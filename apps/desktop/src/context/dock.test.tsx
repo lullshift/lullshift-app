@@ -92,6 +92,8 @@ describe("DockSplitter", () => {
     expect(sep().getAttribute("aria-valuenow")).toBe("400");
     expect(sep().getAttribute("aria-valuemin")).toBe("320");
     expect(sep().getAttribute("aria-valuemax")).toBe("600");
+    expect(sep().getAttribute("aria-valuetext")).toBe("Panel width 400 pixels");
+    expect(sep().getAttribute("aria-controls")).toBe("session-detail");
   });
 
   it("saves the new width for arrow keys, Home and End", () => {
