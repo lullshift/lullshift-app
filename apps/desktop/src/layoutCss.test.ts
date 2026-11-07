@@ -10,6 +10,17 @@ function rule(selector: string): string {
   return css.slice(start, css.indexOf("}", start));
 }
 
+const companionCss = readFileSync(new URL("./companion/companion.css", import.meta.url), "utf8");
+
+describe("model picker layout", () => {
+  it("fits the dialog: no minimum width beyond it, up to 640px wide, no sideways scroll", () => {
+    const picker = companionCss.slice(companionCss.indexOf("\n.picker {"));
+    expect(picker.slice(0, picker.indexOf("}"))).toContain("min-width: 0");
+    expect(companionCss).toContain(".dialog:has(.picker) {\n  width: min(640px");
+    expect(companionCss).toContain("overflow-x: hidden");
+  });
+});
+
 describe("detail panel layout", () => {
   it("keeps the scrolling grid to the panel width and never scrolls sideways", () => {
     const r = rule(".detail-scroll");

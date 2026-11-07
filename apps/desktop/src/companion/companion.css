@@ -841,10 +841,64 @@
   font-size: var(--text-xs);
 }
 
+/* The picker dialog is wider than a plain dialog, never wider than the window, and nothing in it
+   scrolls sideways: filters wrap, and a long model id is cut with an ellipsis. */
+.dialog:has(.picker) {
+  width: min(640px, calc(100vw - 32px));
+  overflow-x: hidden;
+}
+
 .picker {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
-  min-width: min(40rem, 80vw);
+  min-width: 0;
+}
+
+.picker .catalog-filters {
+  gap: var(--space-2) var(--space-4);
+}
+
+.picker .catalog-search {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.picker .catalog-sort {
+  min-width: 0;
+}
+
+.picker .check-row {
+  flex: 0 0 auto;
+  min-height: 32px;
+}
+
+.picker .catalog-list {
+  overflow-x: hidden;
+}
+
+/* One line: name, then the id; the facts wrap on the line below. */
+.catalog-model-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.catalog-model-line .catalog-model-name {
+  flex: 0 1 auto;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-model-line .catalog-model-id {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .picker-typed {

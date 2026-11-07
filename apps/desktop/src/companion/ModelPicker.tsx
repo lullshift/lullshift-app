@@ -222,12 +222,14 @@ export function CatalogModelList({
                 onMouseEnter={() => onActive?.(i)}
                 onClick={() => onChoose(m)}
               >
-                {m.name !== null && (
-                  <>
-                    <span className="catalog-model-name">{m.name}</span>{" "}
-                  </>
-                )}
-                <code className="catalog-model-id">{m.id}</code>
+                <span className="catalog-model-line">
+                  {m.name !== null && (
+                    <>
+                      <span className="catalog-model-name">{m.name}</span>{" "}
+                    </>
+                  )}
+                  <code className="catalog-model-id">{m.id}</code>
+                </span>
                 <span className="catalog-model-facts">{modelFacts(m)}</span>
               </li>
             );
