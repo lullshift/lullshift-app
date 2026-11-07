@@ -4,8 +4,8 @@
 
 use std::collections::BTreeMap;
 
-use rusqlite::params;
-use time::OffsetDateTime;
+use rusqlite::{OptionalExtension, params};
+use time::{Duration, OffsetDateTime};
 
 use crate::{Result, Store, fmt_ts, parse_ts};
 
@@ -29,27 +29,65 @@ pub struct WaitEstimate {
     pub stretches: usize,
 }
 
+/// One stored event, reduced to what a stretch needs. Holds no task text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WaitEvent {
+    pub provider: String,
+    pub session: String,
+    pub kind: String,
+    pub at: OffsetDateTime,
+}
+
 /// Folds one session's events (oldest first) into finished stretches. A stretch starts at
 /// `working` and ends at the first needs-you, turn-ended, completed, failed, cancelled or
-/// session-ended event. Heartbeats and session starts say nothing about work and are ignored.
-pub fn fold_stretches(events: &[(String, OffsetDateTime)]) -> Vec<i64> {
+/// session-ended event. A `session_started` event resets it. If more than `max_gap` passes
+/// between two events of a stretch (the agent went quiet and the app would call it stale), the
+/// stretch is dropped and a new one starts at the next `working`, so idle time is never counted.
+pub fn fold_stretches(events: &[(String, OffsetDateTime)], max_gap: Duration) -> Vec<i64> {
     let mut out = Vec::new();
-    let mut started: Option<OffsetDateTime> = None;
+    // Start of the stretch, and the last event seen inside it.
+    let mut open: Option<(OffsetDateTime, OffsetDateTime)> = None;
     for (kind, ts) in events {
         match kind.as_str() {
+            "session_started" => open = None,
             "working" => {
-                started.get_or_insert(*ts);
+                open = match open {
+                    Some((start, last)) if *ts - last <= max_gap => Some((start, *ts)),
+                    _ => Some((*ts, *ts)),
+                };
             }
             "needs_attention" | "turn_ended" | "completed" | "failed" | "cancelled"
             | "session_ended" => {
-                if let Some(start) = started.take() {
+                if let Some((start, last)) = open.take() {
                     let secs = (*ts - start).whole_seconds();
-                    if secs > 0 && secs <= MAX_STRETCH_SECONDS {
+                    if *ts - last <= max_gap && secs > 0 && secs <= MAX_STRETCH_SECONDS {
                         out.push(secs);
                     }
                 }
             }
             _ => {}
+        }
+    }
+    out
+}
+
+/// Finished stretches from events grouped by session (any order across sessions, oldest first
+/// within one). Pure, so it can run after the store lock is released.
+pub fn stretches_from_events(events: &[WaitEvent], max_gap: Duration) -> Vec<WorkStretch> {
+    let mut by_session: BTreeMap<(&str, &str), Vec<(String, OffsetDateTime)>> = BTreeMap::new();
+    for e in events {
+        by_session
+            .entry((&e.provider, &e.session))
+            .or_default()
+            .push((e.kind.clone(), e.at));
+    }
+    let mut out = Vec::new();
+    for ((provider, _), list) in by_session {
+        for seconds in fold_stretches(&list, max_gap) {
+            out.push(WorkStretch {
+                provider: provider.to_owned(),
+                seconds,
+            });
         }
     }
     out
@@ -81,29 +119,65 @@ pub fn estimates(stretches: &[WorkStretch]) -> Vec<WaitEstimate> {
         .collect()
 }
 
-type Batch = Vec<(String, OffsetDateTime)>;
-
-fn flush(key: &Option<(String, String)>, batch: &mut Batch, out: &mut Vec<WorkStretch>) {
-    if let Some((provider, _)) = key {
-        for seconds in fold_stretches(batch) {
-            out.push(WorkStretch {
-                provider: provider.clone(),
-                seconds,
-            });
-        }
-    }
-    batch.clear();
-}
-
 impl Store {
-    /// Finished working stretches of events received at or after `since`, read-only.
-    pub fn working_stretches(&self, since: OffsetDateTime) -> Result<Vec<WorkStretch>> {
+    /// The first `receipt_seq` received at or after `since`, found by binary search (receipts
+    /// are written in time order), so only the window is scanned. None if there is none.
+    fn first_seq_since(&self, since: OffsetDateTime) -> Result<Option<i64>> {
+        let bounds: Option<(i64, i64)> = self
+            .conn
+            .query_row(
+                "SELECT MIN(receipt_seq), MAX(receipt_seq) FROM events",
+                [],
+                |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, Option<i64>>(1)?)),
+            )
+            .map(|(lo, hi)| lo.zip(hi))?;
+        let Some((mut lo, mut hi)) = bounds else {
+            return Ok(None);
+        };
+        let received_at = |seq: i64| -> Result<Option<(i64, OffsetDateTime)>> {
+            let row: Option<(i64, String)> = self
+                .conn
+                .query_row(
+                    "SELECT receipt_seq, received_utc FROM events WHERE receipt_seq >= ?1
+                     ORDER BY receipt_seq LIMIT 1",
+                    [seq],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            row.map(|(s, t)| Ok((s, parse_ts(&t)?))).transpose()
+        };
+        // Smallest seq whose receipt time is not before `since`.
+        let mut found = None;
+        while lo <= hi {
+            let mid = lo + (hi - lo) / 2;
+            match received_at(mid)? {
+                None => hi = mid - 1,
+                Some((seq, t)) => {
+                    if t >= since {
+                        found = Some(seq);
+                        hi = mid - 1;
+                    } else {
+                        lo = seq + 1;
+                    }
+                }
+            }
+        }
+        Ok(found)
+    }
+
+    /// Working-related events received at or after `since` (no heartbeats), read-only. Only the
+    /// window is scanned. Hand the result to [`stretches_from_events`] after releasing the lock.
+    pub fn wait_events(&self, since: OffsetDateTime) -> Result<Vec<WaitEvent>> {
+        let Some(first) = self.first_seq_since(since)? else {
+            return Ok(Vec::new());
+        };
         let mut stmt = self.conn.prepare(
             "SELECT provider, provider_session_id, event_type, timestamp_utc FROM events
-             WHERE unixepoch(received_utc) >= unixepoch(?1)
-             ORDER BY provider, provider_session_id, receipt_seq",
+             WHERE receipt_seq >= ?1 AND event_type <> 'heartbeat'
+               AND unixepoch(received_utc) >= unixepoch(?2)
+             ORDER BY receipt_seq",
         )?;
-        let rows = stmt.query_map(params![fmt_ts(since)?], |r| {
+        let rows = stmt.query_map(params![first, fmt_ts(since)?], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
@@ -111,20 +185,16 @@ impl Store {
                 r.get::<_, String>(3)?,
             ))
         })?;
-        let mut out = Vec::new();
-        let mut key: Option<(String, String)> = None;
-        let mut batch: Batch = Vec::new();
-        for row in rows {
-            let (provider, session, kind, ts) = row?;
-            let next = (provider, session);
-            if key.as_ref() != Some(&next) {
-                flush(&key, &mut batch, &mut out);
-                key = Some(next);
-            }
-            batch.push((kind, parse_ts(&ts)?));
-        }
-        flush(&key, &mut batch, &mut out);
-        Ok(out)
+        rows.map(|r| {
+            let (provider, session, kind, ts) = r?;
+            Ok(WaitEvent {
+                provider,
+                session,
+                kind,
+                at: parse_ts(&ts)?,
+            })
+        })
+        .collect()
     }
 }
 
@@ -133,8 +203,10 @@ mod tests {
     use super::*;
     use time::macros::datetime;
 
+    const GAP: Duration = Duration::seconds(600);
+
     fn at(min: i64) -> OffsetDateTime {
-        datetime!(2026-11-05 10:00:00 UTC) + time::Duration::minutes(min)
+        datetime!(2026-11-05 10:00:00 UTC) + Duration::minutes(min)
     }
     fn ev(kind: &str, min: i64) -> (String, OffsetDateTime) {
         (kind.to_owned(), at(min))
@@ -151,14 +223,43 @@ mod tests {
             ev("working", 8),
             ev("turn_ended", 10),
         ];
-        assert_eq!(fold_stretches(&events), vec![360, 120]);
+        assert_eq!(fold_stretches(&events, GAP), vec![360, 120]);
+    }
+
+    #[test]
+    fn idle_time_without_an_end_event_is_never_counted() {
+        // Working at 0, then nothing for an hour, then work again and a turn end at 62.
+        let events = [ev("working", 0), ev("working", 60), ev("turn_ended", 62)];
+        assert_eq!(fold_stretches(&events, GAP), vec![120]);
+        // An end event after a long silence is not a stretch either.
+        assert!(fold_stretches(&[ev("working", 0), ev("turn_ended", 62)], GAP).is_empty());
+        // A gap exactly at the threshold still counts.
+        assert_eq!(
+            fold_stretches(
+                &[ev("working", 0), ev("working", 10), ev("turn_ended", 11)],
+                GAP
+            ),
+            vec![660]
+        );
+    }
+
+    #[test]
+    fn a_new_session_start_resets_an_open_stretch() {
+        let events = [
+            ev("working", 0),
+            ev("session_started", 1),
+            ev("working", 2),
+            ev("turn_ended", 4),
+        ];
+        assert_eq!(fold_stretches(&events, GAP), vec![120]);
     }
 
     #[test]
     fn an_unfinished_or_overlong_stretch_is_not_counted() {
-        assert!(fold_stretches(&[ev("working", 0)]).is_empty());
-        assert!(fold_stretches(&[ev("working", 0), ev("completed", 5 * 60)]).is_empty());
-        assert!(fold_stretches(&[ev("completed", 0), ev("failed", 1)]).is_empty());
+        assert!(fold_stretches(&[ev("working", 0)], GAP).is_empty());
+        let long = Duration::hours(24);
+        assert!(fold_stretches(&[ev("working", 0), ev("completed", 5 * 60)], long).is_empty());
+        assert!(fold_stretches(&[ev("completed", 0), ev("failed", 1)], GAP).is_empty());
     }
 
     #[test]
@@ -190,30 +291,60 @@ mod tests {
         assert_eq!(estimates(&all)[0].median_seconds, 250);
     }
 
-    #[test]
-    fn stretches_come_from_stored_events_per_session() {
+    fn send(store: &mut Store, n: u32, session: &str, kind: &str, min: i64, received: i64) {
         use agent_core::parse_event;
-        let mut store = Store::open_in_memory().expect("store");
-        let send = |store: &mut Store, n: u32, session: &str, kind: &str, min: i64| {
-            let ts = fmt_ts(at(min)).expect("ts");
-            let e = parse_event(&format!(
-                r#"{{"schemaVersion":1,"eventId":"00000000-0000-4000-8000-{n:012}","provider":"claude-code","providerSessionId":"{session}","eventType":"{kind}","timestampUtc":"{ts}"}}"#
-            ))
-            .expect("event");
-            store.ingest(&e, at(min)).expect("ingest");
-        };
-        send(&mut store, 1, "a", "working", 0);
-        send(&mut store, 2, "b", "working", 1);
-        send(&mut store, 3, "a", "turn_ended", 4);
-        send(&mut store, 4, "b", "completed", 3);
-        let mut got: Vec<i64> = store
-            .working_stretches(at(-10))
-            .expect("stretches")
+        let ts = fmt_ts(at(min)).expect("ts");
+        let e = parse_event(&format!(
+            r#"{{"schemaVersion":1,"eventId":"00000000-0000-4000-8000-{n:012}","provider":"claude-code","providerSessionId":"{session}","eventType":"{kind}","timestampUtc":"{ts}"}}"#
+        ))
+        .expect("event");
+        store.ingest(&e, at(received)).expect("ingest");
+    }
+
+    fn secs(store: &Store, since: OffsetDateTime) -> Vec<i64> {
+        let events = store.wait_events(since).expect("events");
+        let mut got: Vec<i64> = stretches_from_events(&events, GAP)
             .iter()
             .map(|s| s.seconds)
             .collect();
         got.sort_unstable();
-        assert_eq!(got, vec![120, 240]);
-        assert!(store.working_stretches(at(100)).expect("none").is_empty());
+        got
+    }
+
+    #[test]
+    fn stretches_come_from_stored_events_per_session_without_heartbeats() {
+        let mut store = Store::open_in_memory().expect("store");
+        send(&mut store, 1, "a", "working", 0, 0);
+        send(&mut store, 2, "b", "working", 1, 1);
+        send(&mut store, 3, "a", "heartbeat", 2, 2);
+        send(&mut store, 4, "a", "turn_ended", 4, 4);
+        send(&mut store, 5, "b", "completed", 3, 3);
+        let events = store.wait_events(at(-10)).expect("events");
+        assert!(events.iter().all(|e| e.kind != "heartbeat"));
+        assert_eq!(secs(&store, at(-10)), vec![120, 240]);
+        assert!(store.wait_events(at(100)).expect("none").is_empty());
+        let empty = Store::open_in_memory().expect("empty");
+        assert!(empty.wait_events(at(0)).expect("ok").is_empty());
+    }
+
+    #[test]
+    fn only_events_inside_the_window_count_and_the_boundary_is_inclusive() {
+        let mut store = Store::open_in_memory().expect("store");
+        let day = 24 * 60;
+        let since = at(0) - Duration::days(14);
+        // Minutes relative to now: `edge` is exactly 14 days back.
+        let m = |days_back: i64, extra: i64| -days_back * day + extra;
+        // Before the window: skipped.
+        send(&mut store, 1, "old", "working", m(14, -30), m(14, -30));
+        send(&mut store, 2, "old", "turn_ended", m(14, -28), m(14, -28));
+        // Received exactly at `since`: kept.
+        send(&mut store, 3, "edge", "working", m(14, 0), m(14, 0));
+        send(&mut store, 4, "edge", "turn_ended", m(14, 3), m(14, 3));
+        // A stretch whose start fell before the window has no start in it: not counted.
+        send(&mut store, 5, "straddle", "working", m(14, -1), m(14, -1));
+        send(&mut store, 6, "straddle", "turn_ended", m(14, 2), m(14, 2));
+        send(&mut store, 7, "new", "working", m(1, 0), m(1, 0));
+        send(&mut store, 8, "new", "turn_ended", m(1, 5), m(1, 5));
+        assert_eq!(secs(&store, since), vec![180, 300]);
     }
 }

@@ -5,7 +5,8 @@
 
 use std::sync::Arc;
 
-use local_store::estimates;
+use agent_core::reducer::DEFAULT_STALE_AFTER;
+use local_store::{estimates, stretches_from_events};
 use serde::Serialize;
 use time::{Duration, OffsetDateTime};
 
@@ -13,6 +14,8 @@ use crate::Core;
 
 /// How far back finished stretches are read.
 const WINDOW_DAYS: i64 = 14;
+/// At most this many tools are returned, whatever the events hold.
+const MAX_TOOLS: usize = 32;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -30,15 +33,22 @@ pub async fn wait_estimates(
     let core = Arc::clone(&core);
     tauri::async_runtime::spawn_blocking(move || {
         let since = OffsetDateTime::now_utc() - Duration::days(WINDOW_DAYS);
-        let guard = core.store.lock().map_err(|_| "internal".to_owned())?;
-        let store = guard
-            .as_ref()
-            .ok_or_else(|| "store_unavailable".to_owned())?;
-        let stretches = store
-            .working_stretches(since)
-            .map_err(|_| "store_unavailable".to_owned())?;
+        // Read the window with the store locked, then fold after releasing it: event ingestion
+        // shares this lock and must not wait for the arithmetic.
+        let events = {
+            let guard = core.store.lock().map_err(|_| "internal".to_owned())?;
+            let store = guard
+                .as_ref()
+                .ok_or_else(|| "store_unavailable".to_owned())?;
+            store
+                .wait_events(since)
+                .map_err(|_| "store_unavailable".to_owned())?
+        };
+        // A gap longer than the app's stale threshold is idle time, not work.
+        let stretches = stretches_from_events(&events, DEFAULT_STALE_AFTER);
         Ok(estimates(&stretches)
             .into_iter()
+            .take(MAX_TOOLS)
             .map(|e| WaitEstimateView {
                 provider: e.provider,
                 median_seconds: e.median_seconds,
