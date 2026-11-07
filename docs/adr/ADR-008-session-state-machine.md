@@ -65,3 +65,7 @@ Clarifications made while implementing (`crates/agent-core/src/reducer.rs`):
 
 - Sessions may show `unknown` more often than a naive design would. That's intended.
 - Sessions are never deleted by the reducer; retention and deletion arrive with Context Keeper (Sprint 04).
+
+## Amendment (2026-11-07, decision 35, ADR-025): ended because the process is gone
+
+A session can now be ended by Lullshift itself, not by an event: when the agent's recorded process is gone (`reducer::process_gone`), a non-terminal session becomes `ended` with a stored `ended_reason` of `process_gone`, timestamped "now". It is not a provider event and is never written to the event log; `last_seen` and `last_received` are unchanged. The ordering rules above apply to it unchanged: a real event with a timestamp at or after the mark reopens the session (and clears the reason in the same transaction), an older one does not, a heartbeat reopens it to `unknown`, and terminal sessions are never touched. A newer log can also fill a gap on a tracked, unfinished session as a marked guess (`imported_utc`, as for imports in ADR-024), never overriding newer reported state. Details, limits and tests: ADR-025.

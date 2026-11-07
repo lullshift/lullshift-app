@@ -1229,6 +1229,44 @@ Before you start: Lullshift closed. Have sessions open in Claude Code in the des
 
 **Result:** \_\_\_
 
+### M12-19: Settle missed and silently ended sessions (decision 35)
+
+Before you start: Lullshift running with Claude Code connected (and, if you have them, Codex, Cursor and OpenCode). **Catch up from agent logs at startup** off. Start Lullshift from the Start menu, not from inside another app. Have Process Monitor ready, and a Claude Code session in each of: a PowerShell window, a `cmd` window, Git Bash, and the Claude desktop app's **Code** tab.
+
+1. In each Claude Code session send a prompt, and let it finish its turn (the card says Idle or Waiting). Confirm each shows under Sessions.
+2. Close the PowerShell window running Claude Code with its **X** button. Wait up to a minute.
+3. In the `cmd` session, end the program from Task Manager (**End task** on `claude.exe` or `node.exe`, the one that is the agent). Wait up to a minute.
+4. Quit Claude Code normally in Git Bash with `/exit` (it reports its own end), and compare with step 2.
+5. Keep one Claude Code session open but idle. Wait three minutes.
+6. Quit Lullshift (tray menu > Quit). Close a Claude Code session's window while Lullshift is closed. Start Lullshift.
+7. In a session that Lullshift showed as Ended (process gone), resume it (`claude --resume`) and send a prompt.
+8. Open the details of the session from step 2 and export it as Markdown and as JSON.
+9. Open **Settings > Sessions**. Turn on **Catch up from agent logs at startup**. Leave a Claude Code session waiting, quit Lullshift, in that session send a prompt and wait for the reply to finish (so the log moves on while Lullshift is closed), then start Lullshift.
+10. Watch Process Monitor (filter `lullshift`) during that start, then look at the session and at Settings > Sessions.
+11. With catch-up still on, quit and start Lullshift again without doing anything in the agents. Then repeat once with `~/.claude/projects` temporarily renamed.
+12. Turn catch-up off, quit and start Lullshift: confirm no agent log is opened (Process Monitor).
+13. Start a stopwatch-free check of the hook: in a terminal run `echo {} | lullshift-desktop.exe hook claude-code --data-dir <data dir>`, from a PowerShell inside Windows Terminal, and read what it prints and its exit code (`$LASTEXITCODE`).
+14. With NVDA (or Narrator) and keyboard only, open Settings > Sessions, change the switch, and read the status line. Check Sessions with a process-gone session in the list.
+
+**Expected:**
+
+- **Step 1:** all four sessions are tracked as usual.
+- **Step 2:** within about a minute (the check runs every 45 seconds) the PowerShell session moves to History as **Ended (process gone)**, with a neutral pill, no notification and no sound. Its reason line says Lullshift ended it because the program is no longer running and the agent didn't say so itself.
+- **Step 3:** the `cmd` session ends the same way, including if the agent was started through `cmd` (the shell is looked through, not mistaken for the agent).
+- **Step 4:** a session that reports its own end shows plain **Ended** (no "process gone" wording).
+- **Step 5:** the idle session stays as it is; nothing is ended while its program runs.
+- **Step 6:** on the next start, within seconds, the session whose window you closed reads **Ended (process gone)** (no wait for 45 seconds).
+- **Step 7:** at the first event after the resume the session leaves Ended and shows its real state; the "process gone" wording is gone.
+- **Step 8:** the Markdown says the end was inferred by Lullshift because the process is gone; the JSON has `stateSource: "inferred_process_gone"`.
+- **Step 9:** the switch is off before you touch it and on afterwards; the status line says it runs at the next start.
+- **Step 10:** Process Monitor shows agent logs opened for at most the start and end windows (as in M12-17), only after Lullshift started. The session now reads as a **From log** guess (for example Waiting for you) and does not notify. Settings says "Last catch-up: updated 1 session ...". No session that Lullshift did not already have appears. Your next prompt in that session replaces the guess and removes the tag.
+- **Step 11:** the second start says "nothing to update". With the log folder renamed it names Claude Code as "couldn't read" or the list simply has nothing, and Lullshift starts normally either way.
+- **Step 12:** no agent log is opened.
+- **Step 13:** it prints nothing and `$LASTEXITCODE` is 0.
+- **Step 14:** the switch has its name and state, the status line is read politely, and the Ended (process gone) pill is read in full.
+
+**Result:** \_\_\_
+
 ## Website and demo mode
 
 ### W-1: Browser demo of the desktop UI
