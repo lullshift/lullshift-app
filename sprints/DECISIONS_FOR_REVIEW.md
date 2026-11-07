@@ -36,6 +36,9 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 30 | 12 | Wording in PRD and CLAUDE.md after 27.5 | applied as suggested (2026-11-07) |
 | 31 | 12 | npm package versions before the first publish | all three at 0.1.0 (2026-11-07) |
 | 32 | 12 | Companion model list from models.dev | built (2026-11-07) |
+| 33 | 12 | Sessions missing when Lullshift or the agent runs inside a packaged app | change: build the fix (in review) |
+| 34 | 12 | Import sessions from the agents' own logs | change: build it (building) |
+| 35 | 12 | Settle missed and silently ended sessions | change: process check + log catch-up (after 34) |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -416,5 +419,25 @@ The CLI package is version 0.1.0, but `lullshift --version` prints the SDK's ver
 - The hook could, when sending fails, write a small "last failure" marker the app reads (no task data), so Integrations can say "Claude Code tried to reach Lullshift but couldn't" with the likely cause.
 - Both keep the hook's zero-output contract. Not built yet.
 
-**Related request (not built):** opt-in detection of already-open sessions from the agents' own log files (structure and times only, never content; Claude Code, Codex and Cursor). Needs its own decision before building.
+**Owner decision (2026-11-07):** build it. Refinement: because a hook inside a package writes its marker into that package's private copy, the app also reads markers there, and stale connection files are removed only with a user-pressed **Fix** button (never automatically). The already-open-sessions request became decision 34.
 
+## 34. Import sessions from the agents' own logs (owner decision, 2026-11-07)
+
+**Owner design:** an **Import sessions** button in the Sessions view opens a list of sessions found in the agents' own local logs, newest activity first, with a free-text filter. The user ticks none, one or many and imports them. Nothing is read until the button is pressed.
+
+- **Shown per session:** agent, project folder, title, last activity and a status guess. The title is the agent's own session title, or else the first line of the first prompt (80 characters). It is shown in the dialog only and saved with the imported session only if Task context is on for that agent.
+- **Agents:** Claude Code and Cursor (log formats checked on this machine), Codex and OpenCode (built from their source and docs, checked in the manual tests). The owner also ticked "Something else" without saying what.
+- **Imported sessions** carry a "From log" label and never notify, sound or pause a game. The first real hook event takes over.
+- Reads bounded parts of each file only, treats everything as untrusted, never uploads. Needs PRD and privacy wording updates (approved with this decision).
+
+## 35. Settle missed and silently ended sessions (owner decision, 2026-11-07)
+
+**Problem:** events are lost while Lullshift is closed, and a session killed or deleted without a "session ended" event stays "Not confirmed since Lullshift started" forever.
+
+**Research (2026-11-07, sources in the session record):** OpenTelemetry in Claude Code and Codex is push-only, has no "waiting for you" or "ended" events and only covers sessions started after it is enabled; Cursor's is Enterprise and cloud-only. None of the four tools supports A2A. Codex (app-server) and OpenCode (local server + SSE) have status APIs, but attaching to user-started sessions isn't documented. Claude Code's docs say running sessions normally pick up hook changes automatically; Codex sends SessionEnd on archive or delete.
+
+**Owner decision:** keep hooks as the live signal and add:
+1. **Process check:** the hook records the agent's process ID; when it's gone, the session is marked "Ended (process gone)". No log reading.
+2. **Log catch-up at startup (opt-in):** reuse the decision 34 reader (record types and times only, never content) to fill gaps, shown as "from log" hints.
+
+Build after decision 34 is merged.
