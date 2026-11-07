@@ -155,10 +155,48 @@ impl Default for UiPrefs {
     }
 }
 
+/// The docked panel is kept within these widths (pixels) when read and when saved.
+pub const DOCK_WIDTH_RANGE: std::ops::RangeInclusive<u32> = 200..=4096;
+
+fn clamp_dock_width(px: u32) -> u32 {
+    px.clamp(*DOCK_WIDTH_RANGE.start(), *DOCK_WIDTH_RANGE.end())
+}
+
 impl UiPrefs {
+    /// Reads each field on its own: a missing or damaged field, or a value this build doesn't
+    /// know, takes its default and never resets the others (so a downgrade or a newer build's
+    /// value cannot bring the welcome back). Unknown keys are ignored. Writes from the UI stay
+    /// strict.
     pub fn from_stored(json: Option<&str>) -> Self {
-        json.and_then(|j| serde_json::from_str(j).ok())
-            .unwrap_or_default()
+        let Some(serde_json::Value::Object(map)) =
+            json.and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok())
+        else {
+            return Self::default();
+        };
+        fn field<T: serde::de::DeserializeOwned>(
+            map: &serde_json::Map<String, serde_json::Value>,
+            key: &str,
+        ) -> Option<T> {
+            map.get(key)
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+        }
+        let d = Self::default();
+        Self {
+            detail_panel_pinned: field(&map, "detailPanelPinned").unwrap_or(d.detail_panel_pinned),
+            content_width: field(&map, "contentWidth").unwrap_or(d.content_width),
+            onboarding_done: field(&map, "onboardingDone").unwrap_or(d.onboarding_done),
+            companion_settings_open: field(&map, "companionSettingsOpen")
+                .unwrap_or(d.companion_settings_open),
+            // Fractional, negative or non-numeric widths read as the default width.
+            dock_width: field::<u32>(&map, "dockWidth").map(clamp_dock_width),
+            theme: field(&map, "theme").unwrap_or(d.theme),
+        }
+    }
+
+    /// The same preferences with the panel width kept in range.
+    pub fn clamped(mut self) -> Self {
+        self.dock_width = self.dock_width.map(clamp_dock_width);
+        self
     }
 }
 
@@ -1399,7 +1437,7 @@ pub async fn ui_prefs(core: CoreState<'_>) -> Result<UiPrefs, String> {
 pub async fn set_ui_prefs(core: CoreState<'_>, prefs: UiPrefs) -> Result<(), String> {
     let core = Arc::clone(&core);
     blocking(move || {
-        let json = serde_json::to_string(&prefs).map_err(|_| "internal")?;
+        let json = serde_json::to_string(&prefs.clamped()).map_err(|_| "internal")?;
         with_store(&core, |s| s.set_preference(UI_PREFS_KEY, &json))
     })
     .await
@@ -1583,6 +1621,59 @@ mod tests {
             UiPrefs::from_stored(Some(r#"{"detailPanelPinned":true,"theme":"sepia"}"#)),
             UiPrefs::default()
         );
+    }
+
+    // Rollback and recovery (CLAUDE.md rule 8): one value this build can't read must never reset
+    // the others, in particular not the welcome flag.
+    #[test]
+    fn one_unreadable_preference_keeps_the_others() {
+        let base = r#""detailPanelPinned":false,"contentWidth":"comfortable","onboardingDone":true,"companionSettingsOpen":true"#;
+        let keeps = |p: UiPrefs| {
+            assert!(!p.detail_panel_pinned);
+            assert_eq!(p.content_width, ContentWidth::Comfortable);
+            assert!(p.onboarding_done, "the welcome must not come back");
+            assert!(p.companion_settings_open);
+            p
+        };
+        // A key from a newer build.
+        let p = keeps(UiPrefs::from_stored(Some(&format!(
+            r#"{{{base},"dockWidth":500,"theme":"dark","someFutureKey":{{"a":1}}}}"#
+        ))));
+        assert_eq!((p.dock_width, p.theme), (Some(500), Theme::Dark));
+        // A theme this build doesn't know.
+        let p = keeps(UiPrefs::from_stored(Some(&format!(
+            r#"{{{base},"dockWidth":500,"theme":"sepia"}}"#
+        ))));
+        assert_eq!((p.dock_width, p.theme), (Some(500), Theme::System));
+        // Bad panel widths: fractional, negative, text.
+        for bad in ["420.5", "-5", r#""wide""#, "99999999999"] {
+            let p = keeps(UiPrefs::from_stored(Some(&format!(
+                r#"{{{base},"theme":"light","dockWidth":{bad}}}"#
+            ))));
+            assert_eq!((p.dock_width, p.theme), (None, Theme::Light), "{bad}");
+        }
+        // Not an object at all: the defaults.
+        assert_eq!(UiPrefs::from_stored(Some("[1]")), UiPrefs::default());
+        assert_eq!(UiPrefs::from_stored(Some("not json")), UiPrefs::default());
+    }
+
+    #[test]
+    fn the_panel_width_is_kept_in_range() {
+        let wide = |px| {
+            UiPrefs::from_stored(Some(&format!(
+                r#"{{"detailPanelPinned":true,"dockWidth":{px}}}"#
+            )))
+            .dock_width
+        };
+        assert_eq!(wide(10), Some(200));
+        assert_eq!(wide(5000), Some(4096));
+        assert_eq!(wide(640), Some(640));
+        let saved = UiPrefs {
+            dock_width: Some(1),
+            ..UiPrefs::default()
+        };
+        assert_eq!(saved.clamped().dock_width, Some(200));
+        assert_eq!(UiPrefs::default().clamped().dock_width, None);
     }
 
     #[test]
