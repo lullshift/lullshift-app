@@ -1,14 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Icon } from "./Icon";
 import { dismissToast, TOAST_MS, useToasts, type Toast } from "./toastQueue";
 import "./toasts.css";
 
+function subscribeVisibility(fn: () => void): () => void {
+  document.addEventListener("visibilitychange", fn);
+  return () => document.removeEventListener("visibilitychange", fn);
+}
+const isVisible = () => document.visibilityState !== "hidden";
+
 function ToastItem({ toast }: { toast: Toast }) {
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
-  const paused = hovered || focused;
+  const visible = useSyncExternalStore(subscribeVisibility, isVisible, () => true);
+  const paused = hovered || focused || !visible;
 
-  // Auto-dismiss, paused while the pointer is over the notice or focus is inside it. Leaving
+  // Auto-dismiss, paused while the pointer is over the notice, focus is inside it, or the window
+  // is hidden (a notice must still be there when the user comes back). Leaving or returning
   // starts the full time again.
   useEffect(() => {
     if (paused) return;
