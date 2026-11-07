@@ -1234,8 +1234,8 @@ Before you start: Lullshift closed. Have sessions open in Claude Code in the des
 Before you start: Lullshift running with Claude Code connected (and, if you have them, Codex, Cursor and OpenCode). **Catch up from agent logs at startup** off. Start Lullshift from the Start menu, not from inside another app. Have Process Monitor ready, and a Claude Code session in each of: a PowerShell window, a `cmd` window, Git Bash, and the Claude desktop app's **Code** tab.
 
 1. In each Claude Code session send a prompt, and let it finish its turn (the card says Idle or Waiting). Confirm each shows under Sessions.
-2. Close the PowerShell window running Claude Code with its **X** button. Wait up to a minute.
-3. In the `cmd` session, end the program from Task Manager (**End task** on `claude.exe` or `node.exe`, the one that is the agent). Wait up to a minute.
+2. Close the PowerShell window running Claude Code with its **X** button. Wait four minutes (two checks about 45 seconds apart, and two quiet minutes).
+3. In the `cmd` session, end the program from Task Manager (**End task** on `claude.exe` or `node.exe`, the one that is the agent). Wait four minutes.
 4. Quit Claude Code normally in Git Bash with `/exit` (it reports its own end), and compare with step 2.
 5. Keep one Claude Code session open but idle. Wait three minutes.
 6. Quit Lullshift (tray menu > Quit). Close a Claude Code session's window while Lullshift is closed. Start Lullshift.
@@ -1247,15 +1247,19 @@ Before you start: Lullshift running with Claude Code connected (and, if you have
 12. Turn catch-up off, quit and start Lullshift: confirm no agent log is opened (Process Monitor).
 13. Start a stopwatch-free check of the hook: in a terminal run `echo {} | lullshift-desktop.exe hook claude-code --data-dir <data dir>`, from a PowerShell inside Windows Terminal, and read what it prints and its exit code (`$LASTEXITCODE`).
 14. With NVDA (or Narrator) and keyboard only, open Settings > Sessions, change the switch, and read the status line. Check Sessions with a process-gone session in the list.
+15. A session that needs you: in a Claude Code session, trigger a permission prompt and leave it unanswered, then close that window. Wait six minutes.
+16. macOS only: start a Claude Code session with `TZ=Asia/Tokyo claude`, send a prompt, let the turn finish, and leave it open for more than 90 seconds with Lullshift (started normally, in your own time zone) running. Then repeat with `TZ=America/Los_Angeles`.
+17. WSL, if you use it: run Claude Code inside WSL with Lullshift installed on Windows, send a prompt and leave it open for six minutes. Also run an agent inside a Flatpak, container or devcontainer on Linux if you have one.
+18. Run a Claude Code session through a wrapper that exits early (for example `sudo -E claude` or `timeout 3600 claude` on Linux or macOS) and leave it open for six minutes.
 
 **Expected:**
 
 - **Step 1:** all four sessions are tracked as usual.
-- **Step 2:** within about a minute (the check runs every 45 seconds) the PowerShell session moves to History as **Ended (process gone)**, with a neutral pill, no notification and no sound. Its reason line says Lullshift ended it because the program is no longer running and the agent didn't say so itself.
+- **Step 2:** within about four minutes (the check runs every 45 seconds; it needs two gone looks and two quiet minutes) the PowerShell session moves to History as **Ended (process gone)**, with a neutral pill, no notification and no sound. Its reason line says Lullshift ended it because the program is no longer running and the agent didn't say so itself.
 - **Step 3:** the `cmd` session ends the same way, including if the agent was started through `cmd` (the shell is looked through, not mistaken for the agent).
 - **Step 4:** a session that reports its own end shows plain **Ended** (no "process gone" wording).
 - **Step 5:** the idle session stays as it is; nothing is ended while its program runs.
-- **Step 6:** on the next start, within seconds, the session whose window you closed reads **Ended (process gone)** (no wait for 45 seconds).
+- **Step 6:** after the next start, once the session has been quiet for two minutes and two checks about 45 seconds apart have found it gone, the session whose window you closed reads **Ended (process gone)**.
 - **Step 7:** at the first event after the resume the session leaves Ended and shows its real state; the "process gone" wording is gone.
 - **Step 8:** the Markdown says the end was inferred by Lullshift because the process is gone; the JSON has `stateSource: "inferred_process_gone"`.
 - **Step 9:** the switch is off before you touch it and on afterwards; the status line says it runs at the next start.
@@ -1264,6 +1268,10 @@ Before you start: Lullshift running with Claude Code connected (and, if you have
 - **Step 12:** no agent log is opened.
 - **Step 13:** it prints nothing and `$LASTEXITCODE` is 0.
 - **Step 14:** the switch has its name and state, the status line is read politely, and the Ended (process gone) pill is read in full.
+- **Step 15:** the session stays **Needs you**; it is never shown as Ended (process gone), however long the window has been closed.
+- **Step 16:** the session is not ended: the time zone of the agent does not matter (the process lookups pin `TZ=UTC0`). Not run on macOS yet.
+- **Step 17:** a session inside WSL, Flatpak or a container is not shown as Ended (process gone) while it is alive (on Linux, a process in another PID namespace is ignored). Note what happens for WSL and report it: the sessions may stay as they were, or be ended wrongly, and the next event reopens them. Not tested yet.
+- **Step 18:** the session stays alive: the wrapper (`sudo`, `timeout`) is looked through to the real program; it is never shown as Ended (process gone) while the agent runs.
 
 ### M12-18: Companion settings, models per message and reply rendering (decision 36)
 
