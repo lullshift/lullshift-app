@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Banner } from "../ui/Banner";
 import { Dialog } from "../ui/Dialog";
 import { companionOpenLink, toCommandError } from "./api";
@@ -73,7 +73,12 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-function CodeBlock({
+/**
+ * A fenced code block. Memoised (security review F2): while a reply streams, a block that is
+ * already complete is not rendered or highlighted again, and a block that is still being written
+ * is shown plain and highlighted once, when its fence closes or the reply ends.
+ */
+const CodeBlock = memo(function CodeBlock({
   lang,
   code,
   closed,
@@ -85,24 +90,28 @@ function CodeBlock({
   streaming: boolean;
 }) {
   const label = languageLabel(lang);
+  const writing = !closed && streaming;
+  const body = useMemo(
+    () => (writing ? code : highlightToReact(lang, code)),
+    [writing, lang, code],
+  );
   return (
     <div className="reply-code" role="group" aria-label={`${label} code`}>
       <div className="reply-code-head">
         <span className="reply-code-lang">{label}</span>
-        {!closed && streaming && <span className="reply-code-note">Still writing…</span>}
+        {writing && <span className="reply-code-note">Still writing…</span>}
         <CopyButton text={code} label={`Copy ${label} code`} />
       </div>
       <pre tabIndex={0}>
-        <code className={`hljs${lang ? ` language-${lang}` : ""}`}>
-          {highlightToReact(lang, code)}
-        </code>
+        <code className={`hljs${lang ? ` language-${lang}` : ""}`}>{body}</code>
       </pre>
     </div>
   );
-}
+});
 
-function Line({ line, onLink }: { line: string; onLink: (url: string) => void }) {
-  if (line === "") return <span className="msg-line">{" "}</span>;
+/** One line of plain text. Memoised: links are found again only when the line itself changed. */
+const Line = memo(function Line({ line, onLink }: { line: string; onLink: (url: string) => void }) {
+  if (line === "") return <span className="msg-line"> </span>;
   return (
     <span className="msg-line">
       {findLinks(line).map((part, i) =>
@@ -116,7 +125,25 @@ function Line({ line, onLink }: { line: string; onLink: (url: string) => void })
       )}
     </span>
   );
-}
+});
+
+/** A plain-text segment. Memoised so earlier segments of a streaming reply aren't touched. */
+const TextBlock = memo(function TextBlock({
+  text,
+  onLink,
+}: {
+  text: string;
+  onLink: (url: string) => void;
+}) {
+  const lines = useMemo(() => plainLines(text), [text]);
+  return (
+    <div className="msg-text">
+      {lines.map((line, j) => (
+        <Line key={j} line={line} onLink={onLink} />
+      ))}
+    </div>
+  );
+});
 
 function LinkDialog({ url, onClose }: { url: string | null; onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
@@ -180,15 +207,13 @@ function LinkDialog({ url, onClose }: { url: string | null; onClose: () => void 
 /** An assistant reply: plain text, fenced code blocks and http(s) links. Nothing else. */
 export function ReplyText({ text, streaming }: { text: string; streaming?: boolean }) {
   const [link, setLink] = useState<string | null>(null);
+  // Parsed once per text: a re-render for another reason (the dialog, a parent) reuses it.
+  const segments = useMemo(() => parseReply(text), [text]);
   return (
     <div className="reply-text">
-      {parseReply(text).map((seg, i) =>
+      {segments.map((seg, i) =>
         seg.kind === "text" ? (
-          <div key={i} className="msg-text">
-            {plainLines(seg.text).map((line, j) => (
-              <Line key={j} line={line} onLink={setLink} />
-            ))}
-          </div>
+          <TextBlock key={i} text={seg.text} onLink={setLink} />
         ) : (
           <CodeBlock
             key={i}
