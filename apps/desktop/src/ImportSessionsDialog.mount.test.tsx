@@ -232,7 +232,7 @@ describe("Import sessions dialog", () => {
     expect([...host.querySelectorAll("h3")].map((h) => h.getAttribute("title")).sort()).toContain(
       "/home/u/shop/api",
     );
-    expect(host.innerHTML).not.toMatch(/[‮​]/);
+    expect(host.innerHTML).not.toMatch(/[\u202E\u200B]/);
   });
 
   it("a folder with nothing to import has a disabled checkbox", async () => {
