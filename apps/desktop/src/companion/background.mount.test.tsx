@@ -341,6 +341,41 @@ describe("reads of the thread that finish out of order", () => {
   });
 });
 
+describe("a send refused because the context changed", () => {
+  const refused = { kind: "invalidInput", message: "The context changed since you previewed it." };
+
+  it("after you left and came back, says so and puts your text back on request", async () => {
+    await startSendInThreadOne();
+    await click(threadButton("Lock choice"));
+    await act(async () => {
+      failSend(refused);
+    });
+    await settle();
+    await click(threadButton("Retry setting"));
+    expect(host.textContent).toContain(
+      "The context changed since you previewed it. Review it again.",
+    );
+    expect(textarea().value).toBe("");
+    await click(buttonIn(host, "Put my message back"));
+    expect(textarea().value).toBe("question");
+    expect(host.textContent).not.toContain("Put my message back");
+  });
+
+  it("does not offer it when you stayed: the composer shows the new preview itself", async () => {
+    await startSendInThreadOne();
+    answer = ((base) => (c: string, a: Record<string, unknown>) =>
+      c === "companion_preview_context"
+        ? { scope: { kind: "none" }, text: "", chars: 0, sha256: null }
+        : base(c, a))(answer);
+    await act(async () => {
+      failSend(refused);
+    });
+    await settle();
+    expect(host.textContent).not.toContain("Put my message back");
+    expect(textarea().value).toBe("question");
+  });
+});
+
 describe("conversation names", () => {
   it("drops bidirectional controls and isolates the name in the list and the heading", async () => {
     const base = answer;

@@ -158,6 +158,19 @@ export function Conversation({
   const [messages, setMessages] = useState<Message[]>([]);
   const [problem, setProblem] = useState<CommandError | null>(null);
   const [live, setLive] = useState("");
+  // A send refused because the context changed, which this screen was not around to handle: the
+  // typed text, offered back to the message box.
+  const [contextOffer, setContextOffer] = useState<string | null>(null);
+  const [restore, setRestore] = useState<{ text: string; nonce: number } | null>(null);
+  const mountedRef = useRef(false);
+  // True once this screen itself got the result of the send (the composer handles it then).
+  const composerHandled = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const [deciding, setDeciding] = useState(false);
   // The request in flight for this thread lives in the app-level store (inflight.ts), not here:
   // it keeps running and keeps receiving events while this component is not on screen.
@@ -259,6 +272,11 @@ export function Conversation({
           // A stale preview is handled by the composer, which shows the new preview. Otherwise a
           // failed message in the thread shows its own error; show this only if nothing was stored.
           if (!o.stored && !o.contextChanged) setProblem(o.error);
+          // The composer shows the new preview if it was here for the result; if you left and
+          // came back it has nothing, so say so and offer the text back.
+          if (o.contextChanged && !composerHandled.current && finished.optimisticText) {
+            setContextOffer(finished.optimisticText);
+          }
         } else {
           setLive("Cancelled.");
         }
@@ -290,7 +308,9 @@ export function Conversation({
     options: { optimisticText: string | null; retryId: number | null },
   ): Promise<SendResult> => {
     setProblem(null);
+    setContextOffer(null);
     setDeciding(false);
+    composerHandled.current = false;
     const outcome = await runRequest(
       {
         threadId: thread.id,
@@ -304,6 +324,7 @@ export function Conversation({
       },
       work,
     );
+    if (mountedRef.current) composerHandled.current = true;
     onActivity();
     return {
       stored: outcome.stored,
@@ -453,6 +474,22 @@ export function Conversation({
         <div ref={endRef} />
       </div>
 
+      {contextOffer !== null && (
+        <Banner tone="danger">
+          <strong>Not sent.</strong> {CONTEXT_CHANGED_NOTE}{" "}
+          <button
+            type="button"
+            className="btn-link"
+            onClick={() => {
+              setRestore((r) => ({ text: contextOffer, nonce: (r?.nonce ?? 0) + 1 }));
+              setContextOffer(null);
+            }}
+          >
+            Put my message back
+          </button>
+        </Banner>
+      )}
+
       {problem && (
         <Banner tone="danger">
           <strong>Not sent.</strong> {errorText(problem, host)}
@@ -478,6 +515,7 @@ export function Conversation({
         onSend={send}
         onCancel={() => void cancel()}
         onOpenSettings={onOpenSettings}
+        restore={restore}
       />
     </div>
   );
