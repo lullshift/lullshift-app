@@ -21,6 +21,8 @@ pub const MAX_PROFILES: usize = 20;
 /// Most models one provider may list.
 pub const MAX_MODELS_PER_PROFILE: usize = 50;
 pub const MAX_MODEL_LABEL_CHARS: usize = 80;
+/// The `InvalidInput` reason when removing a provider's last model; callers match on it.
+pub const LAST_MODEL_REFUSED: &str = "a provider keeps at least one model";
 pub const MAX_THREADS: usize = 500;
 pub const DEFAULT_THREAD_TITLE: &str = "New conversation";
 
@@ -527,9 +529,7 @@ impl Store {
             |r| r.get(0),
         )?;
         if n <= 1 {
-            return Err(StoreError::InvalidInput(
-                "a provider keeps at least one model",
-            ));
+            return Err(StoreError::InvalidInput(LAST_MODEL_REFUSED));
         }
         tx.execute(
             "DELETE FROM companion_models WHERE profile_id = ?1 AND model = ?2",

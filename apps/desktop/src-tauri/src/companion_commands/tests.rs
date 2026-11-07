@@ -1432,3 +1432,33 @@ fn ui_prefs_remember_the_companion_settings_section() {
         .companion_settings_open
     );
 }
+
+// -- security review F4
+
+#[test]
+fn only_the_last_model_refusal_gets_its_own_sentence() {
+    let last = remove_model_error(StoreError::InvalidInput(LAST_MODEL_REFUSED));
+    assert_eq!(last.kind, "invalidInput");
+    assert!(last.message.contains("keeps at least one model"));
+
+    let other = remove_model_error(StoreError::InvalidInput("model label length"));
+    assert_eq!(other.kind, "invalidInput");
+    assert!(
+        !other.message.contains("at least one model"),
+        "{}",
+        other.message
+    );
+
+    assert_eq!(remove_model_error(StoreError::NotFound).kind, "notFound");
+
+    // Through the command: an unknown model is "not found", the last one is refused.
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    let pid = profile(&core, "http://127.0.0.1:9/v1", None);
+    assert_eq!(
+        remove_model(&core, &pid, "never-added").unwrap_err().kind,
+        "notFound"
+    );
+    let e = remove_model(&core, &pid, "mock-model").unwrap_err();
+    assert!(e.message.contains("keeps at least one model"));
+}

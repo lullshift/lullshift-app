@@ -32,7 +32,8 @@ use ::companion::{
 };
 use local_store::{
     CompanionMessage, CompanionModel, CompanionProfile, CompanionThread, CompanionToolCall,
-    CompanionToolNotice, NewToolCall, NewToolNotice, NewUserMessage, Store, StoreError, month_of,
+    CompanionToolNotice, LAST_MODEL_REFUSED, NewToolCall, NewToolNotice, NewUserMessage, Store,
+    StoreError, month_of,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -917,18 +918,27 @@ pub fn add_model(
     Ok(profile_dto(core, known_profile(core, profile_id)?))
 }
 
+/// Only the store's own refusal to remove a provider's last model gets that sentence; any other
+/// error keeps its usual mapping (security review F4).
+fn remove_model_error(e: StoreError) -> CommandError {
+    match e {
+        StoreError::InvalidInput(reason) if reason == LAST_MODEL_REFUSED => CommandError::invalid(
+            "A provider keeps at least one model. Add another one before removing this one.",
+        ),
+        other => CommandError::from(other),
+    }
+}
+
 /// Removes a model from a provider. The last model of a provider can't be removed.
 pub fn remove_model(core: &Core, profile_id: &str, model: &str) -> Res<ProviderProfileDto> {
     known_profile(core, profile_id)?;
-    with_store(core, |s| s.companion_remove_model(profile_id, model)).map_err(|e| match e {
-        CommandError {
-            kind: "invalidInput",
-            ..
-        } => CommandError::invalid(
-            "A provider keeps at least one model. Add another one before removing this one.",
-        ),
-        other => other,
-    })?;
+    {
+        let mut guard = core.store.lock().map_err(|_| CommandError::internal())?;
+        let store = guard.as_mut().ok_or_else(CommandError::internal)?;
+        store
+            .companion_remove_model(profile_id, model)
+            .map_err(remove_model_error)?;
+    }
     Ok(profile_dto(core, known_profile(core, profile_id)?))
 }
 
