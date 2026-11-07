@@ -7,6 +7,8 @@ import {
   type KeyboardEvent,
   type RefObject,
 } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { SUPPORTED_AGENTS, emptySessionsCopy, statusCommand, type AdapterView } from "./adapters";
 import { type SessionKey } from "./context/api";
 import { updateUiPrefs, useUiPrefs } from "./uiPrefsStore";
 import DetailPanel from "./context/DetailPanel";
@@ -137,6 +139,33 @@ export default function SessionsView({
   const liveCount = groups.needsYou.length + groups.working.length;
   const showBoard = !loading && sessions.length > 0;
   const showEmpty = !loading && !coreError && sessions.length === 0;
+  // Which agents are connected, read only while the empty view shows. null = not read yet or
+  // unreadable: the view then keeps offering to connect instead of claiming a connection.
+  const [connected, setConnected] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!showEmpty) return;
+    let cancelled = false;
+    Promise.all(
+      SUPPORTED_AGENTS.map((agent) =>
+        invoke<AdapterView>(statusCommand(agent))
+          .then((v) => (v.status === "installed" ? providerName(agent) : null))
+          .catch(() => undefined),
+      ),
+    )
+      .then((names) => {
+        if (cancelled) return;
+        setConnected(
+          names.includes(undefined) && !names.some(Boolean)
+            ? null
+            : names.filter((n): n is string => typeof n === "string"),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [showEmpty]);
+  const emptyCopy = emptySessionsCopy(connected);
   const clearFilters = () => {
     setQuery("");
     setTool("all");
@@ -171,13 +200,14 @@ export default function SessionsView({
       {showEmpty && (
         <div className="empty">
           <Mascot face="watching" size={112} />
-          <h2>No agent sessions yet</h2>
-          <p>
-            Connect Claude Code and your sessions appear here as they work. Lullshift tells you when
-            one needs you, so you can step away in between.
-          </p>
-          <button type="button" className="btn btn-primary" onClick={onConnect}>
-            Connect Claude Code
+          <h2>{emptyCopy.title}</h2>
+          <p>{emptyCopy.text}</p>
+          <button
+            type="button"
+            className={connected?.length ? "btn btn-quiet" : "btn btn-primary"}
+            onClick={onConnect}
+          >
+            {emptyCopy.button}
             <Icon name="arrow" size={18} />
           </button>
         </div>

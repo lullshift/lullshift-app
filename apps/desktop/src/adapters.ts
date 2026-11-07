@@ -236,3 +236,34 @@ export function adapterErrorText(code: string, agent: AgentId = "claude-code"): 
     .replace("Claude Code settings file", `${n} hooks file`)
     .replace("settings file", "hooks file");
 }
+
+/** What the empty Sessions view says, given the agents known to be connected. */
+export interface EmptySessionsCopy {
+  title: string;
+  text: string;
+  button: string;
+}
+
+/**
+ * Wording for the empty Sessions view. `connected` lists the display names of agents whose
+ * adapter is installed; null means the statuses couldn't be read, so the view keeps the original
+ * offer to connect rather than claim a connection it can't confirm.
+ */
+export function emptySessionsCopy(connected: readonly string[] | null): EmptySessionsCopy {
+  if (!connected || connected.length === 0) {
+    return {
+      title: "No agent sessions yet",
+      text: "Connect Claude Code, Codex or Cursor and your sessions appear here as they work. Lullshift tells you when one needs you, so you can step away in between.",
+      button: "Connect an agent",
+    };
+  }
+  const names =
+    connected.length === 1
+      ? connected[0]
+      : `${connected.slice(0, -1).join(", ")} and ${connected[connected.length - 1]}`;
+  return {
+    title: "No sessions yet",
+    text: `${names} ${connected.length === 1 ? "is" : "are"} connected. Start a new session and it appears here. Sessions that were already open when you connected aren't tracked; start them again.`,
+    button: "Manage integrations",
+  };
+}

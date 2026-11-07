@@ -8,6 +8,7 @@ import {
   experimentalState,
   SUPPORTED_AGENTS,
   allAgentsConnected,
+  emptySessionsCopy,
   statusCommand,
   hookEventText,
 } from "./adapters";
@@ -111,5 +112,33 @@ describe("allAgentsConnected", () => {
       "codex_status",
       "cursor_status",
     ]);
+  });
+});
+
+describe("emptySessionsCopy", () => {
+  it("offers to connect when nothing is connected or the status is unknown", () => {
+    for (const connected of [null, []]) {
+      const c = emptySessionsCopy(connected);
+      expect(c.title).toBe("No agent sessions yet");
+      expect(c.button).toBe("Connect an agent");
+      expect(c.text).toContain("Claude Code, Codex or Cursor");
+    }
+  });
+
+  it("names one connected agent and asks for a new session", () => {
+    const c = emptySessionsCopy(["Claude Code"]);
+    expect(c.title).toBe("No sessions yet");
+    expect(c.text).toMatch(/^Claude Code is connected\. Start a new session/);
+    expect(c.text).toContain("already open when you connected");
+    expect(c.button).toBe("Manage integrations");
+  });
+
+  it("lists several connected agents", () => {
+    expect(emptySessionsCopy(["Claude Code", "Codex"]).text).toMatch(
+      /^Claude Code and Codex are connected/,
+    );
+    expect(emptySessionsCopy(["Claude Code", "Codex", "Cursor"]).text).toMatch(
+      /^Claude Code, Codex and Cursor are connected/,
+    );
   });
 });
