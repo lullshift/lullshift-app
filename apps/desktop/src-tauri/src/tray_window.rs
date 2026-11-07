@@ -361,7 +361,11 @@ mod tests {
         on_screen(p, left);
         let right = Rect { w: 1872.0, ..AREA };
         let p = place(icon(1890.0, 100.0), WIN, right);
-        assert_eq!(p.0, 1890.0 - WIN.0 - GAP);
+        assert_eq!(
+            p.0,
+            1872.0 - WIN.0,
+            "beside the icon, then kept out of the bar"
+        );
         on_screen(p, right);
     }
 
