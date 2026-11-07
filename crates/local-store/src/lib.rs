@@ -106,6 +106,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 15,
         sql: include_str!("../migrations/0015_code_consent_address.sql"),
     },
+    Migration {
+        version: 16,
+        sql: include_str!("../migrations/0016_imported_sessions.sql"),
+    },
 ];
 
 pub fn latest_version() -> i64 {
@@ -274,7 +278,13 @@ impl Store {
         if inserted == 0 {
             return Ok(IngestOutcome::Duplicate);
         }
-        let current = load_session(&tx, &event.provider, &event.provider_session_id)?;
+        let mut current = load_session(&tx, &event.provider, &event.provider_session_id)?;
+        // A session imported from the agent's own log holds only a guess (ADR-024). The first
+        // real event replaces it outright, counts as a change (so it can notify like any first
+        // event), and `save_session` clears the imported mark in this same transaction.
+        if current.is_some() && is_imported(&tx, &event.provider, &event.provider_session_id)? {
+            current = None;
+        }
         let before = current.as_ref().map(|r| r.state);
         let record = apply(current, event, received_utc);
         save_session(&tx, &record)?;
@@ -335,6 +345,61 @@ impl Store {
         let mut stmt = self.conn.prepare(
             "SELECT provider, provider_session_id, disconnected_utc FROM sessions
              WHERE disconnected_utc IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut out = HashMap::new();
+        for row in rows {
+            let (p, s, t) = row?;
+            out.insert((p, s), parse_ts(&t)?);
+        }
+        Ok(out)
+    }
+
+    /// Adds a session found in the agent's own log (owner decision 34, ADR-024), marked as
+    /// imported. `state` is the guess from the log and `last_activity` the log's last write
+    /// (capped at `now`). Nothing goes into the event log. Returns `false`, changing nothing, if
+    /// Lullshift already has the session. Never notifies: there is no ingest outcome.
+    pub fn import_session(
+        &mut self,
+        provider: &str,
+        provider_session_id: &str,
+        state: SessionState,
+        last_activity: OffsetDateTime,
+        now: OffsetDateTime,
+    ) -> Result<bool> {
+        if provider.is_empty() || provider_session_id.is_empty() || is_terminal_state(state) {
+            return Err(StoreError::InvalidInput("imported session"));
+        }
+        let at = last_activity.min(now);
+        let state_ts = (state != SessionState::Unknown).then_some(at);
+        let n = self.conn.execute(
+            "INSERT INTO sessions (provider, provider_session_id, state, state_timestamp_utc,
+               last_seen_utc, last_received_utc, imported_utc)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6)
+             ON CONFLICT (provider, provider_session_id) DO NOTHING",
+            params![
+                provider,
+                provider_session_id,
+                state.as_str(),
+                state_ts.map(fmt_ts).transpose()?,
+                fmt_ts(at)?,
+                fmt_ts(now)?,
+            ],
+        )?;
+        Ok(n == 1)
+    }
+
+    /// Sessions imported from a log that have not sent a hook event since: key to import time.
+    pub fn imported_sessions(&self) -> Result<HashMap<(String, String), OffsetDateTime>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT provider, provider_session_id, imported_utc FROM sessions
+             WHERE imported_utc IS NOT NULL",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((
@@ -753,6 +818,22 @@ fn load_session(conn: &Connection, provider: &str, id: &str) -> Result<Option<Se
     .transpose()
 }
 
+fn is_terminal_state(state: SessionState) -> bool {
+    agent_core::reducer::is_terminal(state)
+}
+
+fn is_imported(conn: &Connection, provider: &str, id: &str) -> Result<bool> {
+    Ok(conn
+        .query_row(
+            "SELECT imported_utc IS NOT NULL FROM sessions
+             WHERE provider = ?1 AND provider_session_id = ?2",
+            params![provider, id],
+            |r| r.get::<_, bool>(0),
+        )
+        .optional()?
+        .unwrap_or(false))
+}
+
 fn save_session(tx: &Transaction<'_>, r: &SessionRecord) -> Result<()> {
     tx.execute(
         "INSERT INTO sessions (provider, provider_session_id, state, state_timestamp_utc, last_seen_utc, last_received_utc)
@@ -762,7 +843,8 @@ fn save_session(tx: &Transaction<'_>, r: &SessionRecord) -> Result<()> {
            state_timestamp_utc = excluded.state_timestamp_utc,
            last_seen_utc = excluded.last_seen_utc,
            last_received_utc = excluded.last_received_utc,
-           disconnected_utc = NULL",
+           disconnected_utc = NULL,
+           imported_utc = NULL",
         params![
             r.provider,
             r.provider_session_id,
