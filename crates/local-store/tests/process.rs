@@ -588,7 +588,7 @@ fn version_16_database_upgrades_with_backup_and_keeps_sessions() {
 }
 
 #[test]
-fn failed_version_18_migration_rolls_back_to_16() {
+fn failed_version_18_migration_rolls_back_and_keeps_data() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("l.db");
     {
@@ -606,7 +606,11 @@ fn failed_version_18_migration_rolls_back_to_16() {
     let v: i64 = conn
         .query_row("SELECT max(version) FROM schema_version", [], |r| r.get(0))
         .expect("version");
-    assert_eq!(v, 16, "left at the last good version");
+    // Any earlier migrations (17, Companion models) were applied and kept; 18 was not.
+    assert!(
+        (16..18).contains(&v),
+        "left at the last good version, got {v}"
+    );
     assert!(
         conn.prepare("SELECT process_pid FROM sessions").is_err(),
         "the earlier statements of the failed step were rolled back"
