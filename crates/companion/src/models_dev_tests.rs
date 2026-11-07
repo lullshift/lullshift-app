@@ -29,7 +29,7 @@ fn sample_keeps_chat_models_with_slim_fields() {
         s,
         &CatalogModel {
             id: "claude-sonnet-5-5".into(),
-            name: "Claude Sonnet 5.5".into(),
+            name: Some("Claude Sonnet 5.5".into()),
             family: Some("claude-sonnet".into()),
             tool_call: true,
             reasoning: true,
@@ -79,7 +79,7 @@ fn malformed_entries_are_skipped_not_fatal() {
         ["chat-type", "huge-price", "no-name", "ok-model"]
     );
     let ok = p.models.iter().find(|m| m.id == "ok-model").unwrap();
-    assert_eq!(ok.name, "OK");
+    assert_eq!(ok.name.as_deref(), Some("OK"));
     assert_eq!(
         ok.family.as_deref(),
         Some("family"),
@@ -99,7 +99,7 @@ fn malformed_entries_are_skipped_not_fatal() {
     let huge = p.models.iter().find(|m| m.id == "huge-price").unwrap();
     assert_eq!((huge.cost_input, huge.cost_output), (None, Some(2.5)));
     let unnamed = p.models.iter().find(|m| m.id == "no-name").unwrap();
-    assert_eq!(unnamed.name, "no-name", "falls back to the id");
+    assert_eq!(unnamed.name, None, "no copy of the id; the UI shows the id");
 }
 
 #[test]
@@ -166,11 +166,132 @@ fn provider_and_model_counts_are_capped() {
             serde_json::json!({ "name": "P", "models": { "m": { "id": "m" } } }),
         );
     }
-    let bytes = serde_json::to_vec(&Value::Object(root)).unwrap();
+    let bytes = serde_json::to_vec(&serde_json::Value::Object(root)).unwrap();
     let c = parse_catalog(&bytes).unwrap();
     assert_eq!(c.providers.len(), MAX_PROVIDERS);
     let big = c.provider("a-big").expect("first, so kept");
     assert_eq!(big.models.len(), MAX_MODELS_PER_PROVIDER);
+}
+
+/// A body of about `target` bytes made only of minimal entries: many providers, each with
+/// many models that are empty objects (the id comes from the key).
+fn minimal_entries(target: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(target + 64);
+    out.push(b'{');
+    let mut p = 0;
+    while out.len() < target {
+        if p > 0 {
+            out.push(b',');
+        }
+        out.extend_from_slice(format!("\"p{p}\":{{\"models\":{{").as_bytes());
+        for m in 0..10_000 {
+            if out.len() >= target {
+                break;
+            }
+            if m > 0 {
+                out.push(b',');
+            }
+            out.extend_from_slice(format!("\"{m}\":{{}}").as_bytes());
+        }
+        out.extend_from_slice(b"}}");
+        p += 1;
+    }
+    out.push(b'}');
+    out
+}
+
+#[test]
+fn a_hostile_body_of_minimal_entries_keeps_at_most_the_total_cap() {
+    let body = minimal_entries(16 * 1024 * 1024 - 1024);
+    assert!(body.len() <= MAX_CATALOG_BYTES);
+    let c = parse_catalog(&body).unwrap();
+    let total: usize = c.providers.iter().map(|p| p.models.len()).sum();
+    assert_eq!(total, MAX_TOTAL_MODELS, "the total cap binds");
+    for p in &c.providers {
+        assert!(p.models.len() <= MAX_MODELS_PER_PROVIDER);
+        assert!(p.models.iter().all(|m| m.name.is_none()));
+    }
+}
+
+#[test]
+fn a_top_level_array_is_refused_at_once() {
+    let mut body = vec![b'['];
+    for i in 0..(4 * 1024 * 1024) {
+        if i > 0 {
+            body.push(b',');
+        }
+        body.push(b'0');
+    }
+    body.push(b']');
+    let t = Instant::now();
+    assert_eq!(
+        parse_catalog(&body).unwrap_err().kind,
+        ErrorKind::InvalidResponse
+    );
+    assert!(t.elapsed() < Duration::from_millis(50), "{:?}", t.elapsed());
+}
+
+#[test]
+fn trailing_data_after_the_object_is_refused() {
+    let body = format!("{SAMPLE} [1]");
+    assert_eq!(
+        parse_catalog(body.as_bytes()).unwrap_err().kind,
+        ErrorKind::InvalidResponse
+    );
+}
+
+#[test]
+fn long_strings_are_cut_and_a_cut_id_is_never_valid() {
+    let long_id = "a".repeat(5_000);
+    let long_name = "N".repeat(5_000);
+    let body = format!(
+        r#"{{"p":{{"models":{{"k":{{"id":"{long_id}"}},"ok":{{"name":"{long_name}"}}}}}}}}"#
+    );
+    let c = parse_catalog(body.as_bytes()).unwrap();
+    let ids: Vec<&str> = c.providers[0]
+        .models
+        .iter()
+        .map(|m| m.id.as_str())
+        .collect();
+    assert_eq!(ids, ["ok"]);
+    let name = c.providers[0].models[0].name.as_deref().unwrap();
+    assert_eq!(name.chars().count(), MAX_NAME_CHARS);
+}
+
+#[test]
+fn deeply_nested_unused_fields_are_skipped_or_refused_cleanly() {
+    let deep = format!("{}{}", "[".repeat(100), "]".repeat(100));
+    let body = format!(r#"{{"p":{{"x":{deep},"models":{{"m":{{"y":{deep}}}}}}}}}"#);
+    assert_eq!(parse_catalog(body.as_bytes()).unwrap().providers.len(), 1);
+    // Very deep nesting in skipped fields is walked without recursion (serde_json skips ignored
+    // values iteratively): no stack overflow, and nothing is kept.
+    let too_deep = format!("{}{}", "[".repeat(100_000), "]".repeat(100_000));
+    let body = format!(
+        r#"{{"p":{{"x":{too_deep},"name":{too_deep},"models":{{"m":{{"name":{too_deep}}}}}}}}}"#
+    );
+    let c = parse_catalog(body.as_bytes()).unwrap();
+    assert_eq!(c.providers.len(), 1);
+    assert_eq!(c.providers[0].name, "p");
+    assert_eq!(c.providers[0].models[0].name, None);
+    // Unbalanced nesting is still refused.
+    let broken = format!(r#"{{"p":{{"x":{}}}}}"#, "[".repeat(1_000));
+    assert_eq!(
+        parse_catalog(broken.as_bytes()).unwrap_err().kind,
+        ErrorKind::InvalidResponse
+    );
+}
+
+#[test]
+fn names_drop_variation_selectors_blank_braille_and_long_mark_runs() {
+    assert_eq!(
+        clean_text("A\u{FE0F}B\u{E0100}C", 50).as_deref(),
+        Some("ABC")
+    );
+    assert_eq!(clean_text("\u{2800}\u{2800}x", 50).as_deref(), Some("x"));
+    // At most two combining marks in a row; none at the start.
+    let zalgo = format!("\u{301}a{}b", "\u{301}\u{302}\u{303}\u{304}");
+    assert_eq!(clean_text(&zalgo, 50).as_deref(), Some("a\u{301}\u{302}b"));
+    assert_eq!(clean_text("e\u{301}", 50).as_deref(), Some("e\u{301}"));
 }
 
 // ---- fetching and the cache --------------------------------------------------------------
@@ -349,7 +470,13 @@ fn refresh_sends_the_etag_and_a_304_keeps_the_list() {
     let r = c.load(true).unwrap();
     assert!(r.unchanged && !r.from_memory);
     assert!(Arc::ptr_eq(&first.loaded.catalog, &r.loaded.catalog));
-    assert!(r.loaded.fetched_at >= first.loaded.fetched_at);
+    // The list is still the one loaded first; only the check time moves.
+    assert_eq!(r.loaded.loaded_at, first.loaded.loaded_at);
+    assert!(r.loaded.checked_at >= first.loaded.checked_at);
+    assert_eq!(
+        c.cached().unwrap().unwrap().loaded_at,
+        first.loaded.loaded_at
+    );
     assert_eq!(m.hits.load(Ordering::SeqCst), 2);
     let req = m.requests.lock().unwrap()[1].to_ascii_lowercase();
     assert!(req.contains("if-none-match: \"v1\""), "{req}");
@@ -461,17 +588,43 @@ fn a_failed_refresh_keeps_the_list_in_memory() {
 fn concurrent_loads_share_one_request() {
     let m = start(Sc::SlowSample(400));
     let c = Arc::new(cache(&m));
+    let gate = Arc::new(std::sync::Barrier::new(6));
+    // Only plain loads: a load that starts after the flight ends is answered from memory, so
+    // the request count is 1 whatever the thread timing.
     let handles: Vec<_> = (0..6)
-        .map(|i| {
+        .map(|_| {
             let c = Arc::clone(&c);
-            // Mix plain loads and refreshes: they all join the one request in flight.
-            std::thread::spawn(move || c.load(i % 2 == 0))
+            let gate = Arc::clone(&gate);
+            std::thread::spawn(move || {
+                gate.wait();
+                c.load(false)
+            })
         })
         .collect();
     let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
     for r in &results {
         assert_eq!(r.as_ref().unwrap().loaded.catalog.providers.len(), 3);
     }
+    assert_eq!(m.hits.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_refresh_during_a_load_joins_it() {
+    let m = start(Sc::SlowSample(800));
+    let c = Arc::new(cache(&m));
+    let first = {
+        let c = Arc::clone(&c);
+        std::thread::spawn(move || c.load(false))
+    };
+    // Wait until the load is on the wire, then refresh while the server is still waiting.
+    let t = Instant::now();
+    while m.hits.load(Ordering::SeqCst) == 0 {
+        assert!(t.elapsed() < Duration::from_secs(5));
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let r = c.load(true).unwrap();
+    first.join().unwrap().unwrap();
+    assert_eq!(r.loaded.catalog.providers.len(), 3);
     assert_eq!(m.hits.load(Ordering::SeqCst), 1);
 }
 

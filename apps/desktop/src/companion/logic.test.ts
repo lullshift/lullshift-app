@@ -479,9 +479,14 @@ describe("model list wording", () => {
 
   it("says when the list was loaded or checked", () => {
     const at = new Date(2026, 10, 7, 10, 42).toISOString();
-    expect(loadedAtText({ fetchedAt: at, unchanged: false })).toBe("Loaded at 10:42");
-    expect(loadedAtText({ fetchedAt: at, unchanged: true })).toBe("Checked at 10:42: no changes");
-    expect(loadedAtText({ fetchedAt: "garbage", unchanged: false })).toBe("Loaded in this app run");
+    const later = new Date(2026, 10, 7, 11, 5).toISOString();
+    expect(loadedAtText({ loadedAt: at, checkedAt: at })).toBe("Loaded at 10:42");
+    expect(loadedAtText({ loadedAt: at, checkedAt: later })).toBe(
+      "Loaded at 10:42, checked at 11:05: no changes",
+    );
+    expect(loadedAtText({ loadedAt: "garbage", checkedAt: "garbage" })).toBe(
+      "Loaded in this app run",
+    );
   });
 
   it("finds providers by name or id, sorted by name", () => {

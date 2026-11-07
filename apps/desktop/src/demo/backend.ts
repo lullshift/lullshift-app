@@ -50,7 +50,7 @@ const adapters: Record<string, AdapterView> = {
 };
 
 // A small made-up models.dev list for the Companion model browser (decision 32).
-let demoCatalogAt: string | null = null;
+let demoCatalog: { loadedAt: string; checkedAt: string } | null = null;
 const demoModel = (
   id: string,
   name: string,
@@ -301,14 +301,16 @@ function handle(cmd: string, a: Args): unknown {
       return { scope: a.scope, text: "", chars: 0, sha256: null };
     case "companion_model_catalog": {
       // Made-up list, no network. "cached" answers from memory like the real core.
-      if (a.mode === "cached" && !demoCatalogAt) return null;
-      const fromMemory = a.mode !== "refresh" && demoCatalogAt !== null;
-      const refreshed = a.mode === "refresh" && demoCatalogAt !== null;
-      const at = fromMemory && demoCatalogAt ? demoCatalogAt : new Date().toISOString();
-      demoCatalogAt = at;
+      // A refresh of the demo list always finds no change, so it moves only the check time.
+      if (a.mode === "cached" && !demoCatalog) return null;
+      const fromMemory = a.mode !== "refresh" && demoCatalog !== null;
+      const unchanged = a.mode === "refresh" && demoCatalog !== null;
+      const now = new Date().toISOString();
+      if (!demoCatalog) demoCatalog = { loadedAt: now, checkedAt: now };
+      else if (unchanged) demoCatalog = { ...demoCatalog, checkedAt: now };
       return {
-        fetchedAt: at,
-        unchanged: refreshed || fromMemory,
+        ...demoCatalog,
+        unchanged,
         fromMemory,
         providers: Object.entries(DEMO_MODELS).map(([id, p]) => ({
           id,
@@ -318,7 +320,7 @@ function handle(cmd: string, a: Args): unknown {
       } satisfies ModelCatalog;
     }
     case "companion_catalog_models": {
-      if (!demoCatalogAt) throw { kind: "notFound", message: "The model list isn't loaded." };
+      if (!demoCatalog) throw { kind: "notFound", message: "The model list isn't loaded." };
       const p = DEMO_MODELS[String(a.providerId)];
       if (!p) throw { kind: "notFound", message: "The loaded model list has no such provider." };
       return p.models;

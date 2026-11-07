@@ -656,7 +656,7 @@ export function isOlderThanAYear(date: string | null | undefined, now: Date): bo
 }
 
 function byName(a: CatalogModel, b: CatalogModel): number {
-  return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+  return (a.name ?? a.id).localeCompare(b.name ?? b.id) || a.id.localeCompare(b.id);
 }
 
 /** Missing values sort last in either direction. */
@@ -679,7 +679,7 @@ export function filterModels(
     if (f.reasoning && !m.reasoning) return false;
     if (f.hideOld && isOlderThanAYear(m.releaseDate, now)) return false;
     if (words.length === 0) return true;
-    const hay = `${m.name} ${m.id} ${m.family ?? ""}`.toLowerCase();
+    const hay = `${m.name ?? ""} ${m.id} ${m.family ?? ""}`.toLowerCase();
     return words.every((w) => hay.includes(w));
   });
   const order = (a: CatalogModel, b: CatalogModel): number => {
@@ -748,10 +748,11 @@ function hhmm(iso: string): string | null {
 }
 
 /** "Loaded at 10:42", or "Checked at 10:45: no changes" after a refresh that found none. */
-export function loadedAtText(c: Pick<ModelCatalog, "fetchedAt" | "unchanged">): string {
-  const at = hhmm(c.fetchedAt);
-  if (!at) return "Loaded in this app run";
-  return c.unchanged ? `Checked at ${at}: no changes` : `Loaded at ${at}`;
+export function loadedAtText(c: Pick<ModelCatalog, "loadedAt" | "checkedAt">): string {
+  const loaded = hhmm(c.loadedAt);
+  if (!loaded) return "Loaded in this app run";
+  const checked = c.checkedAt !== c.loadedAt ? hhmm(c.checkedAt) : null;
+  return checked ? `Loaded at ${loaded}, checked at ${checked}: no changes` : `Loaded at ${loaded}`;
 }
 
 /** Providers whose name or id contains the query, by name. */

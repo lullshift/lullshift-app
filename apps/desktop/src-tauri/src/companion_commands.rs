@@ -568,9 +568,11 @@ pub struct CatalogProviderDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogDto {
-    /// When models.dev last sent or confirmed the list (RFC 3339, UTC).
-    fetched_at: String,
-    /// models.dev answered 304: the list in memory is current.
+    /// When models.dev sent the list in memory (RFC 3339, UTC).
+    loaded_at: String,
+    /// When models.dev last sent or confirmed it (a 304 moves only this one).
+    checked_at: String,
+    /// This call's refresh got a 304: the list in memory is current.
     unchanged: bool,
     /// Nothing was sent: the list was already in memory.
     from_memory: bool,
@@ -581,7 +583,8 @@ pub struct CatalogDto {
 #[serde(rename_all = "camelCase")]
 pub struct CatalogModelDto {
     id: String,
-    name: String,
+    /// `None` when models.dev gives no name; the UI shows the id.
+    name: Option<String>,
     family: Option<String>,
     tool_call: bool,
     reasoning: bool,
@@ -914,7 +917,8 @@ fn catalog_dto(
     from_memory: bool,
 ) -> CatalogDto {
     CatalogDto {
-        fetched_at: ts(OffsetDateTime::from(loaded.fetched_at)),
+        loaded_at: ts(OffsetDateTime::from(loaded.loaded_at)),
+        checked_at: ts(OffsetDateTime::from(loaded.checked_at)),
         unchanged,
         from_memory,
         providers: loaded

@@ -506,6 +506,8 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  /* Names come from models.dev: never let one spill past the row. */
+  overflow: hidden;
 }
 
 .catalog-model:hover {
@@ -523,6 +525,7 @@
 
 .catalog-model-name {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .catalog-model-id {

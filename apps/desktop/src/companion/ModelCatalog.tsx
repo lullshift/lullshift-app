@@ -141,7 +141,11 @@ export function CatalogModelList({
                   aria-pressed={isChosen}
                   onClick={() => onChoose(m.id)}
                 >
-                  <span className="catalog-model-name">{m.name}</span>{" "}
+                  {m.name !== null && (
+                    <>
+                      <span className="catalog-model-name">{m.name}</span>{" "}
+                    </>
+                  )}
                   <code className="catalog-model-id">{m.id}</code>
                   <span className="catalog-model-facts">{modelFacts(m)}</span>
                 </button>
@@ -203,7 +207,7 @@ export function ModelCatalogBrowser({
   // Models of the chosen provider, read from the core's memory. The key changes with the
   // provider and with each load or refresh, so a refreshed list is read again.
   const listed = catalog?.providers.some((p) => p.id === providerId) ?? false;
-  const modelsKey = catalog && listed ? `${catalog.fetchedAt}\n${providerId}` : null;
+  const modelsKey = catalog && listed ? `${catalog.loadedAt}\n${providerId}` : null;
   useEffect(() => {
     if (!modelsKey) return;
     let live = true;

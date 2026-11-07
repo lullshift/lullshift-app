@@ -4,17 +4,15 @@
 //! - One fixed URL ([`MODELS_DEV_URL`]); it is not configurable from any command.
 //! - The same hardened client as provider calls: rustls with the platform verifier, no
 //!   redirects, https only, a total timeout and a size cap read incrementally.
-//! - The answer is untrusted input: parsed leniently per entry, ids checked, text cleaned, counts
-//!   capped, and only the few fields the UI needs are kept.
+//! - The answer is untrusted input: read as a stream (no full JSON tree), parsed leniently per
+//!   entry, ids checked, text cleaned, counts capped (also in total), and only the few fields the
+//!   UI needs are kept.
 //! - Kept in memory only, for the app run. Nothing here writes to disk or logs.
 //! - Single-flight: callers that arrive while a load is running share its result.
 
-use std::collections::HashSet;
 use std::io::Read;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime};
-
-use serde_json::{Map, Value};
 
 use crate::error::{CompanionError, ErrorKind};
 use crate::http::{HttpConfig, agent, classify};
@@ -28,6 +26,8 @@ pub const CATALOG_TIMEOUT: Duration = Duration::from_secs(60);
 pub const MAX_CATALOG_BYTES: usize = 16 * 1024 * 1024;
 /// Most providers kept.
 pub const MAX_PROVIDERS: usize = 1_000;
+/// Most models kept in total (the real file had 8,941 on 2026-11-07, at most 639 per provider).
+pub const MAX_TOTAL_MODELS: usize = 20_000;
 /// Most models kept per provider.
 pub const MAX_MODELS_PER_PROVIDER: usize = 5_000;
 /// Longest provider or model display name kept, in characters.
@@ -38,7 +38,7 @@ pub const MAX_FAMILY_CHARS: usize = 60;
 pub const MAX_PROVIDER_ID_BYTES: usize = 100;
 const MAX_ETAG_BYTES: usize = 256;
 /// Larger token limits are treated as unknown.
-const MAX_TOKEN_LIMIT: u64 = 1_000_000_000;
+pub(crate) const MAX_TOKEN_LIMIT: u64 = 1_000_000_000;
 /// Larger prices (USD per million tokens) are treated as unknown.
 const MAX_COST: f64 = 1_000_000.0;
 
@@ -104,8 +104,9 @@ fn transport(e: &ureq::Error) -> CompanionError {
 pub struct CatalogModel {
     /// Passes [`valid_model_id`], so it can be saved as a profile's model as is.
     pub id: String,
-    /// Plain text, one line, at most [`MAX_NAME_CHARS`].
-    pub name: String,
+    /// Plain text, one line, at most [`MAX_NAME_CHARS`]. `None` when models.dev gives none
+    /// (the UI shows the id); the id is not copied here, to keep the list small.
+    pub name: Option<String>,
     pub family: Option<String>,
     pub tool_call: bool,
     pub reasoning: bool,
@@ -147,25 +148,56 @@ pub fn valid_model_id(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"._:/@+-".contains(&b))
 }
 
-fn valid_provider_id(s: &str) -> bool {
+pub(crate) fn valid_provider_id(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= MAX_PROVIDER_ID_BYTES
         && s.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
 }
 
+/// Characters dropped from catalog names on top of `agent_core::text::is_invisible`: variation
+/// selectors and the blank braille pattern. They stay local to this list on purpose: the shared
+/// set mirrors the published JSON schemas, and variation selectors are part of normal emoji in
+/// Companion replies.
+fn hidden_in_names(c: char) -> bool {
+    matches!(c,
+        '\u{FE00}'..='\u{FE0F}' | '\u{E0100}'..='\u{E01EF}' | '\u{2800}')
+}
+
+/// Combining diacritical marks (the ranges the marketplace manifest checks use).
+fn combining_mark(c: char) -> bool {
+    matches!(c,
+        '\u{300}'..='\u{36F}' | '\u{483}'..='\u{489}' | '\u{591}'..='\u{5BD}'
+        | '\u{610}'..='\u{61A}' | '\u{64B}'..='\u{65F}' | '\u{1AB0}'..='\u{1AFF}'
+        | '\u{1DC0}'..='\u{1DFF}' | '\u{20D0}'..='\u{20FF}' | '\u{FE20}'..='\u{FE2F}')
+}
+
+/// Most combining marks kept in a row, so a name can't stack marks over other text.
+const MAX_COMBINING_RUN: usize = 2;
+
 /// One line of plain text: controls and invisible characters removed, runs of whitespace made
-/// one space, cut to `max` characters. `None` if nothing is left.
+/// one space, runs of combining marks cut to two, cut to `max` characters. `None` if nothing
+/// is left.
 pub fn clean_text(s: &str, max: usize) -> Option<String> {
     let mut out = String::new();
     let mut space = false;
+    let mut marks = 0;
     for c in s.chars() {
         if c.is_whitespace() {
             space = !out.is_empty();
+            marks = 0;
             continue;
         }
-        if c.is_control() || agent_core::text::is_invisible(c) {
+        if c.is_control() || agent_core::text::is_invisible(c) || hidden_in_names(c) {
             continue;
+        }
+        if combining_mark(c) {
+            marks += 1;
+            if marks > MAX_COMBINING_RUN || (out.is_empty() && !space) {
+                continue;
+            }
+        } else {
+            marks = 0;
         }
         if space {
             out.push(' ');
@@ -183,114 +215,26 @@ pub fn clean_cost(v: f64) -> Option<f64> {
     (v.is_finite() && (0.0..=MAX_COST).contains(&v)).then_some(v)
 }
 
-fn clean_date(s: &str) -> Option<String> {
+pub(crate) fn clean_date(s: &str) -> Option<String> {
     let parts: Vec<&str> = s.split('-').collect();
     let lens: Vec<usize> = parts.iter().map(|p| p.len()).collect();
     let shape_ok = matches!(lens.as_slice(), [4] | [4, 2] | [4, 2, 2]);
     (shape_ok && parts.iter().all(|p| p.bytes().all(|b| b.is_ascii_digit()))).then(|| s.to_owned())
 }
 
-fn str_field<'a>(o: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
-    o.get(key).and_then(Value::as_str)
-}
-
-fn token_limit(v: Option<&Value>) -> Option<u64> {
-    v.and_then(Value::as_u64)
-        .filter(|n| (1..=MAX_TOKEN_LIMIT).contains(n))
-}
-
-/// False for models that are not for chat: a `type` other than chat or text, or output
-/// modalities without text.
-fn is_chat(o: &Map<String, Value>) -> bool {
-    match o.get("type") {
-        None | Some(Value::Null) => {}
-        Some(Value::String(t)) if t == "chat" || t == "text" => {}
-        Some(_) => return false,
-    }
-    if let Some(Value::Array(out)) = o.get("modalities").and_then(|m| m.get("output")) {
-        return out.iter().any(|v| v.as_str() == Some("text"));
-    }
-    true
-}
-
-fn parse_model(key: &str, v: &Value) -> Option<CatalogModel> {
-    let o = v.as_object()?;
-    let id = str_field(o, "id").unwrap_or(key);
-    if !valid_model_id(id) || !is_chat(o) {
-        return None;
-    }
-    let cost = o.get("cost").and_then(Value::as_object);
-    let price = |k: &str| {
-        cost.and_then(|c| c.get(k))
-            .and_then(Value::as_f64)
-            .and_then(clean_cost)
-    };
-    let limit = o.get("limit").and_then(Value::as_object);
-    Some(CatalogModel {
-        id: id.to_owned(),
-        name: str_field(o, "name")
-            .and_then(|n| clean_text(n, MAX_NAME_CHARS))
-            .unwrap_or_else(|| id.to_owned()),
-        family: str_field(o, "family").and_then(|f| clean_text(f, MAX_FAMILY_CHARS)),
-        tool_call: o.get("tool_call").and_then(Value::as_bool).unwrap_or(false),
-        reasoning: o.get("reasoning").and_then(Value::as_bool).unwrap_or(false),
-        release_date: str_field(o, "release_date").and_then(clean_date),
-        context_tokens: token_limit(limit.and_then(|l| l.get("context"))),
-        output_tokens: token_limit(limit.and_then(|l| l.get("output"))),
-        cost_input: price("input"),
-        cost_output: price("output"),
-    })
-}
-
-fn parse_provider(key: &str, v: &Value) -> Option<CatalogProvider> {
-    let o = v.as_object()?;
-    let id = str_field(o, "id").unwrap_or(key);
-    if !valid_provider_id(id) {
-        return None;
-    }
-    let mut models = Vec::new();
-    let mut seen = HashSet::new();
-    for (mk, mv) in o.get("models")?.as_object()? {
-        if models.len() >= MAX_MODELS_PER_PROVIDER {
-            break;
-        }
-        if let Some(m) = parse_model(mk, mv)
-            && seen.insert(m.id.clone())
-        {
-            models.push(m);
-        }
-    }
-    if models.is_empty() {
-        return None;
-    }
-    Some(CatalogProvider {
-        id: id.to_owned(),
-        name: str_field(o, "name")
-            .and_then(|n| clean_text(n, MAX_NAME_CHARS))
-            .unwrap_or_else(|| id.to_owned()),
-        models,
-    })
-}
-
-/// Reads the models.dev document. Fails only when the whole body is not a JSON object; a bad
-/// provider or model is skipped.
+/// Reads the models.dev document as a stream (see `models_dev_parse.rs`): no full JSON tree is
+/// built, and at most [`MAX_TOTAL_MODELS`] models are kept. Fails only when the body is not
+/// JSON or its top level is not an object; a bad provider or model is skipped.
 pub fn parse_catalog(bytes: &[u8]) -> Result<Catalog, CompanionError> {
-    let root: Value = serde_json::from_slice(bytes).map_err(|_| not_json())?;
-    let Value::Object(map) = root else {
-        return Err(not_json());
-    };
-    let mut providers: Vec<CatalogProvider> = Vec::new();
-    let mut seen = HashSet::new();
-    for (key, v) in &map {
-        if providers.len() >= MAX_PROVIDERS {
-            break;
-        }
-        if let Some(p) = parse_provider(key, v)
-            && seen.insert(p.id.clone())
-        {
-            providers.push(p);
-        }
+    use serde::de::DeserializeSeed;
+    let mut budget = MAX_TOTAL_MODELS;
+    let mut de = serde_json::Deserializer::from_slice(bytes);
+    let mut providers = parse::Root {
+        budget: &mut budget,
     }
+    .deserialize(&mut de)
+    .map_err(|_| not_json())?;
+    de.end().map_err(|_| not_json())?;
     providers.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(Catalog { providers })
 }
@@ -396,8 +340,11 @@ fn fetch(limits: &CatalogLimits, url: &str, etag: Option<&str>) -> Result<Fetche
 pub struct LoadedCatalog {
     pub catalog: Arc<Catalog>,
     pub etag: Option<String>,
-    /// When models.dev last sent or confirmed (304) this list.
-    pub fetched_at: SystemTime,
+    /// When models.dev sent this list (a 200).
+    pub loaded_at: SystemTime,
+    /// When models.dev last sent or confirmed (304) this list. Equal to `loaded_at` until a
+    /// refresh finds no change.
+    pub checked_at: SystemTime,
 }
 
 #[derive(Debug, Clone)]
@@ -470,7 +417,7 @@ impl CatalogCache {
         if !refresh && let Some(l) = &st.loaded {
             return Ok(LoadResult {
                 loaded: Arc::clone(l),
-                unchanged: true,
+                unchanged: false,
                 from_memory: true,
             });
         }
@@ -502,7 +449,8 @@ impl CatalogCache {
                     loaded: Arc::new(LoadedCatalog {
                         catalog: Arc::clone(&p.catalog),
                         etag: p.etag.clone(),
-                        fetched_at: SystemTime::now(),
+                        loaded_at: p.loaded_at,
+                        checked_at: SystemTime::now(),
                     }),
                     unchanged: true,
                     from_memory: false,
@@ -510,15 +458,19 @@ impl CatalogCache {
                 // A 304 to a request that had no ETag is not a valid answer.
                 _ => Err(not_json()),
             },
-            Ok(Fetched::Body { bytes, etag }) => parse_catalog(&bytes).map(|catalog| LoadResult {
-                loaded: Arc::new(LoadedCatalog {
-                    catalog: Arc::new(catalog),
-                    etag,
-                    fetched_at: SystemTime::now(),
-                }),
-                unchanged: false,
-                from_memory: false,
-            }),
+            Ok(Fetched::Body { bytes, etag }) => {
+                let now = SystemTime::now();
+                parse_catalog(&bytes).map(|catalog| LoadResult {
+                    loaded: Arc::new(LoadedCatalog {
+                        catalog: Arc::new(catalog),
+                        etag,
+                        loaded_at: now,
+                        checked_at: now,
+                    }),
+                    unchanged: false,
+                    from_memory: false,
+                })
+            }
             Err(e) => Err(e),
         };
         flight.finish(result.clone());
@@ -558,6 +510,9 @@ impl Drop for Flight<'_> {
         }
     }
 }
+
+#[path = "models_dev_parse.rs"]
+mod parse;
 
 #[cfg(test)]
 #[path = "models_dev_tests.rs"]

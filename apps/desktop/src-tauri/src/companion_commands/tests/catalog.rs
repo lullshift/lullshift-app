@@ -23,10 +23,16 @@ fn models_dev_mock() -> Catalog {
     std::thread::spawn(move || {
         for conn in listener.incoming() {
             let Ok(mut s) = conn else { continue };
-            if read_request(&mut s).is_none() {
+            let Some(req) = read_request(&mut s) else {
+                continue;
+            };
+            h.fetch_add(1, Ordering::SeqCst);
+            if req.to_ascii_lowercase().contains("if-none-match: \"s1\"") {
+                let _ = s.write_all(
+                    b"HTTP/1.1 304 Not Modified\r\netag: \"s1\"\r\nconnection: close\r\n\r\n",
+                );
                 continue;
             }
-            h.fetch_add(1, Ordering::SeqCst);
             let head = format!(
                 "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\netag: \"s1\"\r\nconnection: close\r\n\r\n",
                 SAMPLE.len()
@@ -86,7 +92,8 @@ fn load_then_browse_from_memory() {
         .expect("load")
         .expect("some");
     assert!(!c.from_memory && !c.unchanged);
-    assert!(c.fetched_at.ends_with('Z'), "{}", c.fetched_at);
+    assert!(c.loaded_at.ends_with('Z'), "{}", c.loaded_at);
+    assert_eq!(c.checked_at, c.loaded_at);
     let ids: Vec<&str> = c.providers.iter().map(|p| p.id.as_str()).collect();
     assert_eq!(ids, ["anthropic", "local-lab", "openai"]);
     assert_eq!(c.providers[0].model_count, 2);
@@ -150,4 +157,31 @@ fn modes_parse_from_the_ui_names() {
         );
     }
     assert!(serde_json::from_str::<CatalogMode>("\"url\"").is_err());
+}
+
+#[test]
+fn a_refresh_that_finds_no_change_keeps_the_load_time_and_moves_the_check_time() {
+    let dir = tempfile::tempdir().expect("dir");
+    let m = models_dev_mock();
+    let core = core_on(dir.path(), &m.url);
+    let first = model_catalog(&core, CatalogMode::Load)
+        .expect("load")
+        .expect("some");
+    std::thread::sleep(Duration::from_millis(20));
+    let r = model_catalog(&core, CatalogMode::Refresh)
+        .expect("refresh")
+        .expect("some");
+    assert!(r.unchanged && !r.from_memory);
+    assert_eq!(r.loaded_at, first.loaded_at);
+    assert_ne!(r.checked_at, first.checked_at);
+    // Reopening the form (memory only) shows both times honestly.
+    let cached = model_catalog(&core, CatalogMode::Cached)
+        .expect("cached")
+        .expect("some");
+    assert_eq!(
+        (cached.loaded_at.as_str(), cached.checked_at.as_str()),
+        (first.loaded_at.as_str(), r.checked_at.as_str())
+    );
+    assert!(!cached.unchanged && cached.from_memory);
+    assert_eq!(m.hits.load(Ordering::SeqCst), 2);
 }

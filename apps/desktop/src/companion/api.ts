@@ -345,9 +345,14 @@ export interface CatalogProvider {
 }
 
 export interface ModelCatalog {
-  /** When models.dev last sent or confirmed the list (RFC 3339, UTC). */
-  fetchedAt: string;
-  /** models.dev answered "not modified": the list in memory is current. */
+  /** When models.dev last sent the list now in memory (RFC 3339, UTC). */
+  loadedAt: string;
+  /**
+   * When models.dev last sent or confirmed the list (RFC 3339, UTC). Equals `loadedAt` until a
+   * Refresh finds no change.
+   */
+  checkedAt: string;
+  /** This answer was a Refresh and models.dev said "not modified". */
   unchanged: boolean;
   /** Nothing was sent: the list was already in memory. */
   fromMemory: boolean;
@@ -357,7 +362,8 @@ export interface ModelCatalog {
 export interface CatalogModel {
   /** Always a valid model name for a provider profile. */
   id: string;
-  name: string;
+  /** null when models.dev gives no usable name; show the id instead. */
+  name: string | null;
   family: string | null;
   toolCall: boolean;
   reasoning: boolean;
