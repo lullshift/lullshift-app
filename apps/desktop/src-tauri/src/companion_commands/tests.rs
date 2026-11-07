@@ -1270,4 +1270,5 @@ fn retry_after_the_address_changed_to_another_host_is_refused() {
     assert_eq!(kind(&retry(&core, failed).unwrap_err()), "providerError");
 }
 
+mod catalog;
 mod streaming;

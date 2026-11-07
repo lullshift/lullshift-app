@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { ERROR_KINDS, type Scope } from "./api";
+import { ERROR_KINDS, type CatalogModel, type Scope } from "./api";
 import {
   baseUrlHint,
   baseUrlProblem,
+  CATALOG_PROVIDER,
+  catalogCountText,
+  catalogErrorText,
+  contextText,
+  costText,
+  DEFAULT_CATALOG_FILTERS,
+  filterModels,
+  filterProviders,
+  formatUsd,
+  isOlderThanAYear,
+  loadedAtText,
+  modelFacts,
+  releaseTime,
   budgetView,
   buildScope,
   canSend,
@@ -310,5 +323,180 @@ describe("launch does not touch the keychain", () => {
     expect(shouldMountCompanion("activities", false)).toBe(false);
     expect(shouldMountCompanion("companion", false)).toBe(true);
     expect(shouldMountCompanion("sessions", true)).toBe(true);
+  });
+});
+
+// ---- the models.dev model list (decision 32) ----------------------------------------------
+
+function model(id: string, more: Partial<CatalogModel> = {}): CatalogModel {
+  return {
+    id,
+    name: id.toUpperCase(),
+    family: null,
+    toolCall: false,
+    reasoning: false,
+    releaseDate: null,
+    contextTokens: null,
+    outputTokens: null,
+    costInput: null,
+    costOutput: null,
+    ...more,
+  };
+}
+
+const NOW = new Date(Date.UTC(2026, 10, 7));
+
+const MODELS: CatalogModel[] = [
+  model("old-cheap", { releaseDate: "2024-01-10", costInput: 0.1, costOutput: 0.4 }),
+  model("new-tools", {
+    releaseDate: "2026-06-10",
+    toolCall: true,
+    reasoning: true,
+    costInput: 3,
+    costOutput: 15,
+    family: "sonnet",
+  }),
+  model("mid", { releaseDate: "2026-01", toolCall: true, costInput: 1 }),
+  model("undated"),
+];
+
+const ids = (ms: CatalogModel[]) => ms.map((m) => m.id);
+
+describe("model list filters", () => {
+  it("maps fixed providers and leaves compatible servers to a picker", () => {
+    expect(CATALOG_PROVIDER).toEqual({
+      anthropic: "anthropic",
+      openai: "openai",
+      openaiCompatible: null,
+    });
+  });
+
+  it("sorts newest first by default, unknown dates last", () => {
+    expect(DEFAULT_CATALOG_FILTERS.sort).toBe("newest");
+    expect(ids(filterModels(MODELS, DEFAULT_CATALOG_FILTERS, NOW))).toEqual([
+      "new-tools",
+      "mid",
+      "old-cheap",
+      "undated",
+    ]);
+  });
+
+  it("sorts by cheapest input, unknown prices last, and by name", () => {
+    const f = { ...DEFAULT_CATALOG_FILTERS };
+    expect(ids(filterModels(MODELS, { ...f, sort: "cheapest" }, NOW))).toEqual([
+      "old-cheap",
+      "mid",
+      "new-tools",
+      "undated",
+    ]);
+    expect(ids(filterModels(MODELS, { ...f, sort: "name" }, NOW))).toEqual([
+      "mid",
+      "new-tools",
+      "old-cheap",
+      "undated",
+    ]);
+  });
+
+  it("filters by tools, reasoning and text over name, id and family", () => {
+    const f = DEFAULT_CATALOG_FILTERS;
+    expect(ids(filterModels(MODELS, { ...f, tools: true }, NOW))).toEqual(["new-tools", "mid"]);
+    expect(ids(filterModels(MODELS, { ...f, reasoning: true }, NOW))).toEqual(["new-tools"]);
+    expect(ids(filterModels(MODELS, { ...f, text: "SONNET" }, NOW))).toEqual(["new-tools"]);
+    expect(ids(filterModels(MODELS, { ...f, text: "old cheap" }, NOW))).toEqual(["old-cheap"]);
+    expect(filterModels(MODELS, { ...f, text: "nothing-like-this" }, NOW)).toEqual([]);
+  });
+
+  it("hides models released more than a year ago, never undated ones", () => {
+    const kept = ids(filterModels(MODELS, { ...DEFAULT_CATALOG_FILTERS, hideOld: true }, NOW));
+    expect(kept).toEqual(["new-tools", "mid", "undated"]);
+    expect(isOlderThanAYear("2025-11-07", NOW)).toBe(false);
+    expect(isOlderThanAYear("2025-11-06", NOW)).toBe(true);
+    expect(isOlderThanAYear("2025", NOW)).toBe(true);
+    expect(isOlderThanAYear(null, NOW)).toBe(false);
+    expect(isOlderThanAYear("soon", NOW)).toBe(false);
+  });
+
+  it("reads only real date shapes", () => {
+    expect(releaseTime("2026-06-10")).toBe(Date.UTC(2026, 5, 10));
+    expect(releaseTime("2026-06")).toBe(Date.UTC(2026, 5, 1));
+    expect(releaseTime("2026")).toBe(Date.UTC(2026, 0, 1));
+    for (const bad of ["2026-13", "26-01-01", "2026-06-10T00:00", "", null]) {
+      expect(releaseTime(bad)).toBeNull();
+    }
+  });
+
+  it("does not change the list it was given", () => {
+    const copy = [...MODELS];
+    filterModels(MODELS, { ...DEFAULT_CATALOG_FILTERS, sort: "name" }, NOW);
+    expect(MODELS).toEqual(copy);
+  });
+});
+
+describe("model list wording", () => {
+  it("formats prices per million tokens and says when they are unknown", () => {
+    expect(formatUsd(3)).toBe("$3");
+    expect(formatUsd(2.5)).toBe("$2.5");
+    expect(formatUsd(0.15)).toBe("$0.15");
+    expect(formatUsd(0.075)).toBe("$0.075");
+    expect(formatUsd(0)).toBe("$0");
+    expect(costText({ costInput: 3, costOutput: 15 })).toBe("$3 in / $15 out per 1M tokens");
+    expect(costText({ costInput: null, costOutput: null })).toBe("price unknown");
+    expect(costText({ costInput: 1, costOutput: null })).toBe(
+      "$1 in / output price unknown per 1M tokens",
+    );
+  });
+
+  it("formats context sizes", () => {
+    expect(contextText(200_000)).toBe("200K context");
+    expect(contextText(1_000_000)).toBe("1M context");
+    expect(contextText(1_048_576)).toBe("1M context");
+    expect(contextText(2_500_000)).toBe("2.5M context");
+    expect(contextText(512)).toBe("512 tokens context");
+    expect(contextText(null)).toBe("context size unknown");
+  });
+
+  it("lists the facts of a row", () => {
+    expect(modelFacts(MODELS[1]!)).toBe(
+      "context size unknown · $3 in / $15 out per 1M tokens · supports tools · reasoning · released 2026-06-10",
+    );
+    expect(modelFacts(MODELS[3]!)).toContain("release date unknown");
+  });
+
+  it("counts what is shown", () => {
+    expect(catalogCountText(4, 4)).toBe("4 models");
+    expect(catalogCountText(1, 1)).toBe("1 model");
+    expect(catalogCountText(2, 4)).toBe("2 of 4 models");
+    expect(catalogCountText(0, 4)).toBe("No models match these filters (out of 4).");
+    expect(catalogCountText(0, 0)).toBe("This provider has no chat models in the list.");
+  });
+
+  it("says when the list was loaded or checked", () => {
+    const at = new Date(2026, 10, 7, 10, 42).toISOString();
+    expect(loadedAtText({ fetchedAt: at, unchanged: false })).toBe("Loaded at 10:42");
+    expect(loadedAtText({ fetchedAt: at, unchanged: true })).toBe("Checked at 10:42: no changes");
+    expect(loadedAtText({ fetchedAt: "garbage", unchanged: false })).toBe("Loaded in this app run");
+  });
+
+  it("finds providers by name or id, sorted by name", () => {
+    const ps = [
+      { id: "openrouter", name: "OpenRouter", modelCount: 300 },
+      { id: "deepseek", name: "DeepSeek", modelCount: 2 },
+      { id: "x-ai", name: "xAI", modelCount: 5 },
+    ];
+    expect(filterProviders(ps, "").map((p) => p.id)).toEqual(["deepseek", "openrouter", "x-ai"]);
+    expect(filterProviders(ps, "ROUTER").map((p) => p.id)).toEqual(["openrouter"]);
+    expect(filterProviders(ps, "x-a").map((p) => p.id)).toEqual(["x-ai"]);
+    expect(filterProviders(ps, "zzz")).toEqual([]);
+  });
+
+  it("keeps the backend's fixed sentence and words the rest", () => {
+    expect(catalogErrorText({ kind: "offline", message: "Can't reach models.dev." })).toBe(
+      "Can't reach models.dev.",
+    );
+    expect(catalogErrorText({ kind: "unavailable", message: "" })).toBe(
+      "The model list isn't available in this build.",
+    );
+    expect(catalogErrorText({ kind: "internal", message: "x" })).toContain("inside Lullshift");
+    expect(catalogErrorText({ kind: "timeout" })).toContain("inside Lullshift");
   });
 });

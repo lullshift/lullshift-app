@@ -4,6 +4,7 @@
 
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { AdapterView } from "../adapters";
+import type { CatalogModel, ModelCatalog } from "../companion/api";
 import type { ContextPrefs, SessionItem, UiPrefs } from "../context/api";
 import type { NotificationPrefs } from "../NotificationSettings";
 import type { Dashboard } from "../sessions";
@@ -45,6 +46,58 @@ const adapters: Record<string, AdapterView> = {
     events: [],
     experimental: true,
     eventSeen: null,
+  },
+};
+
+// A small made-up models.dev list for the Companion model browser (decision 32).
+let demoCatalogAt: string | null = null;
+const demoModel = (
+  id: string,
+  name: string,
+  releaseDate: string | null,
+  costInput: number | null,
+  costOutput: number | null,
+  more: Partial<CatalogModel> = {},
+): CatalogModel => ({
+  id,
+  name,
+  family: null,
+  toolCall: true,
+  reasoning: false,
+  releaseDate,
+  contextTokens: 128_000,
+  outputTokens: 16_000,
+  costInput,
+  costOutput,
+  ...more,
+});
+const DEMO_MODELS: Record<string, { name: string; models: CatalogModel[] }> = {
+  anthropic: {
+    name: "Anthropic",
+    models: [
+      demoModel("demo-claude-large", "Demo Large", "2026-06-10", 3, 15, {
+        reasoning: true,
+        contextTokens: 200_000,
+      }),
+      demoModel("demo-claude-small", "Demo Small", "2026-07-01", 1, 5),
+      demoModel("demo-claude-legacy", "Demo Legacy", "2024-03-04", 0.25, 1.25),
+    ],
+  },
+  openai: {
+    name: "OpenAI",
+    models: [
+      demoModel("demo-gpt-mini", "Demo Mini", "2025-08-07", 0.15, 0.6),
+      demoModel("demo-gpt-think", "Demo Thinker", "2026-02-01", 2, 8, { reasoning: true }),
+    ],
+  },
+  "demo-local": {
+    name: "Demo Local Server",
+    models: [
+      demoModel("demo/local-7b:latest", "Local 7B", null, null, null, {
+        toolCall: false,
+        contextTokens: 32_768,
+      }),
+    ],
   },
 };
 
@@ -246,6 +299,30 @@ function handle(cmd: string, a: Args): unknown {
       ];
     case "companion_preview_context":
       return { scope: a.scope, text: "", chars: 0, sha256: null };
+    case "companion_model_catalog": {
+      // Made-up list, no network. "cached" answers from memory like the real core.
+      if (a.mode === "cached" && !demoCatalogAt) return null;
+      const fromMemory = a.mode !== "refresh" && demoCatalogAt !== null;
+      const refreshed = a.mode === "refresh" && demoCatalogAt !== null;
+      const at = fromMemory && demoCatalogAt ? demoCatalogAt : new Date().toISOString();
+      demoCatalogAt = at;
+      return {
+        fetchedAt: at,
+        unchanged: refreshed || fromMemory,
+        fromMemory,
+        providers: Object.entries(DEMO_MODELS).map(([id, p]) => ({
+          id,
+          name: p.name,
+          modelCount: p.models.length,
+        })),
+      } satisfies ModelCatalog;
+    }
+    case "companion_catalog_models": {
+      if (!demoCatalogAt) throw { kind: "notFound", message: "The model list isn't loaded." };
+      const p = DEMO_MODELS[String(a.providerId)];
+      if (!p) throw { kind: "notFound", message: "The loaded model list has no such provider." };
+      return p.models;
+    }
 
     // Plugins
     case "plugin:notification|is_permission_granted":

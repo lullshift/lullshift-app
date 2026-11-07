@@ -560,5 +560,5 @@ impl Drop for Flight<'_> {
 }
 
 #[cfg(test)]
-#[path = "catalog_tests.rs"]
+#[path = "models_dev_tests.rs"]
 mod tests;

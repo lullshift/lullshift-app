@@ -618,6 +618,8 @@ pub fn run() {
             companion_commands::companion_set_key,
             companion_commands::companion_clear_key,
             companion_commands::companion_test,
+            companion_commands::companion_model_catalog,
+            companion_commands::companion_catalog_models,
             companion_commands::companion_threads,
             companion_commands::companion_new_thread,
             companion_commands::companion_rename_thread,

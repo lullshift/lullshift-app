@@ -1,12 +1,12 @@
 {
   "good": {
     "id": "good",
-    "name": "Good ‮ provider\u0007\n  with   spaces",
+    "name": "Good \u202e provider\u0007\n  with   spaces",
     "models": {
       "ok-model": {
         "id": "ok-model",
         "name": "OK",
-        "family": "fam​ily",
+        "family": "fam\u200bily",
         "tool_call": "yes",
         "reasoning": 1,
         "release_date": "June 2026",
@@ -17,7 +17,11 @@
       "semi;colon": { "name": "Bad too" },
       "not-an-object": 42,
       "huge-price": { "id": "huge-price", "cost": { "input": 1e12, "output": 2.5 } },
-      "chat-type": { "id": "chat-type", "type": "chat", "modalities": { "output": ["text", "image"] } },
+      "chat-type": {
+        "id": "chat-type",
+        "type": "chat",
+        "modalities": { "output": ["text", "image"] }
+      },
       "odd-type": { "id": "odd-type", "type": 7 },
       "no-name": { "id": "no-name" },
       "ok-model-dup": { "id": "ok-model", "name": "Duplicate" }

@@ -18,6 +18,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use ::companion::models_dev::{self, CatalogCache, CatalogModel};
 use ::companion::provider::{MAX_OUTPUT_TOKENS, TEST_OUTPUT_TOKENS};
 use ::companion::scope::{ItemFacts, Selection, SessionFacts, compose_user_content, trim_history};
 use ::companion::tools::{
@@ -91,6 +92,8 @@ pub struct CompanionState {
     next_seq: AtomicU64,
     approvals: ApprovalMap,
     late_usage: Arc<Mutex<Vec<QueuedUsage>>>,
+    /// The models.dev model list, in memory for this app run only (decision 32).
+    pub(crate) catalog: CatalogCache,
 }
 
 impl CompanionState {
@@ -107,6 +110,7 @@ impl CompanionState {
             next_seq: AtomicU64::new(1),
             approvals: Arc::new(Mutex::new(HashMap::new())),
             late_usage: Arc::new(Mutex::new(Vec::new())),
+            catalog: CatalogCache::new(),
         }
     }
 
@@ -541,6 +545,72 @@ pub struct TestResultDto {
     model: String,
 }
 
+/// What `companion_model_catalog` should do. Only `load` and `refresh` may use the network.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CatalogMode {
+    /// Memory only: the list if it was loaded in this app run, otherwise nothing.
+    Cached,
+    /// The list from memory, or one request to models.dev if it isn't loaded yet.
+    Load,
+    /// One request to models.dev with the stored ETag; a 304 keeps the list.
+    Refresh,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogProviderDto {
+    id: String,
+    name: String,
+    model_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogDto {
+    /// When models.dev last sent or confirmed the list (RFC 3339, UTC).
+    fetched_at: String,
+    /// models.dev answered 304: the list in memory is current.
+    unchanged: bool,
+    /// Nothing was sent: the list was already in memory.
+    from_memory: bool,
+    providers: Vec<CatalogProviderDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogModelDto {
+    id: String,
+    name: String,
+    family: Option<String>,
+    tool_call: bool,
+    reasoning: bool,
+    release_date: Option<String>,
+    context_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    /// USD per million input tokens.
+    cost_input: Option<f64>,
+    /// USD per million output tokens.
+    cost_output: Option<f64>,
+}
+
+impl From<&CatalogModel> for CatalogModelDto {
+    fn from(m: &CatalogModel) -> Self {
+        Self {
+            id: m.id.clone(),
+            name: m.name.clone(),
+            family: m.family.clone(),
+            tool_call: m.tool_call,
+            reasoning: m.reasoning,
+            release_date: m.release_date.clone(),
+            context_tokens: m.context_tokens,
+            output_tokens: m.output_tokens,
+            cost_input: m.cost_input,
+            cost_output: m.cost_output,
+        }
+    }
+}
+
 /// Which Context Keeper data goes with a message. `none` is the default; nothing is attached
 /// unless the user picks one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -675,11 +745,8 @@ fn clean_line(s: &str, max: usize, what: &str) -> Res<String> {
 
 fn check_model(s: &str) -> Res<String> {
     let t = s.trim();
-    let ok = !t.is_empty()
-        && t.len() <= 200
-        && t.bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"._:/@+-".contains(&b));
-    if !ok {
+    // The same rule decides which models.dev ids are offered, so a chosen one always saves.
+    if !models_dev::valid_model_id(t) {
         return Err(CommandError::invalid(
             "The model name may use letters, digits and . _ : / @ + - only (up to 200 characters).",
         ));
@@ -837,6 +904,60 @@ pub fn test_connection(core: &Core, profile_id: &str) -> Res<TestResultDto> {
         ok: true,
         model: p.profile.model,
     })
+}
+
+// ---- the models.dev model list (decision 32) ----------------------------------------------
+
+fn catalog_dto(
+    loaded: &models_dev::LoadedCatalog,
+    unchanged: bool,
+    from_memory: bool,
+) -> CatalogDto {
+    CatalogDto {
+        fetched_at: ts(OffsetDateTime::from(loaded.fetched_at)),
+        unchanged,
+        from_memory,
+        providers: loaded
+            .catalog
+            .providers
+            .iter()
+            .map(|p| CatalogProviderDto {
+                id: p.id.clone(),
+                name: p.name.clone(),
+                model_count: p.models.len(),
+            })
+            .collect(),
+    }
+}
+
+/// The provider list. `cached` never touches the network and returns `None` before the first
+/// load; `load` and `refresh` are the only paths that contact models.dev.
+pub fn model_catalog(core: &Core, mode: CatalogMode) -> Res<Option<CatalogDto>> {
+    let cache = &core.companion.catalog;
+    match mode {
+        CatalogMode::Cached => Ok(cache.cached()?.map(|l| catalog_dto(&l, false, true))),
+        CatalogMode::Load | CatalogMode::Refresh => {
+            let r = cache.load(mode == CatalogMode::Refresh)?;
+            Ok(Some(catalog_dto(&r.loaded, r.unchanged, r.from_memory)))
+        }
+    }
+}
+
+/// The models of one provider from the list in memory. Never touches the network.
+pub fn catalog_models(core: &Core, provider_id: &str) -> Res<Vec<CatalogModelDto>> {
+    if provider_id.is_empty() || provider_id.len() > models_dev::MAX_PROVIDER_ID_BYTES {
+        return Err(models_dev::unknown_provider().into());
+    }
+    let loaded = core
+        .companion
+        .catalog
+        .cached()?
+        .ok_or_else(models_dev::not_loaded)?;
+    let provider = loaded
+        .catalog
+        .provider(provider_id)
+        .ok_or_else(models_dev::unknown_provider)?;
+    Ok(provider.models.iter().map(CatalogModelDto::from).collect())
 }
 
 // ---- threads and messages ----------------------------------------------------------------
@@ -1632,6 +1753,22 @@ pub async fn companion_clear_key(core: CoreState<'_>, profile_id: String) -> Res
 #[tauri::command]
 pub async fn companion_test(core: CoreState<'_>, profile_id: String) -> Res<TestResultDto> {
     run(&core, move |c| test_connection(c, &profile_id)).await
+}
+
+#[tauri::command]
+pub async fn companion_model_catalog(
+    core: CoreState<'_>,
+    mode: CatalogMode,
+) -> Res<Option<CatalogDto>> {
+    run(&core, move |c| model_catalog(c, mode)).await
+}
+
+#[tauri::command]
+pub async fn companion_catalog_models(
+    core: CoreState<'_>,
+    provider_id: String,
+) -> Res<Vec<CatalogModelDto>> {
+    run(&core, move |c| catalog_models(c, &provider_id)).await
 }
 
 #[tauri::command]
