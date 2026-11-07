@@ -4,13 +4,7 @@ import { PausedStats } from "./PausedStats";
 
 const render = (summary: { label: string; value: string | number }[] | null) =>
   renderToStaticMarkup(
-    <PausedStats
-      name="Moss Paths"
-      summary={summary}
-      playedNow={125}
-      playedTotal={600}
-      preview={null}
-    />,
+    <PausedStats name="Moss Paths" summary={summary} playedNow={125} preview={null} />,
   );
 
 describe("paused view stats", () => {
@@ -18,10 +12,13 @@ describe("paused view stats", () => {
     const html = render([{ label: "Played", value: 99 }]);
     const [host, own] = html.split("<section");
     expect(host).toContain("Played this time");
-    expect(host).toContain("In total");
+    expect(host).not.toContain("In total");
     expect(host).not.toContain(">Played<");
     expect(own).toContain(">Played<");
     expect(own).not.toContain("In total");
+  });
+  it("never shows a running total", () => {
+    expect(render(null)).not.toMatch(/total/i);
   });
   it("heads the activity group with the activity's name and labels it", () => {
     const html = render([{ label: "Moves", value: 12 }]);
