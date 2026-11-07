@@ -220,6 +220,21 @@ describe("a lookup waiting for approval", () => {
   });
 });
 
+describe("the badge count", () => {
+  it("leaves out the thread you are looking at", () => {
+    beginRequest(meta(1, "a"));
+    finishRequest(1, "a", { kind: "replied", text: "t", stored: true });
+    beginRequest(meta(2, "b"));
+    finishRequest(2, "b", { kind: "replied", text: "t", stored: true });
+    expect(backgroundCount()).toBe(2);
+    setWatchedThread(1);
+    expect(backgroundCount()).toBe(1);
+    // A hidden window means nothing is being looked at.
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    expect(backgroundCount()).toBe(2);
+  });
+});
+
 describe("notices", () => {
   it("tells you where a reply landed, with the title only, when you are elsewhere", async () => {
     const c = controlled();

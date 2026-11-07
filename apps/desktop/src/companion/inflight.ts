@@ -212,6 +212,8 @@ export function dropThread(threadId: number): void {
 export function backgroundCount(e: Entries = entries): number {
   let n = 0;
   for (const entry of e.values()) {
+    // The thread being looked at needs no badge.
+    if (isWatching(entry.threadId)) continue;
     if (entry.status === "finished") {
       if (entry.outcome && entry.outcome.kind !== "cancelled") n += 1;
     } else if (entry.stream.pending) {
