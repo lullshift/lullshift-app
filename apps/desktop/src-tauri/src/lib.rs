@@ -512,6 +512,11 @@ pub fn run() {
         // Asynchronous: serving may read and hash a file (up to 5 MiB), which must not run on the
         // webview's thread. Floods are limited by the per-activity budget in `serve`.
         .register_asynchronous_uri_scheme_protocol(activities::SCHEME, |ctx, request, responder| {
+            // Only the main window frames activities; the tray window never does.
+            if ctx.webview_label() != "main" {
+                responder.respond(activities::forbidden());
+                return;
+            }
             let core: Option<Arc<Core>> = ctx
                 .app_handle()
                 .try_state::<Arc<Core>>()
@@ -543,6 +548,7 @@ pub fn run() {
                 market: market::MarketState::default(),
                 companion: companion_commands::CompanionState::new(),
             });
+            tray_window::set_quick(context::read_ui_prefs(&core).tray_click);
             companion_commands::recover_pending(&core);
             let ipc_health = if store_health == Health::Ok {
                 start_ipc(&handle, &core)
@@ -577,6 +583,8 @@ pub fn run() {
                 }
                 // The quick window closes when you click away from it.
                 WindowEvent::Focused(false) => tray_window::on_blur(window),
+                // ... and when the main window takes focus.
+                WindowEvent::Focused(true) => tray_window::on_focus(window),
                 _ => {}
             }
         })

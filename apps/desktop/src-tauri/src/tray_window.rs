@@ -12,11 +12,12 @@
 //!   loses focus. Linux tray backends often deliver no click events; there the right-click menu
 //!   ("Show Lullshift") is the way in.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 
 use crate::{Core, activities, context, show_main};
 
@@ -32,7 +33,25 @@ const REOPEN_GUARD: Duration = Duration::from_millis(400);
 /// Gap between the icon and the window, in physical pixels.
 const GAP: f64 = 8.0;
 
+/// The window's size in logical pixels (as declared in `tauri.conf.json`).
+const WINDOW_LOGICAL: (f64, f64) = (380.0, 560.0);
+
 static HID_ON_BLUR: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// "Tray click opens: Quick window". Kept in memory so the icon's click handler never touches
+/// SQLite: set at startup and whenever the interface preferences are saved.
+static QUICK: AtomicBool = AtomicBool::new(true);
+
+pub fn set_quick(click: context::TrayClick) {
+    QUICK.store(click == context::TrayClick::Quick, Ordering::Relaxed);
+}
+
+/// The window's physical size on a monitor of `scale`. Computed from the logical size and the
+/// target monitor's scale, not read from the window, which may still be sized for the monitor it
+/// was last on (mixed-DPI setups).
+pub fn window_size(scale: f64) -> (f64, f64) {
+    (WINDOW_LOGICAL.0 * scale, WINDOW_LOGICAL.1 * scale)
+}
 
 // ---- placement ---------------------------------------------------------------------------
 
@@ -90,11 +109,7 @@ pub fn place(icon: Rect, win: (f64, f64), area: Rect) -> (f64, f64) {
 
 /// Left click on the tray icon: the quick window or the main window, by the saved setting.
 pub fn on_left_click(app: &AppHandle, position: PhysicalPosition<f64>, icon: tauri::Rect) {
-    let quick = app
-        .try_state::<Arc<Core>>()
-        .map(|core| context::read_ui_prefs(&core).tray_click == context::TrayClick::Quick)
-        .unwrap_or(false);
-    if !quick {
+    if !QUICK.load(Ordering::Relaxed) {
         show_main(app);
         return;
     }
@@ -113,10 +128,11 @@ fn toggle(app: &AppHandle, position: PhysicalPosition<f64>, icon: tauri::Rect) -
         let _ = win.hide();
         return true;
     }
+    // Spent by the first click that sees it: it suppresses at most one.
     let blurred_just_now = HID_ON_BLUR
         .lock()
         .ok()
-        .and_then(|t| *t)
+        .and_then(|mut t| t.take())
         .is_some_and(|t| t.elapsed() < REOPEN_GUARD);
     if blurred_just_now {
         return true;
@@ -128,9 +144,7 @@ fn toggle(app: &AppHandle, position: PhysicalPosition<f64>, icon: tauri::Rect) -
         .or_else(|| app.primary_monitor().ok().flatten());
     if let Some(m) = monitor {
         let scale = m.scale_factor();
-        let size = win
-            .outer_size()
-            .unwrap_or_else(|_| PhysicalSize::new((380.0 * scale) as u32, (560.0 * scale) as u32));
+        let size = window_size(scale);
         let (ip, is) = (
             icon.position.to_physical::<f64>(scale),
             icon.size.to_physical::<f64>(scale),
@@ -158,11 +172,7 @@ fn toggle(app: &AppHandle, position: PhysicalPosition<f64>, icon: tauri::Rect) -
             w: f64::from(wa.size.width),
             h: f64::from(wa.size.height),
         };
-        let (x, y) = place(
-            icon_rect,
-            (f64::from(size.width), f64::from(size.height)),
-            area,
-        );
+        let (x, y) = place(icon_rect, size, area);
         let _ = win.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
     }
     let _ = win.show();
@@ -181,6 +191,17 @@ pub fn on_blur(window: &tauri::Window) {
         *t = Some(Instant::now());
     }
     let _ = window.hide();
+}
+
+/// The main window gained focus: the quick window has no business staying up over it (also covers
+/// a focus lock that keeps blur from firing).
+pub fn on_focus(window: &tauri::Window) {
+    if window.label() != MAIN_LABEL {
+        return;
+    }
+    if let Some(tray) = window.app_handle().get_webview_window(LABEL) {
+        let _ = tray.hide();
+    }
 }
 
 // ---- commands ----------------------------------------------------------------------------
@@ -228,7 +249,8 @@ fn validate(
         return Err("invalid_request".into());
     }
     if let Some(id) = activity_id {
-        if !matches!(view, MainView::Play | MainView::Rest | MainView::Continue) {
+        // The tray sends Play or Rest only (an activity's own page).
+        if !matches!(view, MainView::Play | MainView::Rest) {
             return Err("invalid_request".into());
         }
         // The same list the library shows: enabled, installed and verified.
@@ -250,8 +272,12 @@ fn validate(
 
 /// Only the tray window may call the tray commands. (The ACL already grants them to no other
 /// window; this keeps that true if a capability is ever widened by mistake.)
+fn label_is_tray(label: &str) -> bool {
+    label == LABEL
+}
+
 fn from_tray(window: &tauri::WebviewWindow) -> Result<(), String> {
-    if window.label() == LABEL {
+    if label_is_tray(window.label()) {
         Ok(())
     } else {
         Err("forbidden".into())
@@ -410,6 +436,45 @@ mod tests {
     }
 
     #[test]
+    fn only_the_tray_label_may_call() {
+        assert!(label_is_tray("tray"));
+        for other in ["main", "Tray", "tray ", "", "tray2", "activity"] {
+            assert!(!label_is_tray(other), "{other:?}");
+        }
+    }
+
+    #[test]
+    fn the_window_size_follows_the_target_monitors_scale() {
+        assert_eq!(window_size(1.0), (380.0, 560.0));
+        assert_eq!(window_size(1.5), (570.0, 840.0));
+        assert_eq!(window_size(2.0), (760.0, 1120.0));
+        // A 200% monitor next to the taskbar at the bottom: the scaled window still fits.
+        let area = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 3840.0,
+            h: 2080.0,
+        };
+        let p = place(icon(3700.0, 2100.0), window_size(2.0), area);
+        assert!(
+            p.0 + 760.0 <= area.right() && p.1 + 1120.0 <= area.bottom(),
+            "{p:?}"
+        );
+        assert!(p.1 + 1120.0 <= 2100.0 - GAP + 0.1, "above the icon: {p:?}");
+        // Sized for the wrong (100%) monitor it would have been 380 wide: the old bug.
+        let small = place(icon(3700.0, 2100.0), window_size(1.0), area);
+        assert_ne!(small, p);
+    }
+
+    #[test]
+    fn the_tray_click_setting_is_kept_in_memory() {
+        set_quick(context::TrayClick::Main);
+        assert!(!QUICK.load(Ordering::Relaxed));
+        set_quick(context::TrayClick::Quick);
+        assert!(QUICK.load(Ordering::Relaxed));
+    }
+
+    #[test]
     fn the_view_is_a_fixed_list() {
         let ok = |v: &str| serde_json::from_str::<MainView>(&format!("\"{v}\"")).is_ok();
         for v in ["home", "sessions", "play", "rest", "continue", "companion"] {
@@ -440,7 +505,10 @@ mod tests {
 
         assert!(validate(&core, MainView::Home, None, None).is_ok());
         assert!(validate(&core, MainView::Play, Some(&id), None).is_ok());
-        assert!(validate(&core, MainView::Continue, Some(&id), None).is_ok());
+        assert_eq!(
+            validate(&core, MainView::Continue, Some(&id), None),
+            Err("invalid_request".into())
+        );
         for bad in ["nope", "", "../x", "game-that-is-not-installed"] {
             assert_eq!(
                 validate(&core, MainView::Play, Some(bad), None),

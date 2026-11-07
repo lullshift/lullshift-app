@@ -678,6 +678,15 @@ fn decide(core: Option<&Core>, request: &tauri::http::Request<Vec<u8>>) -> Decis
 /// Serves one request on the `lullact` scheme. Only GET, only `/<launch key>/<id>/<file>` with a
 /// live key issued for that id, and within the activity's request and byte budget; everything
 /// carries the activity CSP. May read and hash a file, so call it off the UI thread.
+/// The reply for a request from a webview that may not load activities.
+pub fn forbidden() -> Response<Vec<u8>> {
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .body(b"Not allowed".to_vec())
+        .unwrap_or_default()
+}
+
 pub fn serve(core: Option<&Core>, request: &tauri::http::Request<Vec<u8>>) -> Response<Vec<u8>> {
     let (status, body, content_type) = match decide(core, request) {
         Decision::Ok((bytes, ct)) => (StatusCode::OK, bytes.into_owned(), ct),

@@ -1467,7 +1467,10 @@ pub async fn set_ui_prefs(core: CoreState<'_>, prefs: UiPrefs) -> Result<(), Str
     let core = Arc::clone(&core);
     blocking(move || {
         let json = serde_json::to_string(&prefs.clamped()).map_err(|_| "internal")?;
-        with_store(&core, |s| s.set_preference(UI_PREFS_KEY, &json))
+        with_store(&core, |s| s.set_preference(UI_PREFS_KEY, &json))?;
+        // Only once saved: the tray icon's click handler reads this, not the database.
+        crate::tray_window::set_quick(prefs.tray_click);
+        Ok(())
     })
     .await
 }

@@ -109,6 +109,34 @@ fn every_registered_command_is_in_the_acl_manifest_and_granted() {
 }
 
 #[test]
+fn the_capabilities_directory_holds_exactly_default_and_tray() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
+    let mut files: Vec<String> = std::fs::read_dir(&dir)
+        .expect("capabilities dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    files.sort();
+    assert_eq!(
+        files,
+        ["default.json", "tray.json"],
+        "a new capability file is a deliberate review step"
+    );
+    for (name, json) in [("default.json", CAPS), ("tray.json", TRAY_CAPS)] {
+        let v: serde_json::Value = serde_json::from_str(json).expect("json");
+        for key in ["remote", "webviews", "platforms"] {
+            assert!(v.get(key).is_none(), "{name} has a {key} key");
+        }
+        for w in v["windows"].as_array().expect("windows") {
+            let w = w.as_str().expect("string");
+            assert!(
+                !w.contains('*') && !w.is_empty(),
+                "{name}: window pattern {w}"
+            );
+        }
+    }
+}
+
+#[test]
 fn each_capability_is_scoped_to_its_own_window() {
     assert_eq!(
         capability(CAPS).0,
