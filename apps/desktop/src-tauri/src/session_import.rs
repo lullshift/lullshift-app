@@ -6,12 +6,16 @@
 //! - An imported session is stored with a "from log" mark and its status guess. It never
 //!   notifies, never wakes the tray mascot and never pauses an activity; the first real hook
 //!   event clears the mark (local-store).
-//! - A title is kept only if Task context capture is on for that agent: the consent marker file
-//!   exists *and* the stored setting is on (`context::capture`). Titles are never logged.
+//! - A title, and the first prompt (stored as the captured intent, never as a title), are kept
+//!   only if Task context capture is on for that agent: the consent marker file exists *and*
+//!   the stored setting is on (`context::capture`). Neither is ever logged.
+//! - Cancel (`import_cancel`) stops a running scan; a scan that was cancelled returns
+//!   `cancelled`. A panic in an earlier scan never leaves the lock "busy" for good.
 //! - Errors are short codes, never raw text.
 
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 
 use agent_adapters::forward::capture_enabled;
 use agent_adapters::logscan::{self, Found, Guess, Limits, LogsState, Report, Roots};
@@ -30,6 +34,44 @@ pub const MAX_PICKS: usize = 500;
 /// One scan or import at a time.
 static RUNNING: Mutex<()> = Mutex::new(());
 
+/// The cancel flag of the scan that is running now, if any.
+static CURRENT: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+
+/// The one-at-a-time lock. Only "another scan is running" is `busy`; a lock left poisoned by a
+/// panicking scan is taken over (it guards no data), so Import never stays busy for good.
+fn one_at_a_time() -> Result<MutexGuard<'static, ()>, &'static str> {
+    match RUNNING.try_lock() {
+        Ok(g) => Ok(g),
+        Err(TryLockError::Poisoned(p)) => Ok(p.into_inner()),
+        Err(TryLockError::WouldBlock) => Err("busy"),
+    }
+}
+
+/// A fresh cancel flag for the scan about to run, replacing (and so setting free) any old one.
+fn new_cancel() -> Arc<AtomicBool> {
+    let flag = Arc::new(AtomicBool::new(false));
+    let mut current = CURRENT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    *current = Some(Arc::clone(&flag));
+    flag
+}
+
+/// Scans with a cancel flag the user can set; `Err("cancelled")` if they did.
+fn cancellable_scan() -> Result<Report, &'static str> {
+    let cancel = new_cancel();
+    let report = logscan::scan_with(
+        &Roots::from_env(),
+        &Limits::default(),
+        OffsetDateTime::now_utc(),
+        Some(cancel),
+    );
+    if report.cancelled {
+        return Err("cancelled");
+    }
+    Ok(report)
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FoundDto {
@@ -39,6 +81,7 @@ pub struct FoundDto {
     pub project: Option<String>,
     /// The whole folder as the log states it, for the tooltip. Display only.
     pub project_path: Option<String>,
+    /// The agent's own title, else the first prompt (display only, never stored as a title).
     pub title: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
     pub last_activity_utc: OffsetDateTime,
@@ -52,9 +95,11 @@ pub struct FoundDto {
 #[serde(rename_all = "camelCase")]
 pub struct AgentDto {
     pub provider: String,
-    /// `read`, `not_found` or `unreadable`.
+    /// `read`, `not_found`, `unreadable` or `not_local`.
     pub state: &'static str,
     pub sessions: usize,
+    /// A cap, the deadline or the entry share cut this agent's list short.
+    pub incomplete: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -96,6 +141,7 @@ fn logs_state(s: LogsState) -> &'static str {
         LogsState::Read => "read",
         LogsState::NotFound => "not_found",
         LogsState::Unreadable => "unreadable",
+        LogsState::NotLocal => "not_local",
     }
 }
 
@@ -126,7 +172,7 @@ pub fn to_dto(report: Report, store: Option<&Store>) -> ScanDto {
                 session_id: f.session_id.clone(),
                 project: f.project_path.as_deref().map(short_project),
                 project_path: f.project_path.clone(),
-                title: f.title.clone(),
+                title: f.title().map(str::to_owned),
                 last_activity_utc: f.last_activity,
                 guess: f.guess.as_str(),
                 tracked: tracked(f),
@@ -139,6 +185,7 @@ pub fn to_dto(report: Report, store: Option<&Store>) -> ScanDto {
                 provider: a.provider.to_owned(),
                 state: logs_state(a.state),
                 sessions: a.sessions,
+                incomplete: a.incomplete,
             })
             .collect(),
         incomplete: report.incomplete,
@@ -160,8 +207,9 @@ pub fn validate(picks: &[Pick]) -> Result<(), &'static str> {
     Ok(())
 }
 
-/// Imports the picked sessions that `report` (a fresh re-read) still holds. A title is stored
-/// only with Task context consent for that agent (marker file and stored setting).
+/// Imports the picked sessions that `report` (a fresh re-read) still holds. The agent's title,
+/// and the first prompt as the captured intent, are stored only with Task context consent for
+/// that agent (marker file and stored setting).
 pub fn import_found(
     store: &mut Store,
     data_dir: &Path,
@@ -190,15 +238,17 @@ pub fn import_found(
             continue;
         }
         out.imported += 1;
-        if let Some(title) = found.title.as_ref()
+        if (found.agent_title.is_some() || found.first_prompt.is_some())
             && capture_enabled(data_dir, found.provider)
         {
+            // The first prompt is what the user asked, so it is the captured intent, labelled
+            // as such everywhere; only the agent's own title is a title (security review L6).
             let ctx = EventContext {
-                intent: None,
+                intent: found.first_prompt.clone(),
                 ask: None,
-                title: Some(title.clone()),
+                title: found.agent_title.clone(),
             };
-            // A title that can't be stored never undoes the import.
+            // Context that can't be stored never undoes the import.
             let _ = capture(store, found.provider, &found.session_id, &ctx, now);
         }
     }
@@ -209,12 +259,8 @@ pub fn import_found(
 pub async fn import_scan(core: tauri::State<'_, Arc<Core>>) -> Result<ScanDto, String> {
     let core = Arc::clone(&core);
     blocking(move || {
-        let _one = RUNNING.try_lock().map_err(|_| "busy")?;
-        let report = logscan::scan(
-            &Roots::from_env(),
-            &Limits::default(),
-            OffsetDateTime::now_utc(),
-        );
+        let _one = one_at_a_time()?;
+        let report = cancellable_scan()?;
         let guard = core.store.lock().map_err(|_| "internal")?;
         Ok(to_dto(report, guard.as_ref()))
     })
@@ -230,16 +276,12 @@ pub async fn import_sessions(
     validate(&picks)?;
     let core = Arc::clone(&core);
     let result = blocking(move || {
-        let _one = RUNNING.try_lock().map_err(|_| "busy")?;
+        let _one = one_at_a_time()?;
         if picks.is_empty() {
             return Ok(ImportResult::default());
         }
         // Re-read: only sessions still in the logs, as they are now, are imported.
-        let report = logscan::scan(
-            &Roots::from_env(),
-            &Limits::default(),
-            OffsetDateTime::now_utc(),
-        );
+        let report = cancellable_scan()?;
         let mut guard = core.store.lock().map_err(|_| "internal")?;
         let store = guard.as_mut().ok_or("store_unavailable")?;
         import_found(
@@ -259,6 +301,17 @@ pub async fn import_sessions(
     Ok(result)
 }
 
+/// Stops the scan that is running, if any (the dialog's Cancel or close). Harmless otherwise.
+#[tauri::command]
+pub fn import_cancel() {
+    let current = CURRENT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(flag) = current.as_ref() {
+        flag.store(true, Ordering::Relaxed);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,7 +325,8 @@ mod tests {
             provider: "claude-code",
             session_id: ID.to_owned(),
             project_path: Some(r"D:\work\shop\api".to_owned()),
-            title: title.map(str::to_owned),
+            agent_title: title.map(str::to_owned),
+            first_prompt: None,
             last_activity: T0 - time::Duration::minutes(1),
             guess,
         }
@@ -283,6 +337,7 @@ mod tests {
             sessions,
             agents: Vec::new(),
             incomplete: false,
+            cancelled: false,
         }
     }
 
@@ -420,6 +475,42 @@ mod tests {
                 .and_then(|c| c.agent_title)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn a_first_prompt_is_stored_as_the_captured_intent_never_as_a_title() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let mut store = Store::open_in_memory().expect("store");
+        consent(&store, dir.path(), true);
+        let r = report(vec![Found {
+            first_prompt: Some("Fix the login bug".into()),
+            ..found(Guess::Waiting, None)
+        }]);
+        import_found(&mut store, dir.path(), &r, &[pick("claude-code", ID)], T0).expect("import");
+        let ctx = store
+            .context("claude-code", ID)
+            .expect("read")
+            .expect("context");
+        assert!(ctx.agent_title.is_none());
+        assert_eq!(
+            ctx.captured_intent.expect("intent").text,
+            "Fix the login bug"
+        );
+    }
+
+    #[test]
+    fn a_poisoned_lock_is_taken_over_and_cancel_is_harmless_when_idle() {
+        let _ = std::thread::spawn(|| {
+            let _g = RUNNING.lock();
+            panic!("a scan panicked");
+        })
+        .join();
+        assert!(one_at_a_time().is_ok(), "not busy forever");
+        import_cancel();
+        let flag = new_cancel();
+        assert!(!flag.load(Ordering::Relaxed));
+        import_cancel();
+        assert!(flag.load(Ordering::Relaxed));
     }
 
     #[test]
