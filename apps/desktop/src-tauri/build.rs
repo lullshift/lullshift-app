@@ -95,6 +95,10 @@ fn main() {
             "import_scan",
             "import_sessions",
             "import_cancel",
+            // Session tracking settings (decision 35).
+            "session_tracking_prefs",
+            "set_session_tracking_prefs",
+            "catch_up_status",
         ]),
     ))
     .expect("failed to run tauri-build");

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-catch-up-status"
+description = "Enables the catch_up_status command without any pre-configured scope."
+commands.allow = ["catch_up_status"]
+
+[[permission]]
+identifier = "deny-catch-up-status"
+description = "Denies the catch_up_status command without any pre-configured scope."
+commands.deny = ["catch_up_status"]

@@ -102,6 +102,9 @@
     "allow-companion-catalog-models",
     "allow-import-scan",
     "allow-import-sessions",
-    "allow-import-cancel"
+    "allow-import-cancel",
+    "allow-session-tracking-prefs",
+    "allow-set-session-tracking-prefs",
+    "allow-catch-up-status"
   ]
 }

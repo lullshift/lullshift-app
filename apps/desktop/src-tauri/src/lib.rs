@@ -2,6 +2,8 @@
 //!
 //! Closing the window hides it; monitoring continues until "Quit" in the tray menu.
 
+#[cfg(test)]
+mod acl_check;
 mod activities;
 mod adapters;
 mod companion_commands;
