@@ -22,7 +22,7 @@ use crate::http::{
 };
 use crate::provider::{
     BuiltRequest, ProviderKind, ProviderSpec, RequestPlan, build_plan_request, clean_chunk,
-    estimate, map_status, parse_reply,
+    estimate, map_status_reason, parse_reply,
 };
 use crate::secret::Secret;
 use crate::sse::SseParser;
@@ -56,6 +56,9 @@ pub struct StreamFailure {
     pub received: bool,
     /// Text that had been streamed to the caller (cleaned), possibly empty.
     pub partial: String,
+    /// The provider refused `stream: true` for this organisation (OpenAI, HTTP 400, `param` is
+    /// `stream`). Set only on that refusal; `chat_stream` retries once without streaming.
+    pub stream_refused: bool,
 }
 
 impl StreamFailure {
@@ -66,6 +69,7 @@ impl StreamFailure {
             output_tokens: 0,
             received: false,
             partial: String::new(),
+            stream_refused: false,
         }
     }
 }
@@ -74,6 +78,12 @@ enum Msg {
     Activity,
     Delta(String),
     End(Result<StreamReply, StreamFailure>),
+}
+
+/// What the error-body reader needs: the key to hide and what we sent (a reason quoting it is dropped).
+struct ErrCtx {
+    key: zeroize::Zeroizing<String>,
+    echoes: Vec<String>,
 }
 
 struct Tally {
@@ -94,6 +104,7 @@ fn stream_call(
     tools_on: bool,
     sent_chars: usize,
     built: BuiltRequest,
+    ctx: &ErrCtx,
     handoff: &AtomicU8,
     tx: &mpsc::Sender<Msg>,
 ) -> Result<StreamReply, StreamFailure> {
@@ -117,7 +128,22 @@ fn stream_call(
             .get("retry-after")
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
-        return Err(StreamFailure::bare(map_status(status, retry.as_deref())));
+        // The provider's stated reason, from a capped, time-limited read of standard JSON error
+        // shapes only. Never logged.
+        let reason = crate::reason::read_capped(&mut resp.body_mut().as_reader(), || {
+            handoff.load(Ordering::SeqCst) == ABANDONED
+        })
+        .and_then(|b| crate::reason::parse(&b, &ctx.key, &ctx.echoes));
+        let mut failure = StreamFailure::bare(map_status_reason(
+            status,
+            retry.as_deref(),
+            kind,
+            reason.as_ref(),
+        ));
+        failure.stream_refused = status == 400
+            && kind == ProviderKind::OpenAi
+            && reason.as_ref().and_then(|r| r.param.as_deref()) == Some("stream");
+        return Err(failure);
     }
     let is_stream = resp
         .headers()
@@ -157,6 +183,7 @@ fn stream_call(
                 output_tokens: output,
                 received,
                 partial: text.to_owned(),
+                stream_refused: false,
             }
         };
 
@@ -398,6 +425,19 @@ where
                     + r.calls.iter().map(|c| c.arguments.len()).sum::<usize>()
             })
             .sum::<usize>();
+    let ctx = ErrCtx {
+        key: zeroize::Zeroizing::new(key.expose().to_owned()),
+        echoes: plan
+            .messages
+            .iter()
+            .map(|m| m.content.clone())
+            .chain(
+                plan.rounds
+                    .iter()
+                    .flat_map(|r| std::iter::once(r.text.clone()).chain(r.results.iter().cloned())),
+            )
+            .collect(),
+    };
     let kind = spec.kind;
     let tools_on = plan.tools;
     let cfg = *cfg;
@@ -413,6 +453,7 @@ where
             tools_on,
             sent_chars,
             built,
+            &ctx,
             &worker_handoff,
             &tx,
         );

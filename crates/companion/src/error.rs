@@ -133,7 +133,7 @@ impl CompanionError {
         Self::new(ErrorKind::NotFound, message)
     }
 
-    /// Removes `key` from the message (defence in depth; messages never contain provider text).
+    /// Removes `key` from the message (defence in depth; messages carry only sanitised, scrubbed provider excerpts).
     #[must_use]
     pub fn scrubbed(mut self, key: &str) -> Self {
         self.message = crate::scrub(&self.message, key);

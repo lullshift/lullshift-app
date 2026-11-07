@@ -496,33 +496,119 @@ fn a_server_that_ignores_stream_true_is_read_as_one_chunk() {
 }
 
 #[test]
-fn http_errors_map_to_fixed_messages_and_count_nothing() {
-    fn none() -> Vec<Step> {
-        vec![]
-    }
-    // A listener that answers 401.
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    std::thread::spawn(move || {
-        for conn in listener.incoming() {
-            let Ok(mut s) = conn else { continue };
-            let _ = read_request(&mut s);
-            let body = "{\"error\":\"PROVIDER-BODY\"}";
-            let _ = write!(
-                s,
-                "HTTP/1.1 401 No\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                body.len()
-            );
-        }
-    });
-    let _ = none;
-    let mock = Mock {
-        base: format!("http://127.0.0.1:{port}"),
-        requests: Arc::new(Mutex::new(Vec::new())),
-    };
+fn http_errors_map_to_fixed_messages_with_the_sanitised_reason_and_count_nothing() {
+    let mock = start_scripted(vec![Resp::json(401, "{\"error\":\"PROVIDER-BODY\"}")]);
     let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
     let f = r.unwrap_err();
     assert_eq!(f.error.kind, ErrorKind::KeyRejected);
     assert_eq!((f.input_tokens, f.output_tokens, f.received), (0, 0, false));
-    assert!(!f.error.message.contains("PROVIDER-BODY"));
+    assert!(
+        f.error.message.ends_with("OpenAI said: \"PROVIDER-BODY\""),
+        "{}",
+        f.error.message
+    );
+}
+
+#[test]
+fn stream_error_excerpts_cover_shapes_html_oversize_key_and_bidi() {
+    let cases: Vec<(ProviderKind, Resp, &str)> = vec![
+        (
+            ProviderKind::Anthropic,
+            Resp::json(
+                400,
+                r#"{"type":"error","error":{"type":"invalid_request_error","message":"max_tokens: too large"}}"#,
+            ),
+            "Anthropic said: \"max_tokens: too large\"",
+        ),
+        (
+            ProviderKind::OpenAi,
+            Resp::json(
+                400,
+                "{\"error\":{\"message\":\"bad\\u202e \\u0007thing\\n\\nhere\"}}",
+            ),
+            "OpenAI said: \"bad thing here\"",
+        ),
+    ];
+    for (kind, resp, expect) in cases {
+        let mock = start_scripted(vec![resp]);
+        let (r, _) = run(&mock, kind, HttpConfig::default(), false);
+        let m = r.unwrap_err().error.message;
+        assert!(m.ends_with(expect), "{m}");
+    }
+    // HTML and oversized bodies: fixed message only.
+    let mut big = br#"{"error":{"message":"BIG-REASON"}}"#.to_vec();
+    big.resize(64 * 1024, b' ');
+    for resp in [
+        Resp::json(502, "<html>Bad gateway</html>"),
+        Resp::json(400, &String::from_utf8(big).unwrap()),
+    ] {
+        let mock = start_scripted(vec![resp]);
+        let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+        let m = r.unwrap_err().error.message;
+        assert!(
+            !m.contains("BIG-REASON") && !m.contains("said:") && !m.contains("html"),
+            "{m}"
+        );
+    }
+    // A body that contains the key.
+    let mock = start_scripted(vec![Resp::json(
+        400,
+        &format!("{{\"error\":{{\"message\":\"you sent {KEY} oops\"}}}}"),
+    )]);
+    let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+    let m = r.unwrap_err().error.message;
+    assert!(
+        !m.contains("SUPERSECRETKEY") && m.contains("[hidden]"),
+        "{m}"
+    );
+    assert!(m.chars().count() <= 500);
+}
+
+struct Resp {
+    status: u16,
+    content_type: &'static str,
+    body: String,
+}
+
+impl Resp {
+    fn json(status: u16, body: &str) -> Self {
+        Self {
+            status,
+            content_type: "application/json",
+            body: body.to_owned(),
+        }
+    }
+}
+
+/// Answers the n-th connection with the n-th scripted response (the last one repeats).
+fn start_scripted(script: Vec<Resp>) -> Mock {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let log = Arc::clone(&requests);
+    std::thread::spawn(move || {
+        let mut n = 0usize;
+        for conn in listener.incoming() {
+            let Ok(mut s) = conn else { continue };
+            let Some(req) = read_request(&mut s) else {
+                continue;
+            };
+            log.lock().unwrap().push(req);
+            let r = &script[n.min(script.len() - 1)];
+            n += 1;
+            let _ = write!(
+                s,
+                "HTTP/1.1 {} X\r\ncontent-type: {}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                r.status,
+                r.content_type,
+                r.body.len(),
+                r.body
+            );
+            let _ = s.flush();
+        }
+    });
+    Mock {
+        base: format!("http://127.0.0.1:{port}"),
+        requests,
+    }
 }

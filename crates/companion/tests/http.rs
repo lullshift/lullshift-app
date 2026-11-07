@@ -21,6 +21,8 @@ enum Scenario {
     Oversized,
     Redirect,
     EchoAuth,
+    Body(u16, &'static str),
+    BigErrorBody,
 }
 
 struct Mock {
@@ -99,6 +101,14 @@ fn start(scn: Scenario, kind: ProviderKind) -> Mock {
                         "",
                         br#"{"error":{"message":"PROVIDER-BODY-TEXT"}}"#,
                     ),
+                    Scenario::Body(c, b) => {
+                        respond(&mut s, &format!("{c} Whatever"), "", b.as_bytes())
+                    }
+                    Scenario::BigErrorBody => {
+                        let mut b = br#"{"error":{"message":"HIDDEN-BIG-REASON"}}"#.to_vec();
+                        b.resize(64 * 1024, b' ');
+                        respond(&mut s, "400 Bad Request", "", &b);
+                    }
                     Scenario::RateLimited => respond(
                         &mut s,
                         "429 Too Many Requests",
@@ -268,7 +278,7 @@ fn rate_limit_carries_retry_after() {
 }
 
 #[test]
-fn server_errors_and_odd_statuses_are_provider_errors_without_the_body() {
+fn server_errors_and_odd_statuses_are_provider_errors_with_the_sanitised_reason() {
     for code in [500, 503, 404, 418] {
         let (r, _) = run(
             Scenario::Status(code),
@@ -277,8 +287,104 @@ fn server_errors_and_odd_statuses_are_provider_errors_without_the_body() {
         );
         let e = r.unwrap_err();
         assert_eq!(e.kind, ErrorKind::ProviderError, "{code}");
-        assert!(!e.message.contains("PROVIDER-BODY-TEXT"));
+        assert!(
+            e.message
+                .ends_with("The provider said: \"PROVIDER-BODY-TEXT\""),
+            "{}",
+            e.message
+        );
     }
+}
+
+#[test]
+fn the_reason_is_shown_per_provider_for_openai_and_anthropic_shapes() {
+    let (r, _) = run(
+        Scenario::Body(
+            400,
+            r#"{"error":{"message":"Unsupported parameter: 'max_completion_tokens' is not supported with this model.","type":"invalid_request_error","param":"max_completion_tokens","code":"unsupported_parameter"}}"#,
+        ),
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+    );
+    let e = r.unwrap_err();
+    assert_eq!(e.kind, ErrorKind::ProviderError);
+    assert!(
+        e.message
+            .starts_with("The provider didn't accept the request (HTTP 400).")
+    );
+    assert!(
+        e.message
+            .contains("OpenAI said: \"Unsupported parameter: 'max_completion_tokens'"),
+        "{}",
+        e.message
+    );
+    let (r, _) = run(
+        Scenario::Body(
+            400,
+            r#"{"type":"error","error":{"type":"invalid_request_error","message":"model: String should have at least 1 character"}}"#,
+        ),
+        ProviderKind::Anthropic,
+        HttpConfig::default(),
+    );
+    assert!(
+        r.unwrap_err()
+            .message
+            .contains("Anthropic said: \"model: String should have at least 1 character\"")
+    );
+}
+
+#[test]
+fn rejected_keys_and_rate_limits_may_carry_the_reason_too() {
+    let (r, _) = run(
+        Scenario::Body(
+            403,
+            r#"{"error":{"message":"Country, region, or territory not supported","code":"unsupported_country_region_territory"}}"#,
+        ),
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+    );
+    let e = r.unwrap_err();
+    assert_eq!(e.kind, ErrorKind::KeyRejected);
+    assert!(
+        e.message
+            .contains("OpenAI said: \"Country, region, or territory not supported\"")
+    );
+    let (r, _) = run(
+        Scenario::Body(
+            401,
+            r#"{"error":{"message":"Incorrect API key provided: sk-proj-****wxyz."}}"#,
+        ),
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+    );
+    let e = r.unwrap_err();
+    assert_eq!(e.kind, ErrorKind::KeyRejected);
+    assert!(!e.message.contains("sk-proj"), "{}", e.message);
+}
+
+#[test]
+fn non_json_and_oversized_error_bodies_give_only_the_fixed_message() {
+    for body in ["<html><h1>502 Bad Gateway</h1></html>", "plain words", "[]"] {
+        let (r, _) = run(
+            Scenario::Body(500, body),
+            ProviderKind::OpenAi,
+            HttpConfig::default(),
+        );
+        let e = r.unwrap_err();
+        assert_eq!(
+            e.message,
+            "The provider had a problem (HTTP 500). Try again later."
+        );
+    }
+    let (r, _) = run(
+        Scenario::BigErrorBody,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+    );
+    let e = r.unwrap_err();
+    assert_eq!(e.kind, ErrorKind::ProviderError);
+    assert!(!e.message.contains("HIDDEN-BIG-REASON"), "{}", e.message);
+    assert!(!e.message.contains(" said:"));
 }
 
 #[test]
@@ -331,6 +437,8 @@ fn echoed_auth_header_never_reaches_the_error() {
         let e = r.unwrap_err();
         assert_eq!(e.kind, ErrorKind::ProviderError);
         assert!(!format!("{e:?}{e}").contains("SUPERSECRETKEY"));
+        assert!(e.message.contains("[hidden]"), "{}", e.message);
+        assert!(e.message.chars().count() <= 500);
         // The mock really did receive the key, so the test is meaningful.
         assert!(mock.requests.lock().unwrap()[0].contains("SUPERSECRETKEY"));
     }

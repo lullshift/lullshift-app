@@ -437,9 +437,39 @@ pub fn parse_reply(
     })
 }
 
-/// Maps a non-2xx status to a fixed error. Provider bodies and headers are never used, except
-/// a numeric `retry-after` in seconds.
+/// Maps a non-2xx status to a fixed error without a provider reason. Headers are never used,
+/// except a numeric `retry-after` in seconds. See [`map_status_reason`] for the excerpt.
 pub fn map_status(status: u16, retry_after: Option<&str>) -> CompanionError {
+    map_status_reason(status, retry_after, ProviderKind::OpenAiCompatible, None)
+}
+
+impl ProviderKind {
+    /// Who "said" an excerpt: the vendor, or "The provider" for a compatible server.
+    pub fn speaker(self) -> &'static str {
+        match self {
+            Self::Anthropic => "Anthropic",
+            Self::OpenAi => "OpenAI",
+            Self::OpenAiCompatible => "The provider",
+        }
+    }
+}
+
+/// Like [`map_status`], with the provider's sanitised reason (see [`crate::reason`]) appended to
+/// the fixed sentence for 4xx and 5xx statuses. The kind of error depends on the status only.
+pub fn map_status_reason(
+    status: u16,
+    retry_after: Option<&str>,
+    kind: ProviderKind,
+    reason: Option<&crate::reason::Reason>,
+) -> CompanionError {
+    let mut e = map_status_fixed(status, retry_after);
+    if (400..=599).contains(&status) {
+        e.message = crate::reason::append_reason(&e.message, kind.speaker(), reason);
+    }
+    e
+}
+
+fn map_status_fixed(status: u16, retry_after: Option<&str>) -> CompanionError {
     match status {
         401 | 403 => CompanionError::key_rejected(),
         429 => {

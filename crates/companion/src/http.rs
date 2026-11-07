@@ -17,7 +17,7 @@ use crate::error::CompanionError;
 use zeroize::Zeroizing;
 
 use crate::provider::{
-    BuiltRequest, ChatMessage, ProviderSpec, Reply, build_request, estimate, map_status,
+    BuiltRequest, ChatMessage, ProviderSpec, Reply, build_request, estimate, map_status_reason,
     parse_reply,
 };
 use crate::secret::Secret;
@@ -145,6 +145,17 @@ fn post(
         .get("retry-after")
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned);
+    if !(200..300).contains(&status) {
+        // Only the standard JSON error shapes are used later; oversize, slow or unreadable
+        // bodies give an empty one. The body is never logged.
+        let body = crate::reason::read_capped(&mut resp.body_mut().as_reader(), || false)
+            .unwrap_or_default();
+        return Ok(Raw {
+            status,
+            retry_after,
+            body,
+        });
+    }
     if resp
         .headers()
         .get("content-length")
@@ -248,6 +259,7 @@ where
     let built = build_request(&spec, key.expose(), messages, max_output_tokens);
     let scrub_key = Zeroizing::new(key.expose().to_owned());
     let sent_chars: usize = messages.iter().map(|m| m.content.chars().count()).sum();
+    let echoes: Vec<String> = messages.iter().map(|m| m.content.clone()).collect();
     let kind = spec.kind;
     let cfg = *cfg;
     let loopback = checked.loopback;
@@ -262,7 +274,13 @@ where
                 if (200..300).contains(&raw.status) {
                     parse_reply(kind, &raw.body, sent_chars)
                 } else {
-                    Err(map_status(raw.status, raw.retry_after.as_deref()))
+                    let reason = crate::reason::parse(&raw.body, &scrub_key, &echoes);
+                    Err(map_status_reason(
+                        raw.status,
+                        raw.retry_after.as_deref(),
+                        kind,
+                        reason.as_ref(),
+                    ))
                 }
             })
             .map_err(|e| e.scrubbed(&scrub_key));
