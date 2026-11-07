@@ -9,6 +9,7 @@ import {
   type UninstallView,
 } from "./adapters";
 import AgentCard from "./AgentCard";
+import ConnectionProblems, { PackagedBanner } from "./ConnectionProblems";
 import { TaskContextSwitch } from "./context/TaskContextSwitch";
 import { disconnectNotice } from "./format";
 import { Banner } from "./ui/Banner";
@@ -109,8 +110,10 @@ export default function Integrations({
         <p className="view-lede">Connect the agents you use so Lullshift can follow them.</p>
       </header>
 
+      <PackagedBanner />
       {message && <Banner tone={message.tone}>{message.text}</Banner>}
       {notice && <Banner tone="info">{notice}</Banner>}
+      <ConnectionProblems />
 
       <article className="card integration" aria-labelledby="claude-code-title">
         <div className="integration-head">

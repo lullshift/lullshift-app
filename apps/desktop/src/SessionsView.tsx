@@ -34,6 +34,7 @@ import {
   type HistorySortKey,
 } from "./format";
 import { reasonText, sessionStateView, type SessionView } from "./sessions";
+import { PackagedBanner } from "./ConnectionProblems";
 import { Banner } from "./ui/Banner";
 import { Icon } from "./ui/Icon";
 import { Mascot } from "./ui/Mascot";
@@ -176,6 +177,8 @@ export default function SessionsView({
       <h1 id="sessions-heading" ref={headingRef} tabIndex={-1}>
         Sessions
       </h1>
+
+      <PackagedBanner />
 
       {coreError && (
         <Banner tone="danger">
