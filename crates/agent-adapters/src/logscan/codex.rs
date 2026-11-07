@@ -168,10 +168,12 @@ fn turn_step(turn: &mut Turn, r: &Value) {
     }
 }
 
-/// `None` when the first record names a different session than the file name (a renamed or
-/// tampered file is not listed under an id it doesn't hold).
+/// `None` unless the first record is a `session_meta` naming the same session as the file name
+/// (a renamed or tampered file is not listed under an id it doesn't hold; a first record too
+/// long for the head window can't be checked, so it isn't listed either: security review L3).
 pub(super) fn parse(win: &Window, id: &str) -> Option<Parsed> {
     let mut parsed = Parsed::default();
+    let mut verified = false;
     for (i, line) in fsutil::lines(&win.head, false, !win.whole).enumerate() {
         let Ok(r) = serde_json::from_slice::<Value>(line) else {
             continue;
@@ -180,11 +182,10 @@ pub(super) fn parse(win: &Window, id: &str) -> Option<Parsed> {
             continue;
         };
         if i == 0 && r.get("type").and_then(Value::as_str) == Some("session_meta") {
-            if let Some(meta_id) = payload.get("id").and_then(Value::as_str)
-                && meta_id != id
-            {
+            if payload.get("id").and_then(Value::as_str) != Some(id) {
                 return None;
             }
+            verified = true;
             parsed.cwd = payload
                 .get("cwd")
                 .and_then(Value::as_str)
@@ -199,6 +200,9 @@ pub(super) fn parse(win: &Window, id: &str) -> Option<Parsed> {
         if parsed.first_prompt.is_some() && parsed.cwd.is_some() {
             break;
         }
+    }
+    if !verified {
+        return None;
     }
     let mut turn = Turn::default();
     for line in fsutil::lines(&win.tail, win.tail_cut, false) {

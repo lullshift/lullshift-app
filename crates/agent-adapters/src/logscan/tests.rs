@@ -73,14 +73,14 @@ fn claude_session_with_saved_title_and_ended_turn() {
     write(
         &claude_file(&f, "D--work-shop-api", CC_ID),
         &[
-            r#"{"type":"queue-operation","operation":"enqueue","sessionId":"x"}"#,
-            r#"{"type":"user","cwd":"D:\\work\\shop\\api","sessionId":"x","message":{"role":"user","content":"Fix the login bug\nand add tests"}}"#,
+            r#"{"type":"queue-operation","operation":"enqueue","sessionId":"11111111-2222-4333-8444-555555555555"}"#,
+            r#"{"type":"user","cwd":"D:\\work\\shop\\api","sessionId":"11111111-2222-4333-8444-555555555555","message":{"role":"user","content":"Fix the login bug\nand add tests"}}"#,
             r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash"}],"stop_reason":"tool_use"}}"#,
             r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1"}]},"toolUseResult":{}}"#,
             r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Done"}],"stop_reason":"end_turn"}}"#,
-            r#"{"type":"custom-title","customTitle":"Old name","sessionId":"x"}"#,
-            r#"{"type":"agent-name","agentName":"Login fix","sessionId":"x"}"#,
-            r#"{"type":"custom-title","customTitle":"Login fix","sessionId":"x"}"#,
+            r#"{"type":"custom-title","customTitle":"Old name","sessionId":"11111111-2222-4333-8444-555555555555"}"#,
+            r#"{"type":"agent-name","agentName":"Login fix","sessionId":"11111111-2222-4333-8444-555555555555"}"#,
+            r#"{"type":"custom-title","customTitle":"Login fix","sessionId":"11111111-2222-4333-8444-555555555555"}"#,
             r#"{"type":"system","subtype":"stop_hook_summary"}"#,
         ],
         Duration::from_secs(600),
@@ -89,7 +89,7 @@ fn claude_session_with_saved_title_and_ended_turn() {
     let s = only(&r, "claude-code");
     assert_eq!(s.len(), 1);
     assert_eq!(s[0].session_id, CC_ID);
-    assert_eq!(s[0].title.as_deref(), Some("Login fix"));
+    assert_eq!(s[0].title(), Some("Login fix"));
     assert_eq!(s[0].project_path.as_deref(), Some(r"D:\work\shop\api"));
     assert_eq!(s[0].guess, Guess::Waiting);
     assert!(!r.incomplete);
@@ -115,7 +115,7 @@ fn claude_title_falls_back_to_the_first_real_prompt() {
         Duration::from_secs(10),
     );
     let s = only(&scan(&f.roots, &Limits::default(), now()), "claude-code");
-    assert_eq!(s[0].title.as_deref(), Some("Refactor the parser"));
+    assert_eq!(s[0].title(), Some("Refactor the parser"));
     assert_eq!(s[0].project_path, None);
     assert_eq!(s[0].guess, Guess::Working, "recent and the turn not ended");
 }
@@ -179,7 +179,7 @@ fn malformed_huge_and_truncated_lines_are_skipped() {
     let s = only(&scan(&f.roots, &Limits::default(), now()), "claude-code");
     assert_eq!(s.len(), 1);
     assert_eq!(
-        s[0].title.as_deref(),
+        s[0].title(),
         Some("Real prompt"),
         "the huge title line never fits a window"
     );
@@ -318,11 +318,7 @@ fn reads_only_bounded_windows_of_a_large_log() {
     let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
     write(&path, &refs, Duration::from_secs(5));
     let s = only(&scan(&f.roots, &Limits::default(), now()), "claude-code");
-    assert_eq!(
-        s[0].title.as_deref(),
-        Some("Big task"),
-        "the middle is never read"
-    );
+    assert_eq!(s[0].title(), Some("Big task"), "the middle is never read");
     assert_eq!(s[0].project_path.as_deref(), Some("/home/u/big"));
     assert_eq!(s[0].guess, Guess::Waiting);
 }
@@ -356,7 +352,7 @@ fn cursor_session_uses_the_user_query_and_turn_end() {
     let s = only(&scan(&f.roots, &Limits::default(), now()), "cursor");
     assert_eq!(s.len(), 1);
     assert_eq!(s[0].session_id, CU_ID);
-    assert_eq!(s[0].title.as_deref(), Some("Add dark mode"));
+    assert_eq!(s[0].title(), Some("Add dark mode"));
     assert_eq!(s[0].project_path.as_deref(), Some("d-work-shop"));
     assert_eq!(s[0].guess, Guess::Waiting);
 }
@@ -437,7 +433,7 @@ fn codex_session_with_thread_name_and_pending_call() {
     let s = only(&scan(&f.roots, &Limits::default(), now()), "codex");
     assert_eq!(s.len(), 1);
     assert_eq!(s[0].session_id, CX_ID);
-    assert_eq!(s[0].title.as_deref(), Some("Speed up the build"));
+    assert_eq!(s[0].title(), Some("Speed up the build"));
     assert_eq!(s[0].project_path.as_deref(), Some("/home/u/shop"));
     assert_eq!(s[0].guess, Guess::MayNeedYou);
 
@@ -457,7 +453,7 @@ fn codex_session_with_thread_name_and_pending_call() {
         Duration::ZERO,
     );
     let s = only(&scan(&f.roots, &Limits::default(), now()), "codex");
-    assert_eq!(s[0].title.as_deref(), Some("Build speed"));
+    assert_eq!(s[0].title(), Some("Build speed"));
 }
 
 #[test]
@@ -538,7 +534,7 @@ fn opencode_reads_top_level_sessions_read_only() {
     let s = only(&r, "opencode");
     let ids: Vec<_> = s.iter().map(|s| s.session_id.as_str()).collect();
     assert_eq!(ids, ["ses_recent", "ses_old"]);
-    assert_eq!(s[0].title.as_deref(), Some("Port the CLI"));
+    assert_eq!(s[0].title(), Some("Port the CLI"));
     assert_eq!(s[0].project_path.as_deref(), Some("/home/u/oc"));
     assert_eq!(s[0].guess, Guess::Working);
     assert_eq!(s[1].guess, Guess::Unknown);
@@ -676,7 +672,7 @@ fn real_machine_scan() {
         let titled = r
             .sessions
             .iter()
-            .filter(|s| s.provider == a.provider && s.title.is_some())
+            .filter(|s| s.provider == a.provider && s.title().is_some())
             .count();
         let with_project = r
             .sessions
@@ -688,4 +684,178 @@ fn real_machine_scan() {
             a.provider, a.state, a.sessions
         );
     }
+}
+
+// ---- security review (M1, M2, L1, L3, L4, L5) -----------------------------------------------
+
+#[test]
+fn a_file_time_past_year_9999_is_skipped_and_the_next_scan_still_works() {
+    let f = fixture();
+    let path = claude_file(&f, "p", CC_ID);
+    write(
+        &path,
+        &[r#"{"type":"user","message":{"content":"x"}}"#],
+        Duration::ZERO,
+    );
+    let far = SystemTime::UNIX_EPOCH + Duration::from_secs(400_000_000_000);
+    let file = fs::File::options().write(true).open(&path).expect("open");
+    if file.set_modified(far).is_err() {
+        // The file system can't hold such a time; nothing to test here.
+        return;
+    }
+    drop(file);
+    let r = scan(&f.roots, &Limits::default(), now());
+    assert!(only(&r, "claude-code").is_empty());
+    let again = scan(&f.roots, &Limits::default(), now());
+    assert!(only(&again, "claude-code").is_empty());
+}
+
+#[test]
+fn a_claude_log_naming_another_session_is_skipped() {
+    let f = fixture();
+    write(
+        &claude_file(&f, "p", CC_ID),
+        &[
+            r#"{"type":"user","sessionId":"99999999-2222-4333-8444-555555555555","message":{"content":"copied"}}"#,
+        ],
+        Duration::from_secs(10),
+    );
+    assert!(only(&scan(&f.roots, &Limits::default(), now()), "claude-code").is_empty());
+}
+
+#[test]
+fn a_codex_log_whose_meta_cannot_be_checked_is_skipped() {
+    let f = fixture();
+    // The first record runs past the 64 KiB head window, so its id can't be read.
+    let huge = format!(
+        r#"{{"type":"session_meta","payload":{{"base_instructions":{{"text":"{}"}},"id":"{CX_ID}"}}}}"#,
+        "z".repeat(70_000)
+    );
+    write(&codex_file(&f, CX_ID), &[&huge], Duration::from_secs(10));
+    assert!(only(&scan(&f.roots, &Limits::default(), now()), "codex").is_empty());
+    // No session_meta first at all: not listed either.
+    write(
+        &codex_file(&f, CX_ID),
+        &[r#"{"type":"event_msg","payload":{"type":"task_complete"}}"#],
+        Duration::from_secs(10),
+    );
+    assert!(only(&scan(&f.roots, &Limits::default(), now()), "codex").is_empty());
+}
+
+#[test]
+fn each_agent_gets_its_own_entry_share_and_reports_incomplete_alone() {
+    let f = fixture();
+    // Many Claude project folders, one Codex session.
+    for i in 0..20 {
+        write(
+            &claude_file(&f, &format!("p{i}"), CC_ID),
+            &[r#"{"type":"user","message":{"content":"x"}}"#],
+            Duration::from_secs(10),
+        );
+    }
+    let m = meta(CX_ID);
+    write(&codex_file(&f, CX_ID), &[&m], Duration::from_secs(10));
+    let limits = Limits {
+        max_entries: 30,
+        ..Limits::default()
+    };
+    let r = scan(&f.roots, &limits, now());
+    let agent = |p: &str| r.agents.iter().find(|a| a.provider == p).expect("agent");
+    assert!(agent("claude-code").incomplete);
+    assert!(!agent("codex").incomplete);
+    assert_eq!(
+        only(&r, "codex").len(),
+        1,
+        "Claude's folders don't hide Codex"
+    );
+    assert!(r.incomplete);
+}
+
+#[test]
+fn a_cancelled_scan_stops_and_says_so() {
+    let f = fixture();
+    write(
+        &claude_file(&f, "p", CC_ID),
+        &[r#"{"type":"user","message":{"content":"x"}}"#],
+        Duration::from_secs(10),
+    );
+    let cancel = Arc::new(AtomicBool::new(true));
+    let r = scan_with(&f.roots, &Limits::default(), now(), Some(cancel));
+    assert!(r.cancelled);
+    assert!(r.sessions.is_empty());
+    // The next scan, without a cancel, works.
+    assert_eq!(
+        only(&scan(&f.roots, &Limits::default(), now()), "claude-code").len(),
+        1
+    );
+}
+
+fn opencode_hostile(f: &Fixture, sql: &str) -> (LogsState, Duration) {
+    let path = f.roots.opencode_db.clone().expect("db");
+    fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+    rusqlite::Connection::open(&path)
+        .expect("db")
+        .execute_batch(sql)
+        .expect("schema");
+    let limits = Limits {
+        deadline: Duration::from_secs(1),
+        ..Limits::default()
+    };
+    let started = std::time::Instant::now();
+    let r = scan(&f.roots, &limits, now());
+    let oc = r
+        .agents
+        .iter()
+        .find(|a| a.provider == "opencode")
+        .expect("agent");
+    (oc.state, started.elapsed())
+}
+
+#[test]
+fn an_opencode_session_view_with_an_endless_query_is_unreadable_in_time() {
+    let f = fixture();
+    let (state, took) = opencode_hostile(
+        &f,
+        "CREATE VIEW session AS
+           WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c)
+           SELECT 'ses_' || n AS id, NULL AS parent_id, '/x' AS directory, 't' AS title,
+                  n AS time_updated, NULL AS time_archived FROM c",
+    );
+    assert_eq!(state, LogsState::Unreadable);
+    assert!(took < Duration::from_secs(5), "took {took:?}");
+}
+
+#[test]
+fn an_opencode_session_virtual_table_is_unreadable() {
+    let f = fixture();
+    let (state, _) = opencode_hostile(
+        &f,
+        "CREATE VIRTUAL TABLE session USING fts5(id, parent_id, directory, title, time_updated, time_archived)",
+    );
+    assert_eq!(state, LogsState::Unreadable);
+}
+
+#[test]
+fn reading_a_wal_opencode_db_creates_no_files_beside_it() {
+    let f = fixture();
+    opencode_db(&f, &[("ses_a", None, "t", 1, None)]);
+    let path = f.roots.opencode_db.clone().expect("db");
+    {
+        let c = rusqlite::Connection::open(&path).expect("db");
+        let mode: String = c
+            .query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))
+            .expect("wal");
+        assert_eq!(mode, "wal");
+    }
+    // Closing the last connection removed the -wal and -shm files.
+    let side = |ext: &str| {
+        let mut p = path.as_os_str().to_owned();
+        p.push(ext);
+        PathBuf::from(p)
+    };
+    assert!(!side("-wal").exists() && !side("-shm").exists());
+    let r = scan(&f.roots, &Limits::default(), now());
+    assert_eq!(only(&r, "opencode").len(), 1);
+    assert!(!side("-wal").exists(), "no -wal created");
+    assert!(!side("-shm").exists(), "no -shm created");
 }

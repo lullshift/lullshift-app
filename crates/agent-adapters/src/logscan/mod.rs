@@ -21,6 +21,8 @@ mod opencode;
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, SystemTime};
 
 use time::OffsetDateTime;
@@ -80,9 +82,20 @@ pub struct Found {
     pub session_id: String,
     /// The working directory as the log states it (display only, cleaned and capped).
     pub project_path: Option<String>,
-    pub title: Option<String>,
+    /// The agent's own saved title (Claude Code `custom-title`/`agent-name`, Codex thread name,
+    /// OpenCode session title).
+    pub agent_title: Option<String>,
+    /// The first line of the first real user prompt.
+    pub first_prompt: Option<String>,
     pub last_activity: OffsetDateTime,
     pub guess: Guess,
+}
+
+impl Found {
+    /// What the dialog shows: the agent's title, else the first prompt line.
+    pub fn title(&self) -> Option<&str> {
+        self.agent_title.as_deref().or(self.first_prompt.as_deref())
+    }
 }
 
 /// Whether an agent's logs were there to read.
@@ -94,6 +107,8 @@ pub enum LogsState {
     NotFound,
     /// The folder or database exists but could not be read (or its format is unknown).
     Unreadable,
+    /// The folder is on a network drive (or a drive whose type is unknown): not read.
+    NotLocal,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +116,8 @@ pub struct AgentLogs {
     pub provider: &'static str,
     pub state: LogsState,
     pub sessions: usize,
+    /// A cap, the deadline or a cancel stopped this agent's part early.
+    pub incomplete: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -110,6 +127,8 @@ pub struct Report {
     pub agents: Vec<AgentLogs>,
     /// A cap or the deadline stopped the scan: older sessions may be missing.
     pub incomplete: bool,
+    /// The user cancelled; the report is partial and should be dropped.
+    pub cancelled: bool,
 }
 
 /// How much the scan may read and for how long.
@@ -287,17 +306,35 @@ pub(crate) fn prompt_title(text: &str) -> Option<String> {
 
 /// Finds and reads sessions. Runs synchronously; call it off the UI thread.
 pub fn scan(roots: &Roots, limits: &Limits, now: OffsetDateTime) -> Report {
+    scan_with(roots, limits, now, None)
+}
+
+/// [`scan`] that stops early (and reports `cancelled`) once `cancel` is set.
+pub fn scan_with(
+    roots: &Roots,
+    limits: &Limits,
+    now: OffsetDateTime,
+    cancel: Option<Arc<AtomicBool>>,
+) -> Report {
     let mut budget = Budget::new(limits.deadline, limits.max_entries);
+    if let Some(c) = cancel {
+        budget = budget.with_cancel(c);
+    }
+    // Each file-based agent gets its own share of the entry budget, so one agent with a huge
+    // log folder can't hide another (security review L4).
+    let share = limits.max_entries / 3;
     let mut agents = Vec::new();
     let mut candidates = Vec::new();
 
     let mut gather = |provider: &'static str,
                       root: Option<&Path>,
                       find: fn(&Path, &mut Budget) -> Result<Vec<Candidate>, ()>,
-                      budget: &mut Budget| {
+                      budget: &Budget| {
+        let mut own = budget.share(share);
         let state = match root.filter(|r| fsutil::plain_dir(r).is_some()) {
             None => LogsState::NotFound,
-            Some(r) => match find(r, budget) {
+            Some(r) if !fsutil::is_local(r) => LogsState::NotLocal,
+            Some(r) => match find(r, &mut own) {
                 Ok(found) => {
                     candidates.extend(found);
                     LogsState::Read
@@ -309,33 +346,40 @@ pub fn scan(roots: &Roots, limits: &Limits, now: OffsetDateTime) -> Report {
             provider,
             state,
             sessions: 0,
+            incomplete: own.incomplete,
         });
     };
     gather(
         crate::claude_code::ADAPTER_ID,
         roots.claude_projects.as_deref(),
         claude::find,
-        &mut budget,
+        &budget,
     );
     gather(
         crate::cursor::ADAPTER_ID,
         roots.cursor_projects.as_deref(),
         cursor::find,
-        &mut budget,
+        &budget,
     );
     let codex_sessions = roots.codex_home.as_ref().map(|h| h.join("sessions"));
     gather(
         crate::codex::ADAPTER_ID,
         codex_sessions.as_deref(),
         codex::find,
-        &mut budget,
+        &budget,
     );
+    let mark = |agents: &mut Vec<AgentLogs>, provider: &str| {
+        if let Some(a) = agents.iter_mut().find(|a| a.provider == provider) {
+            a.incomplete = true;
+        }
+    };
 
     // Newest first; only the newest `max_sessions` are read.
     candidates.sort_by_key(|c| std::cmp::Reverse(c.modified));
     if candidates.len() > limits.max_sessions {
-        candidates.truncate(limits.max_sessions);
-        budget.incomplete = true;
+        for c in candidates.drain(limits.max_sessions..) {
+            mark(&mut agents, c.provider);
+        }
     }
     let codex_titles = roots
         .codex_home
@@ -349,36 +393,36 @@ pub fn scan(roots: &Roots, limits: &Limits, now: OffsetDateTime) -> Report {
         .unwrap_or_default();
 
     let mut sessions = Vec::new();
-    for c in candidates {
+    let mut pending = candidates.into_iter();
+    for c in pending.by_ref() {
         if !budget.time_left() {
+            mark(&mut agents, c.provider);
             break;
         }
+        // A file time outside the calendar is skipped, never a panic (security review M1).
+        let Some(modified) = fsutil::file_time(c.modified) else {
+            continue;
+        };
         let Some(win) = fsutil::read_window(&c.path, limits.head_bytes, limits.tail_bytes) else {
             continue;
         };
         let parsed = match c.provider {
-            p if p == crate::claude_code::ADAPTER_ID => claude::parse(&win),
-            p if p == crate::cursor::ADAPTER_ID => cursor::parse(&win),
-            _ => {
-                let Some(p) = codex::parse(&win, &c.session_id) else {
-                    continue;
-                };
-                p
-            }
+            p if p == crate::claude_code::ADAPTER_ID => claude::parse(&win, &c.session_id),
+            p if p == crate::cursor::ADAPTER_ID => Some(cursor::parse(&win)),
+            _ => codex::parse(&win, &c.session_id),
         };
-        let modified = OffsetDateTime::from(c.modified);
+        // A log whose own records name another session (or can't be checked) is not listed.
+        let Some(parsed) = parsed else {
+            continue;
+        };
         let last_activity = modified.min(now);
         let age = Duration::try_from(now - last_activity).unwrap_or_default();
         // Cursor's transcript has no tool results, so a trailing tool call says nothing.
         let pending_counts = c.provider != crate::cursor::ADAPTER_ID;
-        let title = if c.provider == crate::codex::ADAPTER_ID {
-            codex_titles
-                .get(&c.session_id)
-                .cloned()
-                .or(parsed.title)
-                .or(parsed.first_prompt)
+        let agent_title = if c.provider == crate::codex::ADAPTER_ID {
+            codex_titles.get(&c.session_id).cloned().or(parsed.title)
         } else {
-            parsed.title.or(parsed.first_prompt)
+            parsed.title
         };
         let project_path = if c.provider == crate::cursor::ADAPTER_ID {
             cursor::project_label(&c.path)
@@ -389,7 +433,8 @@ pub fn scan(roots: &Roots, limits: &Limits, now: OffsetDateTime) -> Report {
             provider: c.provider,
             session_id: c.session_id,
             project_path,
-            title,
+            agent_title,
+            first_prompt: parsed.first_prompt,
             last_activity,
             guess: guess(
                 parsed.turn.ended,
@@ -399,26 +444,44 @@ pub fn scan(roots: &Roots, limits: &Limits, now: OffsetDateTime) -> Report {
             ),
         });
     }
+    for c in pending {
+        mark(&mut agents, c.provider);
+    }
 
+    let mut oc_incomplete = false;
     let oc_state = match roots
         .opencode_db
         .as_deref()
         .filter(|p| fsutil::plain_file(p).is_some())
     {
         None => LogsState::NotFound,
-        Some(db) if budget.time_left() => match opencode::read(db, limits.max_sessions, now) {
+        Some(db) if !fsutil::is_local(db) => LogsState::NotLocal,
+        Some(db) if budget.time_left() => match opencode::read(
+            db,
+            limits.max_sessions,
+            now,
+            budget.until(),
+            budget.cancel_flag(),
+        ) {
             Ok(found) => {
                 sessions.extend(found);
                 LogsState::Read
             }
-            Err(()) => LogsState::Unreadable,
+            Err(()) => {
+                oc_incomplete = !budget.time_left();
+                LogsState::Unreadable
+            }
         },
-        Some(_) => LogsState::Unreadable,
+        Some(_) => {
+            oc_incomplete = true;
+            LogsState::Unreadable
+        }
     };
     agents.push(AgentLogs {
         provider: crate::opencode::ADAPTER_ID,
         state: oc_state,
         sessions: 0,
+        incomplete: oc_incomplete,
     });
 
     sessions.sort_by(|a, b| {
@@ -431,16 +494,19 @@ pub fn scan(roots: &Roots, limits: &Limits, now: OffsetDateTime) -> Report {
     let mut seen = HashSet::new();
     sessions.retain(|s| seen.insert((s.provider, s.session_id.clone())));
     if sessions.len() > limits.max_sessions {
-        sessions.truncate(limits.max_sessions);
-        budget.incomplete = true;
+        for s in sessions.drain(limits.max_sessions..) {
+            mark(&mut agents, s.provider);
+        }
     }
     for a in &mut agents {
         a.sessions = sessions.iter().filter(|s| s.provider == a.provider).count();
     }
+    let incomplete = budget.incomplete || agents.iter().any(|a| a.incomplete);
     Report {
         sessions,
         agents,
-        incomplete: budget.incomplete,
+        incomplete,
+        cancelled: budget.cancelled(),
     }
 }
 

@@ -4,30 +4,65 @@
 use std::fs::{self, File, Metadata};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// Files and folders the scan may look at, and until when.
+use time::OffsetDateTime;
+
+/// Files and folders the scan may look at, until when, and whether the user cancelled.
 pub struct Budget {
-    started: Instant,
-    deadline: Duration,
+    until: Instant,
     entries_left: usize,
-    /// Set once a cap or the deadline stopped the scan early.
+    cancel: Option<Arc<AtomicBool>>,
+    /// Set once a cap, the deadline or a cancel stopped the scan early.
     pub incomplete: bool,
 }
 
 impl Budget {
     pub fn new(deadline: Duration, max_entries: usize) -> Self {
+        let now = Instant::now();
         Self {
-            started: Instant::now(),
-            deadline,
+            until: now.checked_add(deadline).unwrap_or(now),
             entries_left: max_entries,
+            cancel: None,
             incomplete: false,
         }
     }
 
-    /// False (and marks the scan incomplete) once time is up.
+    /// Stops the scan as soon as `cancel` is set.
+    pub fn with_cancel(mut self, cancel: Arc<AtomicBool>) -> Self {
+        self.cancel = Some(cancel);
+        self
+    }
+
+    /// The same deadline and cancel flag with its own entry allowance (one agent's share).
+    pub fn share(&self, max_entries: usize) -> Self {
+        Self {
+            until: self.until,
+            entries_left: max_entries,
+            cancel: self.cancel.clone(),
+            incomplete: false,
+        }
+    }
+
+    pub fn until(&self) -> Instant {
+        self.until
+    }
+
+    pub fn cancel_flag(&self) -> Option<Arc<AtomicBool>> {
+        self.cancel.clone()
+    }
+
+    pub fn cancelled(&self) -> bool {
+        self.cancel
+            .as_ref()
+            .is_some_and(|c| c.load(Ordering::Relaxed))
+    }
+
+    /// False (and marks the scan incomplete) once time is up or the user cancelled.
     pub fn time_left(&mut self) -> bool {
-        if self.started.elapsed() >= self.deadline {
+        if Instant::now() >= self.until || self.cancelled() {
             self.incomplete = true;
             return false;
         }
@@ -46,6 +81,43 @@ impl Budget {
         self.entries_left -= 1;
         true
     }
+}
+
+/// A file time as a date, or `None` when it is outside the range a date can hold (a file can
+/// carry any time; `OffsetDateTime::from(SystemTime)` would panic on those).
+pub fn file_time(t: SystemTime) -> Option<OffsetDateTime> {
+    let nanos = match t.duration_since(UNIX_EPOCH) {
+        Ok(after) => i128::try_from(after.as_nanos()).ok()?,
+        Err(before) => -i128::try_from(before.duration().as_nanos()).ok()?,
+    };
+    OffsetDateTime::from_unix_timestamp_nanos(nanos).ok()
+}
+
+/// True when `path` resolves to a local drive. The path is resolved first (every link,
+/// junction and drive mapping on the way), so a mapped network drive, which resolves to a
+/// `\\?\UNC\…` path, is refused, and so is a path that can't be resolved or resolves to
+/// anything but `\\?\X:\…`.
+#[cfg(windows)]
+pub fn is_local(path: &Path) -> bool {
+    if is_remote_or_device(path) {
+        return false;
+    }
+    let Ok(resolved) = fs::canonicalize(path) else {
+        return false;
+    };
+    let text = resolved.as_os_str().to_string_lossy();
+    let Some(rest) = text.strip_prefix(r"\\?\") else {
+        return false;
+    };
+    let b = rest.as_bytes();
+    b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && b[2] == b'\\'
+}
+
+/// Other systems: network mounts can't be told apart cheaply, so only the path form is
+/// checked (ADR-024 says so).
+#[cfg(not(windows))]
+pub fn is_local(path: &Path) -> bool {
+    !is_remote_or_device(path)
 }
 
 /// A UNC or device path would make Windows reach another machine just to read a log.
@@ -248,5 +320,20 @@ mod tests {
         assert!(plain_dir(Path::new("relative")).is_none());
         assert!(is_remote_or_device(Path::new(r"\\server\share")));
         assert!(is_remote_or_device(Path::new("//server/share")));
+        assert!(!is_local(Path::new(r"\\server\share")));
+        let dir = tempfile::tempdir().expect("tmp");
+        assert!(is_local(dir.path()));
+        if cfg!(windows) {
+            assert!(!is_local(&dir.path().join("missing")));
+        }
+    }
+
+    #[test]
+    fn out_of_range_file_times_are_none() {
+        let far = UNIX_EPOCH + Duration::from_secs(400_000_000_000);
+        assert!(file_time(far).is_none());
+        let before = UNIX_EPOCH - Duration::from_secs(1);
+        assert_eq!(file_time(before).map(|t| t.unix_timestamp()), Some(-1));
+        assert!(file_time(SystemTime::now()).is_some());
     }
 }

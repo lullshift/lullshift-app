@@ -168,13 +168,22 @@ fn turn_step(turn: &mut Turn, r: &Value) {
     }
 }
 
-pub(super) fn parse(win: &Window) -> Parsed {
+/// `None` when the first record that names a session names another one than the file
+/// (security review L3): a renamed or copied file is not listed under an id it doesn't hold.
+pub(super) fn parse(win: &Window, id: &str) -> Option<Parsed> {
     let mut parsed = Parsed::default();
     let mut titles = Titles::default();
+    let mut checked = false;
     for line in fsutil::lines(&win.head, false, !win.whole) {
         let Ok(r) = serde_json::from_slice::<Value>(line) else {
             continue;
         };
+        if !checked && let Some(sid) = r.get("sessionId").and_then(Value::as_str) {
+            if sid != id {
+                return None;
+            }
+            checked = true;
+        }
         if parsed.cwd.is_none()
             && let Some(cwd) = r.get("cwd").and_then(Value::as_str)
         {
@@ -202,5 +211,5 @@ pub(super) fn parse(win: &Window) -> Parsed {
     }
     parsed.turn = turn;
     parsed.title = titles.custom.or(titles.agent);
-    parsed
+    Some(parsed)
 }
