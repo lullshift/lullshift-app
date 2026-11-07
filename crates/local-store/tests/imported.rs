@@ -33,7 +33,11 @@ fn import_adds_a_marked_session_with_the_guess_and_no_events() {
     assert_eq!(rec.last_seen_utc, activity);
     assert_eq!(rec.last_received_utc, activity);
     assert_eq!(rec.state_timestamp_utc, Some(activity));
-    assert_eq!(s.event_count().expect("count"), 0, "nothing in the event log");
+    assert_eq!(
+        s.event_count().expect("count"),
+        0,
+        "nothing in the event log"
+    );
     let marked = s.imported_sessions().expect("marked");
     assert_eq!(marked.get(&key("a")), Some(&T0));
 }
