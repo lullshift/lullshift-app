@@ -111,7 +111,9 @@ export function summarize(sessions: readonly SessionView[]): Summary {
   const needs = sessions.filter((s) => liveState(s) === "needs_attention");
   const working = count(sessions, "working");
   // Sessions that are no longer tracked are not "quiet", they are simply not counted.
-  const unknown = sessions.filter((s) => s.reason !== "observed" && !s.disconnectedUtc).length;
+  const unknown = sessions.filter(
+    (s) => s.reason !== "observed" && !s.disconnectedUtc && !s.importedUtc,
+  ).length;
   const unknownNote =
     unknown > 0
       ? ` ${unknown === 1 ? "One session hasn't" : `${unknown} sessions haven't`} reported recently.`

@@ -33,7 +33,14 @@ import {
   type HistorySort,
   type HistorySortKey,
 } from "./format";
-import { reasonText, sessionStateView, type SessionView } from "./sessions";
+import { ImportSessionsDialog } from "./ImportSessionsDialog";
+import {
+  FROM_LOG_LABEL,
+  isImported,
+  reasonText,
+  sessionStateView,
+  type SessionView,
+} from "./sessions";
 import { Banner } from "./ui/Banner";
 import { Icon } from "./ui/Icon";
 import { Mascot } from "./ui/Mascot";
@@ -170,12 +177,38 @@ export default function SessionsView({
     setQuery("");
     setTool("all");
   };
+  // Import sessions (decision 34): nothing is read until the user opens the dialog.
+  const [importOpen, setImportOpen] = useState(false);
+  // A new key per opening gives the dialog fresh state each time.
+  const [importKey, setImportKey] = useState(0);
+  const [importDone, setImportDone] = useState<string | null>(null);
+  const openImport = () => {
+    setImportDone(null);
+    setImportKey((k) => k + 1);
+    setImportOpen(true);
+  };
 
   return (
     <section aria-labelledby="sessions-heading" className="view view-fill">
-      <h1 id="sessions-heading" ref={headingRef} tabIndex={-1}>
-        Sessions
-      </h1>
+      <header className="sessions-header">
+        <h1 id="sessions-heading" ref={headingRef} tabIndex={-1}>
+          Sessions
+        </h1>
+        <button type="button" className="btn btn-secondary btn-small" onClick={openImport}>
+          Import sessions
+        </button>
+      </header>
+      <ImportSessionsDialog
+        key={importKey}
+        open={importOpen}
+        now={now}
+        onClose={() => setImportOpen(false)}
+        onImported={(message) => {
+          setImportDone(message);
+          onRefresh();
+        }}
+      />
+      {importDone && <Banner tone="success">{importDone}</Banner>}
 
       {coreError && (
         <Banner tone="danger">
@@ -209,6 +242,9 @@ export default function SessionsView({
           >
             {emptyCopy.button}
             <Icon name="arrow" size={18} />
+          </button>
+          <button type="button" className="btn btn-quiet" onClick={openImport}>
+            Import sessions already running
           </button>
         </div>
       )}
@@ -569,6 +605,7 @@ function History({
               </td>
               <td>
                 <StatePill view={sessionStateView(s)} />
+                {isImported(s) && <FromLogTag />}
                 {showsReviewPill(s) && <ReviewPill />}
               </td>
               <td>
@@ -604,6 +641,18 @@ function ReviewPill() {
   return (
     <span className="pill pill-review" title="This session ended and hasn't been reviewed">
       Review
+    </span>
+  );
+}
+
+/** Marks a session imported from the agent's own log and not yet confirmed by a hook event. */
+function FromLogTag() {
+  return (
+    <span
+      className="pill pill-from-log"
+      title="Imported from the agent's own log. Its state is a guess until the agent sends an update."
+    >
+      {FROM_LOG_LABEL}
     </span>
   );
 }
@@ -660,6 +709,7 @@ function CompactRows({
                 {sessionName(s).secondary ?? shortId(s.providerSessionId)}
               </span>
               <span className="visually-hidden">, {sessionStateView(s).label}</span>
+              {isImported(s) && <FromLogTag />}
               {showsReviewPill(s) && <ReviewPill />}
             </span>
           </button>
@@ -759,6 +809,7 @@ function SessionCard({
             {name.secondary ?? shortId(s.providerSessionId)}
           </span>
           <span className="session-row">
+            {isImported(s) && <FromLogTag />}
             {showsReviewPill(s) && <ReviewPill />}
             <time
               className="session-time"

@@ -9,7 +9,7 @@ import type { PauseRequest } from "./activity/ActivityHost";
 import { createDashboardStore } from "./dashboardStore";
 import Integrations from "./Integrations";
 import SessionsView from "./SessionsView";
-import { healthProblems, sortSessions, type Dashboard } from "./sessions";
+import { healthProblems, liveState, sortSessions, type Dashboard } from "./sessions";
 import Settings from "./Settings";
 import { Onboarding } from "./Onboarding";
 import { loadUiPrefs, updateUiPrefs, useShowWelcome, useUiPrefs } from "./uiPrefsStore";
@@ -124,7 +124,7 @@ export default function App() {
     state.status === "ready" ? state.dashboard : state.status === "error" ? state.last : null;
   const problems = useMemo(() => (dashboard ? healthProblems(dashboard) : []), [dashboard]);
   const sessions = useMemo(() => (dashboard ? sortSessions(dashboard.sessions) : []), [dashboard]);
-  const needsYou = sessions.filter((s) => s.state === "needs_attention").length;
+  const needsYou = sessions.filter((s) => liveState(s) === "needs_attention").length;
 
   return (
     <div className="shell">
