@@ -2,8 +2,10 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type RefObject,
 } from "react";
@@ -12,6 +14,8 @@ import { SUPPORTED_AGENTS, emptySessionsCopy, statusCommand, type AdapterView } 
 import { type SessionKey } from "./context/api";
 import { updateUiPrefs, useUiPrefs } from "./uiPrefsStore";
 import DetailPanel from "./context/DetailPanel";
+import { DockSplitter } from "./context/DockSplitter";
+import { effectiveDock } from "./context/dockLogic";
 import {
   decideLayout,
   groupedList,
@@ -99,6 +103,17 @@ export default function SessionsView({
   // If the selected session is gone from the list (deleted), no panel shows.
   const layout = decideLayout(selectedView !== undefined, pinned, width);
   const floating = layout.panel === "floating";
+  const docked = layout.panel === "docked";
+
+  // The docked panel's width: saved with the interface preferences, previewed while dragging.
+  const savedDock = useUiPrefs().dockWidth;
+  const [dragDock, setDragDock] = useState<number | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageWidth, setStageWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (docked && stageRef.current) setStageWidth(stageRef.current.clientWidth);
+  }, [docked, width]);
+  const dockPx = dragDock ?? (stageWidth > 0 ? effectiveDock(savedDock, stageWidth) : null);
 
   const open = useCallback((s: SessionView) => setSelected(viewKey(s)), []);
   const close = useCallback(() => {
@@ -292,7 +307,15 @@ export default function SessionsView({
             </span>
           </p>
 
-          <div className={`board-stage${layout.panel === "docked" ? " has-dock" : ""}`}>
+          <div
+            ref={stageRef}
+            className={`board-stage${docked ? " has-dock" : ""}`}
+            style={
+              docked && dockPx !== null
+                ? ({ "--dock-width": `${dockPx}px` } as CSSProperties)
+                : undefined
+            }
+          >
             <div className="stage-main">
               <div
                 role="tabpanel"
@@ -369,6 +392,14 @@ export default function SessionsView({
                 )}
               </div>
             </div>
+            {docked && dockPx !== null && (
+              <DockSplitter
+                value={dockPx}
+                stageWidth={stageWidth}
+                onPreview={setDragDock}
+                onCommit={(px) => void updateUiPrefs({ dockWidth: px })}
+              />
+            )}
             {selectedView && selected && (
               <DetailPanel
                 key={keyString(selected)}

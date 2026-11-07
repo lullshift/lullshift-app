@@ -81,6 +81,8 @@ export interface UiPrefs {
   onboardingDone: boolean;
   /** The Companion section of Settings is expanded (decision 36). */
   companionSettingsOpen?: boolean;
+  /** Width in pixels of the docked session panel; null or missing means the default. */
+  dockWidth?: number | null;
 }
 
 const k = (s: SessionKey) => ({ provider: s.provider, sessionId: s.sessionId });

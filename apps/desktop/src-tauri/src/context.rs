@@ -123,6 +123,10 @@ pub struct UiPrefs {
     /// which read as collapsed.
     #[serde(default)]
     pub companion_settings_open: bool,
+    /// Width in pixels of the docked session panel; the app keeps it within the window. Missing
+    /// (or null) in older preferences, which read as the default width.
+    #[serde(default)]
+    pub dock_width: Option<u32>,
 }
 
 impl Default for UiPrefs {
@@ -132,6 +136,7 @@ impl Default for UiPrefs {
             content_width: ContentWidth::Full,
             onboarding_done: false,
             companion_settings_open: false,
+            dock_width: None,
         }
     }
 }
@@ -1521,6 +1526,22 @@ mod tests {
             UiPrefs::from_stored(Some(r#"{"detailPanelPinned":true,"onboardingDone":"yes"}"#)),
             UiPrefs::default(),
             "a damaged flag falls back to the defaults"
+        );
+        // The docked panel width: older preferences have none; a saved one round-trips; a
+        // negative value falls back to the defaults.
+        assert_eq!(
+            UiPrefs::from_stored(Some(r#"{"detailPanelPinned":true}"#)).dock_width,
+            None
+        );
+        let wide = UiPrefs {
+            dock_width: Some(512),
+            ..UiPrefs::default()
+        };
+        let json = serde_json::to_string(&wide).expect("serialize");
+        assert_eq!(UiPrefs::from_stored(Some(&json)), wide);
+        assert_eq!(
+            UiPrefs::from_stored(Some(r#"{"detailPanelPinned":true,"dockWidth":-5}"#)),
+            UiPrefs::default()
         );
     }
 

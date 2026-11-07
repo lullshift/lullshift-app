@@ -1533,7 +1533,36 @@ th[aria-sort="descending"] .sort {
 }
 
 .board-stage.has-dock {
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 40%, 400px);
+  /* The splitter column is the gap between the board and the panel. */
+  grid-template-columns:
+    minmax(0, 1fr) var(--space-3)
+    min(var(--dock-width, clamp(320px, 40%, 400px)), 60%);
+  gap: 0;
+}
+
+.dock-splitter {
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+  border-radius: var(--radius-full);
+}
+
+/* A slim line shows where the grip is when it is hovered, dragged or focused. */
+.dock-splitter::after {
+  content: "";
+  position: absolute;
+  inset: var(--space-6) calc(50% - 1px);
+  border-radius: var(--radius-full);
+  background: var(--border-strong, var(--border));
+  opacity: 0;
+  transition: opacity var(--fast, 120ms) var(--ease, ease);
+}
+
+.dock-splitter:hover::after,
+.dock-splitter:active::after,
+.dock-splitter:focus-visible::after {
+  opacity: 1;
+  background: var(--accent);
 }
 
 .stage-main {
