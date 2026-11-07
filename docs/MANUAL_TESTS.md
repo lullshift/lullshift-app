@@ -1324,6 +1324,72 @@ Use a real provider with a long answer (for example "Write 400 words about locks
 
 **Result:** \_\_\_
 
+## Owner UI review fixes (detail panel, theme, Companion lists, import)
+
+Added with the fixes the owner found in the running app. If another batch added M12-21 or higher at the same time, renumber these when merging.
+
+### M12-21: Session panel width and sideways scrolling
+
+Run in light and dark, at about 900 and 1280 px wide, with a real session open that has a long captured intent (or a long unbroken text such as a URL).
+
+1. Open a session and pin the panel (it docks at the side). Scroll the panel: nothing moves sideways, and long words and URLs wrap.
+2. Drag the thin bar between the board and the panel left and right. Then press Tab until the bar has focus, and use Left and Right (16 px each), Home and End. Double-click the bar.
+3. Close the app and open it again, open a session, and look at the panel width.
+4. Make the window narrower than about 720 px, and unpin the panel.
+
+**Expected:**
+
+- **Step 1:** no horizontal scroll bar in the panel at any width.
+- **Step 2:** the panel never gets narrower than about 320 px or wider than about 60% of the area; Left widens and Right narrows; the focus ring is visible; a screen reader reads a "Resize the session panel" separator with its width; double-click returns to the default.
+- **Step 3:** the dragged width is remembered.
+- **Step 4:** the panel floats as before and has no bar.
+
+**Result:** \_\_\_
+
+### M12-22: Theme setting
+
+1. Settings > Appearance > Theme: choose **Dark**, then **Light**, then **System**, while the computer is set to the opposite theme, and again after changing the computer's theme while System is chosen.
+2. With Dark chosen, start an activity, and read the Companion code blocks.
+3. Restart the app.
+
+**Expected:**
+
+- **Steps 1 and 2:** Light and Dark win over the computer setting; System follows it, also while the app is open; the activity and code blocks use the same theme as the app.
+- **Step 3:** the choice is kept.
+
+**Result:** \_\_\_
+
+### M12-23: Companion thread list, titles and model picker
+
+1. In Companion, press **New conversation** and send a first message with extra spaces and a line break that is longer than 48 characters, such as "How do I fix the flaky test that only fails on CI when two workers share one cache directory?". In another new conversation, send a first message that is one very long word.
+2. Rename a new conversation to "My notes", then send the first message.
+3. Select threads with the mouse and with the keyboard.
+4. Open Settings > Companion > Add a model, and load the model list. Resize the window to about 900 px wide. Use the search, the checkboxes and the sort.
+
+**Expected:**
+
+- **Step 1:** the thread is named from the message: one line, cut at about 48 characters on a word with "…", no line break. The long word is cut with "…".
+- **Step 2:** the name stays "My notes".
+- **Step 3:** the whole selected row has a soft background (no border on only the title), the ⋮ menu sits inside the row, and the keyboard focus ring is different from the selection.
+- **Step 4:** the dialog fits (up to 640 px wide), nothing scrolls sideways, the filters wrap, and each model is a name and id on one line with the id cut by "…" when long.
+
+**Result:** \_\_\_
+
+### M12-24: Import sessions grouped by folder
+
+1. Open **Import sessions** with several sessions from the same folders.
+2. Tick one session in a folder, then tick **Select all in this folder**, then untick it. Do this with the keyboard (Tab, Space) too.
+3. Type part of a folder name in the filter.
+4. With NVDA (or Narrator), move through the headings.
+
+**Expected:**
+
+- **Steps 1 and 2:** folders are listed newest first, each with its name and count; the folder checkbox shows the mixed state when only some are ticked, and skips sessions already in Lullshift; the count line and **Import (n)** agree.
+- **Step 3:** only matching sessions and folders stay.
+- **Step 4:** each folder is a heading, and its checkbox is read as "Select all in this folder, <name>".
+
+**Result:** \_\_\_
+
 ## Website and demo mode
 
 ### W-1: Browser demo of the desktop UI
