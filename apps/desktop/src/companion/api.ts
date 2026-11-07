@@ -383,3 +383,11 @@ export const companionModelCatalog = (mode: CatalogMode) =>
 /** Memory only. Fails with `notFound` when the list isn't loaded. */
 export const companionCatalogModels = (providerId: string) =>
   call<CatalogModel[]>("companion_catalog_models", { providerId });
+
+// ---- links in replies (decision 36) --------------------------------------------------------
+
+/**
+ * Opens an http(s) address in the default browser, after the user confirmed it in Lullshift's own
+ * dialog. The core checks the scheme again and refuses anything else.
+ */
+export const companionOpenLink = (url: string) => call<void>("companion_open_link", { url });

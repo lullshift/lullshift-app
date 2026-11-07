@@ -1,0 +1,162 @@
+/* Companion reply: code blocks, links and syntax colours (decision 36). Tokens only (ADR-011).
+   Colours are decoration; the code is readable without them. Light and dark follow tokens.css
+   (prefers-color-scheme). No transitions, so nothing to switch off for reduced motion. */
+
+.reply-text {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.reply-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-align: inherit;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  cursor: pointer;
+}
+
+.reply-link:hover {
+  color: var(--accent-hover);
+}
+
+.reply-link:focus-visible,
+.reply-code pre:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.reply-link-url {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.reply-code {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.reply-code-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.reply-code-lang {
+  font-weight: 600;
+}
+
+.reply-code-note {
+  color: var(--text-muted);
+}
+
+.reply-copy {
+  margin-left: auto;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.reply-code pre {
+  margin: 0;
+  padding: var(--space-3);
+  overflow-x: auto;
+  white-space: pre;
+  tab-size: 2;
+}
+
+.reply-code code {
+  background: none;
+  color: var(--text);
+  font-family: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag,
+.hljs-tag,
+.hljs-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: var(--success);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-built_in,
+.hljs-meta {
+  color: var(--attention);
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-type,
+.hljs-class .hljs-title {
+  color: var(--accent-hover);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params,
+.hljs-property {
+  color: var(--text);
+}
+
+.hljs-attr,
+.hljs-attribute {
+  font-style: italic;
+}
+
+.hljs-deletion {
+  color: var(--danger);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
