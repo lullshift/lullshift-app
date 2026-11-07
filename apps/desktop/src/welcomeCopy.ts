@@ -10,11 +10,11 @@ export const WELCOME_LINES = [
   "There is no account to make. Everything stays on this computer, and it works offline.",
 ] as const;
 
-/** Button label. It opens Integrations, which lists every supported agent. */
+/** Button label. It opens Settings > Integrations, which lists every supported agent. */
 export const CONNECT_LABEL = "Connect an agent";
 
 export const CONNECT_EXPLAINER =
-  "Connecting is optional. Integrations lists every supported agent: Claude Code, Codex and Cursor (OpenCode 2.x is there too, as an experiment). For the one you pick, Lullshift adds a small hook to that agent's hooks or settings file and saves a backup of the original first. Nothing is changed until you confirm on the next screen and once more in a system dialog. Disconnect removes it again.";
+  "Connecting is optional. Integrations, in Settings, lists every supported agent: Claude Code, Codex and Cursor (OpenCode 2.x is there too, as an experiment). For the one you pick, Lullshift adds a small hook to that agent's hooks or settings file and saves a backup of the original first. Nothing is changed until you confirm on the next screen and once more in a system dialog. Disconnect removes it again.";
 
 /** The smallest slice of an activity the suggestion needs. */
 export interface Suggestible {

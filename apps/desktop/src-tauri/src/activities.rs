@@ -139,6 +139,8 @@ pub struct ActivityInfo {
     pub(crate) name: String,
     pub(crate) description: String,
     pub(crate) category: String,
+    /// The manifest's tags, for search and the host's own filter chips (never shown as labels).
+    tags: Vec<String>,
     version: String,
     storage: bool,
     saved_utc: Option<String>,
@@ -896,6 +898,7 @@ fn info(a: &Activity, saved_utc: Option<String>, played_seconds: i64) -> Activit
         name: m.name.clone(),
         description: m.description.clone(),
         category: m.category.clone(),
+        tags: clean_tags(&m.tags),
         version: m.version.clone(),
         storage: has_storage(a),
         saved_utc,
@@ -907,6 +910,24 @@ fn info(a: &Activity, saved_utc: Option<String>, played_seconds: i64) -> Activit
     }
 }
 
+/// Tags that match the schema's pattern, each once, at most ten: they come from untrusted
+/// manifests.
+fn clean_tags(tags: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for t in tags {
+        let ok = (1..=30).contains(&t.len())
+            && t.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+        if ok && !out.contains(t) {
+            out.push(t.clone());
+            if out.len() == 10 {
+                break;
+            }
+        }
+    }
+    out
+}
+
 fn installed_info(s: &Served, saved_utc: Option<String>, played_seconds: i64) -> ActivityInfo {
     let m = &s.manifest;
     ActivityInfo {
@@ -914,6 +935,7 @@ fn installed_info(s: &Served, saved_utc: Option<String>, played_seconds: i64) ->
         name: m.name.clone(),
         description: m.description.clone(),
         category: m.category.clone(),
+        tags: clean_tags(&m.tags),
         version: m.version.clone(),
         storage: s.has_storage(),
         saved_utc,
@@ -1192,6 +1214,40 @@ pub async fn activity_clear_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clean_tags_keeps_only_schema_shaped_tags_once_and_at_most_ten() {
+        let v = |l: &[&str]| l.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        // Uppercase, empty, 31 characters and non-ASCII tags are dropped; valid ones stay.
+        let long31 = "a".repeat(31);
+        let long30 = "b".repeat(30);
+        let input = v(&[
+            "Calm",
+            "",
+            &long31,
+            "café",
+            "calm",
+            "wrist-care",
+            "a1",
+            &long30,
+        ]);
+        assert_eq!(
+            clean_tags(&input),
+            v(&["calm", "wrist-care", "a1", &long30])
+        );
+        // Duplicates collapse to one.
+        assert_eq!(clean_tags(&v(&["x", "y", "x", "y"])), v(&["x", "y"]));
+        // Eleven valid tags: the first ten.
+        let eleven: Vec<String> = (0..11).map(|i| format!("t{i}")).collect();
+        let got = clean_tags(&eleven);
+        assert_eq!(got.len(), 10);
+        assert_eq!(got.last().map(String::as_str), Some("t9"));
+        // Tags that are not valid do not use up the ten.
+        let mut mixed = v(&["BAD"; 5]);
+        mixed.extend(eleven.iter().cloned());
+        assert_eq!(clean_tags(&mixed).len(), 10);
+        assert!(clean_tags(&[]).is_empty());
+    }
 
     const APP: &str = r#"{"schemaVersion":1,"kind":"app","id":"app.lullshift.test","version":"1.0.0",
         "name":"Test","category":"arcade","minHostVersion":"0.1.0","sdkVersion":"0.1.0",

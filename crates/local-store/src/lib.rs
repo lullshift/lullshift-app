@@ -13,6 +13,11 @@ use std::path::{Path, PathBuf};
 mod companion;
 mod context;
 mod marketplaces;
+mod waits;
+pub use waits::{
+    MIN_STRETCHES, WaitEstimate, WaitEvent, WorkStretch, estimates, fold_stretches,
+    stretches_from_events,
+};
 
 pub use marketplaces::{
     ActivityKind, AddressChange, BUILTIN_MARKETPLACE_ID, CodeConsent, InstalledActivity,

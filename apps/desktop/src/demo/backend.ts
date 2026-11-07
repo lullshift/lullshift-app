@@ -40,6 +40,17 @@ let notificationPrefs: NotificationPrefs = {
 let contextPrefs: ContextPrefs = { retentionDays: 30, capture: { "claude-code": true } };
 
 const snapshots = new Map<string, string>();
+const savedAt = new Map<string, string>();
+// ?saved starts with two saved activities, so Home and Continue have something to resume.
+if (params.has("saved")) {
+  for (const [id, minutes] of [
+    ["app.lullshift.games.fog-garden", 12],
+    ["app.lullshift.content.breath-box-gentle", 45],
+  ] as const) {
+    snapshots.set(id, "{}");
+    savedAt.set(id, ago(minutes));
+  }
+}
 const storage = new Map<string, string>();
 const played: Record<string, number> = {
   "app.lullshift.games.fog-garden": 1260,
@@ -168,7 +179,7 @@ function activityInfo(id: unknown) {
   return {
     ...a.info,
     playedSeconds: played[a.info.id] ?? 0,
-    savedUtc: snapshots.has(a.info.id) ? ago(0) : null,
+    savedUtc: snapshots.has(a.info.id) ? (savedAt.get(a.info.id) ?? ago(0)) : null,
   };
 }
 
@@ -307,6 +318,13 @@ function handle(cmd: string, a: Args): unknown {
       notificationPrefs = a.prefs as NotificationPrefs;
       return notificationPrefs;
 
+    // How long each tool usually works (made up; the real one reads the last 14 days of events).
+    case "wait_estimates":
+      return [
+        { provider: "claude-code", medianSeconds: 370, stretches: 14 },
+        { provider: "codex", medianSeconds: 110, stretches: 7 },
+      ];
+
     // Activities
     case "activities_list":
       return CATALOG.map((x) => activityInfo(x.info.id));
@@ -326,6 +344,7 @@ function handle(cmd: string, a: Args): unknown {
     }
     case "activity_save_snapshot":
       snapshots.set(String(a.id), String(a.snapshot));
+      savedAt.delete(String(a.id));
       return null;
     case "activity_clear_snapshot":
       snapshots.delete(String(a.id));

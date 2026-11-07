@@ -4,8 +4,9 @@ import { truncate } from "../marketplace/logic";
 import { formatPlayed } from "./playTime";
 
 /**
- * What the paused view shows instead of an empty card (S05-T09): time played, always; the
- * activity's own stats if it reported any; otherwise its preview image.
+ * What the paused view shows instead of an empty card (S05-T09): time played this visit,
+ * always (never a running total, ADR-026); the activity's own stats if it reported any;
+ * otherwise its preview image.
  *
  * Host stats and activity stats are separate groups. The activity's labels are its own words, so
  * they sit under a heading with the activity's name and can't pass as a host stat.
@@ -14,17 +15,14 @@ export function PausedStats({
   name,
   summary,
   playedNow,
-  playedTotal,
   preview,
 }: {
   name: string;
   summary: SummaryItem[] | null;
   playedNow: number;
-  playedTotal: number;
   preview: string | null;
 }) {
   const headingId = useId();
-  const showTotal = Math.floor(playedTotal / 60) > Math.floor(playedNow / 60);
   const own = summary && summary.length > 0 ? summary : null;
   return (
     <div className="paused-stats">
@@ -33,12 +31,6 @@ export function PausedStats({
           <dt>Played this time</dt>
           <dd>{formatPlayed(playedNow)}</dd>
         </div>
-        {showTotal && (
-          <div className="stat">
-            <dt>In total</dt>
-            <dd>{formatPlayed(playedTotal)}</dd>
-          </div>
-        )}
       </dl>
       {own && (
         <section className="stat-group" aria-labelledby={headingId}>

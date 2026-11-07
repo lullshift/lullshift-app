@@ -1387,6 +1387,52 @@ Run in light and dark, at about 900 and 1280 px wide, with a real session open t
 - **Steps 1 and 2:** folders are listed newest first, each with its name and count; the folder checkbox shows the mixed state when only some are ticked, and skips sessions already in Lullshift; the count line and **Import (n)** agree.
 - **Step 3:** only matching sessions and folders stay.
 - **Step 4:** each folder is a heading, and its checkbox is read as "Select all in this folder, <name>".
+### M12-25: Home and the new sidebar (ADR-026 sections 1 to 3)
+
+Run in light and dark, at about 900 px and 1,280 px wide, and once with reduced motion on.
+
+1. Start Lullshift. It opens on **Home**, not Sessions. The sidebar reads Home, Sessions, the label **While you wait** with Play, Rest, Continue and Companion, and Settings at the bottom. There is no **Integrations** item.
+2. With no agent connected and nothing running: Home says **No agents yet**, offers **Connect an agent**, and still shows a suggestion ("If you'd like a break"), the three doors and no "Pick up where you left off".
+3. Connect Claude Code (Settings > Integrations). Start a long task. Home says **Your agent is working**, shows the agent as a small chip, and the suggestion line says **For a short break**. Press **Shuffle** a few times: the suggestion changes in a fixed order and comes back to the first. Close and reopen Lullshift the same day: the first suggestion is the same.
+4. Let the agent ask for permission. The mascot wakes and the top card reads **Claude Code needs you** with one **Go to session** button. It opens Sessions. The orange number on Sessions is the only orange item in the sidebar; Play, Rest and Continue show quiet grey counts.
+5. Pause a game (leave it, or press Pause) so it has a save. Open Home: **Pick up where you left off** shows it with **Resume**, newest first (at most four), and the suggestion is **Resume** for the same activity. Press Resume: the game starts from its save.
+6. After several days of real use (at least five finished working stretches for one tool in 14 days) the line reads "Claude Code usually takes about N min". With fewer stretches it never shows a number. It never says "will finish at" and shows no countdown.
+7. Stop the agent connection (quit the agent) and wait: the chip says it is not confirmed and the status never claims a task is done.
+8. Keyboard only: Tab through Home. Every card, chip, button and link is reachable with a visible focus ring, and Enter or Space on a door opens it.
+
+**Expected:**
+
+- **Steps 1 and 4:** the layout and the single orange item match ADR-026 section 1.
+- **Steps 2, 3 and 6:** only honest wording: "No agents yet", "For a short break", "usually takes about" (an estimate about the agent, never about you).
+- **Step 5:** the save is resumed, not restarted.
+- **Step 8:** nothing is mouse-only; with reduced motion nothing animates.
+
+**Result:** \_\_\_
+
+### M12-26: Play, Rest and Continue (ADR-026 section 4)
+
+Run in light and dark.
+
+1. Open **Play**. It lists games and puzzles (Game, Play and Focus kinds), not breathing or movement breaks. Open **Rest**: it lists breaks only.
+2. On each page type a word from an activity's name, then one from its description, then one of its manifest tags (for example "breathing"). The list narrows each time; the status line says how many match. Press **Clear search**.
+3. Press a filter chip (Play: Puzzles, Calm, Quizzes, Typing, Toys, Cards; Rest: Breathing, Movement, Step away, Reflection, Pause, Eyes). Only chips with at least one activity show. Press the same chip again to clear it. Chips combine with the search.
+4. Install or hand-edit a test activity with an odd tag (for example `evil-tag`). It is found by searching for it but no chip or label ever shows that tag.
+5. Open **How to play** on a game: the button and the dialog title say "How to play". Open **How it works** on a break: the button and the title say "How it works". Both are reachable with the keyboard, and Esc closes the dialog.
+6. With a saved activity on the page, a **Continue** row shows it at the top (hidden while you search or filter). Open **Continue** in the sidebar: every saved activity, newest first, each with "saved N min ago", **Resume**, **Start over** and the help link. No counts, totals, streaks or "played for" times appear anywhere on these pages. Press **Start over** and confirm the save is gone.
+7. Press **Manage activities** (quiet link, top right): Manage and Marketplaces open with the same function as before (turn an activity off and on, add a marketplace), and **Back to Play** returns.
+8. Start an activity from Play, Rest, Home and Continue. Each runs in the same host. Press **Pause**, switch to Sessions, and let an agent need you: the activity pauses, the card says which tool needs you and **Go to Sessions** works.
+9. Open Settings > Integrations from **Connect an agent** on Home, from the Sessions empty state, and from the welcome: each opens Settings scrolled to Integrations with its heading focused. Connect and Disconnect still ask for consent exactly as before.
+10. Start game A, press **Pause**, then start a different activity B from Home (**Resume** or the suggestion) or from Continue. B starts as a fresh launch: its paused card shows only its own time and stats, and A kept its save (check A in Continue). Start A, press Pause, then **Resume** A from Home: it resumes at once, with one click, without showing the paused card.
+11. While an activity runs, click **Play**, **Rest** or **Continue** in the sidebar. The activity pauses and saves, the list shows, the clicked item is highlighted, and a line at the top reads "<Name> is paused" with **Resume**. Resume brings the activity back.
+12. On the paused card (and anywhere else) check there is no "In total" row or any running total of time.
+13. First launch (or after clearing the stored welcome flag): choose **Connect an agent** in the welcome. The dialog closes, Settings opens and focus lands on the Integrations heading once the dialog is gone (not on the Settings heading, not on the page body). Also press **Go to session** on Home when one session needs you: Sessions opens with that session's detail panel.
+
+**Expected:**
+
+- **Steps 1 to 4:** the split follows the manifest category only; chips are the host's own words; third-party tags are searchable text only.
+- **Steps 5 and 6:** help wording follows the activity; Continue shows no statistics.
+- **Steps 7 to 9:** nothing that worked before is lost; Integrations is a section of Settings.
+- **Steps 10 to 13:** each launch is clean, a sidebar click never leaves an activity running behind a list, and the welcome's Connect lands focus on Integrations.
 
 **Result:** \_\_\_
 
@@ -1395,7 +1441,7 @@ Run in light and dark, at about 900 and 1280 px wide, with a real session open t
 ### W-1: Browser demo of the desktop UI
 
 1. Run `pnpm --filter @lullshift/desktop exec vite --port 1420` and open <http://localhost:1420/demo.html>.
-2. Visit Sessions (Live and History), Activities, Companion, Integrations and Settings.
+2. Visit Home, Sessions (Live and History), Play, Rest, Continue, Companion and Settings (Integrations is a section of Settings). Open `/demo.html?saved` to see saved activities on Home and Continue.
 3. Start a game. In the console, run `lullshiftDemo.attention("claude-code")`.
 4. Open `/demo.html?welcome`.
 5. Run `node apps/desktop/scripts/demo-screenshots.mjs demo-screenshots`.
@@ -1405,7 +1451,7 @@ Run in light and dark, at about 900 and 1280 px wide, with a real session open t
 - **Step 2:** every screen shows made-up data and none shows an error.
 - **Step 3:** the game pauses and the card says "Claude Code needs you".
 - **Step 4:** the first-launch welcome shows.
-- **Step 5:** 14 PNGs are written in light and dark, and none fails.
+- **Step 5:** 18 PNGs are written in light and dark, and none fails.
 
 **Result:** \_\_\_
 

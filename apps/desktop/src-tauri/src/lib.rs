@@ -16,6 +16,7 @@ pub mod repair_hooks;
 mod session_import;
 mod settle;
 pub mod uninstall_hooks;
+mod waits;
 mod webrtc;
 
 use std::path::PathBuf;
@@ -569,6 +570,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             dashboard,
+            waits::wait_estimates,
             adapters::claude_code_status,
             adapters::claude_code_install,
             adapters::claude_code_uninstall,

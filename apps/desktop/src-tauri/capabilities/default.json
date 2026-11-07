@@ -5,6 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "allow-dashboard",
+    "allow-wait-estimates",
     "allow-claude-code-status",
     "allow-claude-code-install",
     "allow-claude-code-uninstall",

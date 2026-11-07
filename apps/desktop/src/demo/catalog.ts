@@ -10,6 +10,7 @@ interface Manifest {
   name: string;
   description: string;
   category: string;
+  tags?: string[];
   version: string;
   entrypoint?: string;
   engine?: string;
@@ -78,6 +79,7 @@ function build(): DemoActivity[] {
         name: m.name,
         description: m.description,
         category: m.category,
+        tags: m.tags ?? [],
         version: m.version,
         storage: (m.permissions ?? []).includes("activity.storage"),
         savedUtc: null,

@@ -150,13 +150,21 @@ const SHOTS = [
       await __clickText("tr, li, button, [role=button]", "Move sessions to SQLite");`,
   },
   {
+    name: "home",
+    steps: `await __nav("Home"); await __wait(600);`,
+  },
+  {
     name: "activities",
-    steps: `await __nav("Activities");`,
+    steps: `await __nav("Play");`,
+  },
+  {
+    name: "rest",
+    steps: `await __nav("Rest");`,
   },
   {
     name: "game",
     steps: `
-      await __nav("Activities");
+      await __nav("Play");
       await __clickText("button", "Start Fog Garden");
       await __until(() => !document.body.innerText.includes("Starting"));
       await __wait(1000);`,
@@ -165,7 +173,7 @@ const SHOTS = [
   {
     name: "game-paused",
     steps: `
-      await __nav("Activities");
+      await __nav("Play");
       await __clickText("button", "Start Fog Garden");
       await __until(() => !document.body.innerText.includes("Starting"));
       await __wait(800);`,
@@ -183,7 +191,11 @@ const SHOTS = [
   },
   {
     name: "integrations",
-    steps: `await __nav("Integrations"); await __wait(600);`,
+    steps: `
+      await __nav("Settings");
+      await __wait(600);
+      document.getElementById("integrations")?.scrollIntoView();
+      await __wait(300);`,
   },
 ];
 

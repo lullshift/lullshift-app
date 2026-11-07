@@ -4,6 +4,7 @@
 //   lullshiftDemo.attention("claude-code")   an agent needs you: a running activity pauses
 //   lullshiftDemo.changed()                  re-read the sessions
 //   /demo.html?welcome                       start with the first-launch welcome
+//   /demo.html?saved                         start with two saved activities (Home, Continue)
 
 import { emit } from "@tauri-apps/api/event";
 import { StrictMode } from "react";
@@ -12,6 +13,7 @@ import { installDemoBackend } from "./backend";
 import "@fontsource-variable/figtree";
 import "../styles/tokens.css";
 import "../styles.css";
+import "../styles/home.css";
 import { startThemeSync } from "../theme";
 
 installDemoBackend();

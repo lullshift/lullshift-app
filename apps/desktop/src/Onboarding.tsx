@@ -17,15 +17,17 @@ interface Props {
   /** Closes the welcome for good (saved), whichever way it was closed. */
   onDone: () => void;
   onConnect: () => void;
-  onTryActivity: () => void;
+  /** Opens the library page for the suggested activity (its category), or Play if none. */
+  onTryActivity: (category: string | null) => void;
 }
 
 /**
  * Shown once, on first launch. Everything is optional and Skip (or Esc) closes it for good.
- * "Connect" only goes to Integrations: the consent dialog there names the exact file.
+ * "Connect" only goes to Settings > Integrations: the consent dialog there names the exact file.
  */
 export function Onboarding({ open, onDone, onConnect, onTryActivity }: Props) {
   const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [suggestionCategory, setSuggestionCategory] = useState<string | null>(null);
   // Unknown until read. Unknown or unreadable keeps the Connect button, so it is never hidden
   // on a guess.
   const [allConnected, setAllConnected] = useState(false);
@@ -34,7 +36,12 @@ export function Onboarding({ open, onDone, onConnect, onTryActivity }: Props) {
     if (!open) return;
     let cancelled = false;
     invoke<ActivityInfo[]>("activities_list")
-      .then((list) => !cancelled && setSuggestion(suggestFirstActivity(list)?.name ?? null))
+      .then((list) => {
+        if (cancelled) return;
+        const first = suggestFirstActivity(list);
+        setSuggestion(first?.name ?? null);
+        setSuggestionCategory(first?.category ?? null);
+      })
       .catch(() => undefined); // No suggestion: the generic wording below still works.
     Promise.all(
       SUPPORTED_AGENTS.map((agent) =>
@@ -65,7 +72,7 @@ export function Onboarding({ open, onDone, onConnect, onTryActivity }: Props) {
             className="btn btn-secondary"
             onClick={() => {
               onDone();
-              onTryActivity();
+              onTryActivity(suggestionCategory);
             }}
           >
             {suggestion ? `Try ${suggestion}` : "Browse activities"}
@@ -100,13 +107,11 @@ export function Onboarding({ open, onDone, onConnect, onTryActivity }: Props) {
           <span>
             {suggestion
               ? `A good first step: ${suggestion}, a short activity that pauses and saves when an agent needs you.`
-              : "Pick a short activity from the library. It pauses and saves when an agent needs you."}
+              : "Pick a short game or rest. It pauses and saves when an agent needs you."}
           </span>
         </li>
       </ul>
-      <p className="dialog-note">
-        You can find all of this later under Integrations and Activities.
-      </p>
+      <p className="dialog-note">You can find all of this later under Settings, Play and Rest.</p>
     </Dialog>
   );
 }

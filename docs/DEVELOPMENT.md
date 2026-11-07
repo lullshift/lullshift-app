@@ -84,7 +84,7 @@ To capture screenshots, keep the dev server running and run this from the repo r
 node apps/desktop/scripts/demo-screenshots.mjs demo-screenshots
 ```
 
-It drives Edge or Chrome headless (set `LULLSHIFT_BROWSER` to use another path). It writes `<shot>-light.png` and `<shot>-dark.png` at 1280x800 CSS pixels and 2x density for these shots: sessions, welcome back, activities, a game, a paused game, Companion and integrations. Add or change shots in the `SHOTS` list in the script.
+It drives Edge or Chrome headless (set `LULLSHIFT_BROWSER` to use another path). It writes `<shot>-light.png` and `<shot>-dark.png` at 1280x800 CSS pixels and 2x density for these shots: sessions, welcome back, Home, Play (the `activities` shot), Rest, a game, a paused game, Companion and integrations (Settings, scrolled to Integrations). Add or change shots in the `SHOTS` list in the script.
 
 The website (`lullshift/lullshift.github.io`) uses five of them: sessions, game, game-paused, welcome-back and companion. They are WebP, 1600 px wide, in its `public/screens/`. Convert new captures to that size and format when you update them there.
 

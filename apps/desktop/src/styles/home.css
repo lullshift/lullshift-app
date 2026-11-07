@@ -1,0 +1,467 @@
+/* Home, Play, Rest, Continue and the grouped sidebar (ADR-026). Tokens only; see
+   docs/DESIGN_SYSTEM.md. Imported by styles.css. */
+
+/* ---------- Navigation groups ---------- */
+
+.nav-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-y: auto;
+}
+
+.nav-group {
+  display: block;
+  margin: var(--space-4) 0 var(--space-1);
+  padding: 0 var(--space-3);
+  color: var(--text-subtle);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nav-bottom {
+  margin-top: auto;
+}
+
+.nav-count {
+  margin-left: auto;
+  color: var(--text-subtle);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar .sidebar-note {
+  margin-top: 0;
+}
+
+@media (max-width: 720px) {
+  .nav-wrap {
+    flex-direction: row;
+    align-items: center;
+    overflow: visible;
+  }
+
+  .nav-group,
+  .nav-count {
+    display: none;
+  }
+
+  .nav-bottom {
+    margin-top: 0;
+    margin-left: auto;
+  }
+
+  .nav-wrap .nav .nav {
+    grid-auto-flow: column;
+  }
+}
+
+/* ---------- Settings sections that used to be views ---------- */
+
+.settings-section {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.section-head {
+  display: grid;
+  gap: var(--space-1);
+}
+
+/* ---------- Home ---------- */
+
+.home {
+  gap: var(--space-6);
+}
+
+.home-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.home-hero-text {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.home-title {
+  font-size: var(--text-xl);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+/* Something needs you: the status becomes the attention card (ADR-011: orange only for this). */
+.home-needs {
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid color-mix(in srgb, var(--attention-dot) 60%, var(--border));
+  border-radius: var(--radius-lg);
+  background: var(--attention-soft);
+}
+
+.home-needs .home-hero-text {
+  flex: 1;
+}
+
+.home-needs .home-title {
+  color: var(--attention);
+  font-size: var(--text-lg);
+}
+
+.home-needs-who {
+  overflow-wrap: anywhere;
+}
+
+.home-strip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.home-strip {
+  flex: 1;
+  min-width: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.home-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  font-size: var(--text-sm);
+}
+
+.home-chip-tool {
+  font-weight: 600;
+}
+
+.home-chip-sub,
+.home-chip-time {
+  color: var(--text-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-chip-sub {
+  min-width: 0;
+  max-width: 18ch;
+}
+
+.link-quiet {
+  padding: var(--space-1) 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link-quiet:hover {
+  color: var(--accent);
+}
+
+.home-suggest {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-soft) 70%, var(--surface)),
+    var(--surface) 70%
+  );
+}
+
+.home-suggest-line {
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+
+.home-suggest-name {
+  font-size: var(--text-lg);
+  font-weight: 650;
+}
+
+.home-suggest-desc {
+  max-width: 60ch;
+  color: var(--text-muted);
+}
+
+.home-suggest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.home-section {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.home-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.home-doors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+}
+
+.home-door {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease);
+}
+
+.home-door:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.home-door-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.home-door-title {
+  font-size: var(--text-base);
+  font-weight: 650;
+}
+
+.home-door-text {
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+
+.home-door-go {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  color: var(--accent);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+/* ---------- Play, Rest and Continue ---------- */
+
+.view-header-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.manage-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.manage-bar .subtabs {
+  margin: 0;
+}
+
+.library-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.library-search {
+  flex: 1 1 220px;
+  max-width: 340px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 38px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.library-search:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.library-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+.library-search input::placeholder {
+  color: var(--text-subtle);
+}
+
+.library-section {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.resume-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.resume-list-row {
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+}
+
+.resume-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-4);
+}
+
+.resume-thumb {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+  overflow: hidden;
+}
+
+.resume-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.resume-main {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.resume-name {
+  font-size: var(--text-base);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.resume-meta {
+  color: var(--text-subtle);
+  font-size: var(--text-sm);
+}
+
+.resume-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.empty-small {
+  padding: var(--space-6);
+}
+
+.empty h3 {
+  font-size: var(--text-base);
+  font-weight: 650;
+}
+
+@media (max-width: 520px) {
+  .home-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .home-needs {
+    flex-wrap: wrap;
+  }
+
+  .resume-list-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A launch that was paused when you came to a list: one quiet line to get back to it. */
+.paused-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}

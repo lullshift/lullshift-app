@@ -1,8 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import ActivitiesView from "./activity/ActivitiesView";
+import type { ActivityInfo } from "./activity/ActivityHost";
+import { onPage, pageOf, savedNewestFirst, type Page } from "./activity/library";
+import { useActivityList } from "./activity/useActivityList";
 import CompanionView from "./companion/CompanionView";
 import { onOpenThread } from "./companion/events";
 import { useBackgroundCount } from "./companion/inflight";
@@ -10,8 +13,10 @@ import { shouldMountCompanion } from "./companion/logic";
 import { ToastRegion } from "./ui/Toasts";
 import type { PauseRequest } from "./activity/ActivityHost";
 import { createDashboardStore } from "./dashboardStore";
-import Integrations from "./Integrations";
+import HomeView from "./home/HomeView";
 import SessionsView from "./SessionsView";
+import type { SessionKey } from "./context/api";
+import { viewKey } from "./context/panelLogic";
 import { healthProblems, liveState, sortSessions, type Dashboard } from "./sessions";
 import Settings from "./Settings";
 import { Onboarding } from "./Onboarding";
@@ -26,20 +31,38 @@ const CHANGE_DEBOUNCE_MS = 250;
 
 const dashboardStore = createDashboardStore(() => invoke<Dashboard>("dashboard"));
 
-type ViewId = "sessions" | "activities" | "companion" | "integrations" | "settings";
+type ViewId = "home" | "sessions" | "play" | "rest" | "continue" | "companion" | "settings";
 
-const NAV: { id: ViewId; label: string; icon: IconName }[] = [
+interface NavItem {
+  id: ViewId;
+  label: string;
+  icon: IconName;
+}
+
+// ADR-026 section 1: Home and Sessions, then the "While you wait" group, then Settings last.
+const NAV_TOP: NavItem[] = [
+  { id: "home", label: "Home", icon: "home" },
   { id: "sessions", label: "Sessions", icon: "sessions" },
-  { id: "activities", label: "Activities", icon: "activities" },
-  { id: "companion", label: "Companion", icon: "chat" },
-  { id: "integrations", label: "Integrations", icon: "plug" },
-  { id: "settings", label: "Settings", icon: "settings" },
 ];
+const NAV_WAIT: NavItem[] = [
+  { id: "play", label: "Play", icon: "play" },
+  { id: "rest", label: "Rest", icon: "activities" },
+  { id: "continue", label: "Continue", icon: "resume" },
+  { id: "companion", label: "Companion", icon: "chat" },
+];
+const NAV_BOTTOM: NavItem[] = [{ id: "settings", label: "Settings", icon: "settings" }];
+
+const isLibraryView = (v: ViewId): v is Page | "continue" =>
+  v === "play" || v === "rest" || v === "continue";
 
 export default function App() {
   const state = useStore(dashboardStore, (s) => s.state);
   const refresh = useStore(dashboardStore, (s) => s.refresh);
-  const [view, setView] = useState<ViewId>("sessions");
+  const [view, setView] = useState<ViewId>("home");
+  // The library page that was last open, so a running activity keeps its page while hidden.
+  const [libraryPage, setLibraryPage] = useState<Page | "continue">("play");
+  if (isLibraryView(view) && view !== libraryPage) setLibraryPage(view);
+  const { load: activityLoad, refresh: refreshActivities } = useActivityList();
   const { contentWidth } = useUiPrefs();
   const showWelcome = useShowWelcome();
   const welcomeWas = useRef(false);
@@ -49,12 +72,24 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now());
   const [pause, setPause] = useState<PauseRequest | null>(null);
   // An activity the user chose to start from a Companion suggestion (their click, never the model).
-  const [launch, setLaunch] = useState<{ id: string; nonce: number } | null>(null);
+  const [launch, setLaunch] = useState<{
+    id: string;
+    nonce: number;
+    activity?: ActivityInfo;
+  } | null>(null);
+  // Bumps on each click of Play, Rest or Continue in the sidebar.
+  const [navNonce, setNavNonce] = useState(0);
+  // Home's "Go to session": Sessions opens that session's detail panel.
+  const [openSession, setOpenSession] = useState<{ key: SessionKey; nonce: number } | null>(null);
+  // Connect from the welcome: Integrations takes focus only once the dialog has closed.
+  const [connectPending, setConnectPending] = useState(false);
+  // Spent once the user leaves Sessions, so coming back later doesn't reopen the panel.
+  if (view !== "sessions" && openSession !== null) setOpenSession(null);
   // Bumps on each sessions-changed event so an open detail panel re-reads its session.
   const [changeTick, setChangeTick] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const mainRef = useRef<HTMLElement>(null);
-  // The Activities heading while that view is hidden (only the visible view gets focus).
+  // The library heading while those views are hidden (only the visible view gets focus).
   const unusedHeading = useRef<HTMLHeadingElement>(null);
   const unusedCompanionHeading = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
@@ -62,6 +97,10 @@ export default function App() {
   // the view heading must not take focus that time.
   const [companionFocus, setCompanionFocus] = useState(0);
   const skipHeadingFocus = useRef(false);
+  // Anything that sends the user to Settings > Integrations bumps this; the section takes focus.
+  const [integrationsFocus, setIntegrationsFocus] = useState(0);
+  // Spent once the user leaves Settings, so a later visit does not scroll back to it.
+  if (view !== "settings" && integrationsFocus !== 0) setIntegrationsFocus(0);
   // Companion reads the keychain when it mounts, so it is mounted on first visit, not at launch.
   const [companionOpened, setCompanionOpened] = useState(false);
   // Adjusting state while rendering (React's pattern for state derived from a change).
@@ -118,6 +157,22 @@ export default function App() {
     welcomeWas.current = showWelcome;
   }, [showWelcome]);
 
+  // The welcome's Connect: once its dialog is gone, send focus to Integrations on the next frame
+  // (the dialog's own close would otherwise hand focus back to what opened it).
+  useEffect(() => {
+    if (!connectPending || showWelcome) return;
+    const frame = window.requestAnimationFrame(() => {
+      setConnectPending(false);
+      setIntegrationsFocus((n) => n + 1);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [connectPending, showWelcome]);
+
+  // Home shows what is saved: read it fresh on each visit.
+  useEffect(() => {
+    if (view === "home") refreshActivities();
+  }, [view, refreshActivities]);
+
   // Move focus to the new view's heading so keyboard and screen-reader users land in it.
   useEffect(() => {
     if (firstRender.current) {
@@ -139,6 +194,27 @@ export default function App() {
   // Replies that finished while away, and lookups waiting for approval (not when you're there).
   const companionUpdates = useBackgroundCount();
 
+  // Sidebar counts: what is in each library, and how many activities have a save.
+  const libraryList = activityLoad.status === "ready" ? activityLoad.list : null;
+  const counts: Partial<Record<ViewId, number>> = {
+    ...(libraryList && {
+      play: onPage(libraryList, "play").length,
+      rest: onPage(libraryList, "rest").length,
+      continue: savedNewestFirst(libraryList).length,
+    }),
+  };
+  const showPage = useCallback((p: Page) => setView(p), []);
+  const startActivity = (a: ActivityInfo) => {
+    setLaunch({ id: a.id, nonce: Date.now(), activity: a });
+    setView(pageOf(a.category));
+  };
+  // Integrations lives in Settings: every link that used to open it opens Settings there.
+  const openIntegrations = () => {
+    skipHeadingFocus.current = view !== "settings";
+    setIntegrationsFocus((n) => n + 1);
+    setView("settings");
+  };
+
   // A notice's Open button: go to Companion (the view selects the conversation).
   useEffect(
     () =>
@@ -150,46 +226,63 @@ export default function App() {
     [],
   );
 
+  const navItem = (item: NavItem) => (
+    <li key={item.id}>
+      <button
+        type="button"
+        className="nav-item"
+        aria-current={view === item.id ? "page" : undefined}
+        onClick={() => {
+          setView(item.id);
+          if (isLibraryView(item.id)) setNavNonce((n) => n + 1);
+        }}
+      >
+        <Icon name={item.icon} />
+        <span className="nav-label">{item.label}</span>
+        {counts[item.id] !== undefined && (item.id !== "continue" || counts.continue! > 0) && (
+          <span className="nav-count">{counts[item.id]}</span>
+        )}
+        {item.id === "companion" && companionUpdates > 0 && (
+          <span className="nav-badge">
+            {companionUpdates}
+            <span className="visually-hidden">
+              {" "}
+              {companionUpdates === 1 ? "Companion update" : "Companion updates"} waiting
+            </span>
+          </span>
+        )}
+        {item.id === "sessions" && needsYou > 0 && (
+          <span className="nav-badge">
+            {needsYou}
+            <span className="visually-hidden"> need you</span>
+          </span>
+        )}
+      </button>
+    </li>
+  );
+
   return (
     <div className="shell">
-      {/* First in the tab order; hidden until focused. Skips the five-item nav. */}
+      {/* First in the tab order; hidden until focused. Skips the sidebar nav. */}
       <SkipLink targetId="main-content" targetRef={mainRef} />
       <header className="sidebar">
         <div className="brand">
           <Mascot face="watching" size={36} />
           <span className="brand-name">Lullshift</span>
         </div>
-        <nav aria-label="Main">
+        <nav aria-label="Main" className="nav-wrap">
           <ul className="nav">
-            {NAV.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className="nav-item"
-                  aria-current={view === item.id ? "page" : undefined}
-                  onClick={() => setView(item.id)}
-                >
-                  <Icon name={item.icon} />
-                  <span className="nav-label">{item.label}</span>
-                  {item.id === "companion" && companionUpdates > 0 && (
-                    <span className="nav-badge">
-                      {companionUpdates}
-                      <span className="visually-hidden">
-                        {" "}
-                        {companionUpdates === 1 ? "Companion update" : "Companion updates"} waiting
-                      </span>
-                    </span>
-                  )}
-                  {item.id === "sessions" && needsYou > 0 && (
-                    <span className="nav-badge">
-                      {needsYou}
-                      <span className="visually-hidden"> need you</span>
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
+            {NAV_TOP.map(navItem)}
+            <li>
+              <span className="nav-group" id="nav-wait">
+                While you wait
+              </span>
+              <ul className="nav" aria-labelledby="nav-wait">
+                {NAV_WAIT.map(navItem)}
+              </ul>
+            </li>
           </ul>
+          <ul className="nav nav-bottom">{NAV_BOTTOM.map(navItem)}</ul>
         </nav>
         <p className="sidebar-note">
           <Icon name="lock" size={16} />
@@ -203,6 +296,31 @@ export default function App() {
         tabIndex={-1}
         className={`content width-${contentWidth}`}
       >
+        {view === "home" && (
+          <HomeView
+            headingRef={headingRef}
+            loading={state.status === "loading"}
+            coreError={state.status === "error"}
+            hasLast={state.status === "error" && state.last !== null}
+            problems={problems}
+            sessions={sessions}
+            staleAfterSeconds={dashboard?.staleAfterSeconds ?? 600}
+            now={now}
+            activities={activityLoad}
+            onRefresh={() => {
+              void refresh();
+              refreshActivities();
+            }}
+            onGoToSessions={() => setView("sessions")}
+            onOpenSession={(s) => {
+              setOpenSession({ key: viewKey(s), nonce: Date.now() });
+              setView("sessions");
+            }}
+            onConnect={openIntegrations}
+            onOpenPage={setView}
+            onStartActivity={startActivity}
+          />
+        )}
         {view === "sessions" && (
           <SessionsView
             headingRef={headingRef}
@@ -213,21 +331,27 @@ export default function App() {
             sessions={sessions}
             staleAfterSeconds={dashboard?.staleAfterSeconds ?? 600}
             now={now}
-            onConnect={() => setView("integrations")}
+            onConnect={openIntegrations}
+            openRequest={openSession}
             changeTick={changeTick}
             onRefresh={() => void refresh()}
             onOpenSettings={() => setView("settings")}
           />
         )}
         {/* Stays mounted while hidden so a running activity can save before it pauses. */}
-        <div hidden={view !== "activities"} className="view-slot">
+        <div hidden={!isLibraryView(view)} className="view-slot">
           <ActivitiesView
-            headingRef={view === "activities" ? headingRef : unusedHeading}
-            active={view === "activities"}
+            headingRef={isLibraryView(view) ? headingRef : unusedHeading}
+            active={isLibraryView(view)}
+            page={libraryPage}
+            load={activityLoad}
+            refresh={refreshActivities}
             pause={pause}
             now={now}
             launch={launch}
+            navNonce={navNonce}
             onGoToSessions={() => setView("sessions")}
+            onShowPage={showPage}
           />
         </div>
         {/* Mounted on first visit (it reads the keychain), then stays mounted while hidden so a
@@ -241,7 +365,7 @@ export default function App() {
               now={now}
               onStartActivity={(id) => {
                 setLaunch({ id, nonce: Date.now() });
-                setView("activities");
+                setView("play");
               }}
               onOpenSettings={() => {
                 skipHeadingFocus.current = view !== "settings";
@@ -251,17 +375,25 @@ export default function App() {
             />
           </div>
         )}
-        {view === "integrations" && <Integrations headingRef={headingRef} />}
         {view === "settings" && (
-          <Settings headingRef={headingRef} companionFocus={companionFocus} />
+          <Settings
+            headingRef={headingRef}
+            companionFocus={companionFocus}
+            integrationsFocus={integrationsFocus}
+          />
         )}
       </main>
       <ToastRegion />
       <Onboarding
         open={showWelcome}
         onDone={() => void updateUiPrefs({ onboardingDone: true })}
-        onConnect={() => setView("integrations")}
-        onTryActivity={() => setView("activities")}
+        onConnect={() => {
+          // Go to Settings now; the focus request waits for the dialog to finish closing.
+          skipHeadingFocus.current = view !== "settings";
+          setConnectPending(true);
+          setView("settings");
+        }}
+        onTryActivity={(category) => setView(category ? pageOf(category) : "play")}
       />
     </div>
   );
