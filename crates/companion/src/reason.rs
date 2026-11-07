@@ -177,34 +177,96 @@ impl Echoes {
 /// Parses an error body. `echoes` is what we sent (message text, lookup answers): a reason that
 /// quotes any of it is dropped.
 pub fn parse(body: &[u8], key: &str, echoes: &Echoes) -> Option<Reason> {
-    let v: serde_json::Value = serde_json::from_slice(body).ok()?;
-    let err = v.get("error")?;
-    let (raw, param) = match err {
-        serde_json::Value::String(s) => (s.as_str(), None),
-        serde_json::Value::Object(_) => {
-            let msg = str_field(err, "message")
-                .or_else(|| str_field(err, "code"))
-                .or_else(|| str_field(err, "type"))?;
-            (msg, str_field(err, "param"))
-        }
-        _ => return None,
-    };
-    if echoes.quoted_in(raw) {
-        return None;
+    parse_with_facts(body, key, echoes).0
+}
+
+/// The structured fields of an error body, kept even when the text is dropped (by the echo check
+/// or because it was empty): they are short fixed-shape identifiers used only to decide what to
+/// retry, never shown.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ErrorFacts {
+    pub param: Option<String>,
+    pub code: Option<String>,
+    pub err_type: Option<String>,
+    /// The (raw) message mentions "reasoning".
+    pub mentions_reasoning: bool,
+}
+
+impl ErrorFacts {
+    /// The model refused the `reasoning` option: a `reasoning...` param, or an unsupported-parameter
+    /// style 400 (code `unsupported_parameter`, or type `invalid_request_error`) whose message
+    /// names reasoning.
+    pub fn refuses_reasoning(&self) -> bool {
+        self.param
+            .as_deref()
+            .is_some_and(|p| p.starts_with("reasoning"))
+            || (self.mentions_reasoning
+                && (self.code.as_deref() == Some("unsupported_parameter")
+                    || self.err_type.as_deref() == Some("invalid_request_error")))
     }
-    let message = sanitise(raw, key);
-    if message.is_empty() {
-        return None;
+
+    /// OpenAI refused `stream: true`.
+    pub fn refuses_stream(&self) -> bool {
+        self.param.as_deref() == Some("stream")
     }
-    let param = param.map(|p| {
+}
+
+fn short_id(s: Option<&str>) -> Option<String> {
+    s.map(|p| {
         clean_chunk(p)
             .trim()
             .chars()
             .take(64)
             .collect::<String>()
             .to_ascii_lowercase()
-    });
-    Some(Reason { message, param })
+    })
+}
+
+/// Like [`parse`], also returning the [`ErrorFacts`], which survive a dropped text.
+pub fn parse_with_facts(body: &[u8], key: &str, echoes: &Echoes) -> (Option<Reason>, ErrorFacts) {
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return (None, ErrorFacts::default());
+    };
+    let Some(err) = v.get("error") else {
+        return (None, ErrorFacts::default());
+    };
+    let (raw, facts) = match err {
+        serde_json::Value::String(s) => (
+            Some(s.as_str()),
+            ErrorFacts {
+                mentions_reasoning: s.to_ascii_lowercase().contains("reasoning"),
+                ..ErrorFacts::default()
+            },
+        ),
+        serde_json::Value::Object(_) => {
+            let msg = str_field(err, "message")
+                .or_else(|| str_field(err, "code"))
+                .or_else(|| str_field(err, "type"));
+            (
+                msg,
+                ErrorFacts {
+                    param: short_id(str_field(err, "param")),
+                    code: short_id(str_field(err, "code")),
+                    err_type: short_id(str_field(err, "type")),
+                    mentions_reasoning: str_field(err, "message")
+                        .is_some_and(|m| m.to_ascii_lowercase().contains("reasoning")),
+                },
+            )
+        }
+        _ => return (None, ErrorFacts::default()),
+    };
+    let Some(raw) = raw else {
+        return (None, facts);
+    };
+    if echoes.quoted_in(raw) {
+        return (None, facts);
+    }
+    let message = sanitise(raw, key);
+    if message.is_empty() {
+        return (None, facts);
+    }
+    let param = facts.param.clone();
+    (Some(Reason { message, param }), facts)
 }
 
 /// The reason as carried on an error, spoken by `kind`'s provider.

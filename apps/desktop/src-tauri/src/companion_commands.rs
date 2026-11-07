@@ -1492,7 +1492,7 @@ fn await_decision(
 }
 
 fn fail_message(core: &Core, user_message: i64, e: &CompanionError) {
-    let _ = with_store(core, |s| {
+    let with_reason = with_store(core, |s| {
         s.companion_fail_message_with(
             user_message,
             e.kind.as_str(),
@@ -1500,6 +1500,13 @@ fn fail_message(core: &Core, user_message: i64, e: &CompanionError) {
             e.reason.as_ref().map(|r| (r.speaker, r.text.as_str())),
         )
     });
+    // If the database refuses the provider's words (a CHECK, say), still mark the message failed
+    // with the fixed sentence alone, so it never stays `pending`.
+    if with_reason.is_err() && e.reason.is_some() {
+        let _ = with_store(core, |s| {
+            s.companion_fail_message(user_message, e.kind.as_str(), &e.message)
+        });
+    }
 }
 
 /// What this model refused earlier in this app run (OpenAI Responses `reasoning`, `stream`).

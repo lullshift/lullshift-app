@@ -1280,3 +1280,112 @@ fn l5_calls_made_when_lookups_are_off_are_ignored_not_validated() {
     );
     assert_eq!(r.unwrap().tool_calls.len(), 1);
 }
+
+// ---- review round 2: reasoning refusal shapes, malformed-event booking -----------------------
+
+#[test]
+fn a_reasoning_refusal_is_recognised_by_code_or_type_and_message_too() {
+    // gpt-4o style: no `param`, the message names reasoning.
+    for body in [
+        r#"{"error":{"message":"Unsupported parameter: 'reasoning.effort' is not supported with this model.","type":"invalid_request_error","param":null,"code":"unsupported_parameter"}}"#,
+        r#"{"error":{"message":"This model does not support the reasoning option.","type":"invalid_request_error","param":null,"code":null}}"#,
+        r#"{"error":{"message":"Unknown field 'reasoning'","type":"server_error","param":null,"code":"unsupported_parameter"}}"#,
+    ] {
+        let mock = start_scripted(vec![
+            Resp::json(400, body),
+            Resp::sse(&responses_text_stream()),
+        ]);
+        let (r, _) = run_opts(
+            &mock,
+            ProviderKind::OpenAi,
+            HttpConfig::default(),
+            false,
+            (true, true),
+            &plain(),
+            None,
+        );
+        let r = r.unwrap_or_else(|f| panic!("{body}: {:?}", f.error));
+        assert!(r.learned.reasoning_refused, "{body}");
+        let reqs = mock.requests.lock().unwrap();
+        assert_eq!(reqs.len(), 2, "{body}");
+        assert!(body_of(&reqs[1]).get("reasoning").is_none());
+    }
+    // A 400 that merely says "invalid request" without naming reasoning is not retried.
+    let mock = start_scripted(vec![Resp::json(
+        400,
+        r#"{"error":{"message":"Invalid value for input","type":"invalid_request_error","param":"input"}}"#,
+    )]);
+    let (r, _) = run_opts(
+        &mock,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+        false,
+        (true, true),
+        &plain(),
+        None,
+    );
+    assert!(r.is_err());
+    assert_eq!(mock.requests.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn the_retry_still_happens_when_the_echo_check_drops_the_providers_text() {
+    // The message quotes what we sent (so no text is shown), but its param still says reasoning.
+    let body = r#"{"error":{"message":"Bad: hello there, this is a request of some size","type":"invalid_request_error","param":"reasoning.effort","code":"unsupported_parameter"}}"#;
+    let mock = start_scripted(vec![
+        Resp::json(400, body),
+        Resp::sse(&responses_text_stream()),
+    ]);
+    let (r, _) = run_opts(
+        &mock,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+        false,
+        (true, true),
+        &plain(),
+        None,
+    );
+    assert!(r.unwrap().learned.reasoning_refused);
+    // And a stream refusal likewise.
+    let body = r#"{"error":{"message":"Bad: hello there, this is a request of some size","param":"stream"}}"#;
+    let mock = start_scripted(vec![
+        Resp::json(400, body),
+        Resp::json(200, &responses_json()),
+    ]);
+    let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+    assert!(r.unwrap().learned.stream_refused);
+}
+
+#[test]
+fn a_malformed_event_books_the_estimate_not_the_output_cap() {
+    // Not valid JSON in an event: the provider reported no failure, so no usage is invented.
+    let garbage = "event: x\ndata: {not json\n\n".to_owned();
+    let mock = start_scripted(vec![Resp::sse(&garbage)]);
+    let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+    let f = r.unwrap_err();
+    assert_eq!(f.error.kind, ErrorKind::InvalidResponse);
+    assert!(f.received);
+    assert!(
+        f.output_tokens < 64,
+        "estimate, not the cap: {}",
+        f.output_tokens
+    );
+    // Chat Completions: an event that is not JSON.
+    let mock = start_scripted(vec![Resp::sse(&garbage)]);
+    let (r, _) = run(
+        &mock,
+        ProviderKind::OpenAiCompatible,
+        HttpConfig::default(),
+        false,
+    );
+    assert!(r.unwrap_err().output_tokens < 64);
+    // A non-streamed malformed 200 from a compatible server is not given the cap either.
+    let mock = start_scripted(vec![Resp::json(200, "<html>oops</html>")]);
+    let (r, _) = run(
+        &mock,
+        ProviderKind::OpenAiCompatible,
+        HttpConfig::default(),
+        false,
+    );
+    assert!(r.unwrap_err().output_tokens < 64);
+}

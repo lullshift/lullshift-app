@@ -1584,3 +1584,43 @@ fn a_failed_message_keeps_the_providers_words_in_its_own_field() {
     );
     assert!(!err.message.contains("PROVIDER-BODY"));
 }
+
+#[test]
+fn a_failed_write_of_the_providers_words_still_marks_the_message_failed() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    let m = mock(vec![Sc::Ok]);
+    let pid = profile(&core, &m.base, None);
+    let t = thread(&core);
+    let model = default_model(&core, &pid);
+    let id = with_store(&core, |s| {
+        s.companion_add_user_message(
+            &NewUserMessage {
+                thread_id: t,
+                text: "hi",
+                attached_context: None,
+                scope_kind: "none",
+                profile_id: &pid,
+                model: &model,
+                host: "127.0.0.1",
+            },
+            OffsetDateTime::now_utc(),
+        )
+    })
+    .expect("stored as pending");
+    // A reason the database refuses (over its 300-character CHECK).
+    let e = CompanionError::new(::companion::ErrorKind::ProviderError, "fixed sentence")
+        .with_reason(Some(::companion::ProviderReason {
+            speaker: "OpenAI",
+            text: "y".repeat(400),
+        }));
+    fail_message(&core, id, &e);
+    let ms = messages(&core, t).expect("messages");
+    assert_eq!(ms[0].status, "failed", "never left pending");
+    let err = ms[0].error.as_ref().expect("error kept");
+    assert_eq!(err.message, "fixed sentence");
+    assert!(
+        err.provider_reason.is_none(),
+        "the refused words are not stored"
+    );
+}

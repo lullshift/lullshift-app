@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use crate::error::CompanionError;
+use crate::error::{CompanionError, ErrorKind};
 use crate::http::{
     ABANDONED, CancelToken, DELIVERED, HttpConfig, LateUsage, PENDING, agent, classify, classify_io,
 };
@@ -156,23 +156,22 @@ fn stream_call(
             .map(str::to_owned);
         // The provider's stated reason, from a capped, time-limited read of standard JSON error
         // shapes only. Never logged.
-        let reason = crate::reason::read_capped(&mut resp.body_mut().as_reader(), || {
+        let (reason, facts) = crate::reason::read_capped(&mut resp.body_mut().as_reader(), || {
             handoff.load(Ordering::SeqCst) == ABANDONED
         })
-        .and_then(|b| crate::reason::parse(&b, &ctx.key, &ctx.echoes));
+        .map(|b| crate::reason::parse_with_facts(&b, &ctx.key, &ctx.echoes))
+        .unwrap_or_default();
         let mut failure = StreamFailure::bare(map_status_reason(
             status,
             retry.as_deref(),
             kind,
             reason.as_ref(),
         ));
-        let param = reason
-            .as_ref()
-            .and_then(|r| r.param.as_deref())
-            .unwrap_or("");
-        failure.reasoning_refused =
-            status == 400 && kind == ProviderKind::OpenAi && param.starts_with("reasoning");
-        failure.stream_refused = status == 400 && kind == ProviderKind::OpenAi && param == "stream";
+        // The structured fields decide the retries even when the text was dropped (for example by
+        // the echo check). Models without a `reasoning` setting answer in a few shapes.
+        let official = status == 400 && kind == ProviderKind::OpenAi;
+        failure.reasoning_refused = official && facts.refuses_reasoning();
+        failure.stream_refused = official && facts.refuses_stream();
         return Err(failure);
     }
     let is_stream = resp
@@ -227,7 +226,9 @@ fn stream_call(
         // `stream: true`): read the whole JSON body and show it as one chunk. The provider has
         // already produced the reply, so a failure from here on books the output cap unless the
         // body says what it cost.
-        tally.output = Some(ctx.max_out);
+        if kind == ProviderKind::OpenAi {
+            tally.output = Some(ctx.max_out);
+        }
         let mut body = Vec::new();
         let limit = u64::try_from(cfg.max_response_bytes)
             .unwrap_or(u64::MAX)
@@ -385,7 +386,12 @@ fn stream_call(
                     // on the call: book the last usage it reported, else the output cap.
                     let (i, o) = dec.reported_usage();
                     tally.input = i.or(tally.input);
-                    tally.output = Some(o.or(tally.output).unwrap_or(ctx.max_out));
+                    tally.output = o.or(tally.output);
+                    if tally.output.is_none() && e.kind == ErrorKind::ProviderError {
+                        // The provider said it failed or stopped: it worked on the call, so book
+                        // the cap. A malformed event (invalid response) books the estimate.
+                        tally.output = Some(ctx.max_out);
+                    }
                     return Err(failure(e, &text, &calls, &tally, received));
                 }
             };
@@ -564,7 +570,7 @@ where
         let (mut reasoning, mut stream) = (reasoning0, stream0);
         let mut learned = Learned::default();
         // A request that cannot stream costs the provider the whole reply before the first byte.
-        let mut non_stream_sent = !stream0;
+        let mut non_stream_sent = !stream0 && kind == ProviderKind::OpenAi;
         let mut result;
         loop {
             let Some(pos) = variants.iter().position(|(k, _)| *k == (reasoning, stream)) else {
