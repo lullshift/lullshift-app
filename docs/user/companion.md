@@ -67,6 +67,15 @@ Context goes only with the message you chose it for. Earlier messages are sent a
 
 The list on the left holds your conversations. Each one has a **⋮** button ("More actions") with **Rename** and **Delete**; use the arrow keys to move in the menu and Escape to close it.
 
+## Leaving while a reply is being written
+
+You don't have to wait. If you open another conversation, or another part of Lullshift, a reply that is being written keeps going and is saved when it is done. Nothing is cancelled by leaving; only the **Cancel** button cancels. Come back and you see the text so far, **Still writing** and **Cancel**. You can have replies being written in several conversations at once.
+
+- In the conversation list, a conversation shows **Writing…** while it is being written, **New reply** once a reply arrived while you were elsewhere, **Needs your approval** when a lookup is waiting for you, and **Reply failed** if it didn't work. The mark goes away when you open the conversation. The **Companion** item in the sidebar shows a number when something is waiting.
+- When a reply finishes, fails or needs your approval and you aren't looking at that conversation (or Lullshift is minimised), a notice appears in the corner, for example "Companion replied in “Naming the retry setting”". It names the conversation and nothing else: no part of the reply. **Open** takes you there; the **×** button or Escape closes it. It goes away by itself after about 8 seconds, unless you point at it or it has keyboard focus. It never takes focus from what you are doing.
+- If you quit Lullshift while a reply is being written, the message is marked **Not sent** with **Try again** the next time you start it.
+- Lullshift doesn't send a system notification for Companion replies.
+
 ## Replies appear as they are written
 
 Every answer shows which model and provider wrote it, for example "Answered by claude-sonnet · Anthropic". Answers from before Lullshift kept this say "Model unknown".

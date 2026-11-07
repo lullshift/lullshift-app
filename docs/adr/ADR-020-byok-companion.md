@@ -239,3 +239,35 @@ All are older than two weeks at the time of the decision.
 | The UI (or a compromised page) calls an unconfigured or odd model | `send`/`retry` check `valid_model_id` and the provider's list in the backend |
 | Opening the picker leaks data | The request is the decision 32 GET with no user data; it happens at most once per app run unless Refresh is pressed |
 | Highlighting a huge block stalls the UI | Size and line caps; fall back to plain text |
+
+## Amendment: replies continue in the background (owner request)
+
+Status: accepted. The owner asked that leaving a conversation before the reply is complete must not stop it, and that the app tells them when it is done. No Rust change was needed: `companion_send` and `companion_retry` already run to the end whatever the UI does, store the reply, and keep the per-thread busy rule. Only the UI held the live state in the wrong place.
+
+### Where the state lives
+
+- Requests in flight are tracked in `apps/desktop/src/companion/inflight.ts`, a module-level store read with `useSyncExternalStore`, keyed by thread id. Each entry holds the request id, the streamed text and tool state (the existing `StreamState`), the typed message, the provider and model, the start time and, once finished, the outcome (replied, failed or cancelled).
+- The Channel handler of `companion_send`/`companion_retry` writes to the store, never to component state. `Conversation` renders its thread's entry, so coming back mid-stream shows the live text, "Still writing", Cancel and any approval waiting. Nothing cancels on unmount, on thread change or on view change; the only cancel is the user's Cancel button (`companion_cancel`).
+- Several threads can stream at once. Events carry the request id; events for another request, and events after a request ended, are ignored (a late chunk of a cancelled request cannot reach a newer one).
+- The core stores your message as pending as soon as a send starts. While a send is in flight the pending copy is left out of the list (the typed text is shown instead), so reading the thread again on return does not show it twice.
+- The store is memory only and holds nothing the core does not hold. After a restart, `recover_pending` still marks an unfinished message failed and retryable; the store starts empty and the thread shows that honestly.
+
+### Indicators and notices
+
+- The thread list shows "Writing…", "Needs your approval", "New reply" or "Reply failed" in words (a dot is only an extra cue and is hidden from assistive technology). A finished entry stays until the thread is opened while the app is visible. The Companion nav item shows a count badge with a hidden-text name ("n Companion updates waiting") for unread results and approvals waiting.
+- A small reusable notice region (`ui/Toasts.tsx`, queue in `ui/toastQueue.ts`) shows a non-modal notice when a reply finishes, fails or needs approval while the user is not looking at that thread: another thread, another view, or a hidden window. The user is "looking" when Companion is the visible view, that thread is selected and `document.visibilityState` is not hidden.
+- Notices carry the conversation title only (one line, cut at 40 characters), never reply text, prompts, tool data or error details. The user's own Cancel produces no notice.
+- Notices are polite live regions; only an approval is assertive. They never take focus, stay in the tab order after the page, can be dismissed with a button or Escape, stack at most three, and go away after 8 seconds unless hovered or focused. Motion is a single CSS entrance that the global `prefers-reduced-motion` rule switches off. **Open** selects the thread and moves focus to the view heading.
+
+### Decision: no OS notification for now
+
+`NotificationSettings` covers agent events (needs you, finished) only. Adding Companion to it would need a Rust-side preference and a new persisted setting, which is a product choice, so no OS notification is sent for Companion replies. Replies that finish while the window is hidden show the in-app notice and badge when the window is shown again. If wanted later, add a "Companion replies" switch to the existing preferences, off by default.
+
+### Threat model additions
+
+| Threat | Handling |
+|---|---|
+| A notice leaks a reply, prompt or tool data to someone looking at the screen or a screen reader | Title-only notices, one line, cut short; no content, no error details |
+| The in-flight store is a second source of truth that can lie after a crash | It is memory only; the core's stored state decides after a restart |
+| A late chunk of a cancelled request appears in a newer reply | Events are matched by request id and ignored after the request ends |
+| A background approval is missed | A thread mark, a nav badge count and an assertive notice; the lookup still waits for the user and nothing is sent before the decision |
