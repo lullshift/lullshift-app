@@ -232,6 +232,8 @@ export default function App() {
   const openMainRef = useRef<(r: OpenMainEvent) => void>(() => undefined);
   useEffect(() => {
     openMainRef.current = (r) => {
+      // The welcome is open: the window is shown (by Rust), nothing navigates or starts under it.
+      if (showWelcome) return;
       if (r.sessionKey) {
         setOpenSession({ key: r.sessionKey, nonce: Date.now() });
         setView("sessions");

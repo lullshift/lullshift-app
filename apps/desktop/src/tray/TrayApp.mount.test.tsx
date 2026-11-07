@@ -29,6 +29,7 @@ const state = vi.hoisted(() => ({
   handlers: new Map<string, () => void>(),
   openFails: false,
   dashboardFails: false,
+  welcomeDone: true,
 }));
 
 const session = (st: string) => ({
@@ -64,7 +65,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "wait_estimates":
         return Promise.resolve([]);
       case "ui_prefs":
-        return Promise.resolve({ detailPanelPinned: true });
+        return Promise.resolve({ detailPanelPinned: true, onboardingDone: state.welcomeDone });
       case "open_main":
         return state.openFails ? Promise.reject(new Error("refused")) : Promise.resolve(null);
       case "tray_hide":
@@ -83,6 +84,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import { settle } from "../companion/testDom";
+import { resetUiPrefsForTests } from "../uiPrefsStore";
 import TrayApp from "./TrayApp";
 
 let host: HTMLDivElement;
@@ -109,6 +111,8 @@ beforeEach(() => {
   state.handlers.clear();
   state.openFails = false;
   state.dashboardFails = false;
+  state.welcomeDone = true;
+  resetUiPrefsForTests();
 });
 
 afterEach(() => {
@@ -194,6 +198,15 @@ describe("TrayApp", () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     });
     expect(state.calls.some((c) => c.command === "tray_hide")).toBe(true);
+  });
+
+  it("offers only Open Lullshift until the welcome is done in the main window", async () => {
+    state.welcomeDone = false;
+    state.sessions = [session("needs_attention")];
+    await mount();
+    const labels = [...host.querySelectorAll("button")].map((b) => b.textContent?.trim());
+    expect(labels).toEqual(["Open Lullshift"]);
+    expect(host.querySelector(".tray-needs, .tray-suggest, .tray-tabs")).toBeNull();
   });
 
   it("focuses the suggestion's button when nothing needs you", async () => {

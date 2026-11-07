@@ -26,7 +26,7 @@ import {
 import { Banner } from "../ui/Banner";
 import { Icon } from "../ui/Icon";
 import { Mascot } from "../ui/Mascot";
-import { reloadUiPrefs } from "../uiPrefsStore";
+import { reloadUiPrefs, useShowWelcome } from "../uiPrefsStore";
 import { hideTray, openMain, type OpenMainRequest } from "./api";
 import { needing, needsWho, quickChips } from "./logic";
 
@@ -52,6 +52,11 @@ export default function TrayApp() {
   const [problem, setProblem] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const focusedFor = useRef(-1);
+  // True from "shown" until the window loses focus or Esc hides it: nothing refreshes while it
+  // is hidden (the window lives on in the background).
+  const visible = useRef(false);
+  // Before the welcome is done in the main window the tray offers only Open Lullshift.
+  const welcome = useShowWelcome();
 
   const refreshEstimates = useCallback(() => {
     invoke<WaitEstimate[]>("wait_estimates")
@@ -68,6 +73,7 @@ export default function TrayApp() {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
+      if (!visible.current) return;
       setNow(Date.now());
       void refreshDashboard();
     }, REFRESH_MS);
@@ -82,6 +88,7 @@ export default function TrayApp() {
         .then((fn) => (disposed ? fn() : unlisten.push(fn)))
         .catch(() => undefined);
     void on("tray-shown", () => {
+      visible.current = true;
       setShuffles(0);
       setProblem(false);
       setShownTick((n) => n + 1);
@@ -90,6 +97,7 @@ export default function TrayApp() {
     });
     let pending: number | undefined;
     void on("sessions-changed", () => {
+      if (!visible.current) return;
       pending ??= window.setTimeout(() => {
         pending = undefined;
         setNow(Date.now());
@@ -115,11 +123,19 @@ export default function TrayApp() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
+        visible.current = false;
         void hideTray().catch(() => undefined);
       }
     };
+    const onBlur = () => {
+      visible.current = false;
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", onBlur);
+    };
   }, []);
 
   const dashboard =
@@ -212,7 +228,7 @@ export default function TrayApp() {
           )}
           {problem && <Banner tone="danger">Lullshift couldn't open that. Try again.</Banner>}
 
-          {needs.length > 0 && (
+          {!welcome && needs.length > 0 && (
             <section className="card tray-needs" aria-labelledby="tray-needs-title">
               <h2 id="tray-needs-title" className="tray-needs-title">
                 {needs.length === 1 ? "Needs you now" : "Need you now"}
@@ -231,30 +247,34 @@ export default function TrayApp() {
             </section>
           )}
 
-          <Suggestion
-            load={activityLoad.status}
-            line={waitLine(waiting, working.length > 0)}
-            name={suggestion?.activity.name ?? null}
-            description={suggestion?.activity.description ?? null}
-            kind={suggestion?.kind ?? null}
-            canShuffle={(list?.length ?? 0) > 1}
-            announce={shuffles > 0}
-            first={needs.length === 0}
-            onStart={() => suggestion && start(suggestion.activity)}
-            onShuffle={() => setShuffles((n) => n + 1)}
-            onRetry={retry}
-          />
+          {!welcome && (
+            <>
+              <Suggestion
+                load={activityLoad.status}
+                line={waitLine(waiting, working.length > 0)}
+                name={suggestion?.activity.name ?? null}
+                description={suggestion?.activity.description ?? null}
+                kind={suggestion?.kind ?? null}
+                canShuffle={(list?.length ?? 0) > 1}
+                announce={shuffles > 0}
+                first={needs.length === 0}
+                onStart={() => suggestion && start(suggestion.activity)}
+                onShuffle={() => setShuffles((n) => n + 1)}
+                onRetry={retry}
+              />
 
-          {chips.length > 0 && (
-            <ul className="tray-chips" aria-label="More to try">
-              {chips.map((a) => (
-                <li key={a.id}>
-                  <button type="button" className="chip tray-chip" onClick={() => start(a)}>
-                    {a.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
+              {chips.length > 0 && (
+                <ul className="tray-chips" aria-label="More to try">
+                  {chips.map((a) => (
+                    <li key={a.id}>
+                      <button type="button" className="chip tray-chip" onClick={() => start(a)}>
+                        {a.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </div>
       </main>
@@ -271,22 +291,24 @@ export default function TrayApp() {
         </button>
       </div>
 
-      <nav className="tray-tabs" aria-label="Quick window">
-        <button
-          type="button"
-          className="tray-tab"
-          aria-current="page"
-          onClick={() => document.getElementById("tray-title")?.focus()}
-        >
-          Now
-        </button>
-        <button type="button" className="tray-tab" onClick={() => go({ view: "play" })}>
-          Library
-        </button>
-        <button type="button" className="tray-tab" onClick={() => go({ view: "companion" })}>
-          Talk
-        </button>
-      </nav>
+      {!welcome && (
+        <nav className="tray-tabs" aria-label="Quick window">
+          <button
+            type="button"
+            className="tray-tab"
+            aria-current="page"
+            onClick={() => document.getElementById("tray-title")?.focus()}
+          >
+            Now
+          </button>
+          <button type="button" className="tray-tab" onClick={() => go({ view: "play" })}>
+            Library
+          </button>
+          <button type="button" className="tray-tab" onClick={() => go({ view: "companion" })}>
+            Talk
+          </button>
+        </nav>
+      )}
     </div>
   );
 }
