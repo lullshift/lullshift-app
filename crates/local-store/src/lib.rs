@@ -32,7 +32,7 @@ pub use context::{
     MAX_ITEMS_PER_SESSION, MAX_NOTES_CHARS, MAX_TITLE_CHARS, SessionLabels, TimelineRow,
 };
 
-use agent_core::{AgentEvent, SessionRecord, SessionState, apply};
+use agent_core::{AgentEvent, EventType, SessionRecord, SessionState, apply};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -109,6 +109,11 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 16,
         sql: include_str!("../migrations/0016_imported_sessions.sql"),
+    },
+    // 0017 is reserved for the Companion branch.
+    Migration {
+        version: 18,
+        sql: include_str!("../migrations/0018_process_check.sql"),
     },
 ];
 
@@ -223,6 +228,29 @@ pub struct Store {
     conn: Connection,
 }
 
+/// The agent's process behind a session's newest hook event (decision 35, ADR-025). The values
+/// come from outside and are range-checked before they get here; `start` is an opaque key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProcessKey {
+    pub pid: u32,
+    pub start: u64,
+}
+
+/// A live-looking session with a recorded process, for the process check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessCandidate {
+    pub provider: String,
+    pub provider_session_id: String,
+    pub process: ProcessKey,
+}
+
+/// A log newer than Lullshift's own last word by less than this is not "newer": the agent's log
+/// and its hook describe the same moment a few seconds apart (decision 35, ADR-025).
+pub const LOG_HINT_MARGIN: time::Duration = time::Duration::seconds(10);
+
+/// Most sessions one process check looks at.
+pub const MAX_PROCESS_CANDIDATES: usize = 1000;
+
 impl Store {
     /// Opens (creating if needed) the database at `path` and migrates it to the latest version.
     pub fn open(path: &Path) -> Result<(Self, OpenReport)> {
@@ -259,6 +287,21 @@ impl Store {
         event: &AgentEvent,
         received_utc: OffsetDateTime,
     ) -> Result<IngestOutcome> {
+        self.ingest_with_process(event, received_utc, None)
+    }
+
+    /// [`Store::ingest`] that also records the agent's process for the process check. An event
+    /// without a process clears the recorded one: a stale PID is never acted on.
+    ///
+    /// A session that Lullshift ended because its process was gone (`ended_reason`) is reopened
+    /// by any real event that changes its state; a heartbeat, which reports no state but shows
+    /// the agent is alive, reopens it to `unknown` ("connected, state not reported").
+    pub fn ingest_with_process(
+        &mut self,
+        event: &AgentEvent,
+        received_utc: OffsetDateTime,
+        process: Option<ProcessKey>,
+    ) -> Result<IngestOutcome> {
         let tx = self.conn.transaction()?;
         let event_json = serde_json::to_string(event)
             .map_err(|_| StoreError::Corrupt("event not serializable"))?;
@@ -279,15 +322,34 @@ impl Store {
             return Ok(IngestOutcome::Duplicate);
         }
         let mut current = load_session(&tx, &event.provider, &event.provider_session_id)?;
+        let (imported, process_gone) =
+            session_marks(&tx, &event.provider, &event.provider_session_id)?;
+        let loaded = current.clone();
         // A session imported from the agent's own log holds only a guess (ADR-024). The first
         // real event replaces it outright, counts as a change (so it can notify like any first
         // event), and `save_session` clears the imported mark in this same transaction.
-        if current.is_some() && is_imported(&tx, &event.provider, &event.provider_session_id)? {
+        if current.is_some() && imported {
             current = None;
         }
+        // After the import reset: the first real event of an imported session is a change.
         let before = current.as_ref().map(|r| r.state);
+        if !imported
+            && process_gone
+            && event.event_type == EventType::Heartbeat
+            && let Some(rec) = current.as_mut()
+        {
+            // Alive after all, but nothing says in what state.
+            rec.state = SessionState::Unknown;
+            rec.state_timestamp_utc = None;
+        }
         let record = apply(current, event, received_utc);
-        save_session(&tx, &record)?;
+        // The "process gone" reason stays only while the stored state is exactly the one the
+        // process check set (a stale event that changed nothing).
+        let keep_reason = process_gone
+            && loaded.as_ref().is_some_and(|l| {
+                l.state == record.state && l.state_timestamp_utc == record.state_timestamp_utc
+            });
+        save_session(&tx, &record, process, keep_reason)?;
         tx.commit()?;
         Ok(IngestOutcome::Stored {
             state_changed: before != Some(record.state),
@@ -359,6 +421,179 @@ impl Store {
             out.insert((p, s), parse_ts(&t)?);
         }
         Ok(out)
+    }
+
+    /// Why Lullshift (not the provider) ended each such session: key to the reason, today only
+    /// [`agent_core::reducer::ENDED_PROCESS_GONE`].
+    pub fn ended_reasons(&self) -> Result<HashMap<(String, String), String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT provider, provider_session_id, ended_reason FROM sessions
+             WHERE ended_reason IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut out = HashMap::new();
+        for row in rows {
+            let (p, s, reason) = row?;
+            out.insert((p, s), reason);
+        }
+        Ok(out)
+    }
+
+    /// The process recorded for a session, if any.
+    pub fn session_process(
+        &self,
+        provider: &str,
+        provider_session_id: &str,
+    ) -> Result<Option<ProcessKey>> {
+        let row: Option<(Option<i64>, Option<i64>)> = self
+            .conn
+            .query_row(
+                "SELECT process_pid, process_start FROM sessions
+                 WHERE provider = ?1 AND provider_session_id = ?2",
+                params![provider, provider_session_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        Ok(row.and_then(|(pid, start)| decode_process(pid?, start?)))
+    }
+
+    /// Sessions that are not finished, are still tracked, and have a recorded process: the ones
+    /// the process check looks at. Newest first, at most [`MAX_PROCESS_CANDIDATES`].
+    pub fn process_candidates(&self) -> Result<Vec<ProcessCandidate>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT provider, provider_session_id, process_pid, process_start FROM sessions
+             WHERE process_pid IS NOT NULL AND process_start IS NOT NULL
+               AND disconnected_utc IS NULL
+               AND state NOT IN ('completed', 'failed', 'cancelled', 'ended')
+             ORDER BY last_received_utc DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![MAX_PROCESS_CANDIDATES as i64], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (provider, provider_session_id, pid, start) = row?;
+            // A tampered row (out of range) is skipped, never acted on.
+            if let Some(process) = decode_process(pid, start) {
+                out.push(ProcessCandidate {
+                    provider,
+                    provider_session_id,
+                    process,
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    /// Ends `provider_session_id` because its process is gone (decision 35, ADR-025), but only
+    /// if, at this moment, it still holds exactly `process`, is still tracked and not finished,
+    /// and has received nothing since `checked_utc` (when the process was looked at). Otherwise
+    /// a newer event got there first and nothing changes. Returns whether the session was ended.
+    /// Writes no event; the state change is [`agent_core::reducer::process_gone`].
+    pub fn end_session_process_gone(
+        &mut self,
+        provider: &str,
+        provider_session_id: &str,
+        process: ProcessKey,
+        checked_utc: OffsetDateTime,
+        now_utc: OffsetDateTime,
+    ) -> Result<bool> {
+        let tx = self.conn.transaction()?;
+        let Some(rec) = load_session(&tx, provider, provider_session_id)? else {
+            return Ok(false);
+        };
+        let row: (Option<i64>, Option<i64>, bool) = tx.query_row(
+            "SELECT process_pid, process_start, disconnected_utc IS NOT NULL FROM sessions
+             WHERE provider = ?1 AND provider_session_id = ?2",
+            params![provider, provider_session_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+        let same = row.0.zip(row.1).and_then(|(p, s)| decode_process(p, s)) == Some(process);
+        if !same || row.2 || rec.last_received_utc > checked_utc {
+            return Ok(false);
+        }
+        let Some(ended) = agent_core::reducer::process_gone(rec, now_utc) else {
+            return Ok(false);
+        };
+        tx.execute(
+            "UPDATE sessions SET state = ?3, state_timestamp_utc = ?4, ended_reason = ?5,
+               process_pid = NULL, process_start = NULL
+             WHERE provider = ?1 AND provider_session_id = ?2",
+            params![
+                provider,
+                provider_session_id,
+                ended.state.as_str(),
+                ended.state_timestamp_utc.map(fmt_ts).transpose()?,
+                agent_core::reducer::ENDED_PROCESS_GONE,
+            ],
+        )?;
+        tx.commit()?;
+        Ok(true)
+    }
+
+    /// Fills a gap from the agent's own log (decision 35, ADR-025): the session Lullshift
+    /// already tracks takes `state`, a guess, only if the log is newer than Lullshift's own last
+    /// word by more than [`LOG_HINT_MARGIN`]. The session is marked like an imported one (a
+    /// guess, not reported), so the next real event replaces it.
+    ///
+    /// Never creates a session. Leaves alone: unknown sessions, finished sessions (a reported
+    /// end is a fact, and logs are written after a session ends), sessions Lullshift ended
+    /// because the process is gone, sessions whose tool was disconnected, and guesses that are
+    /// `unknown` or terminal. Returns whether anything changed. Writes no event.
+    pub fn apply_log_hint(
+        &mut self,
+        provider: &str,
+        provider_session_id: &str,
+        state: SessionState,
+        log_utc: OffsetDateTime,
+        now_utc: OffsetDateTime,
+    ) -> Result<bool> {
+        if state == SessionState::Unknown || is_terminal_state(state) {
+            return Ok(false);
+        }
+        let tx = self.conn.transaction()?;
+        let Some(rec) = load_session(&tx, provider, provider_session_id)? else {
+            return Ok(false);
+        };
+        let (disconnected, ended): (bool, bool) = tx.query_row(
+            "SELECT disconnected_utc IS NOT NULL, ended_reason IS NOT NULL FROM sessions
+             WHERE provider = ?1 AND provider_session_id = ?2",
+            params![provider, provider_session_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let at = log_utc.min(now_utc);
+        if disconnected
+            || ended
+            || is_terminal_state(rec.state)
+            || at <= rec.last_seen_utc + LOG_HINT_MARGIN
+        {
+            return Ok(false);
+        }
+        tx.execute(
+            "UPDATE sessions SET state = ?3, state_timestamp_utc = ?4, last_seen_utc = ?4,
+               last_received_utc = ?5, imported_utc = ?5, process_pid = NULL, process_start = NULL
+             WHERE provider = ?1 AND provider_session_id = ?2",
+            params![
+                provider,
+                provider_session_id,
+                state.as_str(),
+                fmt_ts(at)?,
+                fmt_ts(now_utc)?,
+            ],
+        )?;
+        tx.commit()?;
+        Ok(true)
     }
 
     /// Adds a session found in the agent's own log (owner decision 34, ADR-024), marked as
@@ -822,29 +1057,59 @@ fn is_terminal_state(state: SessionState) -> bool {
     agent_core::reducer::is_terminal(state)
 }
 
-fn is_imported(conn: &Connection, provider: &str, id: &str) -> Result<bool> {
+/// Whether the session row is an unconfirmed import (ADR-024) and whether Lullshift ended it
+/// because its process was gone (ADR-025). A missing row is neither.
+fn session_marks(conn: &Connection, provider: &str, id: &str) -> Result<(bool, bool)> {
     Ok(conn
         .query_row(
-            "SELECT imported_utc IS NOT NULL FROM sessions
+            "SELECT imported_utc IS NOT NULL, ended_reason = ?3 FROM sessions
              WHERE provider = ?1 AND provider_session_id = ?2",
-            params![provider, id],
-            |r| r.get::<_, bool>(0),
+            params![provider, id, agent_core::reducer::ENDED_PROCESS_GONE],
+            |r| {
+                Ok((
+                    r.get::<_, bool>(0)?,
+                    r.get::<_, Option<bool>>(1)?.unwrap_or(false),
+                ))
+            },
         )
         .optional()?
-        .unwrap_or(false))
+        .unwrap_or((false, false)))
 }
 
-fn save_session(tx: &Transaction<'_>, r: &SessionRecord) -> Result<()> {
+/// A stored PID and start key, or `None` if either is out of range (a tampered row).
+fn decode_process(pid: i64, start: i64) -> Option<ProcessKey> {
+    let pid = u32::try_from(pid)
+        .ok()
+        .filter(|p| process_probe::valid_pid(*p))?;
+    let start = u64::try_from(start)
+        .ok()
+        .filter(|s| process_probe::valid_start(*s))?;
+    Some(ProcessKey { pid, start })
+}
+
+fn save_session(
+    tx: &Transaction<'_>,
+    r: &SessionRecord,
+    process: Option<ProcessKey>,
+    keep_ended_reason: bool,
+) -> Result<()> {
+    // An out-of-range process is stored as none: the process check never acts on it.
+    let process =
+        process.filter(|p| process_probe::valid_pid(p.pid) && process_probe::valid_start(p.start));
     tx.execute(
-        "INSERT INTO sessions (provider, provider_session_id, state, state_timestamp_utc, last_seen_utc, last_received_utc)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "INSERT INTO sessions (provider, provider_session_id, state, state_timestamp_utc, last_seen_utc,
+           last_received_utc, process_pid, process_start)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT (provider, provider_session_id) DO UPDATE SET
            state = excluded.state,
            state_timestamp_utc = excluded.state_timestamp_utc,
            last_seen_utc = excluded.last_seen_utc,
            last_received_utc = excluded.last_received_utc,
            disconnected_utc = NULL,
-           imported_utc = NULL",
+           imported_utc = NULL,
+           process_pid = excluded.process_pid,
+           process_start = excluded.process_start,
+           ended_reason = CASE WHEN ?9 THEN ended_reason ELSE NULL END",
         params![
             r.provider,
             r.provider_session_id,
@@ -852,6 +1117,9 @@ fn save_session(tx: &Transaction<'_>, r: &SessionRecord) -> Result<()> {
             r.state_timestamp_utc.map(fmt_ts).transpose()?,
             fmt_ts(r.last_seen_utc)?,
             fmt_ts(r.last_received_utc)?,
+            process.map(|p| i64::from(p.pid)),
+            process.map(|p| i64::try_from(p.start).unwrap_or(0)),
+            keep_ended_reason,
         ],
     )?;
     Ok(())

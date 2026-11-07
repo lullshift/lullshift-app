@@ -3425,6 +3425,7 @@ name = "local-store"
 version = "0.1.0"
 dependencies = [
  "agent-core",
+ "process-probe",
  "rusqlite",
  "serde_json",
  "tempfile",

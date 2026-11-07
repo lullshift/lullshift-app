@@ -159,8 +159,11 @@ fn version_15_database_upgrades_to_16_with_backup_and_keeps_sessions() {
         .expect("row");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!(latest_version(), 16);
-    assert_eq!((report.from_version, report.to_version), (15, 16));
+    assert!(latest_version() >= 16);
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (15, latest_version())
+    );
     let backup = report.backup.expect("a backup is taken before migrating");
     assert!(backup.exists());
     let rec = s.session(P, "old").expect("read").expect("kept");
