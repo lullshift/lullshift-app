@@ -57,9 +57,17 @@ describe("packaged-app wording (decision 33)", () => {
     expect(t).toMatch(/^Claude Code tried to reach Lullshift at 13:05 but couldn't \(refused\)\./);
     expect(t).toMatch(/out-of-date access key/);
     expect(t).toMatch(/inside Claude/);
-    const u = failureText({ ...f, reason: "unreachable", package: null, adapter: "codex" }, at);
+    const u = failureText(
+      { ...f, reason: "unreachable", package: null, adapter: "codex" },
+      at,
+      true,
+    );
     expect(u).toMatch(/^Codex tried .* \(unreachable\)\./);
     expect(u).toMatch(/Start menu or File Explorer/);
+    // Not on macOS or Linux, where there is no Start menu and no packaged apps.
+    const mac = failureText({ ...f, package: null }, at, false);
+    expect(mac).not.toMatch(/Start menu/);
+    expect(mac).toMatch(/refused its event\.$/);
     expect(failureText({ ...f, adapter: "nope" }, at)).toMatch(/^An agent tried/);
   });
 
@@ -105,6 +113,7 @@ describe("connection problems view", () => {
       <ConnectionProblemsView health={health} busy={null} onFix={() => undefined} />,
     );
     expect(html.match(/>Fix</g)).toHaveLength(1);
+    expect(html).toContain('aria-label="Fix Claude"');
     expect(html).toContain("Agents running inside Claude can&#x27;t reach Lullshift");
     expect(html).toContain("Claude Code tried to reach Lullshift");
     expect(html).toContain("Codex tried to reach Lullshift");
@@ -129,5 +138,6 @@ describe("connection problems view", () => {
     );
     expect(html).toContain("Fixing…");
     expect(html).toContain("disabled");
+    expect(html).toContain('aria-busy="true"');
   });
 });

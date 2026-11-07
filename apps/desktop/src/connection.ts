@@ -86,8 +86,20 @@ export function clockTime(utc: string): string {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-/** "Claude Code tried to reach Lullshift at 13:05 but couldn't (refused)." plus the likely cause. */
-export function failureText(f: HookFailure, time: (utc: string) => string = clockTime): string {
+/** Whether the app runs on Windows, where packaged apps and their private storage exist. */
+export function onWindows(): boolean {
+  return typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
+}
+
+/**
+ * "Claude Code tried to reach Lullshift at 13:05 but couldn't (refused)." plus the likely cause.
+ * The advice about starting Lullshift from the Start menu is for Windows only.
+ */
+export function failureText(
+  f: HookFailure,
+  time: (utc: string) => string = clockTime,
+  windows: boolean = onWindows(),
+): string {
   const head = `${agentName(f.adapter)} tried to reach Lullshift at ${time(f.utc)} but couldn't (${
     f.reason === "rejected" ? "refused" : "unreachable"
   }).`;
@@ -97,7 +109,9 @@ export function failureText(f: HookFailure, time: (utc: string) => string = cloc
       : "It used an address where Lullshift isn't listening, usually an old one.";
   const where = f.package
     ? ` It ran inside ${f.package.name}, which keeps its own copies of Lullshift's connection files.`
-    : " If you started Lullshift from inside another app, quit it and start it from the Start menu or File Explorer.";
+    : windows
+      ? " If you started Lullshift from inside another app, quit it and start it from the Start menu or File Explorer."
+      : "";
   return `${head} ${cause}${where}`;
 }
 

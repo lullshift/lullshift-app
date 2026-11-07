@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   failureText,
   fixErrorText,
@@ -62,7 +62,12 @@ export function ConnectionProblemsView({
         const id = `stale-${copy.package.family}`;
         const notes = health.failures.filter((f) => f.package?.family === copy.package.family);
         return (
-          <article className="card integration" aria-labelledby={id} key={copy.package.family}>
+          <article
+            className="card integration"
+            aria-labelledby={id}
+            aria-busy={busy === copy.package.family}
+            key={copy.package.family}
+          >
             <h2 id={id} className="card-title">
               {staleHeadline(copy)}
             </h2>
@@ -78,6 +83,7 @@ export function ConnectionProblemsView({
                 type="button"
                 className="btn btn-primary"
                 disabled={busy !== null}
+                aria-label={`Fix ${copy.package.name}`}
                 onClick={() => onFix(copy.package)}
               >
                 {busy === copy.package.family ? "Fixing…" : "Fix"}
@@ -100,6 +106,8 @@ export default function ConnectionProblems() {
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
+  /** Always present, so the result is announced; focus moves here after Fix. */
+  const resultRef = useRef<HTMLDivElement>(null);
 
   const refresh = () =>
     invoke<ConnectionHealth>("connection_health")
@@ -124,12 +132,25 @@ export default function ConnectionProblems() {
     } finally {
       setBusy(null);
       void refresh();
+      // The card (and its button) usually goes away; keep focus on the result instead.
+      requestAnimationFrame(() => resultRef.current?.focus());
     }
   };
 
   return (
     <>
-      {message && <Banner tone={message.tone}>{message.text}</Banner>}
+      <div
+        ref={resultRef}
+        tabIndex={-1}
+        aria-live={message?.tone === "danger" ? "assertive" : "polite"}
+        aria-atomic="true"
+      >
+        {message && (
+          <Banner tone={message.tone} live={false}>
+            {message.text}
+          </Banner>
+        )}
+      </div>
       {failed && (
         <p className="card-sub">
           Lullshift couldn't check whether agents in other apps can reach it.
