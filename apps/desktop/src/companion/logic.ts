@@ -3,7 +3,10 @@
 
 import {
   ERROR_KINDS,
+  type CatalogModel,
+  type CatalogProvider,
   type ErrorKind,
+  type ModelCatalog,
   type ProviderKind,
   type Scope,
   type ScopeKind,
@@ -588,4 +591,190 @@ export function toolDecisionNote(rec: Pick<ToolCallRecord, "status" | "host">): 
 
 export function approvalPrompt(p: Pick<PendingTool, "label" | "host">): string {
   return `${p.host} asked for a lookup: ${p.label}. This exact text will be sent to it if you approve.`;
+}
+
+// ---- the models.dev model list (decision 32) ----------------------------------------------
+
+export const CATALOG_LOAD_LABEL = "Load model list from models.dev";
+export const CATALOG_SENDS_TEXT =
+  "Sends one request to models.dev. Your keys and messages are not sent.";
+export const CATALOG_DISCLAIMER =
+  "models.dev is a community list and may be out of date. Being listed doesn't mean your key can use a model: Test connection checks.";
+/** Most model rows drawn at once; the search narrows the rest. */
+export const CATALOG_MAX_ROWS = 200;
+
+/** The models.dev provider shown for a fixed provider kind; compatible servers pick one. */
+export const CATALOG_PROVIDER: Record<ProviderKind, string | null> = {
+  anthropic: "anthropic",
+  openai: "openai",
+  openaiCompatible: null,
+};
+
+export type CatalogSort = "newest" | "cheapest" | "name";
+
+export const CATALOG_SORTS: readonly { value: CatalogSort; label: string }[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "cheapest", label: "Cheapest input first" },
+  { value: "name", label: "Name" },
+];
+
+export interface CatalogFilters {
+  text: string;
+  tools: boolean;
+  reasoning: boolean;
+  hideOld: boolean;
+  sort: CatalogSort;
+}
+
+export const DEFAULT_CATALOG_FILTERS: CatalogFilters = {
+  text: "",
+  tools: false,
+  reasoning: false,
+  hideOld: false,
+  sort: "newest",
+};
+
+/** Milliseconds (UTC) of a "YYYY", "YYYY-MM" or "YYYY-MM-DD" date; null if it isn't one. */
+export function releaseTime(date: string | null | undefined): number | null {
+  const m = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(date ?? "");
+  if (!m) return null;
+  const month = m[2] ? Number(m[2]) : 1;
+  const day = m[3] ? Number(m[3]) : 1;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return Date.UTC(Number(m[1]), month - 1, day);
+}
+
+/**
+ * True when the model was released more than a year before `now`. A model without a known
+ * date is never hidden: its age can't be known.
+ */
+export function isOlderThanAYear(date: string | null | undefined, now: Date): boolean {
+  const t = releaseTime(date);
+  if (t === null) return false;
+  const cutoff = Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate());
+  return t < cutoff;
+}
+
+function byName(a: CatalogModel, b: CatalogModel): number {
+  return (a.name ?? a.id).localeCompare(b.name ?? b.id) || a.id.localeCompare(b.id);
+}
+
+/** Missing values sort last in either direction. */
+function nullsLast(a: number | null, b: number | null, dir: 1 | -1): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return (a - b) * dir;
+}
+
+/** The models that pass the filters, in the chosen order. Works on memory only. */
+export function filterModels(
+  models: readonly CatalogModel[],
+  f: CatalogFilters,
+  now: Date,
+): CatalogModel[] {
+  const words = f.text.toLowerCase().split(/\s+/).filter(Boolean);
+  const kept = models.filter((m) => {
+    if (f.tools && !m.toolCall) return false;
+    if (f.reasoning && !m.reasoning) return false;
+    if (f.hideOld && isOlderThanAYear(m.releaseDate, now)) return false;
+    if (words.length === 0) return true;
+    const hay = `${m.name ?? ""} ${m.id} ${m.family ?? ""}`.toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+  const order = (a: CatalogModel, b: CatalogModel): number => {
+    switch (f.sort) {
+      case "newest":
+        return (
+          nullsLast(releaseTime(a.releaseDate), releaseTime(b.releaseDate), -1) || byName(a, b)
+        );
+      case "cheapest":
+        return nullsLast(a.costInput, b.costInput, 1) || byName(a, b);
+      case "name":
+        return byName(a, b);
+    }
+  };
+  return kept.sort(order);
+}
+
+/** "$3", "$0.15", "$0.075", "$0". */
+export function formatUsd(n: number): string {
+  if (n === 0) return "$0";
+  if (n >= 1) return `$${Number(n.toFixed(2))}`;
+  return `$${Number(n.toPrecision(2))}`;
+}
+
+/** Input and output price per million tokens, or "price unknown". */
+export function costText(m: Pick<CatalogModel, "costInput" | "costOutput">): string {
+  if (m.costInput === null && m.costOutput === null) return "price unknown";
+  const input = m.costInput === null ? "input price unknown" : `${formatUsd(m.costInput)} in`;
+  const output = m.costOutput === null ? "output price unknown" : `${formatUsd(m.costOutput)} out`;
+  return `${input} / ${output} per 1M tokens`;
+}
+
+/** "200K context", "1M context", "context size unknown". */
+export function contextText(tokens: number | null): string {
+  if (tokens === null) return "context size unknown";
+  if (tokens >= 1_000_000) return `${Number((tokens / 1_000_000).toFixed(1))}M context`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K context`;
+  return `${tokens} tokens context`;
+}
+
+/** One line of facts for a model row. */
+export function modelFacts(m: CatalogModel): string {
+  const parts = [contextText(m.contextTokens), costText(m)];
+  if (m.toolCall) parts.push("supports tools");
+  if (m.reasoning) parts.push("reasoning");
+  parts.push(m.releaseDate ? `released ${m.releaseDate}` : "release date unknown");
+  return parts.join(" · ");
+}
+
+/** "1 model", "3 models". */
+export function countOf(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+export function catalogCountText(shown: number, total: number): string {
+  if (total === 0) return "This provider has no chat models in the list.";
+  if (shown === 0) return `No models match these filters (out of ${total}).`;
+  if (shown === total) return `${total} model${total === 1 ? "" : "s"}`;
+  return `${shown} of ${total} models`;
+}
+
+function hhmm(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** "Loaded at 10:42", or "Checked at 10:45: no changes" after a refresh that found none. */
+export function loadedAtText(c: Pick<ModelCatalog, "loadedAt" | "checkedAt">): string {
+  const loaded = hhmm(c.loadedAt);
+  if (!loaded) return "Loaded in this app run";
+  const checked = c.checkedAt !== c.loadedAt ? hhmm(c.checkedAt) : null;
+  return checked ? `Loaded at ${loaded}, checked at ${checked}: no changes` : `Loaded at ${loaded}`;
+}
+
+/** Providers whose name or id contains the query, by name. */
+export function filterProviders(
+  providers: readonly CatalogProvider[],
+  query: string,
+): CatalogProvider[] {
+  const q = query.trim().toLowerCase();
+  return providers
+    .filter((p) => !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
+/**
+ * The backend's catalog errors are fixed sentences that already name models.dev; this keeps
+ * them and words the cases that have no sentence.
+ */
+export function catalogErrorText(err: ErrorLike): string {
+  if (err.kind === "unavailable") return "The model list isn't available in this build.";
+  const message = err.message?.trim() ?? "";
+  if (err.kind === "internal" || !message) {
+    return "Something went wrong inside Lullshift while reading the model list. Try again.";
+  }
+  return message;
 }

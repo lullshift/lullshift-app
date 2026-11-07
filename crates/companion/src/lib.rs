@@ -7,6 +7,7 @@
 //! - Requests carry tools only when the user turned lookups on (Sprint 12), and only the three
 //!   read-only lookups in [`tools`]; one of two fixed neutral system texts.
 //! - Errors are fixed strings. Provider bodies, headers and URLs are never put in them.
+//! - The models.dev model list ([`models_dev`]) is fetched only on request and kept in memory.
 //! - Nothing in this crate logs.
 
 pub mod budget;
@@ -14,6 +15,7 @@ pub mod chat_stream;
 pub mod error;
 pub mod http;
 pub mod keystore;
+pub mod models_dev;
 pub mod provider;
 pub mod scope;
 pub mod scrub;

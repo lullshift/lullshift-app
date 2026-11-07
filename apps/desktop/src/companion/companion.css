@@ -424,3 +424,118 @@
   align-items: center;
   gap: var(--space-2);
 }
+
+/* Browse models from models.dev (decision 32). No animation. */
+.catalog {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.catalog-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+
+.catalog-load,
+.catalog-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.catalog-filters {
+  align-items: flex-end;
+}
+
+.catalog-search,
+.catalog-sort {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.catalog-search {
+  flex: 1 1 14rem;
+}
+
+.catalog-loaded {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.catalog-provider {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.catalog-browse {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.catalog-count {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.catalog-list {
+  display: grid;
+  gap: var(--space-1);
+  max-height: 22rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.catalog-model {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* Names come from models.dev: never let one spill past the row. */
+  overflow: hidden;
+}
+
+.catalog-model:hover {
+  border-color: var(--control-border);
+}
+
+.catalog-model:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.catalog-model-chosen {
+  border-color: var(--accent);
+}
+
+.catalog-model-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.catalog-model-id {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.catalog-model-facts {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

@@ -1,6 +1,6 @@
 # ADR-020: BYOK Companion: providers, keys and the context boundary
 
-- **Status:** Accepted (Sprint 09), pending product-owner review (see `sprints/DECISIONS_FOR_REVIEW.md`). Amended in Sprint 12 (decisions 19 and 20): streaming, cancel, remembered context choice and read-only lookups; see "Amendment (Sprint 12)" below, which wins where it differs.
+- **Status:** Accepted (Sprint 09), pending product-owner review (see `sprints/DECISIONS_FOR_REVIEW.md`). Amended in Sprint 12 (decisions 19 and 20): streaming, cancel, remembered context choice and read-only lookups; see "Amendment (Sprint 12)" below, which wins where it differs. Amended again on 2026-11-07 (decision 32): the optional models.dev model list; see "Amendment (decision 32)".
 - **Date:** 2026-11-05
 - **Owner:** Implementation lead
 - **Related:** ADR-001 (no accounts or hosted services), ADR-013 (Context Keeper and opt-in capture), PRD §4.6, TECHNICAL_ARCHITECTURE §5 and §6
@@ -58,7 +58,7 @@ Companion is a separate conversational workspace that talks to an AI provider us
 
 ### Network
 
-- Network calls happen only when the user sends a message or presses "Test connection". Nothing calls a provider on launch.
+- Network calls happen only when the user sends a message or presses "Test connection". Nothing calls a provider on launch. (Decision 32 adds one more user-initiated call: the models.dev model list, below.)
 
 ## Consequences
 
@@ -141,3 +141,49 @@ Rules:
 - OpenAI Chat Completions streaming chunks: https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events (`choices[].delta.content` and `tool_calls[{index,id,function}]`, `finish_reason`, `stream_options.include_usage` final chunk with empty `choices`). The page did not mention `[DONE]`; the decoder accepts a stream with or without it once a `finish_reason` was seen.
 - OpenAI function calling: https://developers.openai.com/api/docs/guides/function-calling (the fetched page described the Responses API; the Chat Completions `tools` / `tool_calls` / `role: "tool"` shapes were written from the Chat Completions reference as known and need a check against a live provider).
 - OpenAI-compatible servers are assumed to follow the Chat Completions shape.
+
+## Amendment (decision 32): the models.dev model list
+
+Owner decision of 2026-11-07 (DECISIONS_FOR_REVIEW 32). Where this section differs from the text above, this section wins.
+
+### What and when
+
+- In the provider form, the user can browse models from the public list at models.dev and pick one. The model name stays a free-text field, and the built-in suggestions stay; the list is a helper, never required.
+- **Only on a button press.** Nothing contacts models.dev until the user presses "Load model list from models.dev". After that, the list is answered from memory for the rest of the app run. "Refresh" asks again. There is no fetch on launch, on opening Companion or on opening the form: the form asks the core only for the list already in memory (`companion_model_catalog { mode: "cached" }`), which never uses the network.
+- **What is sent.** One `GET https://models.dev/api.json` with `accept: application/json`, the user agent `Lullshift-Companion` and, on Refresh, `If-None-Match` with the ETag of the list in memory. No key, profile, message, base URL or other user data. The URL is a constant in `crates/companion/src/models_dev.rs`; no command can change it (a test-only constructor exists only with the `test-support` feature, which release builds do not enable).
+- **Transport.** The same ureq client as provider calls: rustls with the platform verifier, https only, no redirects (a 3xx is an error that names the status), no retries, a 60 s total timeout, and the environment proxy behaviour of other non-loopback calls. The body is read incrementally and refused above 16 MiB (the real file was about 6 MB). The WebView never contacts models.dev; CSP `connect-src` is unchanged.
+- **Caching.** The parsed list, its ETag and two times live only in the core's memory for the app run: never in SQLite, on disk or in logs. `loadedAt` is when models.dev last sent the list; `checkedAt` is when it last sent or confirmed it. A 304 keeps the list and `loadedAt` and moves only `checkedAt`, and the UI shows both ("Loaded at 10:42, checked at 10:45: no changes"), also after the form is reopened. A failed refresh keeps the earlier list and says when it was loaded. Concurrent loads share one request (single-flight), and the in-flight mark is cleared even if the loading thread unwinds.
+
+### Untrusted input
+
+The document is treated like marketplace content:
+
+- Parsed as a stream (`crates/companion/src/models_dev_parse.rs`): typed serde seeds and visitors read straight from the bytes, apply every cap while reading, and skip unused fields with `IgnoredAny`, so no JSON tree of the whole document is ever built. A body whose top level is not an object is refused at its first byte; trailing data after the object is refused.
+- Parsed leniently per entry: a provider or model that is not an object, has a bad id or is missing fields is skipped.
+- Strings are kept only up to 1 KiB (keys 256 bytes) while reading; a longer id is never valid, a longer name is cut.
+- Provider ids: 1 to 100 bytes of ASCII letters, digits, `.`, `_`, `-`. Model ids must pass the same rule as a profile's model name (1 to 200 bytes of ASCII letters, digits and `. _ : / @ + -`; one function, `valid_model_id`, now used by both), so a chosen model always saves.
+- Names and families become one line of plain text: control and invisible characters (`agent_core::text::is_invisible`, plus variation selectors U+FE00–FE0F and U+E0100–E01EF and the blank braille cell U+2800) removed, runs of combining marks limited to two, whitespace collapsed, cut to 120 and 60 characters. A model with no usable name has none (`name: null`) and the UI shows its id; the id is not copied into the name. The extra ranges are local to this list: `is_invisible` stays the set shared with the published schemas, and Companion replies keep emoji variation selectors. The UI renders them as text.
+- Prices are kept only if finite, not negative and at most 1,000,000 USD per million tokens; token limits only if 1 to 1,000,000,000. Dates only in the shapes `YYYY`, `YYYY-MM`, `YYYY-MM-DD`.
+- Non-chat models are skipped: a `type` other than `chat` or `text`, or `modalities.output` without `text`.
+- At most 1,000 providers, 5,000 models per provider and 20,000 models in total (`MAX_TOTAL_MODELS`); once the total is reached the rest of the body is skipped without keeping anything. Providers without a usable model are dropped. Only the slim fields the UI needs are kept (id, name, family, tool support, reasoning, release date, context and output limits, input and output price).
+- Errors are fixed sentences that name models.dev (offline, timeout, too large, not in the expected format, HTTP status); the response body is never put in an error or a log.
+
+### UI
+
+- Anthropic profiles browse models.dev's `anthropic` list and OpenAI profiles its `openai` list. An OpenAI-compatible profile picks a models.dev provider with a searchable picker (name or id); this only chooses the list to browse and never fills in the base URL.
+- Filters run in the UI on memory only: text over name, id and family; supports tools; reasoning; hide models released more than a year ago (models without a date are never hidden); sort by newest (default), cheapest input or name. Each row shows the context size and the input and output price per 1M tokens, or "price unknown".
+- The UI says next to the button: "Sends one request to models.dev. Your keys and messages are not sent." and, above it, that the list may be out of date and that being listed doesn't mean the user's key can use a model (Test connection checks).
+
+### Threat model additions
+
+| Threat | Handling |
+|---|---|
+| A hostile or compromised models.dev (or a network attacker past TLS) serves huge, deep or odd JSON | 16 MiB cap read incrementally; streaming typed parse that keeps no JSON tree (a top level that is not an object fails at once); a total cap of 20,000 models plus the per-provider and provider caps; 1 KiB string cut while reading; serde_json's recursion limit for kept fields (skipped values are walked without recursion); slim fields only. Measured with a counting allocator outside the repo (the workspace forbids `unsafe`): a 16 MiB body of minimal model entries peaks at about 6.5 MB of heap and keeps 20,000 models; a 16 MiB flat array is refused with no allocation. The earlier tree-based parse peaked at about 824 MB on the same body |
+| Names that disguise text (bidi, zero-width) or inject markup | Cleaned to plain one-line text with length caps; rendered as React text, never HTML |
+| A listed model id that would break a request or the profile rule | Ids that fail the profile model rule are dropped |
+| The list used to track the user | One GET of a static public file, only on a button press, with no user data; no automatic or periodic fetch |
+| A stale or wrong list misleads the user | The UI says the list may be out of date and that Test connection is the real check; the free-text field always works |
+
+### Sources checked
+
+- `https://models.dev/api.json`, read on 2026-11-07 (owner's description of the shape: about 6 MB, 235 providers, `{ "<providerId>": { id, name, env, npm, api?, doc, models: { "<modelId>": { id, name, family, type?, tool_call, reasoning, release_date, last_updated, modalities { input, output }, limit { context, output }, cost { input, output, … } } } } }`, with ETag / If-None-Match support). The fetch was not repeated from this implementation's environment; the parser is lenient so shape drift skips entries instead of failing. A live check is in manual test M12-15.

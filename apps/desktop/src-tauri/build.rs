@@ -82,6 +82,8 @@ fn main() {
             "companion_prefs",
             "companion_set_tools_enabled",
             "companion_tool_decision",
+            "companion_model_catalog",
+            "companion_catalog_models",
         ]),
     ))
     .expect("failed to run tauri-build");

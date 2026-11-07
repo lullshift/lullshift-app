@@ -23,6 +23,7 @@ Lullshift connects to the network only when you do something that needs it:
 | You add or refresh a marketplace | The Git host you entered (https or ssh). `owner/repo` means github.com. Addresses on `localhost` or IP addresses are refused |
 | You open an install review for an entry that lives in another repository | That repository's Git host |
 | You press **Test connection**, **Send**, **Retry** or **Approve** (for a lookup) in Companion | Your provider: `api.anthropic.com`, `api.openai.com`, or the base URL you entered (plain http only for your own computer) |
+| You press **Load model list from models.dev** or **Refresh** in Companion settings | `models.dev`: one request for its public model list (`https://models.dev/api.json`). No keys, messages or other data are sent; the list is kept in memory until you quit. Like any web request, models.dev (and any proxy in between) sees your IP address and the time, and the request says it comes from Lullshift (user agent `Lullshift-Companion`) |
 
 During Git actions, your own Git configuration applies: credential helpers, proxies and SSH settings. Lullshift doesn't change them.
 

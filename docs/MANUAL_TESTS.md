@@ -1140,6 +1140,32 @@ Do these in order. Nothing is published until step 6.
 
 **Result:** \_\_\_
 
+### M12-15: Companion model list from models.dev (decision 32)
+
+Watch Lullshift's connections with a network monitor (Resource Monitor, Little Snitch, Wireshark or your firewall log) during steps 1 to 4.
+
+1. Start Lullshift. Open Companion, then Settings, then **Add a provider** (Anthropic). Wait a minute.
+2. Press **Load model list from models.dev**.
+3. Close the form, open **Edit** on a provider, and look at the model browser. Then press **Refresh**.
+4. Turn the network off and press **Refresh**. Then quit Lullshift, start it again offline, and press **Load model list from models.dev**.
+5. With the list loaded: type in **Search models**, tick **Supports tools**, **Reasoning** and **Hide models older than a year**, and try each sort. Press Enter in the search box.
+6. Choose a model. Save, then press **Test connection**.
+7. Switch to **OpenAI-compatible**. Find a provider by part of its name (for example "router") and by its id; choose it.
+8. With NVDA (or Narrator), go through the browser by keyboard only: the load button, the filters, the count and the model list.
+
+**Expected:**
+
+- **Step 1:** no connection to models.dev (or anywhere else) from opening settings.
+- **Step 2:** exactly one HTTPS request to `models.dev`. The text next to the button says it sends one request and that keys and messages are not sent. "Loaded at HH:MM" and the provider count appear; the Anthropic models are listed with context size and price per 1M tokens ("price unknown" where models.dev has none).
+- **Step 3:** reopening shows the list again with no new request. Refresh makes one request; if models.dev answers "not modified", it says "Checked at HH:MM: no changes".
+- **Step 4:** an honest error that names models.dev (offline or timeout). After the failed refresh the earlier list is still shown and says when it was loaded. After the restart the list is gone (memory only) and the load fails with the same honest error; typing a model name by hand still works, and so do the suggestions.
+- **Step 5:** the list and the count follow each filter; newest first is the default; Enter does not submit the form.
+- **Step 6:** the model field holds exactly the chosen id; the profile saves; Test connection gives the real answer (a listed model may still be refused by your key).
+- **Step 7:** the provider picker narrows as you type; choosing one shows its models. The base URL field is not filled in or changed.
+- **Step 8:** every control has a name; focus is visible; the count is read out politely when it changes; each model button reads its name, id and facts, and the chosen one is announced as pressed. Nothing moves with reduced motion on.
+
+**Result:** \_\_\_
+
 ## Website and demo mode
 
 ### W-1: Browser demo of the desktop UI

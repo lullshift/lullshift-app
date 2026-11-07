@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-companion-catalog-models"
+description = "Enables the companion_catalog_models command without any pre-configured scope."
+commands.allow = ["companion_catalog_models"]
+
+[[permission]]
+identifier = "deny-companion-catalog-models"
+description = "Denies the companion_catalog_models command without any pre-configured scope."
+commands.deny = ["companion_catalog_models"]

@@ -33,6 +33,7 @@ import {
   TOOLS_SETTING_HELP,
   TOOLS_SETTING_LABEL,
 } from "./logic";
+import { ModelCatalogBrowser } from "./ModelCatalog";
 
 interface Props {
   profiles: readonly ProviderProfile[];
@@ -192,6 +193,8 @@ function ProfileForm({
       <p id={`${ids}-model-hint`} className="field-note">
         {MODEL_HINT}
       </p>
+
+      <ModelCatalogBrowser kind={kind} chosen={model.trim()} onChoose={setModel} />
 
       <label className="field-label" htmlFor={`${ids}-budget`}>
         Monthly token budget (optional)

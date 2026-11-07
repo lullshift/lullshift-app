@@ -16,6 +16,17 @@ Open **Companion**, then **Settings**, then **Add a provider**.
 
 Give it a name, a model and, if you like, a monthly token budget. Companion shows "Sends to" with the host name, so you always know where your text goes.
 
+### Browsing models from models.dev
+
+You can type the model name yourself, or pick one from the public list at [models.dev](https://models.dev):
+
+1. Under the model field, press **Load model list from models.dev**. This sends one request to models.dev. Your keys and messages are not sent. Nothing contacts models.dev before you press it.
+2. For Anthropic and OpenAI you see that provider's models. For an OpenAI-compatible server, find the matching models.dev provider by name or id and choose it. This only picks which list to browse: it never fills in the base URL; you still type your server's address.
+3. Narrow the list: search by name, id or family; **Supports tools**; **Reasoning**; **Hide models older than a year**. Sort by newest (the default), cheapest input price, or name. Each model shows its context size and its price per million input and output tokens ("price unknown" when models.dev has none).
+4. Choose a model to put its name in the model field. Then save, and use **Test connection**.
+
+The list stays in memory until you quit Lullshift; it is never saved to disk. **Refresh** asks models.dev again and keeps your list if nothing changed; the status line then shows both when the list was loaded and when it was last checked. models.dev is a community list and may be out of date, and being listed doesn't mean your key can use a model: **Test connection** checks. If the list can't be loaded (for example, you are offline), you can still type the model name.
+
 ## Your key
 
 - Choose **Paste key**. The key goes straight into your system keychain (Windows Credential Manager, macOS Keychain or the Linux Secret Service) and is never shown again.

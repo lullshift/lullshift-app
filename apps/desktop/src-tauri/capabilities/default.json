@@ -90,6 +90,8 @@
     "allow-companion-usage",
     "allow-companion-prefs",
     "allow-companion-set-tools-enabled",
-    "allow-companion-tool-decision"
+    "allow-companion-tool-decision",
+    "allow-companion-model-catalog",
+    "allow-companion-catalog-models"
   ]
 }

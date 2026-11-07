@@ -1,0 +1,36 @@
+{
+  "good": {
+    "id": "good",
+    "name": "Good \u202e provider\u0007\n  with   spaces",
+    "models": {
+      "ok-model": {
+        "id": "ok-model",
+        "name": "OK",
+        "family": "fam\u200bily",
+        "tool_call": "yes",
+        "reasoning": 1,
+        "release_date": "June 2026",
+        "cost": { "input": -1, "output": "NaN" },
+        "limit": { "context": -5, "output": 1e30 }
+      },
+      "bad id with spaces": { "id": "bad id with spaces", "name": "Bad" },
+      "semi;colon": { "name": "Bad too" },
+      "not-an-object": 42,
+      "huge-price": { "id": "huge-price", "cost": { "input": 1e12, "output": 2.5 } },
+      "chat-type": {
+        "id": "chat-type",
+        "type": "chat",
+        "modalities": { "output": ["text", "image"] }
+      },
+      "odd-type": { "id": "odd-type", "type": 7 },
+      "no-name": { "id": "no-name" },
+      "ok-model-dup": { "id": "ok-model", "name": "Duplicate" }
+    }
+  },
+  "no-models": { "id": "no-models", "name": "Empty" },
+  "models-not-object": { "id": "models-not-object", "models": [1, 2, 3] },
+  "only-bad-models": { "id": "only-bad-models", "models": { "x y": { "id": "x y" } } },
+  "bad provider id!": { "name": "Bad provider", "models": { "m": { "id": "m" } } },
+  "string-provider": "nope",
+  "null-provider": null
+}

@@ -10,7 +10,7 @@ Build Lullshift following `docs/PRODUCT_REQUIREMENTS.md`, `docs/TECHNICAL_ARCHIT
 
 - **Fully open source v1** (Apache-2.0): desktop app, Rust core, protocol, SDK, CLI, kits, engines and all bundled activities. (ADR-001)
 - **No accounts of any kind.** No sign-in, registration, device enrollment or offline lease. Fully functional on first launch and fully offline.
-- **No Lullshift-hosted services and no default telemetry.** Network use is only user-initiated: Git fetches of added marketplaces, app update checks, BYOK Companion calls.
+- **No Lullshift-hosted services and no default telemetry.** Network use is only user-initiated: Git fetches of added marketplaces, app update checks, BYOK Companion calls and, only when the user asks, the Companion model list from models.dev.
 - **Local-first:** task/session data stays local; zero default uploading of source code or prompts.
 - Agent runtime is external; Lullshift observes and guides human attention, it is not an agent orchestrator.
 - **Marketplaces are Git repos** (public or private) with `.lullshift/marketplace.json`; installs are pinned to commit SHAs; updates are explicit; this repo is the built-in marketplace. Lullshift never stores Git credentials. (ADR-002)

@@ -328,3 +328,58 @@ export const companionSetToolsEnabled = (enabled: boolean) =>
 export const companionCancel = (threadId: number) => call<void>("companion_cancel", { threadId });
 
 export const companionUsage = () => call<Usage[]>("companion_usage");
+
+// ---- the models.dev model list (decision 32) ----------------------------------------------
+
+/**
+ * `cached` reads memory only (null before the first load in this app run). `load` and
+ * `refresh` are the only calls that may contact models.dev, and only one request is made at a
+ * time.
+ */
+export type CatalogMode = "cached" | "load" | "refresh";
+
+export interface CatalogProvider {
+  id: string;
+  name: string;
+  modelCount: number;
+}
+
+export interface ModelCatalog {
+  /** When models.dev last sent the list now in memory (RFC 3339, UTC). */
+  loadedAt: string;
+  /**
+   * When models.dev last sent or confirmed the list (RFC 3339, UTC). Equals `loadedAt` until a
+   * Refresh finds no change.
+   */
+  checkedAt: string;
+  /** This answer was a Refresh and models.dev said "not modified". */
+  unchanged: boolean;
+  /** Nothing was sent: the list was already in memory. */
+  fromMemory: boolean;
+  providers: CatalogProvider[];
+}
+
+export interface CatalogModel {
+  /** Always a valid model name for a provider profile. */
+  id: string;
+  /** null when models.dev gives no usable name; show the id instead. */
+  name: string | null;
+  family: string | null;
+  toolCall: boolean;
+  reasoning: boolean;
+  /** "YYYY", "YYYY-MM" or "YYYY-MM-DD". */
+  releaseDate: string | null;
+  contextTokens: number | null;
+  outputTokens: number | null;
+  /** USD per million input tokens. */
+  costInput: number | null;
+  /** USD per million output tokens. */
+  costOutput: number | null;
+}
+
+export const companionModelCatalog = (mode: CatalogMode) =>
+  call<ModelCatalog | null>("companion_model_catalog", { mode });
+
+/** Memory only. Fails with `notFound` when the list isn't loaded. */
+export const companionCatalogModels = (providerId: string) =>
+  call<CatalogModel[]>("companion_catalog_models", { providerId });
