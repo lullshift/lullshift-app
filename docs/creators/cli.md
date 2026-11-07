@@ -15,7 +15,7 @@ pnpm lullshift --help
 
 `pnpm lullshift` runs from the repository root but resolves folders from where you typed the command. From another folder, use `pnpm --dir <path to clone> lullshift <command>`. The CLI is not part of the desktop app's installer.
 
-**From npm: only after the first release.** The owner has approved publishing the CLI as `@lullshift/cli` (decision 29), but **it is not on npm yet. Don't run these commands until it is.** Before you do, open the package page on npmjs.com and check that it links to `github.com/lullshift/lullshift-app` and shows a provenance badge; if not, it isn't ours. Then you need only Node.js 22.12 or newer:
+**From npm: only after the first release.** The owner has approved publishing the CLI as `@lullshift/cli` (decision 29), but **it is not on npm yet. Don't run these commands until it is.** Before you do, open the package page on npmjs.com and check that it links to `github.com/lullshift/lullshift-app` and shows a provenance badge; if not, it isn't ours. Then you need only Node.js 24 or newer:
 
 ```bash
 # After the first release only

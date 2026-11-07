@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 // A namespace import: stripTypeScriptTypes exists only on newer Node versions, and the installed
-// CLI (Node 22 and newer) never calls it because its harness is JavaScript already.
+// CLI never calls it because its harness is JavaScript already.
 import * as nodeModule from "node:module";
 import type { AddressInfo } from "node:net";
 import path from "node:path";

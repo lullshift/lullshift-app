@@ -1120,7 +1120,7 @@ Do these in order. Nothing is published until step 6.
 
 1. Register the `lullshift` organization on npm, with 2FA, before the repository and its docs are public.
 2. In GitHub, create the environment `npm`: you as required reviewer, deployment branches "Selected branches and tags" with `main` only, and `NPM_TOKEN` as an environment secret (not a repository secret).
-3. Install Node 22.12. Run `node scripts/check-npm-packages.mjs --keep <folder>`, install the three `.tgz` files in an empty folder, and run `npx lullshift --help`, `create`, `validate`, `simulate` and `pack`.
+3. Install the oldest Node 24 release you can get (24.0 if possible). Run `node scripts/check-npm-packages.mjs --keep <folder>`, install the three `.tgz` files in an empty folder, and run `npx lullshift --help`, `create`, `validate`, `simulate` and `pack`.
 4. Start "Publish npm packages" from a branch other than `main`.
 5. Start it from `main` with dry run on (the default).
 6. Settle decision 31 (versions), then run it with dry run off and approve it.
@@ -1129,7 +1129,7 @@ Do these in order. Nothing is published until step 6.
 
 **Expected:**
 
-- **Step 3:** every command works on Node 22.12.
+- **Step 3:** every command works on that Node 24 release.
 - **Step 4:** GitHub refuses the deployment to `npm`.
 - **Step 5:**
   - The build job prints each tarball's hash.

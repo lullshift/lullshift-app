@@ -195,8 +195,8 @@ export function checkTarball(spec, tgz, { localPaths = [] } = {}) {
   if (pkg.private) problems.push("package.json is private");
   if (pkg.license !== "Apache-2.0") problems.push(`license is ${pkg.license}`);
   if (pkg.publishConfig?.access !== "public") problems.push("publishConfig.access isn't public");
-  if (!/^>=22(\.|$)/.test(pkg.engines?.node ?? "")) {
-    problems.push(`engines.node is ${pkg.engines?.node}; published packages support Node 22+`);
+  if (!/^>=24(\.|$)/.test(pkg.engines?.node ?? "")) {
+    problems.push(`engines.node is ${pkg.engines?.node}; published packages support Node 24+`);
   }
   if (pkg.repository?.url !== "git+https://github.com/lullshift/lullshift-app.git") {
     problems.push("repository.url must name this repository (npm provenance checks it)");
@@ -321,7 +321,7 @@ export function selfTest() {
         name: "@lullshift/agent-protocol",
         private: true,
         license: "Apache-2.0",
-        engines: { node: ">=24" },
+        engines: { node: ">=22.12.0" },
         exports: { ".": "./src/index.ts" },
         dependencies: { "@lullshift/activity-sdk": "workspace:*" },
       }),

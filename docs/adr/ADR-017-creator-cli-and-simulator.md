@@ -107,12 +107,12 @@ The owner decided to publish the CLI and the SDK to npm. This replaces "The CLI 
 - **The installed CLI reads only its own package.** The build copies the harness page (with `host.ts` already stripped to JavaScript), the kit scripts from `packages/activity-kits/dist` and the bundled engines from `activities/engines` into `dist/`. The bridge and the host protocol come from the installed SDK. `src/paths.ts` picks the layout by where it runs (`src/` or `dist/`). So `create`, `validate` and `simulate` work offline for apps and content packs, against the engines of the release the CLI was built from.
 - **Tarball allowlists.** Each package lists its `files`. `scripts/check-npm-packages.mjs` packs all three exactly as a publish would and fails on any file outside the allowlist, links or other non-regular entries (reading pax `path=` records as tar does), tests or fixtures, source maps, `.env`, local paths (the repository, home folder, `RUNNER_TEMP`, the pack folder or the user's home), anything the repository's secretlint rules flag, `.ts` imports, `workspace:` specifiers, a missing entry point or a wrong `engines`. Its self-test plants each of these in a tarball first. It runs in `pnpm check` (full) and before every publish.
 
-### Node 22 and newer
+### Node 24 and newer (owner decision, 2026-11-07)
 
-- Published packages declare `"engines": { "node": ">=22.12.0" }`. The compiled JavaScript doesn't need Node 24's type stripping. The CLI needs `zlib.crc32` (Node 22.2) and the global `WebSocket` (stable in 22.4); 22.12 is a recent 22 LTS release.
-- `serve.ts` no longer imports `stripTypeScriptTypes` by name, because that export is missing on older 22.x releases. Only the repository layout calls it.
-- Development in this repository stays on Node 24.
-- **Not yet tested on Node 22.** Only Node 24 was available when this was built. The owner's manual checks include a Node 22 run.
+- Published packages declare `"engines": { "node": ">=24.0.0" }`, the Node line this repository develops and tests on. The owner chose this over a Node 22.12 floor (decision 29) so the published CLI supports only what is tested.
+- `serve.ts` still uses a namespace import for `stripTypeScriptTypes`; only the repository layout calls it.
+- `scripts/check-npm-packages.mjs` refuses any other `engines` value.
+- Tested on Node 24.14.1. The owner's manual checks include a run on the oldest Node 24 release available.
 
 ### Gating and provenance
 

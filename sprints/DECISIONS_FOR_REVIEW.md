@@ -32,7 +32,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 26 | 11 | Release packaging | change: 26.3, 26.7, 26.8, 26.12 |
 | 27 | 12 | Sprint 12 build and review choices | change: 27.1, 27.5, 27.6, 27.8 (built 2026-11-06) |
 | 28 | 12 | Bundled Git fallback (gix, public https) | change: build it (built 2026-11-06) |
-| 29 | 12 | Publish the creator CLI and SDK to npm | change: build it (built; Node 22 floor to confirm) |
+| 29 | 12 | Publish the creator CLI and SDK to npm | change: build it (built; Node 24+ confirmed 2026-11-07) |
 | 30 | 12 | Wording in PRD and CLAUDE.md after 27.5 | open |
 | 31 | 12 | npm package versions before the first publish | open |
 
@@ -368,7 +368,7 @@ These were taken during Sprint 12, mostly to fix security review findings. Pleas
 - **Release:** a manual GitHub workflow publishes with npm provenance. It uses a protected `npm` environment with the owner as required reviewer, and the token is held only as that environment's secret. Nothing is published without the owner's approval.
 - **Owner steps:** register the `@lullshift` scope on npm, create a granular publish token and approve each publish run.
 - **Record:** an amendment to ADR-017.
-- **Assumption, for review:** the published CLI supports Node 22 and newer (the compiled JavaScript doesn't need Node 24's TypeScript support). Development in this repo stays on Node 24.
+- **Node version (owner decision, 2026-11-07):** the published packages require Node 24 or newer, the version this repo develops and tests on. A Node 22.12 floor was proposed and declined.
 
 ## 30. Wording in the PRD and CLAUDE.md after decision 27.5 (open, for the owner)
 
@@ -385,5 +385,3 @@ The CLI package is version 0.1.0, but `lullshift --version` prints the SDK's ver
 
 - **Option A (suggested):** publish all three packages at 0.2.0, so the CLI, the SDK and `--version` agree.
 - **Option B:** keep separate versions, and make `--version` print the CLI's own version.
-
-Also open: Node 22.12 is the reasoned minimum for the published CLI but was not tested (only Node 24 is installed here). It is in the manual checks.
