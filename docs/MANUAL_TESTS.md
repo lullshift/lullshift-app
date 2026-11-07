@@ -1229,6 +1229,50 @@ Before you start: Lullshift closed. Have sessions open in Claude Code in the des
 
 **Result:** \_\_\_
 
+### M12-19: Settle missed and silently ended sessions (decision 35)
+
+Before you start: Lullshift running with Claude Code connected (and, if you have them, Codex, Cursor and OpenCode). **Catch up from agent logs at startup** off. Start Lullshift from the Start menu, not from inside another app. Have Process Monitor ready, and a Claude Code session in each of: a PowerShell window, a `cmd` window, Git Bash, and the Claude desktop app's **Code** tab.
+
+1. In each Claude Code session send a prompt, and let it finish its turn (the card says Idle or Waiting). Confirm each shows under Sessions.
+2. Close the PowerShell window running Claude Code with its **X** button. Wait four minutes (two checks about 45 seconds apart, and two quiet minutes).
+3. In the `cmd` session, end the program from Task Manager (**End task** on `claude.exe` or `node.exe`, the one that is the agent). Wait four minutes.
+4. Quit Claude Code normally in Git Bash with `/exit` (it reports its own end), and compare with step 2.
+5. Keep one Claude Code session open but idle. Wait three minutes.
+6. Quit Lullshift (tray menu > Quit). Close a Claude Code session's window while Lullshift is closed. Start Lullshift.
+7. In a session that Lullshift showed as Ended (process gone), resume it (`claude --resume`) and send a prompt.
+8. Open the details of the session from step 2 and export it as Markdown and as JSON.
+9. Open **Settings > Sessions**. Turn on **Catch up from agent logs at startup**. Leave a Claude Code session waiting, quit Lullshift, in that session send a prompt and wait for the reply to finish (so the log moves on while Lullshift is closed), then start Lullshift.
+10. Watch Process Monitor (filter `lullshift`) during that start, then look at the session and at Settings > Sessions.
+11. With catch-up still on, quit and start Lullshift again without doing anything in the agents. Then repeat once with `~/.claude/projects` temporarily renamed.
+12. Turn catch-up off, quit and start Lullshift: confirm no agent log is opened (Process Monitor).
+13. Start a stopwatch-free check of the hook: in a terminal run `echo {} | lullshift-desktop.exe hook claude-code --data-dir <data dir>`, from a PowerShell inside Windows Terminal, and read what it prints and its exit code (`$LASTEXITCODE`).
+14. With NVDA (or Narrator) and keyboard only, open Settings > Sessions, change the switch, and read the status line. Check Sessions with a process-gone session in the list.
+15. A session that needs you: in a Claude Code session, trigger a permission prompt and leave it unanswered, then close that window. Wait six minutes.
+16. macOS only: start a Claude Code session with `TZ=Asia/Tokyo claude`, send a prompt, let the turn finish, and leave it open for more than 90 seconds with Lullshift (started normally, in your own time zone) running. Then repeat with `TZ=America/Los_Angeles`.
+17. WSL, if you use it: run Claude Code inside WSL with Lullshift installed on Windows, send a prompt and leave it open for six minutes. Also run an agent inside a Flatpak, container or devcontainer on Linux if you have one.
+18. Run a Claude Code session through a wrapper that exits early (for example `sudo -E claude` or `timeout 3600 claude` on Linux or macOS) and leave it open for six minutes.
+
+**Expected:**
+
+- **Step 1:** all four sessions are tracked as usual.
+- **Step 2:** within about four minutes (the check runs every 45 seconds; it needs two gone looks and two quiet minutes) the PowerShell session moves to History as **Ended (process gone)**, with a neutral pill, no notification and no sound. Its reason line says Lullshift ended it because the program is no longer running and the agent didn't say so itself.
+- **Step 3:** the `cmd` session ends the same way, including if the agent was started through `cmd` (the shell is looked through, not mistaken for the agent).
+- **Step 4:** a session that reports its own end shows plain **Ended** (no "process gone" wording).
+- **Step 5:** the idle session stays as it is; nothing is ended while its program runs.
+- **Step 6:** after the next start, once the session has been quiet for two minutes and two checks about 45 seconds apart have found it gone, the session whose window you closed reads **Ended (process gone)**.
+- **Step 7:** at the first event after the resume the session leaves Ended and shows its real state; the "process gone" wording is gone.
+- **Step 8:** the Markdown says the end was inferred by Lullshift because the process is gone; the JSON has `stateSource: "inferred_process_gone"`.
+- **Step 9:** the switch is off before you touch it and on afterwards; the status line says it runs at the next start.
+- **Step 10:** Process Monitor shows agent logs opened for at most the start and end windows (as in M12-17), only after Lullshift started. The session now reads as a **From log** guess (for example Waiting for you) and does not notify. Settings says "Last catch-up: updated 1 session ...". No session that Lullshift did not already have appears. Your next prompt in that session replaces the guess and removes the tag.
+- **Step 11:** the second start says "nothing to update". With the log folder renamed it names Claude Code as "couldn't read" or the list simply has nothing, and Lullshift starts normally either way.
+- **Step 12:** no agent log is opened.
+- **Step 13:** it prints nothing and `$LASTEXITCODE` is 0.
+- **Step 14:** the switch has its name and state, the status line is read politely, and the Ended (process gone) pill is read in full.
+- **Step 15:** the session stays **Needs you**; it is never shown as Ended (process gone), however long the window has been closed.
+- **Step 16:** the session is not ended: the time zone of the agent does not matter (the process lookups pin `TZ=UTC0`). Not run on macOS yet.
+- **Step 17:** a session inside WSL, Flatpak or a container is not shown as Ended (process gone) while it is alive (on Linux, a process in another PID namespace is ignored). Note what happens for WSL and report it: the sessions may stay as they were, or be ended wrongly, and the next event reopens them. Not tested yet.
+- **Step 18:** the session stays alive: the wrapper (`sudo`, `timeout`) is looked through to the real program; it is never shown as Ended (process gone) while the agent runs.
+
 ### M12-18: Companion settings, models per message and reply rendering (decision 36)
 
 Use a database from before this change (with at least one provider and a conversation) so the upgrade runs. Watch Lullshift's connections with a network monitor during steps 2 and 3. Repeat steps 4 to 9 in light and dark themes, and once with reduced motion on.
@@ -1254,6 +1298,28 @@ Use a database from before this change (with at least one provider and a convers
 - **Step 10:** no formatting other than code blocks and links; nothing opens without the confirmation; the address shown is the one opened. Syntax colours are readable in both themes.
 - **Step 11:** the expanded state, the menu, the picker list's active option, the "this message only" note and Copy's result are announced.
 - **Step 12:** OpenAI answers work through the Responses API; a refused request shows the provider's reason, cleaned and without the key; a streaming refusal falls back once with a note; compatible servers and Anthropic are unchanged.
+
+**Result:** \_\_\_
+
+### M12-20: Replies continue in the background
+
+Use a real provider with a long answer (for example "Write 400 words about locks") in two conversations A and B. Repeat steps 1 to 6 in light and dark themes, and once with reduced motion on.
+
+1. In A, send the question. While it is writing, press another conversation B, then press A again. The text so far and **Still writing** are shown, the text keeps growing, and **Cancel** is there. Your message appears once.
+2. Send in A again (after it finished), and while it writes, open Sessions, then come back to Companion and open A. The same as step 1.
+3. Send in A, open B, and wait. In the list, A shows **Writing…**, then **New reply**. A notice "Companion replied in “<A's title>”" appears at the bottom right and the **Companion** nav item shows a number. The notice has no part of the reply.
+4. Press **Open** in the notice (or Tab to it: it is after the page content, and focus is not moved to it when it appears). A opens, the mark, the number and the notice go away, and the full reply is shown. Do step 3 again and leave the notice alone: it goes away by itself after about 8 seconds. Point at it or Tab into it: it stays; leave it: it goes after another 8 seconds. Escape closes it.
+5. Send in A and B at once (two questions). Both show **Writing…** and both finish; stacking shows at most three notices.
+6. Send in A, switch to another application window (or minimise Lullshift) and wait until it is done. When you return, A shows **New reply** and a notice. With the "Let the Companion look things up" setting on, ask something that makes it look up your sessions, then open Sessions: a notice "Companion needs your approval in…" is announced at once; **Open** shows the approval card; nothing was sent to the provider before you pressed Approve.
+7. Send in A, press **Cancel**, and check no notice appears. Send in A and quit Lullshift while it writes; start it again: the message is marked **Not sent** with **Try again**.
+8. With NVDA (or Narrator): a finished reply in another conversation is announced politely once ("Companion replied in…"); an approval is announced assertively; the thread marks are read as words ("New reply").
+
+**Expected:**
+
+- **Steps 1 and 2:** leaving never stops or cancels the reply; coming back shows the live text and Cancel.
+- **Step 3 and 4:** the marks, the number and the notice agree; the notice carries only the conversation name; nothing steals focus; hover or focus pauses the timer; reduced motion removes the notice's entrance animation.
+- **Steps 5 to 7:** several replies at once work; a hidden window or another view gets the notice; your own Cancel is silent; a quit during a reply is shown honestly.
+- **Step 8:** polite for news, assertive only for an approval.
 
 **Result:** \_\_\_
 

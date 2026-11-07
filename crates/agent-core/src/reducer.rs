@@ -83,6 +83,27 @@ pub fn apply(
     rec
 }
 
+/// Stored beside an `Ended` state that Lullshift inferred instead of the provider reporting it:
+/// the agent's process is no longer running (owner decision 35, ADR-025).
+pub const ENDED_PROCESS_GONE: &str = "process_gone";
+
+/// Ends a non-terminal session because its process is gone. `None` if the session is already
+/// in a terminal state (those are facts and stay as they are).
+///
+/// This is **not** a provider event and is never written to the event log. The new state's
+/// timestamp is `now_utc` (never earlier than the current one), so [`apply`] treats it like any
+/// other state: a real event with a timestamp at or after `now_utc` reopens the session, an
+/// older one does not. `last_seen_utc` and `last_received_utc` are untouched: nothing was
+/// received.
+pub fn process_gone(mut rec: SessionRecord, now_utc: OffsetDateTime) -> Option<SessionRecord> {
+    if is_terminal(rec.state) {
+        return None;
+    }
+    rec.state = SessionState::Ended;
+    rec.state_timestamp_utc = Some(rec.state_timestamp_utc.map_or(now_utc, |t| t.max(now_utc)));
+    Some(rec)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ViewReason {
@@ -233,6 +254,63 @@ mod tests {
             run(&[("completed", T0 + s), ("working", T0)]).state,
             SessionState::Completed
         );
+    }
+
+    #[test]
+    fn process_gone_ends_a_live_session_without_an_event_and_a_newer_event_reopens_it() {
+        let s = Duration::seconds(1);
+        for live in [
+            "session_started",
+            "working",
+            "needs_attention",
+            "turn_ended",
+        ] {
+            let rec = run(&[(live, T0)]);
+            let seen = (rec.last_seen_utc, rec.last_received_utc);
+            let gone_at = T0 + Duration::minutes(5);
+            let ended = process_gone(rec, gone_at).expect("live session");
+            assert_eq!(ended.state, SessionState::Ended, "{live}");
+            assert_eq!(ended.state_timestamp_utc, Some(gone_at));
+            assert_eq!(
+                (ended.last_seen_utc, ended.last_received_utc),
+                seen,
+                "nothing was received, so liveness times stay"
+            );
+            // A real event after the mark reopens it, like any terminal state.
+            let reopened = apply(
+                Some(ended),
+                &ev("working", gone_at + s),
+                R0 + Duration::hours(1),
+            );
+            assert_eq!(reopened.state, SessionState::Working, "{live}");
+        }
+    }
+
+    #[test]
+    fn process_gone_leaves_terminal_sessions_alone_and_an_older_event_does_not_reopen() {
+        for done in ["completed", "failed", "cancelled", "session_ended"] {
+            assert_eq!(
+                process_gone(run(&[(done, T0)]), T0 + Duration::hours(1)),
+                None
+            );
+        }
+        let ended =
+            process_gone(run(&[("working", T0)]), T0 + Duration::minutes(5)).expect("ended");
+        let still = apply(
+            Some(ended),
+            &ev("working", T0 + Duration::minutes(1)),
+            R0 + Duration::hours(1),
+        );
+        assert_eq!(still.state, SessionState::Ended, "an older event is stale");
+        // A heartbeat reports no state either.
+        let ended =
+            process_gone(run(&[("working", T0)]), T0 + Duration::minutes(5)).expect("ended");
+        let hb = apply(
+            Some(ended),
+            &ev("heartbeat", T0 + Duration::minutes(9)),
+            R0 + Duration::hours(1),
+        );
+        assert_eq!(hb.state, SessionState::Ended);
     }
 
     #[test]

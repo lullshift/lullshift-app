@@ -55,6 +55,9 @@ pub struct OverviewRow {
     /// Seconds since the last reported state, or `None` if no state was ever reported.
     pub age_secs: Option<i64>,
     pub label: Option<String>,
+    /// Lullshift ended this session itself because the agent's program is gone (ADR-025): the
+    /// agent never reported an end.
+    pub ended_inferred: bool,
 }
 
 fn state_name(s: SessionState) -> String {
@@ -89,6 +92,16 @@ pub fn render_overview(rows: &[OverviewRow], total: usize) -> String {
         let n = i + 1;
         let age = r.age_secs.map(duration_text);
         let line = match (r.reason, r.state) {
+            (ViewReason::Observed, SessionState::Ended) if r.ended_inferred => match &age {
+                Some(a) => format!(
+                    "{n}. {}: ended (inferred: the agent's program is no longer running; the agent did not report this) {a} ago",
+                    r.tool
+                ),
+                None => format!(
+                    "{n}. {}: ended (inferred: the agent's program is no longer running; the agent did not report this)",
+                    r.tool
+                ),
+            },
             (ViewReason::Observed, s) => match &age {
                 Some(a) => format!("{n}. {}: {} for {a}", r.tool, state_name(s)),
                 None => format!("{n}. {}: {}", r.tool, state_name(s)),
@@ -130,6 +143,28 @@ fn one_line(s: &str, max: usize) -> String {
     t.chars().take(max).collect()
 }
 
+type Marks = std::collections::HashMap<(String, String), OffsetDateTime>;
+
+/// How many sessions are plain imports and how many are catch-up guesses. The two are counted
+/// apart whatever the rows say: a tampered row that is "hinted" without being "imported" is
+/// counted once, as a guess, and the subtraction can never underflow.
+fn mark_counts(
+    records: &[agent_core::SessionRecord],
+    imported: &Marks,
+    hinted: &Marks,
+) -> (usize, usize) {
+    let key = |r: &agent_core::SessionRecord| (r.provider.clone(), r.provider_session_id.clone());
+    let hinted_count = records
+        .iter()
+        .filter(|r| hinted.contains_key(&key(r)))
+        .count();
+    let imported_count = records
+        .iter()
+        .filter(|r| imported.contains_key(&key(r)) && !hinted.contains_key(&key(r)))
+        .count();
+    (imported_count, hinted_count)
+}
+
 pub fn session_overview(core: &Core, now: OffsetDateTime) -> Res<String> {
     let guard = core.store.lock().map_err(|_| CommandError::internal())?;
     let store = guard.as_ref().ok_or_else(CommandError::internal)?;
@@ -138,6 +173,9 @@ pub fn session_overview(core: &Core, now: OffsetDateTime) -> Res<String> {
     // Imported sessions hold a guess from the agent's log, not a reported state, so they are
     // not presented as tracked states (decision 34, security review M3).
     let imported = store.imported_sessions().unwrap_or_default();
+    // Of those, the ones the opt-in catch-up filled in over a session Lullshift was tracking.
+    let hinted = store.log_hinted_sessions().unwrap_or_default();
+    let ended_reasons = store.ended_reasons().unwrap_or_default();
     let labels = store.session_labels().unwrap_or_default();
     let prefs = ContextPrefs::from_stored(
         store
@@ -153,10 +191,7 @@ pub fn session_overview(core: &Core, now: OffsetDateTime) -> Res<String> {
             !disconnected.contains_key(&key) && !imported.contains_key(&key)
         })
         .collect();
-    let imported_count = records
-        .iter()
-        .filter(|r| imported.contains_key(&(r.provider.clone(), r.provider_session_id.clone())))
-        .count();
+    let (imported_count, hinted_count) = mark_counts(&records, &imported, &hinted);
     tracked.sort_by_key(|a| std::cmp::Reverse(a.last_received_utc));
     let total = tracked.len();
     let rows: Vec<OverviewRow> = tracked
@@ -185,6 +220,10 @@ pub fn session_overview(core: &Core, now: OffsetDateTime) -> Res<String> {
                 last_known: v.last_known_state,
                 age_secs: r.state_timestamp_utc.map(|t| (now - t).whole_seconds()),
                 label,
+                ended_inferred: r.state == SessionState::Ended
+                    && ended_reasons
+                        .get(&(r.provider.clone(), r.provider_session_id.clone()))
+                        .is_some_and(|reason| reason == agent_core::reducer::ENDED_PROCESS_GONE),
             }
         })
         .collect();
@@ -192,6 +231,11 @@ pub fn session_overview(core: &Core, now: OffsetDateTime) -> Res<String> {
     if imported_count > 0 {
         out.push_str(&format!(
             "\n{imported_count} more imported from agent logs are not listed: their states are only guesses from the logs and nothing has been reported since."
+        ));
+    }
+    if hinted_count > 0 {
+        out.push_str(&format!(
+            "\n{hinted_count} more have a state filled in from the agent's log at start-up and are not listed: those states are only guesses from the logs and nothing has been reported since."
         ));
     }
     Ok(out)
@@ -363,6 +407,7 @@ mod tests {
                 last_known: SessionState::Working,
                 age_secs: Some(750),
                 label: None,
+                ended_inferred: false,
             },
             OverviewRow {
                 tool: "codex".into(),
@@ -371,6 +416,7 @@ mod tests {
                 last_known: SessionState::NeedsAttention,
                 age_secs: Some(4000),
                 label: Some("Fix the build".into()),
+                ended_inferred: false,
             },
             OverviewRow {
                 tool: "cursor".into(),
@@ -379,18 +425,64 @@ mod tests {
                 last_known: SessionState::Idle,
                 age_secs: None,
                 label: None,
+                ended_inferred: false,
+            },
+            OverviewRow {
+                tool: "codex".into(),
+                state: SessionState::Ended,
+                reason: ViewReason::Observed,
+                last_known: SessionState::Ended,
+                age_secs: Some(300),
+                label: None,
+                ended_inferred: true,
+            },
+            OverviewRow {
+                tool: "claude-code".into(),
+                state: SessionState::Ended,
+                reason: ViewReason::Observed,
+                last_known: SessionState::Ended,
+                age_secs: Some(300),
+                label: None,
+                ended_inferred: false,
             },
         ];
-        let t = render_overview(&rows, 5);
+        let t = render_overview(&rows, 7);
         assert!(t.contains("1. claude-code: working for 12 min"));
         assert!(t.contains("2. codex: state unknown (no update for a while; last reported: needs attention 1 h 6 min ago)"));
         assert!(t.contains("   Task: Fix the build"));
         assert!(t.contains("3. cursor: state unknown (not confirmed since Lullshift started"));
+        assert!(t.contains(
+            "4. codex: ended (inferred: the agent's program is no longer running; the agent did not report this) 5 min ago"
+        ));
+        assert!(t.contains("5. claude-code: ended for 5 min"), "{t}");
         assert!(t.contains("(and 2 more not listed)"));
         assert_eq!(
             render_overview(&[], 0),
             "No agent sessions are being tracked right now."
         );
+    }
+
+    #[test]
+    fn mark_counts_never_underflow_on_a_tampered_row() {
+        let rec = |id: &str| agent_core::SessionRecord {
+            provider: "claude-code".into(),
+            provider_session_id: id.into(),
+            state: SessionState::Idle,
+            state_timestamp_utc: None,
+            last_seen_utc: OffsetDateTime::UNIX_EPOCH,
+            last_received_utc: OffsetDateTime::UNIX_EPOCH,
+        };
+        let key = |id: &str| ("claude-code".to_owned(), id.to_owned());
+        let t = OffsetDateTime::UNIX_EPOCH;
+        let records = [rec("import"), rec("guess"), rec("tampered"), rec("plain")];
+        let imported: Marks = [(key("import"), t), (key("guess"), t)].into();
+        // "tampered" is hinted but not imported; the old subtraction gave 2 - 2 + ... wrongly.
+        let hinted: Marks = [(key("guess"), t), (key("tampered"), t)].into();
+        assert_eq!(mark_counts(&records, &imported, &hinted), (1, 2));
+        // More hinted than imported overall: still no panic.
+        let hinted: Marks = [(key("tampered"), t), (key("plain"), t)].into();
+        let imported: Marks = Marks::new();
+        assert_eq!(mark_counts(&records, &imported, &hinted), (0, 2));
     }
 
     #[test]

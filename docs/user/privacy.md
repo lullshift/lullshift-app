@@ -58,6 +58,8 @@ Agent hooks send Lullshift only the session ID, event type and time. Prompts, co
 
 **Import sessions** is the one exception you start yourself. Only when you open it, Lullshift reads the start and the end of each agent's own session log files on your computer (never the whole file), and for OpenCode runs one read-only SQLite query on its session database, to list sessions with their project folder, title and a guess at their state. Logs on a network drive are not read. Nothing is uploaded. The titles are shown in the dialog only; Lullshift keeps an imported session's title (or first prompt, as captured intent) only if Task context is on for that tool. See [Importing sessions already running](connecting-agents.md#importing-sessions-already-running).
 
+Two more things concern agents' sessions. Each hook also tells Lullshift which program it belongs to (its process ID and start time, nothing else), and Lullshift checks every 45 seconds whether that program is still running, so that a session whose agent has exited reads "Ended (process gone)". It only asks the system whether the program exists; it never stops or reads it. And, only if you turn on **Catch up from agent logs at startup** in Settings (off by default), Lullshift reads the start and end of the same agent log files each time it starts, as Import does, and keeps only times and whether a turn ended, for sessions it already tracks. See [Sessions that end without saying goodbye](connecting-agents.md#sessions-that-end-without-saying-goodbye).
+
 ## Where your data lives
 
 | System | App data folder |

@@ -1,8 +1,28 @@
 import { useId, useState } from "react";
-import { ellipsize, relativeTime } from "../format";
+import { ellipsize, relativeTime, stripInvisible } from "../format";
 import { Dialog } from "../ui/Dialog";
 import { MenuButton } from "../ui/MenuButton";
 import type { Thread } from "./api";
+import { threadMark, useInflight, type ThreadMark } from "./inflight";
+
+const MARK_TEXT: Record<Exclude<ThreadMark, null>, string> = {
+  writing: "Writing…",
+  approval: "Needs your approval",
+  new: "New reply",
+  failed: "Reply failed",
+};
+
+/** A status in words; the dot is only an extra cue and is hidden from screen readers. */
+function ThreadMarkView({ mark }: { mark: ThreadMark }) {
+  if (!mark) return null;
+  return (
+    <span className={`thread-mark thread-mark-${mark}`}>
+      <span className="thread-dot" aria-hidden="true" />
+      {MARK_TEXT[mark]}
+      <span className="visually-hidden">. </span>
+    </span>
+  );
+}
 
 interface Props {
   threads: readonly Thread[];
@@ -16,7 +36,7 @@ interface Props {
 
 const TITLE_MAX = 120;
 
-export const fullTitle = (t: Thread) => t.title.trim() || "Untitled conversation";
+export const fullTitle = (t: Thread) => stripInvisible(t.title).trim() || "Untitled conversation";
 export const threadLabel = (t: Thread) => ellipsize(fullTitle(t), 60);
 
 /**
@@ -33,6 +53,7 @@ export function ThreadList({
   onDelete,
 }: Props) {
   const inputId = useId();
+  const inflight = useInflight();
   const [renaming, setRenaming] = useState<Thread | null>(null);
   const [draft, setDraft] = useState("");
   const [deleting, setDeleting] = useState<Thread | null>(null);
@@ -69,8 +90,13 @@ export function ThreadList({
                 title={fullTitle(t)}
                 onClick={() => onSelect(t.id)}
               >
-                <span className="thread-title">{fullTitle(t)}</span>
-                <span className="thread-meta">{relativeTime(t.updatedAt, now)}</span>
+                <span className="thread-title">
+                  <bdi>{fullTitle(t)}</bdi>
+                </span>
+                <span className="thread-meta">
+                  <ThreadMarkView mark={threadMark(inflight.get(t.id))} />
+                  {relativeTime(t.updatedAt, now)}
+                </span>
               </button>
               <MenuButton
                 label={`More actions for ${threadLabel(t)}`}

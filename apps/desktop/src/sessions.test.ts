@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { adapterErrorText, adapterStatusText } from "./adapters";
 import { createDashboardStore } from "./dashboardStore";
 import {
+  ENDED_PROCESS_GONE_LABEL,
   NOT_TRACKED_LABEL,
   healthProblems,
+  isProcessGone,
   isTracked,
   liveState,
   reasonText,
@@ -223,5 +225,34 @@ describe("adapter labels", () => {
 
   it("labels ended sessions without claiming completion", () => {
     expect(stateView("ended")).toEqual({ label: "Ended", tone: "neutral" });
+  });
+});
+
+describe("sessions Lullshift ended because the process is gone (decision 35)", () => {
+  const gone = s("g", "ended", "2026-11-05T10:00:00Z", { endedReason: "process_gone" });
+
+  it("says so in the pill and the reason, never as a plain Ended", () => {
+    expect(isProcessGone(gone)).toBe(true);
+    expect(sessionStateView(gone)).toEqual({ label: ENDED_PROCESS_GONE_LABEL, tone: "neutral" });
+    expect(ENDED_PROCESS_GONE_LABEL).toBe("Ended (process gone)");
+    const why = reasonText(gone, 600) ?? "";
+    expect(why).toMatch(/process is no longer running/);
+    expect(why).toMatch(/didn't say so itself/);
+    expect(why).toMatch(/reopens/);
+  });
+
+  it("leaves an Ended the agent reported alone, and ignores the reason on other states", () => {
+    const reported = s("r", "ended", "2026-11-05T10:00:00Z");
+    expect(isProcessGone(reported)).toBe(false);
+    expect(sessionStateView(reported)).toEqual({ label: "Ended", tone: "neutral" });
+    expect(reasonText(reported, 600)).toBeNull();
+    // A reopened session no longer carries the reason; a stale one would not claim it.
+    const reopened = s("o", "working", "2026-11-05T10:00:00Z", { endedReason: "process_gone" });
+    expect(isProcessGone(reopened)).toBe(false);
+    expect(sessionStateView(reopened).label).toBe("Working");
+  });
+
+  it("is not treated as live, so it never counts as Working or Needs you", () => {
+    expect(liveState(gone)).toBe("ended");
   });
 });

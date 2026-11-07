@@ -27,6 +27,7 @@ dependencies = [
  "agent-ipc",
  "getrandom 0.4.3",
  "libc",
+ "process-probe",
  "rusqlite",
  "serde",
  "serde_json",
@@ -53,6 +54,7 @@ version = "0.1.0"
 dependencies = [
  "agent-core",
  "getrandom 0.4.3",
+ "process-probe",
  "serde",
  "serde_json",
  "tempfile",
@@ -3442,6 +3444,7 @@ name = "local-store"
 version = "0.1.0"
 dependencies = [
  "agent-core",
+ "process-probe",
  "rusqlite",
  "serde_json",
  "tempfile",
@@ -3478,6 +3481,7 @@ dependencies = [
  "macos-webrtc",
  "marketplace",
  "pack-media",
+ "process-probe",
  "regex",
  "rusqlite",
  "serde",
@@ -4388,6 +4392,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "process-probe"
+version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

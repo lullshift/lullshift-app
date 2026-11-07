@@ -16,6 +16,10 @@
 
 **A session stays on "Working".** Some agents send nothing when you interrupt a turn. After 10 minutes with no update, the session is marked as out of date and shows its last known state.
 
+**A session says "Ended (process gone)" but the agent is still running.** Lullshift noted a program that has exited (for example a short-lived helper the agent started the hook from). The agent's next update reopens the session. If it keeps happening, open a session's details and see [Sessions that end without saying goodbye](connecting-agents.md#sessions-that-end-without-saying-goodbye).
+
+**A session that ended stays on "Not confirmed since Lullshift started".** Lullshift only learns the agent's program from a hook event, so a session that hasn't sent one since you updated Lullshift has none noted. Turn on **Catch up from agent logs at startup** in Settings to update such sessions at the next start, or use **Delete** in the session's details.
+
 **No "needs you" notification.**
 
 - In **Settings**, check that System notifications are allowed, and check your quiet hours.

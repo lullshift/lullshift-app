@@ -795,6 +795,61 @@ fn imported_sessions_are_never_presented_as_reported_states() {
 }
 
 #[test]
+fn an_inferred_end_and_a_catch_up_guess_are_never_presented_as_reported() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 5000);
+    let now = OffsetDateTime::now_utc();
+    let earlier = now - time::Duration::minutes(30);
+    let event = |n: u32, session: &str, kind: &str| {
+        agent_core::parse_event(&format!(
+            r#"{{"schemaVersion":1,"eventId":"00000000-0000-4000-8000-{n:012}","provider":"claude-code","providerSessionId":"{session}","eventType":"{kind}","timestampUtc":"{}"}}"#,
+            earlier
+                .format(&time::format_description::well_known::Rfc3339)
+                .expect("fmt")
+        ))
+        .expect("event")
+    };
+    let process = local_store::ProcessKey::new(4242, 99);
+    with_store(&core, |s| {
+        s.ingest_with_process(&event(1, "gone", "working"), earlier, Some(process))?;
+        s.end_session_process_gone("claude-code", "gone", process, now, now)?;
+        s.ingest(&event(2, "hinted", "working"), earlier)?;
+        s.apply_log_hint(
+            "claude-code",
+            "hinted",
+            agent_core::SessionState::Idle,
+            now - time::Duration::minutes(5),
+            now,
+        )
+        .map(|_| ())
+    })
+    .expect("setup");
+    let out = lookups::session_overview(&core, now).expect("overview");
+    assert!(
+        out.contains("ended (inferred: the agent's program is no longer running"),
+        "{out}"
+    );
+    assert!(out.contains("1 more have a state filled in from the agent's log at start-up"));
+    assert!(
+        !out.contains("imported from agent logs"),
+        "a catch-up guess is not an import: {out}"
+    );
+    let gone = with_store(&core, |s| session_facts(s, "claude-code", "gone")).expect("facts");
+    assert!(
+        gone.status.contains("inferred by Lullshift"),
+        "{}",
+        gone.status
+    );
+    assert!(!gone.status.contains("as last reported"));
+    let hinted = with_store(&core, |s| session_facts(s, "claude-code", "hinted")).expect("facts");
+    assert!(
+        hinted
+            .status
+            .contains("guessed from the agent's log, filled in at start-up")
+    );
+}
+
+#[test]
 fn break_suggestions_and_help_come_from_installed_activities_only() {
     let dir = tempfile::tempdir().expect("dir");
     let core = core_with(dir.path(), memory(), 5000);

@@ -14,7 +14,7 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 
 use crate::protocol::{
-    Config, EventContext, EventSink, Handler, PROTOCOL_VERSION, Reply, StatsSnapshot,
+    Config, EventContext, EventSink, Handler, PROTOCOL_VERSION, ProcessRef, Reply, StatsSnapshot,
 };
 use crate::token::{Token, create_private_dir};
 
@@ -326,6 +326,17 @@ pub fn request_line(
     event_json: &str,
     context: Option<&EventContext>,
 ) -> Result<Vec<u8>, ClientError> {
+    request_line_with_process(token, event_json, context, None)
+}
+
+/// [`request_line`] with the agent's process (decision 35): `"process":{"pid":...,"start":...}`
+/// only when there is one.
+pub fn request_line_with_process(
+    token: &str,
+    event_json: &str,
+    context: Option<&EventContext>,
+    process: Option<ProcessRef>,
+) -> Result<Vec<u8>, ClientError> {
     let event: &serde_json::value::RawValue = serde_json::from_str(event_json).map_err(|_| {
         ClientError::Io(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -340,6 +351,9 @@ pub fn request_line(
     if let Some(c) = context.filter(|c| !c.is_empty()) {
         envelope["context"] = serde_json::to_value(c).map_err(|_| ClientError::BadReply)?;
     }
+    if let Some(p) = process {
+        envelope["process"] = serde_json::to_value(p).map_err(|_| ClientError::BadReply)?;
+    }
     let mut line = serde_json::to_vec(&envelope).map_err(|_| ClientError::BadReply)?;
     line.push(b'\n');
     Ok(line)
@@ -353,11 +367,22 @@ pub async fn send_event_with_context(
     context: Option<&EventContext>,
     deadline: Duration,
 ) -> Result<Reply, ClientError> {
+    send_event_full(data_dir, event_json, context, None, deadline).await
+}
+
+/// [`send_event_with_context`] with the agent's process beside the event (decision 35).
+pub async fn send_event_full(
+    data_dir: &Path,
+    event_json: &str,
+    context: Option<&EventContext>,
+    process: Option<ProcessRef>,
+    deadline: Duration,
+) -> Result<Reply, ClientError> {
     let ipc_dir = data_dir.join(IPC_DIR);
     let endpoint = Endpoint::read(data_dir).map_err(|_| ClientError::NotRunning)?;
     let token = fs::read_to_string(ipc_dir.join(crate::token::TOKEN_FILE))
         .map_err(|_| ClientError::NotRunning)?;
-    let line = request_line(token.trim(), event_json, context)?;
+    let line = request_line_with_process(token.trim(), event_json, context, process)?;
     tokio::time::timeout(deadline, exchange(&endpoint, &line))
         .await
         .map_err(|_| ClientError::Io(io::ErrorKind::TimedOut.into()))?

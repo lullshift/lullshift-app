@@ -506,6 +506,22 @@ export function streamStatus(s: StreamState | null, host: string | null): string
   return s.text.length === 0 ? `Waiting for ${where}…` : "Companion is replying…";
 }
 
+/**
+ * While a send is in flight the core has already stored your message (as pending), and the
+ * screen shows it from the typed text. Reading the thread again then (coming back to it mid-
+ * stream) would list it twice, so the stored pending copy is left out until the request ends.
+ */
+export function withoutInFlightMessage<T extends { role: string; status: string }>(
+  messages: readonly T[],
+  optimisticText: string | null,
+): readonly T[] {
+  if (optimisticText === null) return messages;
+  const last = messages[messages.length - 1];
+  return last && last.role === "user" && last.status === "pending"
+    ? messages.slice(0, -1)
+    : messages;
+}
+
 // ---------- Remembered context ----------
 
 /** The composer's draft for a scope that was chosen before. */

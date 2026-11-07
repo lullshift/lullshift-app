@@ -101,6 +101,27 @@ What to expect:
 - The state is a guess from the end of the log. Imported sessions are listed under **History** with a **From log** tag, and the Companion and exports call their state a guess from the log. They never notify you, wake the tray icon or pause an activity. As soon as the agent sends its next hook event, the tag goes away and Lullshift tracks the session as usual.
 - Cursor's logs can't tell "may need you", so Cursor sessions are never guessed that way. OpenCode support is experimental and only guesses Working or Unknown.
 
+## Sessions that end without saying goodbye
+
+Sometimes an agent's program is closed, killed or crashes without sending a final update. When an agent's hook runs, Lullshift notes which program it belongs to. While Lullshift is running it checks about every 45 seconds whether that program still exists. If it is gone on two checks in a row and the session has been silent for two minutes, the session is shown as **Ended (process gone)** under History, so it can take a few minutes. A session that is waiting for you (**Needs you**) is never ended this way.
+
+- This only looks at whether a program is still running. Lullshift never stops, signals or changes any program, and never reads its memory or files.
+- If it can't tell (for example Windows won't let it look at a program started by another user or as administrator), nothing changes.
+- It is Lullshift's conclusion, not the agent's report, and says so in the session's details and exports. If the agent sends another update after all, the session reopens at once.
+- On Linux, a program seen inside a container or Flatpak sandbox (a different process namespace than Lullshift) is ignored. In WSL, the agent's program is not visible to Lullshift on Windows reliably, so sessions started there may be ended wrongly or never.
+- It can be wrong in one way: if what Lullshift noted was a short-lived helper that exited while the agent kept going, a live session shows **Ended (process gone)** until its next update.
+- Cursor runs all its chats inside one long-lived program, so a Cursor chat you closed stays as it was while Cursor is open. Sessions from before you updated Lullshift have no program noted and are left alone.
+
+## Catching up after Lullshift was closed
+
+Events that happen while Lullshift isn't running are lost. In **Settings > Sessions**, turn on **Catch up from agent logs at startup** (off by default) and, each time Lullshift starts, it reads your agents' own log files, the same way [Import sessions](#importing-sessions-already-running) does, to update sessions it already tracks.
+
+- Only times and whether a turn ended are used. Titles, prompts and code are not kept, even if Task context is on. Nothing is uploaded.
+- It never adds sessions (use **Import sessions** for that) and only applies a log that is clearly newer than the last thing the agent told Lullshift. It never overrides a newer update, and leaves finished sessions alone.
+- What it fills in is a guess, shown with the **From log** tag under History, and never notifies you. The agent's next update takes over.
+- It runs in the background. Settings shows what the last run did, including agents whose logs couldn't be read, and says when a limit cut it short.
+- Turning it on takes effect at the next start of Lullshift.
+
 ## Disconnecting
 
 Choose **Disconnect** on the agent's card, then **Remove hooks** (**Remove plugin** for OpenCode, which deletes `lullshift-observer.js`; restart OpenCode afterwards).

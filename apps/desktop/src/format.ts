@@ -39,6 +39,19 @@ export interface SessionName {
 
 const clean = (t: string | null | undefined) => (t ?? "").replace(/\s+/g, " ").trim();
 
+/**
+ * Removes characters that change how text reads or hide it: bidirectional controls (U+202A to
+ * U+202E, U+2066 to U+2069, U+061C), zero-width and mark characters (U+200B to U+200F), soft
+ * hyphen, BOM, line and paragraph separators, and every other format (Cf) character. Used where a
+ * user-chosen title is shown in a notice or list, so it can't reorder the text around it.
+ */
+export function stripInvisible(text: string): string {
+  return text.replace(
+    /[\u202A-\u202E\u2066-\u2069\u200B-\u200F\u061C\u00AD\uFEFF\u2028\u2029]|\p{Cf}/gu,
+    "",
+  );
+}
+
 /** Cuts to `max` characters in total, ending in an ellipsis when something was removed. */
 export function ellipsize(text: string, max: number): string {
   const chars = [...text];

@@ -5,6 +5,7 @@ import { AppearanceSettings } from "./AppearanceSettings";
 import { CompanionSettings } from "./companion/CompanionSettings";
 import { ContextSettings } from "./context/ContextSettings";
 import { NotificationSettings } from "./NotificationSettings";
+import { SessionTrackingSettings } from "./SessionTrackingSettings";
 import { Banner } from "./ui/Banner";
 import { Icon } from "./ui/Icon";
 import { Switch } from "./ui/Switch";
@@ -168,6 +169,8 @@ export default function Settings({
         </div>
         <NotificationSettings />
       </div>
+
+      <SessionTrackingSettings />
 
       <ContextSettings />
 

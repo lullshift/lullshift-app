@@ -293,7 +293,7 @@ mod tests {
     }
 
     /// Unsafe code is forbidden for this crate by inheriting the workspace lints, and only
-    /// `macos-webrtc` and `windows-package` (one Win32 call, decision 33) may opt out. `forbid` cannot be overridden by an attribute, so what has
+    /// `macos-webrtc`, `windows-package` (decision 33) and `process-probe` (decision 35) may opt out. `forbid` cannot be overridden by an attribute, so what has
     /// to be checked is the manifests: this crate and every other workspace crate inherit the
     /// workspace lints, the workspace forbids unsafe code, and no manifest lowers the lint.
     #[test]
@@ -338,18 +338,17 @@ mod tests {
         exceptions.sort();
         assert_eq!(
             exceptions,
-            ["macos-webrtc", "windows-package"],
-            "only macos-webrtc and windows-package may differ from the workspace lints"
+            ["macos-webrtc", "process-probe", "windows-package"],
+            "only macos-webrtc, process-probe and windows-package may differ from the workspace lints"
         );
-        // And those two crates are the only places with an unsafe block or an allow attribute.
+        // And those three crates are the only places with an unsafe block or an allow attribute.
         let mut found = Vec::new();
         let mut dirs = vec![desktop.join("src"), desktop.join("build.rs")];
         for entry in std::fs::read_dir(root.join("crates")).expect("crates dir") {
             let path = entry.expect("entry").path();
-            if path
-                .file_name()
-                .is_some_and(|n| n != "macos-webrtc" && n != "windows-package")
-            {
+            if path.file_name().is_some_and(|n| {
+                n != "macos-webrtc" && n != "process-probe" && n != "windows-package"
+            }) {
                 dirs.push(path.join("src"));
                 dirs.push(path.join("tests"));
                 dirs.push(path.join("build.rs"));
@@ -390,7 +389,7 @@ mod tests {
         found.retain(|f| !f.ends_with("webrtc.rs"));
         assert!(
             found.is_empty(),
-            "unsafe code outside macos-webrtc and windows-package: {found:?}"
+            "unsafe code outside macos-webrtc, process-probe and windows-package: {found:?}"
         );
         // The windows-package exemption covers exactly its five documented Win32 calls
         // (decision 33 review L3), and the crate denies undocumented unsafe blocks.
@@ -416,6 +415,41 @@ mod tests {
         }
         assert!(
             win.contains("#![deny(clippy::undocumented_unsafe_blocks, unsafe_op_in_unsafe_fn)]")
+        );
+        // process-probe (decision 35, ADR-025): unsafe only in its Windows module, exactly its
+        // eight documented Win32 calls (one handle close, seven lookups), no other kind of unsafe.
+        let probe_dir = root.join("crates/process-probe/src");
+        let mut probe_blocks = 0;
+        for entry in std::fs::read_dir(&probe_dir).expect("process-probe src") {
+            let path = entry.expect("entry").path();
+            let src = std::fs::read_to_string(&path).expect("source");
+            let n: usize = src
+                .lines()
+                .map(|l| {
+                    l.split("//")
+                        .next()
+                        .unwrap_or("")
+                        .matches("unsafe {")
+                        .count()
+                })
+                .sum();
+            if path.file_name().is_some_and(|f| f == "windows.rs") {
+                probe_blocks = n;
+            } else {
+                assert_eq!(n, 0, "unsafe block outside windows.rs: {}", path.display());
+            }
+            for word in ["unsafe fn", "unsafe impl", "unsafe extern"] {
+                assert!(
+                    !src.lines()
+                        .any(|l| l.split("//").next().unwrap_or("").contains(word)),
+                    "{word} in process-probe"
+                );
+            }
+        }
+        assert_eq!(probe_blocks, 8, "unsafe blocks in process-probe");
+        let lib = std::fs::read_to_string(probe_dir.join("lib.rs")).expect("lib source");
+        assert!(
+            lib.contains("#![deny(clippy::undocumented_unsafe_blocks, unsafe_op_in_unsafe_fn)]")
         );
     }
 

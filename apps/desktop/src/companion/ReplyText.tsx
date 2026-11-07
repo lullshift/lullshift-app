@@ -2,7 +2,13 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Banner } from "../ui/Banner";
 import { Dialog } from "../ui/Dialog";
 import { companionOpenLink, toCommandError } from "./api";
-import { highlightToReact, languageLabel } from "./highlight";
+import {
+  highlighterReady,
+  highlightToReact,
+  isKnownLanguage,
+  languageLabel,
+  loadHighlighter,
+} from "./highlight";
 import { errorText, plainLines } from "./logic";
 import { displayUrl, findLinks, hostOf, isLocalHost, parseReply } from "./replyFormat";
 import "./reply.css";
@@ -74,6 +80,30 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 /**
+ * Loads the highlighting grammars the first time a block needs them (they are a separate chunk).
+ * Returns true once they are ready; until then, and if loading fails, code is shown plain.
+ */
+function useHighlighter(needed: boolean): boolean {
+  const [ready, setReady] = useState(highlighterReady);
+  useEffect(() => {
+    if (!needed || ready) return;
+    let live = true;
+    loadHighlighter().then(
+      () => {
+        if (live) setReady(true);
+      },
+      () => {
+        // Plain code is a fine fallback; nothing to tell the user.
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [needed, ready]);
+  return ready;
+}
+
+/**
  * A fenced code block. Memoised (security review F2): while a reply streams, a block that is
  * already complete is not rendered or highlighted again, and a block that is still being written
  * is shown plain and highlighted once, when its fence closes or the reply ends.
@@ -91,9 +121,10 @@ const CodeBlock = memo(function CodeBlock({
 }) {
   const label = languageLabel(lang);
   const writing = !closed && streaming;
+  const ready = useHighlighter(!writing && isKnownLanguage(lang));
   const body = useMemo(
-    () => (writing ? code : highlightToReact(lang, code)),
-    [writing, lang, code],
+    () => (writing || !ready ? code : highlightToReact(lang, code)),
+    [writing, ready, lang, code],
   );
   return (
     <div className="reply-code" role="group" aria-label={`${label} code`}>

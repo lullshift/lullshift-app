@@ -171,6 +171,24 @@ export const SESSIONS: DemoSession[] = [
       ],
     }),
   },
+  {
+    // Decision 35: the agent's program exited without saying goodbye.
+    view: view("cursor", "e52d7a10", "ended", 95, "Rename the settings keys", {
+      endedReason: "process_gone",
+      lastKnownState: "ended",
+    }),
+    detail: detail({
+      context: {
+        userTitle: "Rename the settings keys",
+        intent: { text: "Rename the old settings keys and keep a migration.", source: "user" },
+      },
+      timeline: [
+        { timestampUtc: ago(140), eventType: "session_started", reason: null },
+        { timestampUtc: ago(139), eventType: "working", reason: null },
+        { timestampUtc: ago(96), eventType: "turn_ended", reason: null },
+      ],
+    }),
+  },
 ];
 
 export const PROFILE: ProviderProfile = {

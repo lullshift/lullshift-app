@@ -41,6 +41,12 @@ export interface SessionView {
    * not tracked yet, never counts as Needs you or Working, and never alerts.
    */
   importedUtc?: string | null;
+  /**
+   * `process_gone` when Lullshift itself ended the session (state `ended`) because the agent's
+   * process is no longer running (decision 35). The agent never reported the end; any later
+   * event from it reopens the session.
+   */
+  endedReason?: string | null;
 }
 
 export type Health = { status: "ok" } | { status: "error"; code: string };
@@ -87,6 +93,14 @@ export function isImported(s: Pick<SessionView, "importedUtc">): boolean {
 
 export const FROM_LOG_LABEL = "From log";
 
+export const PROCESS_GONE = "process_gone";
+export const ENDED_PROCESS_GONE_LABEL = "Ended (process gone)";
+
+/** True for a session Lullshift ended because the agent's process is gone (not reported). */
+export function isProcessGone(s: Partial<Pick<SessionView, "state" | "endedReason">>): boolean {
+  return s.state === "ended" && s.endedReason === PROCESS_GONE;
+}
+
 /** What an imported session's guessed state is called: the import dialog's words. */
 const GUESS_LABELS: Partial<Record<SessionState, string>> = {
   working: "Working",
@@ -95,7 +109,7 @@ const GUESS_LABELS: Partial<Record<SessionState, string>> = {
 };
 
 type PillInput = Pick<SessionView, "state" | "disconnectedUtc"> &
-  Partial<Pick<SessionView, "importedUtc" | "lastKnownState">>;
+  Partial<Pick<SessionView, "importedUtc" | "lastKnownState" | "endedReason">>;
 
 /**
  * The state that counts for grouping, summaries and the panel: a session that is no longer
@@ -117,6 +131,7 @@ export function sessionStateView(s: PillInput): StateView {
     const guess = s.lastKnownState ?? s.state;
     return { label: GUESS_LABELS[guess] ?? "Unknown", tone: "neutral" };
   }
+  if (isProcessGone(s)) return { label: ENDED_PROCESS_GONE_LABEL, tone: "neutral" };
   return VIEWS[s.state];
 }
 
@@ -127,6 +142,8 @@ export function reasonText(s: SessionView, staleAfterSeconds: number): string | 
     return `The tool was disconnected, so this session is no longer tracked. ${lastKnown}`;
   if (isImported(s))
     return "Imported from the agent's own log. The state is a guess until the agent sends its next update.";
+  if (isProcessGone(s))
+    return "Lullshift ended this session because the agent's process is no longer running. The agent didn't say so itself. If it sends another update, the session reopens.";
   switch (s.reason) {
     case "observed":
       return null;
