@@ -126,6 +126,18 @@ describe("launches", () => {
     expect(hostEl()?.textContent).toBe("Bravo:mount-2");
   });
 
+  it("makes one host when the same different activity is chosen twice while the first pauses", async () => {
+    await render({ id: "a", nonce: 1, activity: A }, 0);
+    await render({ id: "b", nonce: 2, activity: B }, 0);
+    await render({ id: "b", nonce: 3, activity: B }, 0);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    expect(mounts).toBe(2);
+    expect(log.filter((l) => l === "unmount a")).toHaveLength(1);
+    expect(hostEl()?.textContent).toBe("Bravo:mount-2");
+  });
+
   it("resumes the activity that is already paused in one step, without a new host", async () => {
     await render({ id: "a", nonce: 1, activity: A }, 0);
     await render({ id: "a", nonce: 2, activity: A }, 0);

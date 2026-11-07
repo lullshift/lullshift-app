@@ -78,6 +78,11 @@ export default function HomeView({
 
   const list = activities.status === "ready" ? activities.list : null;
   const [shuffles, setShuffles] = useState(0);
+  // The suggestion is spoken only when the person pressed Shuffle: set by the click, cleared
+  // when it changes for any other reason (a list or estimate update).
+  const [announce, setAnnounce] = useState(false);
+  const [clicked, setClicked] = useState(false);
+  const [lastId, setLastId] = useState<string | null>(null);
   const seed = dateSeed(new Date(now));
   const suggestion = useMemo(
     () =>
@@ -94,6 +99,12 @@ export default function HomeView({
         : null,
     [list, waiting?.medianSeconds, working.length, seed, shuffles],
   );
+  const suggestedId = suggestion?.activity.id ?? null;
+  if (suggestedId !== lastId) {
+    setLastId(suggestedId);
+    if (!clicked) setAnnounce(false);
+    setClicked(false);
+  }
   const saved = list ? savedNewestFirst(list) : [];
 
   return (
@@ -177,8 +188,12 @@ export default function HomeView({
         line={waitLine(waiting, working.length > 0)}
         suggestion={suggestion}
         onStart={onStartActivity}
-        onShuffle={() => setShuffles((n) => n + 1)}
-        announce={shuffles > 0}
+        onShuffle={() => {
+          setShuffles((n) => n + 1);
+          setAnnounce(true);
+          setClicked(true);
+        }}
+        announce={announce}
         canShuffle={(list?.length ?? 0) > 1}
         onManage={() => onOpenPage("play")}
         onRetry={onRefresh}

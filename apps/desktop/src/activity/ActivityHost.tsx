@@ -135,6 +135,22 @@ export function ActivityHost({
   // Seconds played this visit (shown) and not yet added to the stored total.
   const [playedNow, setPlayedNow] = useState(0);
   const unsaved = useRef(0);
+  // Bumped by every pause and every start: a start that finds it changed (or the host hidden or
+  // unmounted) when its async steps finish must not mount the frame.
+  const generation = useRef(0);
+  const activeRef = useRef(active);
+  const mounted = useRef(true);
+  // The generation of the start in flight (0 if none): a resume joins it instead of starting again.
+  const starting = useRef(0);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const launched = useRef(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const preview = usePreview(activity.id, activity.preview);
@@ -209,6 +225,7 @@ export function ActivityHost({
   /** Saves if it can, then removes the iframe. Works whether or not the activity cooperates. */
   const freeze = useCallback(
     async (reason: PauseReason, provider?: string) => {
+      generation.current += 1;
       const current = phaseRef.current.kind;
       if (current === "pausing") {
         await freezing.current;
@@ -235,37 +252,58 @@ export function ActivityHost({
    * state, then creates a fresh iframe for this launch. A pack that fails the check never starts.
    */
   const { id: activityId, engine } = activity;
-  const start = useCallback(
-    () =>
-      saveChain.current
-        .then(() => loadContent({ id: activityId, engine }))
-        .then((checked) => {
-          if (!checked.ok) {
-            setPhase({ kind: "invalid", problem: checked.problem });
-            return;
-          }
-          contentRef.current = checked.content;
-          return invoke<{ snapshot: string } | null>("activity_snapshot", { id: activityId })
-            .then((snap) => (snap ? (JSON.parse(snap.snapshot) as unknown) : null))
-            .catch(() => null)
-            .then((restore) => {
-              restoreRef.current = restore;
-              missed.current = 0;
-              pending.current.clear();
-              // A fresh key per launch; it replaces any earlier key for this activity.
-              return invoke<string>("activity_launch", { id: activityId }).then(
-                (url) => {
-                  frameLoads.current = 0;
-                  setFrameUrl(url);
-                  setNonce(newNonce());
-                  setPhase({ kind: "loading" });
-                },
-                () => setPhase({ kind: "failed" }),
-              );
-            });
-        }),
-    [activityId, engine, setPhase],
-  );
+  const start = useCallback(() => {
+    const mine = (generation.current += 1);
+    starting.current = mine;
+    // Still wanted: this launch is the latest, the host is mounted and showing.
+    const wanted = () => mounted.current && generation.current === mine && activeRef.current;
+    // Not wanted any more: if a pause came in meanwhile it already set the phase; if the host was
+    // merely hidden, it stays paused.
+    const dropped = () => {
+      if (mounted.current && generation.current === mine && phaseRef.current.kind !== "paused") {
+        setPhase({ kind: "paused", reason: "away", saved: false });
+      }
+    };
+    return saveChain.current
+      .then(() => loadContent({ id: activityId, engine }))
+      .then((checked) => {
+        if (!wanted()) return dropped();
+        if (!checked.ok) {
+          setPhase({ kind: "invalid", problem: checked.problem });
+          return;
+        }
+        contentRef.current = checked.content;
+        return invoke<{ snapshot: string } | null>("activity_snapshot", { id: activityId })
+          .then((snap) => (snap ? (JSON.parse(snap.snapshot) as unknown) : null))
+          .catch(() => null)
+          .then((restore) => {
+            if (!wanted()) return dropped();
+            restoreRef.current = restore;
+            missed.current = 0;
+            pending.current.clear();
+            // A fresh key per launch; it replaces any earlier key for this activity.
+            return invoke<string>("activity_launch", { id: activityId }).then(
+              (url) => {
+                if (!wanted()) {
+                  // Paused or closed while the key was being issued: end it, stay paused.
+                  void invoke("activity_launch_end", { id: activityId }).catch(() => undefined);
+                  return dropped();
+                }
+                frameLoads.current = 0;
+                setFrameUrl(url);
+                setNonce(newNonce());
+                setPhase({ kind: "loading" });
+              },
+              () => {
+                if (wanted()) setPhase({ kind: "failed" });
+              },
+            );
+          });
+      })
+      .finally(() => {
+        if (starting.current === mine) starting.current = 0;
+      });
+  }, [activityId, engine, setPhase]);
 
   useEffect(() => {
     if (!controlRef) return;
@@ -275,7 +313,16 @@ export function ActivityHost({
         await saveChain.current;
       },
       resume: () => {
-        if (phaseRef.current.kind === "paused") void start();
+        void (async () => {
+          // A pause still saving finishes first, so one click is enough.
+          if (phaseRef.current.kind === "pausing") {
+            await freezing.current;
+            await Promise.resolve();
+          }
+          if (phaseRef.current.kind === "paused" && starting.current !== generation.current) {
+            void start();
+          }
+        })();
       },
     };
     return () => {
@@ -329,6 +376,11 @@ export function ActivityHost({
       const m = parsed.message;
       if (m.type === "ready") {
         if (phaseRef.current.kind !== "loading") return;
+        // Hidden or paused while it loaded: never run behind the user's back.
+        if (!activeRef.current) {
+          void freeze("away");
+          return;
+        }
         post({
           type: "init",
           restore: restoreRef.current,

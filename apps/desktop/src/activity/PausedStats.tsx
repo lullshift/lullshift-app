@@ -4,8 +4,9 @@ import { truncate } from "../marketplace/logic";
 import { formatPlayed } from "./playTime";
 
 /**
- * What the paused view shows instead of an empty card (S05-T09): time played this visit, always (never a running total, ADR-026); the
- * activity's own stats if it reported any; otherwise its preview image.
+ * What the paused view shows instead of an empty card (S05-T09): time played this visit,
+ * always (never a running total, ADR-026); the activity's own stats if it reported any;
+ * otherwise its preview image.
  *
  * Host stats and activity stats are separate groups. The activity's labels are its own words, so
  * they sit under a heading with the activity's name and can't pass as a host stat.
