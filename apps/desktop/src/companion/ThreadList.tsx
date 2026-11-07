@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { ellipsize, relativeTime } from "../format";
 import { Dialog } from "../ui/Dialog";
+import { MenuButton } from "../ui/MenuButton";
 import type { Thread } from "./api";
 
 interface Props {
@@ -15,9 +16,13 @@ interface Props {
 
 const TITLE_MAX = 120;
 
-export const threadLabel = (t: Thread) => ellipsize(t.title.trim() || "Untitled conversation", 60);
+export const fullTitle = (t: Thread) => t.title.trim() || "Untitled conversation";
+export const threadLabel = (t: Thread) => ellipsize(fullTitle(t), 60);
 
-/** Thread list with new, rename and delete (with a confirm). Titles are plain text. */
+/**
+ * Thread list with new, and rename and delete (with a confirm) in each row's ⋮ menu. Titles are
+ * plain text, cut with an ellipsis; the full title shows on hover and is the button's name.
+ */
 export function ThreadList({
   threads,
   selectedId,
@@ -53,32 +58,28 @@ export function ThreadList({
       ) : (
         <ul className="thread-items">
           {threads.map((t) => (
-            <li key={t.id} className="thread-item">
+            <li
+              key={t.id}
+              className={t.id === selectedId ? "thread-item thread-item-selected" : "thread-item"}
+            >
               <button
                 type="button"
                 className="thread-select"
                 aria-current={t.id === selectedId ? "true" : undefined}
+                title={fullTitle(t)}
                 onClick={() => onSelect(t.id)}
               >
-                <span className="thread-title">{threadLabel(t)}</span>
+                <span className="thread-title">{fullTitle(t)}</span>
                 <span className="thread-meta">{relativeTime(t.updatedAt, now)}</span>
               </button>
-              <button
-                type="button"
-                className="btn-mini"
-                aria-label={`Rename ${threadLabel(t)}`}
-                onClick={() => startRename(t)}
-              >
-                Rename
-              </button>
-              <button
-                type="button"
-                className="btn-mini"
-                aria-label={`Delete ${threadLabel(t)}`}
-                onClick={() => setDeleting(t)}
-              >
-                Delete
-              </button>
+              <MenuButton
+                label={`More actions for ${threadLabel(t)}`}
+                className="thread-menu"
+                items={[
+                  { label: "Rename", onSelect: () => startRename(t) },
+                  { label: "Delete", onSelect: () => setDeleting(t), danger: true },
+                ]}
+              />
             </li>
           ))}
         </ul>
