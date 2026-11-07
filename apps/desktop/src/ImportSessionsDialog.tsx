@@ -1,11 +1,12 @@
 // Import sessions dialog (owner decision 34, ADR-024). Nothing is read until the dialog opens;
 // Cancel imports nothing. Logic lives in importSessions.ts.
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { providerName, relativeTime, shortId } from "./format";
 import {
   GUESS_LABELS,
   agentNotes,
+  cancelScan,
   countText,
   errorText,
   filterFound,
@@ -45,6 +46,23 @@ export function ImportSessionsDialog({ open, now, onClose, onImported }: Props) 
   const [importError, setImportError] = useState<string | null>(null);
   const filterId = useId();
   const countId = useId();
+  // After "Try again" the button disappears; focus goes to the status line instead of the page.
+  const refocus = useRef(false);
+  const focusWhileLoading = useCallback((el: HTMLElement | null) => {
+    if (el && refocus.current) el.focus();
+  }, []);
+  const focusResult = useCallback((el: HTMLElement | null) => {
+    if (el && refocus.current) {
+      refocus.current = false;
+      el.focus();
+    }
+  }, []);
+
+  // Closing while the logs are still being read stops the scan, so reopening isn't "busy".
+  const close = () => {
+    if (phase.kind === "loading") cancelScan().catch(() => undefined);
+    onClose();
+  };
 
   // Read the logs only while the dialog is open (and again on Try again). The parent mounts a
   // fresh dialog (new key) for each opening, so every opening starts empty.
@@ -92,7 +110,7 @@ export function ImportSessionsDialog({ open, now, onClose, onImported }: Props) 
     <Dialog
       open={open}
       title="Import sessions"
-      onClose={onClose}
+      onClose={close}
       busy={importing}
       description={
         <p>
@@ -104,7 +122,7 @@ export function ImportSessionsDialog({ open, now, onClose, onImported }: Props) 
       }
       actions={
         <>
-          <button type="button" className="btn btn-quiet" onClick={onClose} disabled={importing}>
+          <button type="button" className="btn btn-quiet" onClick={close} disabled={importing}>
             Cancel
           </button>
           <button
@@ -120,7 +138,7 @@ export function ImportSessionsDialog({ open, now, onClose, onImported }: Props) 
       }
     >
       {phase.kind === "loading" && (
-        <p className="import-status" role="status">
+        <p className="import-status" role="status" tabIndex={-1} ref={focusWhileLoading}>
           Reading the agents&apos; logs…
         </p>
       )}
@@ -130,7 +148,9 @@ export function ImportSessionsDialog({ open, now, onClose, onImported }: Props) 
           <button
             type="button"
             className="btn btn-secondary"
+            ref={focusResult}
             onClick={() => {
+              refocus.current = true;
               setPhase({ kind: "loading" });
               setAttempt((n) => n + 1);
             }}
@@ -154,7 +174,9 @@ export function ImportSessionsDialog({ open, now, onClose, onImported }: Props) 
             </ul>
           )}
           {all.length === 0 ? (
-            <p className="import-status">No sessions found in the agents&apos; logs.</p>
+            <p className="import-status" tabIndex={-1} ref={focusResult}>
+              No sessions found in the agents&apos; logs.
+            </p>
           ) : (
             <>
               <div className="import-tools">
@@ -179,7 +201,14 @@ export function ImportSessionsDialog({ open, now, onClose, onImported }: Props) 
                   Select all shown
                 </button>
               </div>
-              <p id={countId} className="import-count" role="status" aria-live="polite">
+              <p
+                id={countId}
+                className="import-count"
+                role="status"
+                aria-live="polite"
+                tabIndex={-1}
+                ref={focusResult}
+              >
                 {countText(picks.length, shown.length, all.length)}
               </p>
               {shown.length === 0 ? (

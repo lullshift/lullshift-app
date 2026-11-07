@@ -56,10 +56,10 @@ const SCAN: ScanResult = {
     row("c3", { tracked: true, lastActivityUtc: "2026-11-07T09:00:00Z" }),
   ],
   agents: [
-    { provider: "claude-code", state: "read", sessions: 2 },
-    { provider: "cursor", state: "read", sessions: 1 },
-    { provider: "codex", state: "not_found", sessions: 0 },
-    { provider: "opencode", state: "not_found", sessions: 0 },
+    { provider: "claude-code", state: "read", sessions: 2, incomplete: false },
+    { provider: "cursor", state: "read", sessions: 1, incomplete: false },
+    { provider: "codex", state: "not_found", sessions: 0, incomplete: false },
+    { provider: "opencode", state: "not_found", sessions: 0, incomplete: false },
   ],
   incomplete: true,
 };
@@ -178,6 +178,20 @@ describe("Import sessions dialog", () => {
     answer = () => SCAN;
     await click(button("Try again"));
     expect(boxes()).toHaveLength(3);
+    expect(document.activeElement?.getAttribute("role")).toBe("status");
+  });
+
+  it("closing while the logs are being read stops the scan", async () => {
+    let finish: (v: ScanResult) => void = () => undefined;
+    answer = (cmd) => (cmd === "import_scan" ? new Promise<ScanResult>((r) => (finish = r)) : null);
+    await render(true);
+    await click(button("Cancel"));
+    expect(closed).toBe(1);
+    expect(calls.map(([c]) => c)).toEqual(["import_scan", "import_cancel"]);
+    await act(async () => {
+      finish(SCAN);
+      await Promise.resolve();
+    });
   });
 
   it("an empty scan says so", async () => {

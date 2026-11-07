@@ -195,13 +195,15 @@ function handle(cmd: string, a: Args): unknown {
           tracked: f.tracked || SESSIONS.some((s) => s.view.providerSessionId === f.sessionId),
         })),
         agents: [
-          { provider: "claude-code", state: "read", sessions: 2 },
-          { provider: "cursor", state: "read", sessions: 1 },
-          { provider: "codex", state: "read", sessions: 1 },
-          { provider: "opencode", state: "not_found", sessions: 0 },
+          { provider: "claude-code", state: "read", sessions: 2, incomplete: false },
+          { provider: "cursor", state: "read", sessions: 1, incomplete: false },
+          { provider: "codex", state: "read", sessions: 1, incomplete: false },
+          { provider: "opencode", state: "not_found", sessions: 0, incomplete: false },
         ],
         incomplete: false,
       };
+    case "import_cancel":
+      return null;
     case "import_sessions": {
       const picks = (a.picks ?? []) as { provider: string; sessionId: string }[];
       let imported = 0;

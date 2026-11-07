@@ -113,13 +113,17 @@ describe("words", () => {
   it("says honestly which agents had no logs", () => {
     expect(
       agentNotes([
-        { provider: "claude-code", state: "read", sessions: 2 },
-        { provider: "opencode", state: "not_found", sessions: 0 },
-        { provider: "cursor", state: "unreadable", sessions: 0 },
+        { provider: "claude-code", state: "read", sessions: 2, incomplete: false },
+        { provider: "opencode", state: "not_found", sessions: 0, incomplete: false },
+        { provider: "cursor", state: "unreadable", sessions: 0, incomplete: false },
+        { provider: "codex", state: "not_local", sessions: 0, incomplete: false },
+        { provider: "claude-code", state: "read", sessions: 9, incomplete: true },
       ]),
     ).toEqual([
       "No OpenCode logs found on this computer.",
       "Cursor logs are there but couldn't be read.",
+      "Codex logs are not on a local drive, so Lullshift doesn't read them.",
+      "Only the newest Claude Code sessions were read; older ones may be missing.",
     ]);
   });
 

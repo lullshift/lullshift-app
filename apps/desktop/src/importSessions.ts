@@ -1,12 +1,13 @@
-// Import sessions (owner decision 34, ADR-024): the UI side of `import_scan` and
-// `import_sessions` (apps/desktop/src-tauri/src/session_import.rs; change both together).
+// Import sessions (owner decision 34, ADR-024): the UI side of `import_scan`,
+// `import_sessions` and `import_cancel` (apps/desktop/src-tauri/src/session_import.rs; change
+// both together).
 // Pure logic only, so it is unit-tested without a DOM.
 
 import { invoke } from "@tauri-apps/api/core";
 import { providerName, relativeTime, shortId } from "./format";
 
 export type Guess = "working" | "waiting" | "may_need_you" | "unknown";
-export type LogsState = "read" | "not_found" | "unreadable";
+export type LogsState = "read" | "not_found" | "unreadable" | "not_local";
 
 export interface FoundSession {
   provider: string;
@@ -26,6 +27,8 @@ export interface AgentLogs {
   provider: string;
   state: LogsState;
   sessions: number;
+  /** A cap or the deadline cut this agent's list short. */
+  incomplete: boolean;
 }
 
 export interface ScanResult {
@@ -41,6 +44,8 @@ export interface ImportResult {
 }
 
 export const scanLogs = () => invoke<ScanResult>("import_scan");
+/** Stops a running scan (Cancel or close while reading). Harmless when nothing runs. */
+export const cancelScan = () => invoke<void>("import_cancel");
 export const importPicked = (picks: { provider: string; sessionId: string }[]) =>
   invoke<ImportResult>("import_sessions", { picks });
 
@@ -133,13 +138,17 @@ export function countText(selectedCount: number, shownCount: number, totalCount:
   return `${shown}, ${sel}.`;
 }
 
-/** Honest notes about agents whose logs were not there or not readable. */
+/** Honest notes about agents whose logs were not there, not readable or not fully read. */
 export function agentNotes(agents: readonly AgentLogs[]): string[] {
   const out: string[] = [];
   for (const a of agents) {
     const name = providerName(a.provider);
     if (a.state === "not_found") out.push(`No ${name} logs found on this computer.`);
     else if (a.state === "unreadable") out.push(`${name} logs are there but couldn't be read.`);
+    else if (a.state === "not_local")
+      out.push(`${name} logs are not on a local drive, so Lullshift doesn't read them.`);
+    else if (a.incomplete)
+      out.push(`Only the newest ${name} sessions were read; older ones may be missing.`);
   }
   return out;
 }
@@ -175,6 +184,8 @@ export function errorText(code: unknown): string {
   switch (code) {
     case "busy":
       return "Lullshift is already reading the logs. Try again in a moment.";
+    case "cancelled":
+      return "Reading the logs was stopped. Nothing was imported.";
     case "store_unavailable":
       return "Local data is unavailable, so nothing was imported.";
     case "invalid_input":
