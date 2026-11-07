@@ -36,10 +36,10 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 30 | 12 | Wording in PRD and CLAUDE.md after 27.5 | applied as suggested (2026-11-07) |
 | 31 | 12 | npm package versions before the first publish | all three at 0.1.0 (2026-11-07) |
 | 32 | 12 | Companion model list from models.dev | built (2026-11-07) |
-| 33 | 12 | Sessions missing when Lullshift or the agent runs inside a packaged app | change: build the fix (in review) |
-| 34 | 12 | Import sessions from the agents' own logs | change: build it (building) |
+| 33 | 12 | Sessions missing when Lullshift or the agent runs inside a packaged app | built (2026-11-07) |
+| 34 | 12 | Import sessions from the agents' own logs | built (2026-11-07) |
 | 35 | 12 | Settle missed and silently ended sessions | change: process check + log catch-up (after 34) |
-| 36 | 12 | Companion rework (settings, models, conversation UI) | change: build it (building) |
+| 36 | 12 | Companion rework (settings, models, conversation UI) | change: build it (in review) |
 
 ## 1. OpenCode adapter (Sprint 05)
 
