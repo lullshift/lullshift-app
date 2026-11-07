@@ -15,7 +15,7 @@ Companion is a separate conversational workspace that talks to an AI provider us
 
 - Three provider kinds in v1:
   - `anthropic`: the Messages API at `https://api.anthropic.com`.
-  - `openai`: Chat Completions at `https://api.openai.com`.
+  - `openai`: the Responses API at `https://api.openai.com/v1` (amended 2026-11-07, see "Amendment: OpenAI Responses API and provider error excerpts"). Earlier text in this ADR that says Chat Completions for `openai` is superseded for this kind.
   - `openaiCompatible`: Chat Completions at a base URL the user enters. This is for other hosted providers and for local servers. The URL must be `https://`, except that `http://` is allowed for loopback only (`127.0.0.1`, `::1`, `localhost`), so local models work without TLS.
 - A provider profile has an id, kind, label, base URL, model name and an optional monthly budget. The user types the model name; the UI offers suggestions but never assumes a model exists. There can be several profiles, and one is the default.
 - Requests are made by the Rust core with a TLS-verifying HTTP client. The rules are:
@@ -239,3 +239,67 @@ All are older than two weeks at the time of the decision.
 | The UI (or a compromised page) calls an unconfigured or odd model | `send`/`retry` check `valid_model_id` and the provider's list in the backend |
 | Opening the picker leaks data | The request is the decision 32 GET with no user data; it happens at most once per app run unless Refresh is pressed |
 | Highlighting a huge block stalls the UI | Size and line caps; fall back to plain text |
+
+## Amendment: OpenAI Responses API and provider error excerpts
+
+Owner-reported failure of 2026-11-07: with provider kind `openai` and model `gpt-6-luna`, Test connection worked but sending a message failed with a bare "HTTP 400". Where this section differs from the text above, including the decision 36 amendment, this section wins.
+
+### Why the Responses API for the official OpenAI kind
+
+- The request was Chat Completions (`/chat/completions`, `max_completion_tokens`, `stream_options.include_usage`). Newer OpenAI models are built for the Responses API, and the failure showed that the old shape cannot be assumed to work for every model OpenAI lists. The Responses API is OpenAI's own current interface, so `ProviderKind::OpenAi` now uses it.
+- `openaiCompatible` is unchanged: Chat Completions, `max_tokens`, no `stream_options`. Other servers implement that shape, not Responses.
+- Anthropic is unchanged.
+- This is a wire-format change only. The three read-only lookups, per-lookup approval, the context preview, budget, cancel, timeouts and size caps are as before.
+
+### What is sent to OpenAI (`POST {base}/responses`, base `https://api.openai.com/v1`)
+
+```
+{ "model", "instructions": <the fixed system text>, "input": [ {role, content}..., tool items ],
+  "max_output_tokens", "store": false, "stream": true (streaming only),
+  "tools": [ {type:"function", name, description, parameters, strict:false} ] (lookups on only) }
+```
+
+- `instructions` carries the same two fixed system texts as before. Nothing else is sent: no `previous_response_id`, `conversation`, `metadata`, `user`, `reasoning`, `tool_choice` or `include`.
+- **`store: false`** (privacy). The API's default is to store the response for later retrieval. Lullshift keeps its own history locally and replays it, so it never needs OpenAI to hold the conversation. With `store: false` OpenAI is asked not to keep the response object; its own abuse-monitoring retention terms still apply. Because nothing is stored, no item ids are sent back; tool calls are matched by `call_id` only.
+- Tool rounds are replayed as `{"type":"function_call","call_id","name","arguments"}` items and `{"type":"function_call_output","call_id","output"}` items after the user turn (and an assistant text item if the model said something first). The final no-tools request still flattens earlier rounds to text, so a request never carries tool items without `tools`.
+- `strict: false` is explicit because the API's default for function tools is strict schemas, which require every property to be required and `additionalProperties: false`; the lookup schemas are not written that way.
+- `max_output_tokens` replaces `max_completion_tokens`; the caps are the same (1024 per reply, 16 for the connection test).
+
+### What is read back
+
+- Streaming: SSE `data:` payloads with a `type`. Used: `response.output_text.delta` (`delta`), `response.output_item.added` and `response.output_item.done` for `function_call` items (`call_id`, `name`, `arguments`), `response.function_call_arguments.delta` and `.done`, `response.completed` and `response.incomplete` (`response.usage.input_tokens` and `output_tokens`), `response.failed` (`response.error.message`) and `error` (`message`, `code`, `param`). Unknown event types are ignored. Calls are keyed by `output_index` (at most 64), the argument cap (`MAX_ARGUMENT_BYTES`), the call cap and the duplicate-id rule are the existing ones. `response.incomplete` with some text is a cut reply (usage is booked as for any reply); with no text and no calls it is an error that says the model stopped before writing a reply.
+- Non-streaming (Test connection and the retry below): `output[]` items of type `message` (`content[]` parts of type `output_text`) and `function_call`, `usage.input_tokens` / `usage.output_tokens`, and `status` `failed` or `incomplete`.
+- Text goes through the same chunk-by-chunk cleaning as every reply (control, bidi and invisible characters dropped), the same reply caps and the same budget accounting: usage is the provider's number if reported, else estimated; a cancelled call books its usage on the worker; chunks after a cancel are discarded.
+
+### Stream refused: one retry without streaming
+
+OpenAI refuses `stream: true` for some models until the organisation is verified. If the Responses API answers HTTP 400 and the error's `param` is `stream`, the call is repeated **once** with the same request minus `stream`. The reply then ends with a one-line note, "OpenAI would not stream this reply for your organisation, so it arrived all at once. Verifying your organisation with OpenAI may allow streaming." (text of the reply, so it is also in the stored message and in what is replayed to the model on later turns; accepted as the cost of showing it without UI changes). The retry applies only to `openai`, only to that exact refusal, and never twice. If the retry is refused too, that error is shown. No other 400 is retried.
+
+### Provider error excerpts
+
+The fixed messages hid the reason a provider gave, so "HTTP 400" could not be acted on. For a 4xx or 5xx answer (all provider kinds, Test connection and sends, streaming and not) the message is now the fixed sentence plus one sanitised excerpt, for example `The provider didn't accept the request (HTTP 400). OpenAI said: "Unsupported value: ..."`. The speaker is "OpenAI", "Anthropic" or "The provider" (compatible servers).
+
+- **Reading the body:** at most 16 KiB (a larger body is ignored), within 5 seconds, checked between reads; the stream path also stops if the call was abandoned. The body is never logged and never stored.
+- **Parsing:** only JSON of the standard shapes: `{"error":{"message","type","code","param"}}` (OpenAI and compatible), `{"type":"error","error":{"type","message"}}` (Anthropic) and the bare `{"error":"text"}` that some local servers send. If `message` is empty, `code` then `type` stands in. HTML, plain text, arrays and anything else are ignored, so a proxy's error page never reaches the UI.
+- **Sanitising:** control, bidi and invisible characters dropped (the same helper as replies); whitespace collapsed; `"` turned into `'`; the API key (plain and JSON-escaped, after invisible characters are removed so a split key is caught) replaced by `[hidden]`; any word starting `sk-` or `sk_`, and any 32+ character run of letters, digits, `-` and `_` mixing letters and digits, replaced by `[hidden]`, so a masked key echoed by the provider is not shown; cut to 240 characters with an ellipsis. The whole message is kept within the 500-character `error_message` column limit, and the existing final key scrub still runs.
+- **Never request content:** if the provider's message contains any message text or lookup answer that we sent (8 characters or more), the excerpt is dropped and only the fixed sentence is shown.
+- **Statuses:** 401 and 403 still map to `keyRejected` and may carry the excerpt (OpenAI uses 403 for an unsupported region or model access); 429 keeps `rateLimited` and `Retry-After`, with the excerpt (for example an exhausted quota); 3xx never carries one. The error kinds are unchanged, so the UI needs no change.
+- **In-stream errors:** `response.failed` and the `error` event carry the same sanitised excerpt. Chat Completions and Anthropic in-stream errors keep their fixed sentence.
+
+### Threat model additions
+
+| Threat | Handling |
+|---|---|
+| A provider or proxy puts hostile text in an error message (bidi tricks, control codes, a long page, markup) | Only standard JSON error shapes; control, bidi and invisible characters dropped; whitespace collapsed; 240 characters; shown as plain text like every reply |
+| An error body echoes the API key, or a masked or other key-like word | The key is scrubbed (plain, JSON-escaped, and after invisible characters are removed), key-like words are hidden, and the final `scrubbed` pass still runs |
+| An error body echoes what we sent (message text, lookup answers) | A message quoting any sent text of 8 or more characters is dropped |
+| A huge or slow error body | 16 KiB cap (larger is ignored), 5 second deadline, abandon check on the stream path |
+| The excerpt reaches the log or database in raw form | The body is never logged. Only the sanitised, capped sentence is stored as the message's `error_message`, as the fixed text was before |
+| `store: false` is ignored, or OpenAI keeps data | Asked for, not guaranteed; the user docs and privacy page say what the provider's own terms govern |
+| The stream retry sends the conversation twice | The first request was refused with 400 before any reply, so it produced nothing; one retry, OpenAI only, that one refusal only |
+
+### Sources checked (2026-11-07)
+
+- OpenAI OpenAPI description, `https://raw.githubusercontent.com/openai/openai-openapi/manual_spec/openapi.yaml` (info version 2.3.0), the schemas for: `CreateResponse` and `ResponseProperties` (`input` as a string or item list, `instructions`, `max_output_tokens`, `store` default true, `stream`), `FunctionTool` (`type`, `name`, `description`, `parameters`, `strict` default true), `FunctionToolCall` (`call_id`, `name`, `arguments`, `status`), `FunctionCallOutputItemParam` / `FunctionToolCallOutput` (`type: function_call_output`, `call_id`, `output` as a string), `ResponseTextDeltaEvent` (`response.output_text.delta`: `item_id`, `output_index`, `content_index`, `delta`), `ResponseOutputItemAddedEvent` (`output_index`, `item`; `response.output_item.done` and `response.function_call_arguments.done` were taken to mirror it, and were only skimmed), `ResponseFunctionCallArgumentsDeltaEvent` (`item_id`, `output_index`, `delta`), `ResponseCompletedEvent`, `ResponseFailedEvent`, `ResponseIncompleteEvent`, `ResponseErrorEvent` (`type: error`, `code`, `message`, `param`), `ResponseUsage` (`input_tokens`, `output_tokens`, `total_tokens`) and `Error` / `ErrorResponse` (`{"error":{"code","message","param","type"}}`).
+- `https://platform.openai.com/docs/api-reference/responses` and `.../responses-streaming` returned HTTP 403 to the fetch tool, so the OpenAPI description above is the source; the reference pages themselves were not read.
+- **Not verified:** any live call. Not confirmed from a source: that `gpt-6-luna` requires the Responses API (assumed from the report), that organisations that must verify for streaming answer with HTTP 400 and `param: "stream"` (the retry follows the owner's description and does nothing if the body differs), whether the Responses `type: error` event can appear mid-stream with other fields, and how reasoning models behave with `store: false` and a small `max_output_tokens` (a reasoning model can spend all 1024 output tokens before writing text; that case is reported as "stopped before it wrote a reply"). A live check is in manual test M12-18.

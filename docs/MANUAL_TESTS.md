@@ -1244,6 +1244,7 @@ Use a database from before this change (with at least one provider and a convers
 9. In the conversation list, open **⋮** on a conversation with the keyboard (Enter, arrows, Escape) and use **Rename** and **Delete**.
 10. Ask for a reply with a code block in Python, one in an unknown language and a link to `https://example.com` and to an internationalised domain (for example `https://exämple.com`). Check highlighting in both themes, **Copy** (and that "Copied" is announced), and that clicking a link shows **Open this link?** with the `xn--` form of the host. **Cancel** opens nothing; **Open in browser** opens the default browser at that exact address. A link to `http://192.168.1.1/` or `http://localhost:3000/` also shows a warning that the address is on your computer or local network; `https://example.com` doesn't.
 11. With NVDA (or Narrator), go through the Companion section, the picker, the composer, the menu and a reply with a code block and a link.
+12. With an OpenAI provider and a real OpenAI model (the official `openai` kind; use a test key), press **Test connection**, then send a message with streaming and, if the model supports them, one with lookups turned on and approved. Check that the answer arrives. Then send with a model name that doesn't exist: the failure shows "OpenAI said: ..." with OpenAI's reason (for example that the model doesn't exist), shown as plain text with no key in it. If your organisation is not verified for streaming and OpenAI refuses it, check that the reply arrives all at once with the one-line note. Check the same on an OpenAI-compatible server (for example a local one) and with Anthropic: replies work as before, and a wrong model name shows "The provider said: ..." or "Anthropic said: ...". Check in your OpenAI usage logs that the request used the Responses API and that no stored response appears.
 
 **Expected:**
 
@@ -1252,6 +1253,7 @@ Use a database from before this change (with at least one provider and a convers
 - **Steps 4 to 9:** every control is reachable and named by keyboard; focus is visible and returns where it came from; the per-message pick is used once and then resets; Enter, Shift+Enter, Ctrl+Enter and the input method behave as described.
 - **Step 10:** no formatting other than code blocks and links; nothing opens without the confirmation; the address shown is the one opened. Syntax colours are readable in both themes.
 - **Step 11:** the expanded state, the menu, the picker list's active option, the "this message only" note and Copy's result are announced.
+- **Step 12:** OpenAI answers work through the Responses API; a refused request shows the provider's reason, cleaned and without the key; a streaming refusal falls back once with a note; compatible servers and Anthropic are unchanged.
 
 **Result:** \_\_\_
 

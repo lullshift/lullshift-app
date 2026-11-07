@@ -26,6 +26,8 @@ Lullshift connects to the network only when you do something that needs it:
 | You open the Companion model picker (only the first time after Lullshift starts) or press **Refresh** in it | `models.dev`: one request for its public model list (`https://models.dev/api.json`). No keys, messages or other data are sent; the list is kept in memory until you quit. Like any web request, models.dev (and any proxy in between) sees your IP address and the time, and the request says it comes from Lullshift (user agent `Lullshift-Companion`) |
 | You press **Open in browser** after clicking a link in a Companion reply | Nothing from Lullshift itself: your default browser opens the address shown in the confirmation |
 
+With the OpenAI provider, Companion uses OpenAI's Responses API and sets `store: false`, which asks OpenAI not to keep the response for later retrieval. Lullshift keeps the conversation itself, on your computer, and sends it again with each message. OpenAI's own retention and abuse-monitoring terms still apply to what reaches it. When a provider refuses a request, Lullshift may show a short, cleaned excerpt of the provider's own error message in the conversation and store it with the failed message on your computer; it never includes your key or your message text.
+
 During Git actions, your own Git configuration applies: credential helpers, proxies and SSH settings. Lullshift doesn't change them.
 
 If Git isn't installed, Lullshift's built-in Git contacts the same hosts, at the same moments, for public https marketplaces only. It reads no Git configuration, uses no proxy and sends no credentials; a repository that asks for a sign-in is left for installed Git.

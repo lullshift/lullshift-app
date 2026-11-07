@@ -99,6 +99,22 @@ If the provider asks for something Lullshift won't give (a lookup that doesn't e
 - If a provider goes quiet for 30 seconds mid-reply (or 60 seconds before it starts), Lullshift gives up on that reply.
 - **Cancel** stops the reply at once and you can write again straight away. Anything the provider still sends for it is thrown away. The request may already have reached the provider, so it still counts toward your usage.
 
+### When the provider says no
+
+When your provider refuses a request, Lullshift shows its own sentence followed by what the provider said, for example `The provider didn't accept the request (HTTP 400). OpenAI said: "..."`. That text comes from the provider, not from Lullshift. It is shortened, stripped of hidden or control characters, and never includes your key or your message. If the provider sends no readable reason (for example a web page from a proxy), you only see Lullshift's sentence.
+
+What the usual reasons mean:
+
+- **"model ... does not exist" or "you do not have access to the model"**: the model name is wrong, or your account or project can't use it. Check the name in the model picker and your provider's dashboard.
+- **"Unsupported parameter" or "Unsupported value"**: the provider's API doesn't accept something Lullshift sends for this model. Try another model, and if it keeps happening with an OpenAI-compatible server, check that the server supports the Chat Completions format.
+- **"Incorrect API key", "invalid_api_key", or HTTP 401**: the key is wrong or revoked. Save a new key in the provider's settings.
+- **HTTP 403, or "Country, region, or territory not supported"**: the provider is blocking your account, project or location, or your key isn't allowed to use this model.
+- **"You exceeded your current quota" (HTTP 429)**: your provider account is out of credit or over its limit. This is separate from Lullshift's monthly budget.
+- **"Your organization must be verified to stream"**: OpenAI only streams some models for verified organisations. Lullshift retries once without streaming, and the reply ends with a note saying it arrived all at once. Verifying your organisation with OpenAI turns streaming back on.
+- **"The model stopped before it wrote a reply"**: some models spend their whole output allowance thinking. Try again or choose another model.
+
+With the OpenAI provider, Lullshift uses OpenAI's Responses API and asks OpenAI not to store the conversation (`store: false`). OpenAI's own data and abuse-monitoring terms still apply to what you send.
+
 ## Data
 
 Conversations are stored only on your computer. Your provider's own terms apply to what you send them.
