@@ -15,7 +15,8 @@ import {
   type Thread,
 } from "./api";
 import { Conversation } from "./Conversation";
-import { onProvidersChanged } from "./events";
+import { onOpenThread, onProvidersChanged } from "./events";
+import { dropThread, setWatchedThread } from "./inflight";
 import { errorText, UNAVAILABLE_TEXT } from "./logic";
 import { ThreadList } from "./ThreadList";
 import "./companion.css";
@@ -28,6 +29,8 @@ type Boot =
 
 interface Props {
   headingRef: RefObject<HTMLHeadingElement | null>;
+  /** Companion is the view on screen. A hidden Companion stays mounted but is not being read. */
+  active: boolean;
   sessions: readonly SessionView[];
   now: number;
   /** The user clicked a break the Companion suggested. */
@@ -43,6 +46,7 @@ interface Props {
  */
 export default function CompanionView({
   headingRef,
+  active,
   sessions,
   now,
   onStartActivity,
@@ -120,6 +124,17 @@ export default function CompanionView({
     };
   }, []);
 
+  // A notice's Open button: show that conversation.
+  useEffect(() => onOpenThread((id) => setSelectedId(id)), []);
+
+  // Tell the store which conversation is being looked at, so replies that finish elsewhere
+  // are marked unread and announced, and this one is not.
+  const ready = boot.status === "ready";
+  useEffect(() => {
+    setWatchedThread(active && ready ? selectedId : null);
+    return () => setWatchedThread(null);
+  }, [active, ready, selectedId]);
+
   const reloadThreads = useCallback(async () => {
     try {
       setThreads(await companionThreads());
@@ -157,6 +172,7 @@ export default function CompanionView({
   const deleteThread = (id: number) =>
     run("Couldn't delete it", async () => {
       await companionDeleteThread(id);
+      dropThread(id);
       const next = await companionThreads();
       setThreads(next);
       setSelectedId((cur) => (cur === id ? (next[0]?.id ?? null) : cur));

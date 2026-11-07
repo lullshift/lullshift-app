@@ -1,6 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { highlightToReact, languageLabel, MAX_HIGHLIGHT_CHARS } from "./highlight";
+import { beforeAll, describe, expect, it } from "vitest";
+import {
+  highlighterReady,
+  highlightToReact,
+  languageLabel,
+  loadHighlighter,
+  MAX_HIGHLIGHT_CHARS,
+} from "./highlight";
 
 const render = (lang: string | null, code: string) =>
   renderToStaticMarkup(<code>{highlightToReact(lang, code)}</code>);
@@ -61,7 +67,29 @@ const ALIASES: Record<string, string> = {
   patch: "diff",
 };
 
+describe("loading the grammars on demand", () => {
+  it("shows plain code until the grammars have loaded, then highlights", async () => {
+    // Runs first in this file, before any test has loaded the engine module.
+    expect(highlighterReady()).toBe(false);
+    expect(highlightToReact("ts", "const a = 1;")).toBe("const a = 1;");
+    await loadHighlighter();
+    expect(highlighterReady()).toBe(true);
+    expect(renderToStaticMarkup(<code>{highlightToReact("ts", "const a = 1;")}</code>)).toContain(
+      '<span class="hljs-',
+    );
+  }, 30_000); // the first import of the grammars is slow under a cold test runner
+
+  it("shares one load between callers", async () => {
+    const [a, b] = await Promise.all([loadHighlighter(), loadHighlighter()]);
+    expect(a).toBe(b);
+  });
+});
+
 describe("highlightToReact", () => {
+  beforeAll(async () => {
+    await loadHighlighter();
+  }, 30_000);
+
   it.each(Object.entries(SAMPLES))("highlights %s", (lang, code) => {
     const html = render(lang, code);
     expect(html).toContain('<span class="hljs-');

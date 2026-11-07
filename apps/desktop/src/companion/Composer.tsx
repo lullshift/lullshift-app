@@ -61,6 +61,8 @@ interface Props {
   onSend: (text: string, scope: Scope, expectedSha256: string | null) => Promise<SendResult>;
   onCancel: () => void;
   onOpenSettings: () => void;
+  /** Puts this text back in the message box (a new nonce each time), e.g. after a refused send. */
+  restore?: { text: string; nonce: number } | null;
 }
 
 type PreviewState =
@@ -290,10 +292,17 @@ export function Composer({
   onSend,
   onCancel,
   onOpenSettings,
+  restore = null,
 }: Props) {
   const textId = useId();
   const hintId = useId();
   const [text, setText] = useState("");
+  const [restoredNonce, setRestoredNonce] = useState<number | null>(null);
+  // Adjusting state while rendering (React's pattern for state derived from a prop change).
+  if (restore && restore.nonce !== restoredNonce) {
+    setRestoredNonce(restore.nonce);
+    setText(restore.text);
+  }
   const [draft, setDraftState] = useState<ScopeDraft>(EMPTY_SCOPE);
   const [restoreNote, setRestoreNote] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>({ phase: "closed" });

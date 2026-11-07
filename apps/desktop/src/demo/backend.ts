@@ -4,7 +4,7 @@
 
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { AdapterView } from "../adapters";
-import type { CatalogModel, ModelCatalog, ProviderProfile } from "../companion/api";
+import type { CatalogModel, Message, ModelCatalog, ProviderProfile } from "../companion/api";
 import type { ContextPrefs, SessionItem, UiPrefs } from "../context/api";
 import type { NotificationPrefs } from "../NotificationSettings";
 import type { TrackingPrefs } from "../sessionTracking";
@@ -415,6 +415,13 @@ function handle(cmd: string, a: Args): unknown {
           budget: 500_000,
         },
       ];
+    case "companion_send":
+      return demoSend(a);
+    case "companion_cancel":
+      demoCancelled.add(Number(a.threadId));
+      return null;
+    case "companion_tool_decision":
+      return null;
     case "companion_preview_context":
       return demoContextPreview(a.scope as DemoScope);
     case "companion_model_catalog": {
@@ -452,6 +459,88 @@ function handle(cmd: string, a: Args): unknown {
   }
   console.info(`[demo] no pretend answer for "${cmd}"`);
   throw "unavailable";
+}
+
+/** Threads with a reply being written, and threads whose Cancel was pressed. */
+const demoBusy = new Set<number>();
+const demoCancelled = new Set<number>();
+
+const DEMO_REPLY =
+  "Happy to help. In short, keep the change small and reversible, check it against one real case before you rely on it, and write down why you chose it so the next person does not have to guess. If it still feels uncertain after that, take a short break and look at it again with fresh eyes. Most of the time the answer is simpler than it first looked.";
+
+/**
+ * Pretends to write a reply word by word, slowly (about eight seconds), so the browser demo can
+ * show leaving a conversation and coming back. Like the real core it stores your message as
+ * pending first, keeps going whatever the screen does, and stores the reply at the end.
+ */
+async function demoSend(a: Args): Promise<Message> {
+  const threadId = Number(a.threadId);
+  const requestId = String(a.requestId);
+  const channel = a.onEvent as { onmessage?: (e: unknown) => void };
+  const emit = (e: Record<string, unknown>) => channel.onmessage?.({ requestId, ...e });
+  if (demoBusy.has(threadId)) {
+    throw { kind: "busy", message: "This conversation is already waiting for a reply." };
+  }
+  demoBusy.add(threadId);
+  demoCancelled.delete(threadId);
+  const nextId = () => Math.max(0, ...MESSAGES.map((m) => m.id)) + 1;
+  const user = userMessage(nextId(), threadId, String(a.text ?? ""), "pending");
+  MESSAGES.push(user);
+  try {
+    emit({ type: "started" });
+    const words = DEMO_REPLY.split(" ");
+    let text = "";
+    for (const word of words) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      if (demoCancelled.has(threadId)) {
+        user.status = "failed";
+        user.error = { kind: "cancelled", message: "You cancelled this reply." };
+        throw { kind: "cancelled", message: "You cancelled this reply." };
+      }
+      text += (text ? " " : "") + word;
+      emit({ type: "delta", text: (text === word ? "" : " ") + word });
+    }
+    user.status = "sent";
+    const reply: Message = {
+      ...userMessage(nextId(), threadId, text, "sent"),
+      role: "assistant",
+      host: PROFILE.host,
+      profileId: String(a.profileId ?? PROFILE.id),
+      model: String(a.model ?? PROFILE.model),
+      inputTokens: 120,
+      outputTokens: 80,
+    };
+    MESSAGES.push(reply);
+    return reply;
+  } finally {
+    demoBusy.delete(threadId);
+  }
+}
+
+function userMessage(
+  id: number,
+  threadId: number,
+  text: string,
+  status: Message["status"],
+): Message {
+  return {
+    id,
+    threadId,
+    role: "user",
+    text,
+    attachedContext: null,
+    scopeKind: "none",
+    host: PROFILE.host,
+    profileId: PROFILE.id,
+    model: PROFILE.model,
+    status,
+    error: null,
+    inputTokens: null,
+    outputTokens: null,
+    createdAt: new Date().toISOString(),
+    toolCalls: [],
+    toolNotices: [],
+  };
 }
 
 /** Providers and models of the demo, changed in memory only. */

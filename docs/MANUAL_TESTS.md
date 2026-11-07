@@ -1299,6 +1299,28 @@ Use a database from before this change (with at least one provider and a convers
 
 **Result:** \_\_\_
 
+### M12-20: Replies continue in the background
+
+Use a real provider with a long answer (for example "Write 400 words about locks") in two conversations A and B. Repeat steps 1 to 6 in light and dark themes, and once with reduced motion on.
+
+1. In A, send the question. While it is writing, press another conversation B, then press A again. The text so far and **Still writing** are shown, the text keeps growing, and **Cancel** is there. Your message appears once.
+2. Send in A again (after it finished), and while it writes, open Sessions, then come back to Companion and open A. The same as step 1.
+3. Send in A, open B, and wait. In the list, A shows **Writing…**, then **New reply**. A notice "Companion replied in “<A's title>”" appears at the bottom right and the **Companion** nav item shows a number. The notice has no part of the reply.
+4. Press **Open** in the notice (or Tab to it: it is after the page content, and focus is not moved to it when it appears). A opens, the mark, the number and the notice go away, and the full reply is shown. Do step 3 again and leave the notice alone: it goes away by itself after about 8 seconds. Point at it or Tab into it: it stays; leave it: it goes after another 8 seconds. Escape closes it.
+5. Send in A and B at once (two questions). Both show **Writing…** and both finish; stacking shows at most three notices.
+6. Send in A, switch to another application window (or minimise Lullshift) and wait until it is done. When you return, A shows **New reply** and a notice. With the "Let the Companion look things up" setting on, ask something that makes it look up your sessions, then open Sessions: a notice "Companion needs your approval in…" is announced at once; **Open** shows the approval card; nothing was sent to the provider before you pressed Approve.
+7. Send in A, press **Cancel**, and check no notice appears. Send in A and quit Lullshift while it writes; start it again: the message is marked **Not sent** with **Try again**.
+8. With NVDA (or Narrator): a finished reply in another conversation is announced politely once ("Companion replied in…"); an approval is announced assertively; the thread marks are read as words ("New reply").
+
+**Expected:**
+
+- **Steps 1 and 2:** leaving never stops or cancels the reply; coming back shows the live text and Cancel.
+- **Step 3 and 4:** the marks, the number and the notice agree; the notice carries only the conversation name; nothing steals focus; hover or focus pauses the timer; reduced motion removes the notice's entrance animation.
+- **Steps 5 to 7:** several replies at once work; a hidden window or another view gets the notice; your own Cancel is silent; a quit during a reply is shown honestly.
+- **Step 8:** polite for news, assertive only for an approval.
+
+**Result:** \_\_\_
+
 ## Website and demo mode
 
 ### W-1: Browser demo of the desktop UI

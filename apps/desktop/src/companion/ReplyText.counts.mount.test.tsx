@@ -5,7 +5,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: () => Promise.resolve(null),
@@ -40,7 +40,13 @@ vi.mock("./highlight", async (importOriginal) => {
   };
 });
 
+import { loadHighlighter } from "./highlight";
 import { ReplyText } from "./ReplyText";
+
+// The grammars are a separate chunk; load them up front so blocks highlight on first render.
+beforeAll(async () => {
+  await loadHighlighter();
+}, 30_000);
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
