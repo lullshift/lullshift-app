@@ -40,6 +40,8 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 34 | 12 | Import sessions from the agents' own logs | built (2026-11-07) |
 | 35 | 12 | Settle missed and silently ended sessions | change: process check + log catch-up (after 34) |
 | 36 | 12 | Companion rework (settings, models, conversation UI) | built (2026-11-07) |
+| 37 | 12 | OpenAI conversations fail; show the provider's reason | made while owner away: building (review when back) |
+| 38 | 12 | Companion replies keep going in the background, with an in-app notice | owner request: building (details for review) |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -456,3 +458,25 @@ Build after decision 34 is merged.
 - Replies stay plain text except **code blocks** (syntax colouring for about 20 common languages, Copy button) and **links** (http/https only; clicking shows the full address and asks before opening the browser). No raw HTML is ever rendered.
 
 **Choices made:** database migration 0017 moves each existing profile's model into the new per-provider model list (with backup and rollback tests). The highlighter is a new, exactly pinned dependency that renders a token tree, never HTML strings.
+
+## 37. OpenAI conversations fail with HTTP 400 (found 2026-11-07, decided while the owner was away)
+
+**What happened:** with the OpenAI provider and model `gpt-6-luna`, "Test connection" worked but sending failed with "The provider didn't accept the request (HTTP 400)". Lullshift ignores the provider's error body, so the real reason was lost. (Read from the owner's own database: only the error fields of the failed message, no conversation text; the temporary copy was deleted.)
+
+**Likely cause:** new OpenAI models are often offered only on the newer Responses API, while Lullshift sends Chat Completions requests.
+
+**What is being built (please confirm or change):**
+1. Errors show the provider's own short reason, cleaned (no control or hidden characters, key removed, about 240 characters at most). Example: `The provider didn't accept the request (HTTP 400). OpenAI said: "This model is only supported in v1/responses…"`.
+2. The official OpenAI provider uses the Responses API with `store: false`, so OpenAI is asked not to keep the conversation. OpenAI-compatible servers (local servers, others) keep using Chat Completions.
+3. If OpenAI refuses streaming (an organisation not verified for streaming that model), Lullshift retries once without streaming and says so.
+
+**Alternatives:** keep Chat Completions and only show the reason (simpler, but new models keep failing); or let you pick the API per provider.
+
+## 38. Companion replies continue in the background (owner request, 2026-11-07)
+
+**Your request:** leaving a conversation must not stop a reply; show an in-app notice when it finishes.
+
+**Found:** the reply already kept running in the background and was saved, but the live text vanished, there was no "still writing" sign and no notice.
+
+**Being built:** in-flight replies are kept app-wide, so coming back shows the live text and Cancel; the thread list shows "Writing…" and a "New reply" mark; the Companion menu item gets a badge; a small in-app notice ("Companion replied in “<title>”", "needs your approval", "reply failed") with an Open button. The notice never shows reply content. An OS notification while the window is hidden is added only if it fits the existing notification settings (off unless you turn it on).
+
