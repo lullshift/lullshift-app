@@ -39,6 +39,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 33 | 12 | Sessions missing when Lullshift or the agent runs inside a packaged app | change: build the fix (in review) |
 | 34 | 12 | Import sessions from the agents' own logs | change: build it (building) |
 | 35 | 12 | Settle missed and silently ended sessions | change: process check + log catch-up (after 34) |
+| 36 | 12 | Companion rework (settings, models, conversation UI) | change: build it (building) |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -441,3 +442,17 @@ The CLI package is version 0.1.0, but `lullshift --version` prints the SDK's ver
 2. **Log catch-up at startup (opt-in):** reuse the decision 34 reader (record types and times only, never content) to fill gaps, shown as "from log" hints.
 
 Build after decision 34 is merged.
+
+## 36. Companion rework (owner request, 2026-11-07)
+
+**Owner requirements:**
+- Provider and model settings move from the Companion view into the general Settings page, as a collapsible section. The Companion view keeps only conversations.
+- The model picker becomes a modal with full search. It loads the models.dev list automatically the first time it opens (amends decision 32: opening the picker counts as asking).
+- Several models per provider, and several providers.
+- The model is picked in the conversation, **per message** (it resets to the default after each send). Each answer shows a badge with the model that wrote it.
+- The conversation list uses a vertical ⋮ menu instead of inline buttons.
+- Enter sends, Shift+Enter adds a new line (not while an input method is composing).
+- Conversation options open as a modal; the chosen options show as removable badges in the message input.
+- Replies stay plain text except **code blocks** (syntax colouring for about 20 common languages, Copy button) and **links** (http/https only; clicking shows the full address and asks before opening the browser). No raw HTML is ever rendered.
+
+**Choices made:** database migration 0017 moves each existing profile's model into the new per-provider model list (with backup and rollback tests). The highlighter is a new, exactly pinned dependency that renders a token tree, never HTML strings.
