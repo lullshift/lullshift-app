@@ -1433,7 +1433,7 @@ fn ui_prefs_remember_the_companion_settings_section() {
     );
 }
 
-// -- security review F4
+// -- security review F4 and F5
 
 #[test]
 fn only_the_last_model_refusal_gets_its_own_sentence() {
@@ -1461,4 +1461,27 @@ fn only_the_last_model_refusal_gets_its_own_sentence() {
     );
     let e = remove_model(&core, &pid, "mock-model").unwrap_err();
     assert!(e.message.contains("keeps at least one model"));
+}
+
+#[test]
+fn a_store_error_reading_models_is_reported_not_hidden() {
+    let dir = tempfile::tempdir().expect("dir");
+    let db = dir.path().join("l.db");
+    let core = core_with(dir.path(), memory(), 2000);
+    {
+        let (store, _) = Store::open(&db).expect("open");
+        *core.store.lock().expect("lock") = Some(store);
+    }
+    let pid = profile(&core, "http://127.0.0.1:9/v1", None);
+    assert_eq!(profiles(&core).expect("profiles")[0].models.len(), 1);
+
+    // Break only the model list query (the profile query doesn't read `label`).
+    let raw = rusqlite::Connection::open(&db).expect("raw");
+    raw.execute_batch("ALTER TABLE companion_models RENAME COLUMN label TO label_gone")
+        .expect("break");
+    drop(raw);
+
+    let e = profiles(&core).expect_err("a store error, not an empty model list");
+    assert_eq!(e.kind, "internal");
+    assert!(set_default_model(&core, &pid, "mock-model").is_err());
 }

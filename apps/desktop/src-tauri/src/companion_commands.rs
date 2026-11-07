@@ -717,9 +717,11 @@ fn spec_of(p: &CompanionProfile, model: &str) -> Res<ProviderSpec> {
     })
 }
 
-fn profile_dto(core: &Core, p: CompanionProfile) -> ProviderProfileDto {
-    let models = with_store(core, |s| s.companion_models(Some(&p.id)))
-        .unwrap_or_default()
+/// A profile for the UI. A store error reading its models is returned, not hidden behind an
+/// empty list (security review F5): a provider with no models would look broken in a
+/// different, misleading way.
+fn profile_dto(core: &Core, p: CompanionProfile) -> Res<ProviderProfileDto> {
+    let models = with_store(core, |s| s.companion_models(Some(&p.id)))?
         .into_iter()
         .map(ModelDto::from)
         .collect();
@@ -732,7 +734,7 @@ fn profile_dto(core: &Core, p: CompanionProfile) -> ProviderProfileDto {
         .and_then(|s| check_base_url(&s.base_url).ok())
         .map(|c| c.host)
         .unwrap_or_default();
-    ProviderProfileDto {
+    Ok(ProviderProfileDto {
         id: p.id,
         kind: p.kind,
         label: p.label,
@@ -744,12 +746,12 @@ fn profile_dto(core: &Core, p: CompanionProfile) -> ProviderProfileDto {
         is_default: p.is_default,
         has_key,
         keychain_ok,
-    }
+    })
 }
 
 pub fn profiles(core: &Core) -> Res<Vec<ProviderProfileDto>> {
     let list = with_store(core, |s| s.companion_profiles())?;
-    Ok(list.into_iter().map(|p| profile_dto(core, p)).collect())
+    list.into_iter().map(|p| profile_dto(core, p)).collect()
 }
 
 /// A fresh unguessable id for one approval card.
@@ -839,7 +841,7 @@ pub fn save_profile(core: &Core, input: ProfileInput) -> Res<ProviderProfileDto>
     let saved = with_store(core, |s| {
         s.companion_save_profile(&profile, OffsetDateTime::now_utc())
     })?;
-    Ok(profile_dto(core, saved))
+    profile_dto(core, saved)
 }
 
 pub fn delete_profile(core: &Core, id: &str) -> Res<()> {
@@ -915,7 +917,7 @@ pub fn add_model(
             OffsetDateTime::now_utc(),
         )
     })?;
-    Ok(profile_dto(core, known_profile(core, profile_id)?))
+    profile_dto(core, known_profile(core, profile_id)?)
 }
 
 /// Only the store's own refusal to remove a provider's last model gets that sentence; any other
@@ -939,13 +941,13 @@ pub fn remove_model(core: &Core, profile_id: &str, model: &str) -> Res<ProviderP
             .companion_remove_model(profile_id, model)
             .map_err(remove_model_error)?;
     }
-    Ok(profile_dto(core, known_profile(core, profile_id)?))
+    profile_dto(core, known_profile(core, profile_id)?)
 }
 
 pub fn set_default_model(core: &Core, profile_id: &str, model: &str) -> Res<ProviderProfileDto> {
     known_profile(core, profile_id)?;
     with_store(core, |s| s.companion_set_default_model(profile_id, model))?;
-    Ok(profile_dto(core, known_profile(core, profile_id)?))
+    profile_dto(core, known_profile(core, profile_id)?)
 }
 
 // ---- preparing a call --------------------------------------------------------------------
