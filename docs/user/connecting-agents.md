@@ -95,9 +95,10 @@ Lullshift hears about a session when its agent sends a hook event. A session tha
 
 What to expect:
 
-- Lullshift reads only the start and the end of each log, never the whole file, and never uploads anything. If it stops early (many logs, or more than 5 seconds), the dialog says the list may be incomplete.
-- The title is shown in the dialog. It is kept with the imported session only if **Task context** is on for that tool.
-- The state is a guess from the end of the log. Imported sessions are listed under **History** with a **From log** tag. They never notify you, wake the tray icon or pause an activity. As soon as the agent sends its next hook event, the tag goes away and Lullshift tracks the session as usual.
+- Lullshift reads only the start and the end of each log file, never the whole file, and never uploads anything. OpenCode keeps its sessions in a database; Lullshift runs one read-only SQLite query on it and doesn't change or add files in OpenCode's folder. If it stops early (many logs, or more than 5 seconds), the dialog says the list may be incomplete, and for which tool. Logs on a network drive are not read; the dialog says so.
+- Choosing **Cancel** or closing the dialog while it is still reading stops the reading.
+- The title is shown in the dialog. It is kept with the imported session only if **Task context** is on for that tool. If the tool had no title of its own, the dialog shows your first prompt instead; with Task context on, that is kept as the session's captured intent, not as its title.
+- The state is a guess from the end of the log. Imported sessions are listed under **History** with a **From log** tag, and the Companion and exports call their state a guess from the log. They never notify you, wake the tray icon or pause an activity. As soon as the agent sends its next hook event, the tag goes away and Lullshift tracks the session as usual.
 - Cursor's logs can't tell "may need you", so Cursor sessions are never guessed that way. OpenCode support is experimental and only guesses Working or Unknown.
 
 ## Disconnecting

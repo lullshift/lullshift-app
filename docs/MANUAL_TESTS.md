@@ -1182,6 +1182,9 @@ Before you start: Lullshift closed. Have sessions open in Claude Code in the des
 10. Turn Task context **on** for Claude Code, delete one imported Claude Code session, and import it again. Open its detail panel. Then **Clear captured text**.
 11. With NVDA (or Narrator) and keyboard only: open the dialog, use the filter, tick rows, hear the count, import. Turn on reduced motion and repeat once.
 12. Quit Cursor, rename `~/.cursor/projects` temporarily, and open the dialog.
+13. If OpenCode is installed and closed (no `opencode.db-wal` beside `opencode.db`): open the dialog and look at OpenCode's data folder.
+14. Open the dialog and choose **Cancel** at once, while it still says "Reading the agents' logs…". Open it again.
+15. If you have a mapped network drive: point `CODEX_HOME` at a folder on it (start Lullshift from that shell) and open the dialog.
 
 **Expected:**
 
@@ -1197,6 +1200,9 @@ Before you start: Lullshift closed. Have sessions open in Claude Code in the des
 - **Step 10:** with Task context on, the re-imported session shows its title; Clear captured text removes it.
 - **Step 11:** every checkbox is read with its agent, title, folder, time and guess; focus stays in the dialog and returns to the button on close; Esc cancels. Nothing animates with reduced motion.
 - **Step 12:** "No Cursor logs found on this computer." while other agents still list. Codex: same with `~/.codex` absent. OpenCode not installed: "No OpenCode logs found on this computer."
+- **Step 13:** OpenCode sessions are listed, and no `opencode.db-shm` or `opencode.db-wal` file appears (the database is opened immutable). With OpenCode running (a `-wal` file exists) the list still works; SQLite may then touch the existing `-shm` file.
+- **Step 14:** the scan stops; reopening reads again and never says "already reading the logs".
+- **Step 15:** "Codex logs are not on a local drive, so Lullshift doesn't read them." and no log file on the network drive is opened or listed (only the folder itself is looked up, to find out where it is).
 
 **Result:** \_\_\_
 
