@@ -326,6 +326,63 @@ fn clean_title(t: &str) -> Result<String> {
     Ok(t)
 }
 
+/// The longest a title taken from a first message gets, before the ellipsis.
+const AUTO_TITLE_CHARS: usize = 48;
+
+fn is_invisible(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{00AD}'
+                | '\u{200B}'..='\u{200F}'
+                | '\u{202A}'..='\u{202E}'
+                | '\u{2060}'..='\u{2064}'
+                | '\u{2066}'..='\u{2069}'
+                | '\u{FEFF}'
+        )
+}
+
+/// A thread title made from its first message: whitespace collapsed, invisible and control
+/// characters dropped, cut at about 48 characters on a word boundary with an ellipsis.
+/// `None` when nothing visible is left.
+pub fn title_from_message(text: &str) -> Option<String> {
+    // Whitespace (including newlines and tabs) becomes one space; other control characters and
+    // invisible formatting characters are removed.
+    let mut collapsed = String::new();
+    let mut pending_space = false;
+    for c in text.chars() {
+        if c.is_whitespace() {
+            pending_space = !collapsed.is_empty();
+        } else if !is_invisible(c) {
+            if pending_space {
+                collapsed.push(' ');
+                pending_space = false;
+            }
+            collapsed.push(c);
+        }
+    }
+    if collapsed.is_empty() {
+        return None;
+    }
+    let chars: Vec<char> = collapsed.chars().collect();
+    if chars.len() <= AUTO_TITLE_CHARS {
+        return Some(collapsed);
+    }
+    // Cut at the last space within the limit; a single very long word is cut hard.
+    let end = if chars[AUTO_TITLE_CHARS] == ' ' {
+        AUTO_TITLE_CHARS
+    } else {
+        chars[..AUTO_TITLE_CHARS]
+            .iter()
+            .rposition(|c| *c == ' ')
+            .unwrap_or(AUTO_TITLE_CHARS)
+    };
+    let mut title: String = chars[..end].iter().collect();
+    title.truncate(title.trim_end().len());
+    title.push('…');
+    Some(title)
+}
+
 /// A CHECK or FOREIGN KEY violation is a caller mistake, not a database fault.
 fn check_invalid(e: rusqlite::Error) -> StoreError {
     match &e {
@@ -696,6 +753,21 @@ impl Store {
             "UPDATE companion_threads SET profile_id = ?2, model = ?3, updated_utc = ?4 WHERE id = ?1",
             params![m.thread_id, m.profile_id, m.model, ts],
         )?;
+        // The first message names a thread that still has the default title. A title the user
+        // changed is never touched; the title is a local label and goes nowhere.
+        let user_messages: i64 = tx.query_row(
+            "SELECT count(*) FROM companion_messages WHERE thread_id = ?1 AND role = 'user'",
+            [m.thread_id],
+            |r| r.get(0),
+        )?;
+        if user_messages == 1
+            && let Some(title) = title_from_message(m.text)
+        {
+            tx.execute(
+                "UPDATE companion_threads SET title = ?2 WHERE id = ?1 AND title = ?3",
+                params![m.thread_id, title, DEFAULT_THREAD_TITLE],
+            )?;
+        }
         tx.commit()?;
         Ok(id)
     }
