@@ -49,6 +49,7 @@ Replays and duplicates: each hook run gets a fresh random `eventId`. A repeated 
 - **Form:** exec form (`command` = absolute path of the Lullshift executable, `args` = `["hook", "claude-code", "--data-dir", "<app data dir>"]`). No shell, so no profile banner can leak into stdout.
 - **`async: true`** on every handler: Claude Code doesn't wait for Lullshift. Claude Code doesn't enforce a timeout on async hooks, so the forwarder has its own 2-second deadline.
 - **Zero-effect contract:** the forwarder always exits 0, never writes to stdout or stderr, never exits 2 and catches all failures, including panics. With exit 0 and empty stdout, no event (including `SessionStart` and `UserPromptSubmit`, whose stdout would become context) is affected.
+- **Failure marker:** when the app refuses the hook's token, or nothing answers at the address in `endpoint.json`, the forwarder writes `ipc/last-hook-failure.json` in its data directory with only the adapter, `rejected` or `unreachable`, and the time (at most once a minute per reason; never a session id, task data or paths). Integrations uses it to say that an agent tried to reach Lullshift but couldn't (ADR-010 amendment, decision 33). Writing it doesn't change the contract above.
 - **Live reload:** Claude Code picks up settings edits through its file watcher; sessions started before the install begin reporting once they reload.
 
 ## Install and uninstall

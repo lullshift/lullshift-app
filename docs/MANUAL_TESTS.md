@@ -1166,6 +1166,29 @@ Watch Lullshift's connections with a network monitor (Resource Monitor, Little S
 
 **Result:** \_\_\_
 
+### M12-16: Lullshift started inside a packaged app (decision 33)
+
+Windows 11 with the Claude desktop app (a Store app) and Claude Code connected in Integrations.
+
+1. Quit Lullshift. In the Claude desktop app, open a terminal and start Lullshift from it (for example `& "$env:LOCALAPPDATA\Programs\Lullshift\lullshift-desktop.exe"`, or the installed path).
+2. Look at Sessions and Integrations.
+3. Quit Lullshift from the tray. Start it from the Start menu or by double-clicking it in File Explorer.
+4. In the Claude desktop app's Code tab, send a prompt in a Claude Code session. Then open Integrations.
+5. Press **Fix** on the card for Claude.
+6. In the Code tab, send another prompt in that session (or start a new session). Open Sessions.
+7. Open Integrations again and look for the card. Check `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\app.lullshift.desktop\` in File Explorer.
+
+**Expected:**
+
+- **Step 2:** both views show a warning that Lullshift was started from inside another app (Claude) and agents may not reach it, saying to quit and start it from the Start menu or File Explorer. Nothing else is blocked.
+- **Step 3:** no packaged warning.
+- **Step 4:** the session does not appear in Sessions. Integrations shows "Agents running inside Claude can't reach Lullshift: that app has out-of-date copies of Lullshift's connection files.", what is out of date (old address, access key), and, if the hook tried after this launch, "Claude Code tried to reach Lullshift at HH:MM but couldn't (unreachable)" or "(refused)". The text says Fix removes only those copies, that open sessions may need a restart, and that data from runs inside Claude stays there.
+- **Step 5:** a success message; the card goes away.
+- **Step 6:** the Claude Code session appears in Sessions (restart it if it doesn't).
+- **Step 7:** no card. In that folder `ipc\endpoint.json` and `ipc\token` are gone; `lullshift.db` and any other files are still there.
+
+**Result:** \_\_\_
+
 ## Website and demo mode
 
 ### W-1: Browser demo of the desktop UI
