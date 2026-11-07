@@ -248,10 +248,11 @@ export function toCommandError(err: unknown): CommandError {
   if (err && typeof err === "object" && "kind" in err) {
     const e = err as { kind?: unknown; message?: unknown };
     if (typeof e.kind === "string" && (ERROR_KINDS as readonly string[]).includes(e.kind)) {
+      const providerReason = toProviderReason((err as { providerReason?: unknown }).providerReason);
       return {
         kind: e.kind as ErrorKind,
         message: typeof e.message === "string" ? e.message.slice(0, 300) : "",
-        providerReason: toProviderReason((err as { providerReason?: unknown }).providerReason),
+        ...(providerReason ? { providerReason } : {}),
       };
     }
   }

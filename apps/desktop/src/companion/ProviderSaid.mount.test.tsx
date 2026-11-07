@@ -99,7 +99,8 @@ describe("toCommandError", () => {
     expect(good.providerReason).toEqual({ speaker: "OpenAI", text: "why" });
     for (const bad of [null, "text", 5, { speaker: 1, text: "x" }, { speaker: "a", text: "  " }]) {
       expect(
-        toCommandError({ kind: "providerError", message: "m", providerReason: bad }).providerReason,
+        toCommandError({ kind: "providerError", message: "m", providerReason: bad })
+          .providerReason ?? null,
       ).toBeNull();
     }
   });
@@ -190,7 +191,6 @@ describe("Test connection in Settings", () => {
       if (command === "companion_prefs") return { toolsEnabled: false, lastScope: null };
       if (command === "companion_usage") return [];
       if (command === "companion_test") {
-        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw {
           kind: "providerError",
           message: "The provider didn't accept the request (HTTP 400).",

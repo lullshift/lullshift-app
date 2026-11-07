@@ -254,7 +254,8 @@ fn the_not_streamed_flag_is_stored_on_the_reply_and_never_in_its_text() {
     assert_eq!(msgs[1].text, "the reply");
 
     // The ordinary path leaves it off.
-    let (mut s2, id2) = open_new(&dir.path().join("..").join(dir.path().file_name().unwrap()));
+    let dir2 = tempfile::tempdir().expect("dir");
+    let (mut s2, id2) = open_new(dir2.path());
     let r2 = s2
         .companion_complete_send_if(id2, "plain", 1, 1, 1, 1, T0, &|| true)
         .expect("complete")
