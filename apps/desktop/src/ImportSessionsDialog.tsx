@@ -2,7 +2,7 @@
 // Cancel imports nothing. Logic lives in importSessions.ts.
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { providerName, relativeTime, shortId } from "./format";
+import { providerName, relativeTime, shortId, stripInvisible } from "./format";
 import {
   GUESS_LABELS,
   agentNotes,
@@ -23,6 +23,7 @@ import {
   toggleAllShown,
   toggleGroup,
   toggleOne,
+  UNKNOWN_FOLDER,
   type FolderGroup,
   type FoundSession,
   type ScanResult,
@@ -263,11 +264,14 @@ function FolderSection({
     if (box.current) box.current.indeterminate = tick === "some";
   }, [tick]);
   const n = group.sessions.length;
+  // Folder names come from agents' logs: strip invisible characters again before showing them.
+  const label = stripInvisible(group.label) || UNKNOWN_FOLDER;
+  const path = group.path ? stripInvisible(group.path) : undefined;
   return (
     <section className="import-group" aria-labelledby={headingId}>
       <div className="import-group-head">
-        <h3 id={headingId} className="import-group-title" title={group.path ?? undefined}>
-          <span className="import-group-name">{group.label}</span>
+        <h3 id={headingId} className="import-group-title" title={path}>
+          <span className="import-group-name">{label}</span>
           <span className="import-group-count">
             {n} {n === 1 ? "session" : "sessions"}
           </span>
@@ -279,7 +283,7 @@ function FolderSection({
             checked={tick === "all"}
             disabled={!canTick}
             onChange={onToggleGroup}
-            aria-label={`Select all in this folder, ${group.label}`}
+            aria-label={`Select all in this folder, ${label}`}
           />
           <span aria-hidden="true">Select all in this folder</span>
         </label>

@@ -212,6 +212,29 @@ describe("Import sessions dialog", () => {
     expect(boxes().filter((b) => b.checked)).toHaveLength(0);
   });
 
+  it("shows folder names without invisible or bidi characters", async () => {
+    answer = () => ({
+      sessions: [
+        row("a1", { project: "sh‮op/​api", projectPath: "/home/‮u/shop/api" }),
+        row("b2", { project: "​‮", projectPath: "/x" }),
+      ],
+      agents: [],
+      incomplete: false,
+    });
+    await render(true);
+    const names = [...host.querySelectorAll(".import-group-name")].map((n) => n.textContent);
+    expect(names.sort()).toEqual(["Unknown folder", "shop/api"]);
+    const labels = groupBoxes().map((b) => b.getAttribute("aria-label"));
+    expect(labels.sort()).toEqual([
+      "Select all in this folder, Unknown folder",
+      "Select all in this folder, shop/api",
+    ]);
+    expect([...host.querySelectorAll("h3")].map((h) => h.getAttribute("title")).sort()).toContain(
+      "/home/u/shop/api",
+    );
+    expect(host.innerHTML).not.toMatch(/[‮​]/);
+  });
+
   it("a folder with nothing to import has a disabled checkbox", async () => {
     answer = () => ({
       sessions: [row("d4", { tracked: true })],

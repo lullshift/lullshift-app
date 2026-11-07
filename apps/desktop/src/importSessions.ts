@@ -4,7 +4,7 @@
 // Pure logic only, so it is unit-tested without a DOM.
 
 import { invoke } from "@tauri-apps/api/core";
-import { providerName, relativeTime, shortId } from "./format";
+import { providerName, relativeTime, shortId, stripInvisible } from "./format";
 
 export type Guess = "working" | "waiting" | "may_need_you" | "unknown";
 export type LogsState = "read" | "not_found" | "unreadable" | "not_local";
@@ -214,8 +214,8 @@ export function agentNotes(agents: readonly AgentLogs[]): string[] {
 export function rowLabel(s: FoundSession, now: number): string {
   return [
     providerName(s.provider),
-    s.title ?? "Untitled session",
-    s.project ? `in ${s.project}` : null,
+    s.title ? stripInvisible(s.title) : "Untitled session",
+    s.project ? `in ${stripInvisible(s.project)}` : null,
     `last active ${relativeTime(s.lastActivityUtc, now)}`,
     GUESS_LABELS[s.guess],
     s.tracked ? "already in Lullshift" : null,
