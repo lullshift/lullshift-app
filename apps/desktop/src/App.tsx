@@ -4,7 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import ActivitiesView from "./activity/ActivitiesView";
 import CompanionView from "./companion/CompanionView";
+import { onOpenThread } from "./companion/events";
+import { useBackgroundCount } from "./companion/inflight";
 import { shouldMountCompanion } from "./companion/logic";
+import { ToastRegion } from "./ui/Toasts";
 import type { PauseRequest } from "./activity/ActivityHost";
 import { createDashboardStore } from "./dashboardStore";
 import Integrations from "./Integrations";
@@ -133,6 +136,19 @@ export default function App() {
   const problems = useMemo(() => (dashboard ? healthProblems(dashboard) : []), [dashboard]);
   const sessions = useMemo(() => (dashboard ? sortSessions(dashboard.sessions) : []), [dashboard]);
   const needsYou = sessions.filter((s) => liveState(s) === "needs_attention").length;
+  // Replies that finished while away, and lookups waiting for approval (not when you're there).
+  const companionUpdates = useBackgroundCount();
+
+  // A notice's Open button: go to Companion (the view selects the conversation).
+  useEffect(
+    () =>
+      onOpenThread(() => {
+        setView("companion");
+        // Already in Companion: no view change moves focus, so put it on the heading.
+        window.setTimeout(() => headingRef.current?.focus(), 0);
+      }),
+    [],
+  );
 
   return (
     <div className="shell">
@@ -155,6 +171,15 @@ export default function App() {
                 >
                   <Icon name={item.icon} />
                   <span className="nav-label">{item.label}</span>
+                  {item.id === "companion" && companionUpdates > 0 && (
+                    <span className="nav-badge">
+                      {companionUpdates}
+                      <span className="visually-hidden">
+                        {" "}
+                        {companionUpdates === 1 ? "Companion update" : "Companion updates"} waiting
+                      </span>
+                    </span>
+                  )}
                   {item.id === "sessions" && needsYou > 0 && (
                     <span className="nav-badge">
                       {needsYou}
@@ -211,6 +236,7 @@ export default function App() {
           <div hidden={view !== "companion"} className="view-slot">
             <CompanionView
               headingRef={view === "companion" ? headingRef : unusedCompanionHeading}
+              active={view === "companion"}
               sessions={sessions}
               now={now}
               onStartActivity={(id) => {
@@ -230,6 +256,7 @@ export default function App() {
           <Settings headingRef={headingRef} companionFocus={companionFocus} />
         )}
       </main>
+      <ToastRegion />
       <Onboarding
         open={showWelcome}
         onDone={() => void updateUiPrefs({ onboardingDone: true })}

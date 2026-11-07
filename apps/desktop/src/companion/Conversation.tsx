@@ -8,7 +8,6 @@ import {
   companionRetry,
   companionSend,
   companionToolDecision,
-  newRequestId,
   toCommandError,
   type CommandError,
   type Message,
@@ -18,20 +17,18 @@ import {
   type Thread,
 } from "./api";
 import { Composer, type SendResult } from "./Composer";
+import { acknowledge, runRequest, useIsWatching, useThreadInflight } from "./inflight";
 import { answerBadgeText, effectiveChoice, retryChoice, type ModelChoice } from "./modelChoice";
 import { ReplyText } from "./ReplyText";
 import {
   CONTEXT_CHANGED_NOTE,
   errorText,
   historyCount,
-  initialStream,
-  isContextChanged,
   needsSettings,
   plainLines,
-  reduceStream,
   sharedLabel,
   streamStatus,
-  type StreamState,
+  withoutInFlightMessage,
 } from "./logic";
 import { threadLabel } from "./ThreadList";
 import { ToolApprovalCard, ToolNotices, ToolRecords } from "./ToolCards";
@@ -159,13 +156,30 @@ export function Conversation({
 }: Props) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [messages, setMessages] = useState<Message[]>([]);
-  const [sending, setSending] = useState(false);
-  const [pendingText, setPendingText] = useState<string | null>(null);
-  const [retryingId, setRetryingId] = useState<number | null>(null);
   const [problem, setProblem] = useState<CommandError | null>(null);
   const [live, setLive] = useState("");
-  const [stream, setStream] = useState<StreamState | null>(null);
   const [deciding, setDeciding] = useState(false);
+  // The request in flight for this thread lives in the app-level store (inflight.ts), not here:
+  // it keeps running and keeps receiving events while this component is not on screen.
+  const entry = useThreadInflight(thread.id);
+  const watching = useIsWatching(thread.id);
+  const sending = entry?.status === "running";
+  // A request this component saw running stays on screen after it ends until the stored reply
+  // has been read, so the reply never disappears for a moment. A request that ended while this
+  // thread was not open shows only its stored result.
+  const [seen, setSeen] = useState<string | null>(null);
+  const [settled, setSettled] = useState<string | null>(null);
+  if (entry?.status === "running" && seen !== entry.requestId) setSeen(entry.requestId);
+  const shown =
+    entry &&
+    (entry.status === "running" || (seen === entry.requestId && settled !== entry.requestId))
+      ? entry
+      : null;
+  const stream = shown?.stream ?? null;
+  const pendingText = shown?.optimisticText ?? null;
+  const retryingId = shown?.retryId ?? null;
+  const finished = entry?.status === "finished" && entry.outcome ? entry : null;
+  const finishedId = finished?.requestId ?? null;
   // The provider and model picked for the next message only; null means the default.
   const [picked, setPicked] = useState<ModelChoice | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -208,47 +222,76 @@ export function Conversation({
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length, pendingText]);
 
-  /** Runs a send or retry; resolves true once the message is stored in the thread. */
+  // A request of this thread ended (while this screen was open or not): read the stored result,
+  // say how it went, and, once the user can see this thread, clear its unread mark.
+  useEffect(() => {
+    if (!finished || !finished.outcome) return;
+    const o = finished.outcome;
+    let current = true;
+    const done = () => {
+      if (current) setSettled(finished.requestId);
+    };
+    companionMessages(thread.id)
+      .then((list) => {
+        if (!current) return;
+        setMessages(list);
+        setLoad({ status: "ready" });
+        if (o.kind === "replied") {
+          setLive(`Reply received. ${ellipsize(o.text.replace(/\s+/g, " "), 600)}`);
+        } else if (o.kind === "failed") {
+          const text = o.contextChanged ? CONTEXT_CHANGED_NOTE : errorText(o.error, finished.host);
+          setLive(`Message not sent. ${text}`);
+          // A stale preview is handled by the composer, which shows the new preview. Otherwise a
+          // failed message in the thread shows its own error; show this only if nothing was stored.
+          if (!o.stored && !o.contextChanged) setProblem(o.error);
+        } else {
+          setLive("Cancelled.");
+        }
+        setDeciding(false);
+        done();
+      })
+      .catch((err: unknown) => {
+        if (current) setLoad({ status: "error", text: errorText(toCommandError(err)) });
+        done();
+      });
+    return () => {
+      current = false;
+    };
+  }, [finished, thread.id]);
+
+  useEffect(() => {
+    if (watching && finishedId !== null && settled === finishedId) {
+      acknowledge(thread.id, finishedId);
+    }
+  }, [watching, finishedId, settled, thread.id]);
+
+  /** Starts a send or retry. It runs to its end in the store, whether or not this is on screen. */
   const track = async (
     before: number,
+    to: ModelChoice,
     work: (requestId: string, onEvent: (e: StreamEvent) => void) => Promise<Message>,
     options: { optimisticText: string | null; retryId: number | null },
   ): Promise<SendResult> => {
-    // Every event carries this id; anything with another id (a late chunk of an earlier,
-    // cancelled request) is ignored by the reducer.
-    const requestId = newRequestId();
-    setSending(true);
     setProblem(null);
-    setPendingText(options.optimisticText);
-    setRetryingId(options.retryId);
-    setStream(initialStream(requestId));
     setDeciding(false);
-    let stored: boolean;
-    let contextChanged = false;
-    try {
-      const reply = await work(requestId, (e) => setStream((s) => (s ? reduceStream(s, e) : s)));
-      const list = await reload();
-      stored = list ? list.length > before : true;
-      setLive(`Reply received. ${ellipsize(reply.text.replace(/\s+/g, " "), 600)}`);
-    } catch (err) {
-      const e = toCommandError(err);
-      const list = await reload();
-      stored = options.retryId !== null || (list ? list.length > before : false);
-      contextChanged = options.retryId === null && isContextChanged(e);
-      const text = contextChanged ? CONTEXT_CHANGED_NOTE : errorText(e, host);
-      setLive(`Message not sent. ${text}`);
-      // A stale preview is handled by the composer, which shows the new preview. Otherwise a failed
-      // message in the thread shows its own error; show this only if nothing was stored.
-      if (!stored && !contextChanged) setProblem(e);
-    } finally {
-      setSending(false);
-      setPendingText(null);
-      setRetryingId(null);
-      setStream(null);
-      setDeciding(false);
-      onActivity();
-    }
-    return { stored, contextChanged };
+    const outcome = await runRequest(
+      {
+        threadId: thread.id,
+        title: thread.title,
+        optimisticText: options.optimisticText,
+        retryId: options.retryId,
+        profileId: to.profileId,
+        model: to.model,
+        host,
+        before,
+      },
+      work,
+    );
+    onActivity();
+    return {
+      stored: outcome.stored,
+      contextChanged: outcome.kind === "failed" && outcome.contextChanged,
+    };
   };
 
   const send = async (text: string, scope: Scope, expectedSha256: string | null) => {
@@ -256,6 +299,7 @@ export function Conversation({
     const to = choice;
     const result = await track(
       messages.length,
+      to,
       (requestId, onEvent) =>
         companionSend(
           thread.id,
@@ -289,6 +333,7 @@ export function Conversation({
     }
     void track(
       messages.length,
+      to,
       (requestId, onEvent) => companionRetry(id, to.profileId, to.model, requestId, onEvent),
       {
         optimisticText: null,
@@ -343,7 +388,7 @@ export function Conversation({
           </p>
         )}
         <ol className="msg-list">
-          {messages.map((m) => (
+          {withoutInFlightMessage(messages, pendingText).map((m) => (
             <MessageItem
               key={m.id}
               message={m}
