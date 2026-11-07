@@ -36,6 +36,8 @@ Check your download against `SHA256SUMS` and its build provenance (see [RELEASIN
 - Cursor has no hook for "waiting for you", so Cursor sessions never show as needing you.
 - OpenCode support is experimental and works only with OpenCode 2.x. It is built on OpenCode's source, not documented event payloads, and shows "Unknown" until the first event arrives. Only permission requests count as "needs you".
 - Codex asks you to trust new hooks in `/hooks` before they run.
+- Sessions that were already open when you connect an agent aren't tracked. Start them again; in Claude Code, `/hooks` may also pick up the new hooks.
+- Windows: don't start Lullshift from a terminal inside a Microsoft Store app, such as the Claude desktop app's terminal. Windows gives such programs a private copy of AppData, and agents run from that app can then read an out-of-date copy of Lullshift's connection files, so their sessions never appear. Start Lullshift from the Start menu or File Explorer instead.
 - Tested mainly on Windows 11; macOS and Linux have had automated checks only.
 - Third-party programs: the full sandbox checks haven't been run on macOS or Linux, and on Windows Lullshift can't read back the setting that blocks WebRTC. Settings in `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` or the WebView2 registry policy can undo that block. The install warning says so; only install programs from people you trust.
 

@@ -404,3 +404,17 @@ The CLI package is version 0.1.0, but `lullshift --version` prints the SDK's ver
 - Measured on the real file (5.97 MB): 235 providers and 8,456 chat models kept, 2.6 MB peak extra memory. A hostile 16 MiB body keeps 20,000 models with a 6.5 MB peak.
 - A security review found one medium issue (memory blow-up from a hostile body) and four low ones; all were fixed with tests before the merge.
 - Manual check M12-15 covers the network monitor, refresh, offline errors, filters and NVDA.
+
+## 33. Sessions missing when Lullshift or the agent runs inside a packaged app (found 2026-11-07, open, for the owner)
+
+**What happened:** the owner connected Claude Code, but no sessions appeared. Lullshift had earlier been started from the Claude desktop app's terminal (a Microsoft Store app). Windows redirects AppData writes from such programs into a private copy (`%LOCALAPPDATA%\Packages\<app>\LocalCache\Roaming`), so that copy kept an old `ipc\endpoint.json` and `ipc\token`. Claude Code sessions in the same app read those stale copies: the first sent to a pipe that no longer existed, and after that was deleted the app refused the events because the token didn't match. The hook stays silent by design (ADR-010), so nothing explained it. Deleting the two stale copies fixed it.
+
+**Workaround documented:** release notes "Known limits" (start Lullshift from the Start menu or Explorer; already-open sessions need a restart or `/hooks`).
+
+**Proposed fix, for the owner:**
+- The app could detect it was started inside a package (Windows `GetCurrentPackageFullName`) and show a warning with the fix, instead of silently writing to a private copy.
+- The hook could, when sending fails, write a small "last failure" marker the app reads (no task data), so Integrations can say "Claude Code tried to reach Lullshift but couldn't" with the likely cause.
+- Both keep the hook's zero-output contract. Not built yet.
+
+**Related request (not built):** opt-in detection of already-open sessions from the agents' own log files (structure and times only, never content; Claude Code, Codex and Cursor). Needs its own decision before building.
+
