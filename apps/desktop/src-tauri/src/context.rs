@@ -119,6 +119,10 @@ pub struct UiPrefs {
     /// which read as not yet shown.
     #[serde(default)]
     pub onboarding_done: bool,
+    /// The Companion section of Settings is expanded (decision 36). Missing in older preferences,
+    /// which read as collapsed.
+    #[serde(default)]
+    pub companion_settings_open: bool,
 }
 
 impl Default for UiPrefs {
@@ -127,6 +131,7 @@ impl Default for UiPrefs {
             detail_panel_pinned: true,
             content_width: ContentWidth::Full,
             onboarding_done: false,
+            companion_settings_open: false,
         }
     }
 }

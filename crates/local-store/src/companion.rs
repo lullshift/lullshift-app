@@ -950,6 +950,21 @@ impl Store {
         Ok(())
     }
 
+    /// Like [`Self::companion_mark_pending`], and records the provider and model the retry goes to
+    /// (decision 36: the user may retry with another model), so the reply is booked against them.
+    pub fn companion_mark_pending_for(&self, id: i64, profile_id: &str, model: &str) -> Result<()> {
+        let n = self.conn.execute(
+            "UPDATE companion_messages SET status = 'pending', error_kind = NULL, error_message = NULL,
+               profile_id = ?2, model = ?3
+             WHERE id = ?1 AND role = 'user' AND status = 'failed'",
+            params![id, profile_id, model],
+        ).map_err(check_invalid)?;
+        if n == 0 {
+            return Err(StoreError::NotFound);
+        }
+        Ok(())
+    }
+
     /// Messages left `pending` by a crash or quit become `failed` (kind `cancelled`), so they
     /// can be retried. Returns how many were changed.
     pub fn companion_fail_stale_pending(&self) -> Result<usize> {

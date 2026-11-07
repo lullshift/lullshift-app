@@ -31,8 +31,8 @@ use ::companion::{
     ProviderSpec, RequestPlan, Role, Secret, ToolExchange, budget, chat, chat_stream,
 };
 use local_store::{
-    CompanionMessage, CompanionProfile, CompanionThread, CompanionToolCall, CompanionToolNotice,
-    NewToolCall, NewToolNotice, NewUserMessage, Store, StoreError, month_of,
+    CompanionMessage, CompanionModel, CompanionProfile, CompanionThread, CompanionToolCall,
+    CompanionToolNotice, NewToolCall, NewToolNotice, NewUserMessage, Store, StoreError, month_of,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -43,6 +43,7 @@ use zeroize::Zeroize;
 use crate::Core;
 
 mod lookups;
+pub mod open_link;
 
 /// Most items one scope may pick.
 const MAX_SCOPE_ITEMS: usize = 200;
@@ -288,11 +289,33 @@ pub struct ProviderProfileDto {
     label: String,
     base_url: String,
     host: String,
+    /// The provider's default model.
     model: String,
+    /// Every model of this provider, default first (decision 36).
+    models: Vec<ModelDto>,
     monthly_token_budget: Option<i64>,
     is_default: bool,
     has_key: bool,
     keychain_ok: bool,
+}
+
+/// One model a provider offers. `label` is an optional display name.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelDto {
+    model: String,
+    label: Option<String>,
+    is_default: bool,
+}
+
+impl From<CompanionModel> for ModelDto {
+    fn from(m: CompanionModel) -> Self {
+        Self {
+            model: m.model,
+            label: m.label,
+            is_default: m.is_default,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -335,6 +358,11 @@ pub struct MessageDto {
     attached_context: Option<String>,
     scope_kind: String,
     host: Option<String>,
+    /// The provider this message went to (yours) or came from (replies). Empty for rows whose
+    /// provider was deleted.
+    profile_id: Option<String>,
+    /// The model it was sent to or answered by. Empty for rows stored without one.
+    model: Option<String>,
     status: String,
     error: Option<MessageErrorDto>,
     input_tokens: Option<i64>,
@@ -508,6 +536,8 @@ impl From<CompanionMessage> for MessageDto {
             attached_context: m.attached_context,
             scope_kind: m.scope_kind,
             host: m.host,
+            profile_id: m.profile_id,
+            model: m.model,
             status: m.status,
             error,
             input_tokens: m.input_tokens,
@@ -671,9 +701,9 @@ fn kind_of(p: &CompanionProfile) -> Res<ProviderKind> {
     ProviderKind::parse(&p.kind).ok_or_else(CommandError::internal)
 }
 
-/// The spec used to call a profile. Fixed providers use their built-in URL whatever the
-/// database says; a compatible server's stored URL is checked again.
-fn spec_of(p: &CompanionProfile) -> Res<ProviderSpec> {
+/// The spec used to call a profile with one of its models. Fixed providers use their built-in URL
+/// whatever the database says; a compatible server's stored URL is checked again.
+fn spec_of(p: &CompanionProfile, model: &str) -> Res<ProviderSpec> {
     let kind = kind_of(p)?;
     let base_url = match kind.fixed_base_url() {
         Some(u) => u.to_owned(),
@@ -682,16 +712,21 @@ fn spec_of(p: &CompanionProfile) -> Res<ProviderSpec> {
     Ok(ProviderSpec {
         kind,
         base_url,
-        model: p.model.clone(),
+        model: model.to_owned(),
     })
 }
 
 fn profile_dto(core: &Core, p: CompanionProfile) -> ProviderProfileDto {
+    let models = with_store(core, |s| s.companion_models(Some(&p.id)))
+        .unwrap_or_default()
+        .into_iter()
+        .map(ModelDto::from)
+        .collect();
     let (has_key, keychain_ok) = match core.companion.keys.has(&p.id) {
         Ok(h) => (h, true),
         Err(_) => (false, false),
     };
-    let host = spec_of(&p)
+    let host = spec_of(&p, &p.model)
         .ok()
         .and_then(|s| check_base_url(&s.base_url).ok())
         .map(|c| c.host)
@@ -703,6 +738,7 @@ fn profile_dto(core: &Core, p: CompanionProfile) -> ProviderProfileDto {
         base_url: p.base_url,
         host,
         model: p.model,
+        models,
         monthly_token_budget: p.monthly_token_budget,
         is_default: p.is_default,
         has_key,
@@ -843,23 +879,98 @@ pub fn clear_key(core: &Core, profile_id: &str) -> Res<()> {
     Ok(())
 }
 
+// ---- models of a provider (decision 36) ---------------------------------------------------
+
+fn known_profile(core: &Core, profile_id: &str) -> Res<CompanionProfile> {
+    with_store(core, |s| s.companion_profile(profile_id))?
+        .ok_or_else(|| CompanionError::not_found("That provider no longer exists.").into())
+}
+
+fn clean_model_label(label: Option<&str>) -> Res<Option<String>> {
+    match label.map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(l) => clean_line(l, 80, "The model's display name").map(Some),
+    }
+}
+
+/// Adds a model to a provider (or renames a listed one). The id follows the same rule as a typed
+/// model name; nothing is sent anywhere.
+pub fn add_model(
+    core: &Core,
+    profile_id: &str,
+    model: &str,
+    label: Option<&str>,
+    make_default: bool,
+) -> Res<ProviderProfileDto> {
+    known_profile(core, profile_id)?;
+    let model = check_model(model)?;
+    let label = clean_model_label(label)?;
+    with_store(core, |s| {
+        s.companion_add_model(
+            profile_id,
+            &model,
+            Some(label.as_deref().unwrap_or("")),
+            make_default,
+            OffsetDateTime::now_utc(),
+        )
+    })?;
+    Ok(profile_dto(core, known_profile(core, profile_id)?))
+}
+
+/// Removes a model from a provider. The last model of a provider can't be removed.
+pub fn remove_model(core: &Core, profile_id: &str, model: &str) -> Res<ProviderProfileDto> {
+    known_profile(core, profile_id)?;
+    with_store(core, |s| s.companion_remove_model(profile_id, model)).map_err(|e| match e {
+        CommandError {
+            kind: "invalidInput",
+            ..
+        } => CommandError::invalid(
+            "A provider keeps at least one model. Add another one before removing this one.",
+        ),
+        other => other,
+    })?;
+    Ok(profile_dto(core, known_profile(core, profile_id)?))
+}
+
+pub fn set_default_model(core: &Core, profile_id: &str, model: &str) -> Res<ProviderProfileDto> {
+    known_profile(core, profile_id)?;
+    with_store(core, |s| s.companion_set_default_model(profile_id, model))?;
+    Ok(profile_dto(core, known_profile(core, profile_id)?))
+}
+
 // ---- preparing a call --------------------------------------------------------------------
 
 struct Prepared {
     profile: CompanionProfile,
+    /// The model this call uses; always one configured for `profile`.
+    model: String,
     spec: ProviderSpec,
     key: Secret,
     /// `host` or `host:port` the request goes to.
     host: String,
 }
 
-/// Profile, key and budget, in that order. Nothing is stored and nothing is sent here.
-fn prepare(core: &Core, profile_id: &str) -> Res<Prepared> {
+/// Profile, model, key and budget, in that order. `model` must be one configured for the profile
+/// (decision 36); `None` uses the profile's default model. Nothing is stored or sent here.
+fn prepare(core: &Core, profile_id: &str, model: Option<&str>) -> Res<Prepared> {
     // Usage of a call cancelled earlier must count before the budget is checked.
     flush_late_usage(core);
     let profile = with_store(core, |s| s.companion_profile(profile_id))?
         .ok_or_else(|| CompanionError::not_found("That profile no longer exists."))?;
-    let spec = spec_of(&profile)?;
+    let model = match model {
+        None => profile.model.clone(),
+        Some(m) => {
+            let configured = models_dev::valid_model_id(m)
+                && with_store(core, |s| s.companion_model(&profile.id, m))?.is_some();
+            if !configured {
+                return Err(CommandError::invalid(
+                    "That model isn't set up for this provider. Add it in Settings, then try again.",
+                ));
+            }
+            m.to_owned()
+        }
+    };
+    let spec = spec_of(&profile, &model)?;
     let host = check_base_url(&spec.base_url)?.host;
     let key = core
         .companion
@@ -875,6 +986,7 @@ fn prepare(core: &Core, profile_id: &str) -> Res<Prepared> {
     budget::check(profile.monthly_token_budget, i, o)?;
     Ok(Prepared {
         profile,
+        model,
         spec,
         key,
         host,
@@ -882,7 +994,7 @@ fn prepare(core: &Core, profile_id: &str) -> Res<Prepared> {
 }
 
 pub fn test_connection(core: &Core, profile_id: &str) -> Res<TestResultDto> {
-    let p = prepare(core, profile_id)?;
+    let p = prepare(core, profile_id, None)?;
     let messages = [ChatMessage {
         role: Role::User,
         content: "Reply with the single word: ok".to_owned(),
@@ -905,7 +1017,7 @@ pub fn test_connection(core: &Core, profile_id: &str) -> Res<TestResultDto> {
     })?;
     Ok(TestResultDto {
         ok: true,
-        model: p.profile.model,
+        model: p.model,
     })
 }
 
@@ -1608,6 +1720,7 @@ pub fn send(
     core: &Core,
     thread_id: i64,
     profile_id: &str,
+    model: &str,
     text: &str,
     scope: &Scope,
     expected_context_sha256: Option<&str>,
@@ -1623,8 +1736,8 @@ pub fn send(
     with_store(core, |s| {
         s.companion_thread(thread_id)?.ok_or(StoreError::NotFound)
     })?;
-    // Nothing is stored unless the profile, key and budget are all in order.
-    let prepared = prepare(core, profile_id)?;
+    // Nothing is stored unless the profile, model, key and budget are all in order.
+    let prepared = prepare(core, profile_id, Some(model))?;
     let attached = attached_text(core, scope)?;
     let actual = attached.as_deref().map(context_sha256);
     if actual.as_deref() != expected_context_sha256.map(str::trim) {
@@ -1642,7 +1755,7 @@ pub fn send(
                 attached_context: attached.as_deref(),
                 scope_kind: scope.kind_str(),
                 profile_id: &prepared.profile.id,
-                model: &prepared.profile.model,
+                model: &prepared.model,
                 host: &prepared.host,
             },
             OffsetDateTime::now_utc(),
@@ -1652,7 +1765,16 @@ pub fn send(
     deliver(core, &guard, &prepared, id, past, content, request_id, emit)
 }
 
-pub fn retry(core: &Core, message_id: i64, request_id: &str, emit: Emit<'_>) -> Res<MessageDto> {
+/// Sends a failed message again, to `profile_id` and `model` (decision 36: the user picks them,
+/// usually the ones it was first sent with). The address must be the one it was first sent to.
+pub fn retry(
+    core: &Core,
+    message_id: i64,
+    profile_id: &str,
+    model: &str,
+    request_id: &str,
+    emit: Emit<'_>,
+) -> Res<MessageDto> {
     check_request_id(request_id)?;
     let msg = with_store(core, |s| s.companion_message(message_id))?
         .ok_or_else(|| CompanionError::not_found("That message no longer exists."))?;
@@ -1673,12 +1795,7 @@ pub fn retry(core: &Core, message_id: i64, request_id: &str, emit: Emit<'_>) -> 
             "Only the latest message in a conversation can be tried again.",
         ));
     }
-    let profile_id = msg.profile_id.clone().ok_or_else(|| {
-        CompanionError::not_found(
-            "The profile this message used was deleted. Send it again with another profile.",
-        )
-    })?;
-    let prepared = prepare(core, &profile_id)?;
+    let prepared = prepare(core, profile_id, Some(model))?;
     // The profile's address was edited since this message was written. It must not go to the new
     // host without the user looking at it again.
     if msg.host.as_deref() != Some(prepared.host.as_str()) {
@@ -1687,7 +1804,9 @@ pub fn retry(core: &Core, message_id: i64, request_id: &str, emit: Emit<'_>) -> 
         ));
     }
     let past = history(core, msg.thread_id, Some(msg.id), &prepared.host)?;
-    with_store(core, |s| s.companion_mark_pending(msg.id))?;
+    with_store(core, |s| {
+        s.companion_mark_pending_for(msg.id, &prepared.profile.id, &prepared.model)
+    })?;
     let content = compose_user_content(msg.attached_context.as_deref(), &msg.text);
     deliver(
         core, &guard, &prepared, msg.id, past, content, request_id, emit,
@@ -1760,6 +1879,43 @@ pub async fn companion_test(core: CoreState<'_>, profile_id: String) -> Res<Test
 }
 
 #[tauri::command]
+pub async fn companion_add_model(
+    core: CoreState<'_>,
+    profile_id: String,
+    model: String,
+    label: Option<String>,
+    make_default: bool,
+) -> Res<ProviderProfileDto> {
+    run(&core, move |c| {
+        add_model(c, &profile_id, &model, label.as_deref(), make_default)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn companion_remove_model(
+    core: CoreState<'_>,
+    profile_id: String,
+    model: String,
+) -> Res<ProviderProfileDto> {
+    run(&core, move |c| remove_model(c, &profile_id, &model)).await
+}
+
+#[tauri::command]
+pub async fn companion_set_default_model(
+    core: CoreState<'_>,
+    profile_id: String,
+    model: String,
+) -> Res<ProviderProfileDto> {
+    run(&core, move |c| set_default_model(c, &profile_id, &model)).await
+}
+
+#[tauri::command]
+pub async fn companion_open_link(core: CoreState<'_>, url: String) -> Res<()> {
+    run(&core, move |_| open_link::open(&url)).await
+}
+
+#[tauri::command]
 pub async fn companion_model_catalog(
     core: CoreState<'_>,
     mode: CatalogMode,
@@ -1814,6 +1970,7 @@ pub async fn companion_send(
     core: CoreState<'_>,
     thread_id: i64,
     profile_id: String,
+    model: String,
     text: String,
     scope: Scope,
     expected_context_sha256: Option<String>,
@@ -1829,6 +1986,7 @@ pub async fn companion_send(
             c,
             thread_id,
             &profile_id,
+            &model,
             &text,
             &scope,
             expected_context_sha256.as_deref(),
@@ -1843,6 +2001,8 @@ pub async fn companion_send(
 pub async fn companion_retry(
     core: CoreState<'_>,
     message_id: i64,
+    profile_id: String,
+    model: String,
     request_id: String,
     on_event: tauri::ipc::Channel<StreamEvent>,
 ) -> Res<MessageDto> {
@@ -1851,7 +2011,7 @@ pub async fn companion_retry(
         emit(StreamEvent::Started {
             request_id: request_id.clone(),
         });
-        retry(c, message_id, &request_id, &emit)
+        retry(c, message_id, &profile_id, &model, &request_id, &emit)
     })
     .await
 }
