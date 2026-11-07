@@ -318,6 +318,10 @@ pub struct DashboardSession {
     /// no longer tracked. `view` keeps the last reported state (S05-T10).
     #[serde(with = "time::serde::rfc3339::option")]
     pub disconnected_utc: Option<OffsetDateTime>,
+    /// Set when the user imported the session from the agent's own log and no hook event has
+    /// arrived since (ADR-024): `view.last_known_state` is a guess, not an observation.
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub imported_utc: Option<OffsetDateTime>,
 }
 
 /// Everything the dashboard joins onto the session list. A failed read of any part only hides
@@ -327,6 +331,7 @@ pub struct DashboardLookups {
     pub summaries: HashMap<(String, String), ContextSummary>,
     pub labels: HashMap<(String, String), SessionLabels>,
     pub disconnected: HashMap<(String, String), OffsetDateTime>,
+    pub imported: HashMap<(String, String), OffsetDateTime>,
 }
 
 impl DashboardLookups {
@@ -335,6 +340,7 @@ impl DashboardLookups {
             summaries: store.context_summaries().unwrap_or_default(),
             labels: store.session_labels().unwrap_or_default(),
             disconnected: store.disconnected_sessions().unwrap_or_default(),
+            imported: store.imported_sessions().unwrap_or_default(),
         }
     }
 }
@@ -371,9 +377,11 @@ pub fn dashboard_session(
     let key = (record.provider.clone(), record.provider_session_id.clone());
     let labels = lookups.labels.get(&key).cloned().unwrap_or_default();
     let disconnected_utc = lookups.disconnected.get(&key).copied();
+    let imported_utc = lookups.imported.get(&key).copied();
     DashboardSession {
-        // A session that is no longer tracked has no return card waiting either.
+        // A session that is no longer (or not yet) tracked has no return card waiting either.
         needs_review: disconnected_utc.is_none()
+            && imported_utc.is_none()
             && needs_review(
                 view.state,
                 record.state_timestamp_utc,
@@ -384,6 +392,7 @@ pub fn dashboard_session(
         agent_title: labels.agent_title,
         intent_line: labels.intent_line,
         disconnected_utc,
+        imported_utc,
     }
 }
 
