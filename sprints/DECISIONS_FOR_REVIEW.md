@@ -35,6 +35,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 29 | 12 | Publish the creator CLI and SDK to npm | change: build it (built; Node 24+ confirmed 2026-11-07) |
 | 30 | 12 | Wording in PRD and CLAUDE.md after 27.5 | applied as suggested (2026-11-07) |
 | 31 | 12 | npm package versions before the first publish | all three at 0.1.0 (2026-11-07) |
+| 32 | 12 | Companion model list from models.dev | built (2026-11-07) |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -387,3 +388,19 @@ The CLI package is version 0.1.0, but `lullshift --version` prints the SDK's ver
 - **Option B:** keep separate versions, and make `--version` print the CLI's own version.
 
 **Owner decision (2026-11-07):** one shared version, first chosen as 0.2.0, then changed the same day to 0.1.0 so the first release starts at 0.1.0. The SDK constant, the bridge header and all bundled manifests (`sdkVersion`) moved from 0.2.0 to 0.1.0; nothing had been published and the app doesn't check `sdkVersion`. All three packages are 0.1.0, and `scripts/check-npm-packages.mjs` fails if their versions ever differ. The website (lullshift.github.io) copies the creator guides from this repo at build time and has no package versions of its own; run its deploy workflow after the next push.
+
+## 32. Companion model list from models.dev (owner request, 2026-11-07)
+
+**Owner decisions:**
+- Lullshift contacts `https://models.dev/api.json` **only when the user presses** "Load model list from models.dev" or Refresh in Companion settings. Nothing is fetched on launch or when settings open.
+- The list is kept **in memory for the app run** only. Refresh sends the stored ETag, so an unchanged list isn't downloaded again.
+- Anthropic and OpenAI profiles show those lists. OpenAI-compatible profiles get a searchable provider picker; the base URL is never filled in from models.dev.
+- Filters run on the computer: text search, supports tools, reasoning, hide models older than a year. Sorts: newest, cheapest input, name. Each model shows its price per 1M tokens and its context size.
+- The allowed-network wording in the PRD, ADR-001, `TECHNICAL_ARCHITECTURE.md` and `CLAUDE.md` now includes this list (the owner approved the change by choosing the button-press option).
+
+**Choices made while building:**
+- Fetched in Rust with the same hardened client as provider calls; the WebView CSP is unchanged. The URL can only be changed in test builds.
+- The answer is untrusted: it is parsed as a stream with caps (16 MiB body, 1,000 providers, 5,000 models per provider, 20,000 in total), bad entries are skipped, model ids must pass the same rule as typed names, and names are cleaned of invisible characters.
+- Measured on the real file (5.97 MB): 235 providers and 8,456 chat models kept, 2.6 MB peak extra memory. A hostile 16 MiB body keeps 20,000 models with a 6.5 MB peak.
+- A security review found one medium issue (memory blow-up from a hostile body) and four low ones; all were fixed with tests before the merge.
+- Manual check M12-15 covers the network monitor, refresh, offline errors, filters and NVDA.
