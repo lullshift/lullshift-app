@@ -143,7 +143,13 @@ fn run_inner(args: &HookArgs, mut stdin: impl Read, started: OffsetDateTime) -> 
         },
         _ => return Outcome::BadArguments,
     };
-    send(&args.data_dir, &args.adapter, &event, context.as_ref())
+    send(
+        &args.data_dir,
+        &args.adapter,
+        &event,
+        context.as_ref(),
+        started,
+    )
 }
 
 /// The optional task text for one Claude Code hook (ADR-013): prompt, question and the session
@@ -258,12 +264,32 @@ fn build_event(
     parse_event(&json).ok().map(|_| json)
 }
 
+/// Time kept back at the end of the deadline for writing the failure marker.
+const MARKER_RESERVE: Duration = Duration::from_millis(250);
+/// Below this much time left, the event isn't sent at all (and no marker is written: there was
+/// no real attempt).
+const MIN_SEND_BUDGET: Duration = Duration::from_millis(50);
+
+/// What is left of the send budget, counted from `started` (process start), not from now: a
+/// slow stdin must eat into the send, never into the marker reserve.
+fn send_budget(started: OffsetDateTime, now: OffsetDateTime) -> Duration {
+    let elapsed = Duration::try_from(now - started).unwrap_or(Duration::ZERO);
+    DEADLINE
+        .saturating_sub(MARKER_RESERVE)
+        .saturating_sub(elapsed)
+}
+
 fn send(
     data_dir: &Path,
     adapter: &str,
     event_json: &str,
     context: Option<&EventContext>,
+    started: OffsetDateTime,
 ) -> Outcome {
+    let budget = send_budget(started, OffsetDateTime::now_utc());
+    if budget < MIN_SEND_BUDGET {
+        return Outcome::TimedOut;
+    }
     let Ok(rt) = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -271,10 +297,7 @@ fn send(
         return Outcome::Failed;
     };
     let reply = rt.block_on(agent_ipc::send_event_with_context(
-        data_dir,
-        event_json,
-        context,
-        DEADLINE.saturating_sub(Duration::from_millis(250)),
+        data_dir, event_json, context, budget,
     ));
     let outcome = match &reply {
         Ok(r) if r.ok && r.duplicate => Outcome::Duplicate,
@@ -631,6 +654,39 @@ mod tests {
         assert_eq!(outcome, Outcome::Rejected);
         let m = hook_failure::read(&dir.path().join("ipc")).expect("marker");
         assert_eq!(m.reason, FailureReason::Rejected);
+    }
+
+    #[test]
+    fn the_send_budget_counts_from_process_start() {
+        let t = datetime!(2026-11-07 13:00:00 UTC);
+        assert_eq!(send_budget(t, t), DEADLINE - MARKER_RESERVE);
+        assert_eq!(
+            send_budget(t, t + time::Duration::milliseconds(1500)),
+            Duration::from_millis(250)
+        );
+        assert_eq!(
+            send_budget(t, t + time::Duration::seconds(5)),
+            Duration::ZERO
+        );
+        // A clock that went backwards counts as no time elapsed.
+        assert_eq!(
+            send_budget(t, t - time::Duration::seconds(5)),
+            DEADLINE - MARKER_RESERVE
+        );
+        // Started long ago (slow stdin): no send and no marker.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ipc = dir.path().join("ipc");
+        std::fs::create_dir(&ipc).expect("ipc");
+        std::fs::write(ipc.join("endpoint.json"), "{}").expect("endpoint");
+        assert_eq!(
+            run(
+                &hook_args(dir.path()),
+                std::io::Cursor::new(STOP.to_vec()),
+                OffsetDateTime::now_utc() - time::Duration::seconds(3)
+            ),
+            Outcome::TimedOut
+        );
+        assert!(hook_failure::read(&ipc).is_none());
     }
 
     #[test]

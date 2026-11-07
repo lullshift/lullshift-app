@@ -53,7 +53,7 @@ fn stale_connection_files_leave_a_marker_but_no_output() {
 
     let started = Instant::now();
     let out = run_hook(dir.path(), STOP);
-    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(started.elapsed() < Duration::from_millis(2500));
     assert!(out.status.success(), "exit code {:?}", out.status.code());
     assert!(out.stdout.is_empty(), "stdout: {:?}", out.stdout);
     assert!(out.stderr.is_empty(), "stderr: {:?}", out.stderr);

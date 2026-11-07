@@ -155,11 +155,32 @@ pub fn record(
     let Some(bytes) = render(adapter, reason, now) else {
         return Recorded::Skipped;
     };
-    let tmp = ipc.join(format!("{MARKER_FILE}.tmp"));
-    let written = fs::File::create(&tmp)
-        .and_then(|mut f| f.write_all(&bytes))
-        .and_then(|()| fs::rename(&tmp, ipc.join(MARKER_FILE)));
-    if written.is_err() {
+    // A temporary name of our own (process id and random bytes), created new so an existing
+    // file or link of that name is never written through: concurrent hooks can't interleave,
+    // and the rename publishes one complete marker.
+    let mut nonce = [0u8; 8];
+    if getrandom::fill(&mut nonce).is_err() {
+        return Recorded::Skipped;
+    }
+    let hex: String = nonce.iter().map(|b| format!("{b:02x}")).collect();
+    let tmp = ipc.join(format!("{MARKER_FILE}.{}.{hex}.tmp", std::process::id()));
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let Ok(mut file) = opts.open(&tmp) else {
+        return Recorded::Skipped;
+    };
+    let written = file.write_all(&bytes);
+    drop(file);
+    if written
+        .and_then(|()| fs::rename(&tmp, ipc.join(MARKER_FILE)))
+        .is_err()
+    {
         let _ = fs::remove_file(&tmp);
         return Recorded::Skipped;
     }
@@ -249,6 +270,37 @@ mod tests {
         );
         let m = read(&d.path().join("ipc")).expect("marker");
         assert_eq!(m.utc, t + time::Duration::seconds(70));
+    }
+
+    /// Review L1: concurrent hooks never leave a marker that doesn't parse, nor temporary files.
+    #[test]
+    fn concurrent_writers_leave_a_valid_marker() {
+        let d = data_dir();
+        let base = datetime!(2026-11-07 13:00:00 UTC);
+        std::thread::scope(|s| {
+            for reason in [FailureReason::Rejected, FailureReason::Unreachable] {
+                let dir = d.path();
+                s.spawn(move || {
+                    for i in 0..1000i64 {
+                        // A minute apart, so the rate limit never skips a write.
+                        let at = base + time::Duration::seconds(61 * i);
+                        let _ = record(dir, "claude-code", reason, at);
+                    }
+                });
+            }
+        });
+        let ipc = d.path().join("ipc");
+        let bytes = fs::read(ipc.join(MARKER_FILE)).expect("marker");
+        assert!(
+            parse(&bytes).is_some(),
+            "{}",
+            String::from_utf8_lossy(&bytes)
+        );
+        let names: Vec<String> = fs::read_dir(&ipc)
+            .expect("dir")
+            .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, [MARKER_FILE], "no temporary files left");
     }
 
     #[test]
