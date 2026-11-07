@@ -16,7 +16,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { AppearanceSettings } from "./AppearanceSettings";
 import { applyTheme, effectiveTheme, startThemeSync, themeOf } from "./theme";
-import { resetUiPrefsForTests, uiPrefsStore } from "./uiPrefsStore";
+import { loadUiPrefs, resetUiPrefsForTests, uiPrefsStore } from "./uiPrefsStore";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -45,6 +45,58 @@ describe("theme logic", () => {
   });
 });
 
+describe("theme at startup", () => {
+  beforeEach(() => {
+    resetUiPrefsForTests();
+    window.localStorage.clear();
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  it("applies the remembered theme before the preferences load, then follows them", async () => {
+    window.localStorage.setItem("lullshift.theme", "dark");
+    const stop = startThemeSync();
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    // Older saved preferences have no theme: that is System, and the cache is corrected.
+    await loadUiPrefs(() =>
+      Promise.resolve({ detailPanelPinned: true, contentWidth: "full", onboardingDone: true }),
+    );
+    expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
+    expect(window.localStorage.getItem("lullshift.theme")).toBe("system");
+    stop();
+  });
+
+  it("keeps the remembered theme when the preferences can't be read", async () => {
+    window.localStorage.setItem("lullshift.theme", "light");
+    const stop = startThemeSync();
+    await loadUiPrefs(() => Promise.reject(new Error("store_unavailable")));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    stop();
+  });
+
+  it("works when the browser store is blocked", async () => {
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const stop = startThemeSync();
+    expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
+    await loadUiPrefs(() =>
+      Promise.resolve({
+        detailPanelPinned: true,
+        contentWidth: "full",
+        onboardingDone: true,
+        theme: "dark",
+      }),
+    );
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    stop();
+    get.mockRestore();
+    set.mockRestore();
+  });
+});
+
 describe("Appearance > Theme", () => {
   let host: HTMLDivElement;
   let root: Root;
@@ -52,6 +104,7 @@ describe("Appearance > Theme", () => {
 
   beforeEach(() => {
     saved.length = 0;
+    window.localStorage.clear();
     resetUiPrefsForTests();
     document.documentElement.removeAttribute("data-theme");
     stop = startThemeSync();

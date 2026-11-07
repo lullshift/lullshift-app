@@ -32,13 +32,43 @@ export function applyTheme(theme: Theme | undefined, root: HTMLElement = documen
   else root.setAttribute("data-theme", t);
 }
 
-/** Applies the saved theme now and whenever the preferences change. Returns the unsubscribe. */
+const CACHE_KEY = "lullshift.theme";
+
+/** The theme remembered by the last run, so the first paint isn't the wrong one. */
+export function cachedTheme(): Theme | undefined {
+  try {
+    const v = window.localStorage.getItem(CACHE_KEY);
+    return v === "light" || v === "dark" || v === "system" ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function cacheTheme(theme: Theme) {
+  try {
+    window.localStorage.setItem(CACHE_KEY, theme);
+  } catch {
+    // A blocked or full store only costs the flash-free start.
+  }
+}
+
+/**
+ * Applies the remembered theme at once (before the first render, so there is no flash), then
+ * the saved preference as soon as it is known and whenever it changes. The preference is the
+ * truth; the cache only covers the moment before it loads, and a failed load keeps the cache.
+ * Returns the unsubscribe.
+ */
 export function startThemeSync(): () => void {
-  applyTheme(uiPrefsStore.getState().prefs.theme);
-  let last = uiPrefsStore.getState().prefs.theme;
+  applyTheme(cachedTheme());
+  let last: Theme | undefined = cachedTheme();
   return uiPrefsStore.subscribe((s) => {
-    if (s.prefs.theme === last) return;
-    last = s.prefs.theme;
-    applyTheme(last);
+    // Known: the preferences were read, or the user already changed the theme.
+    const known = s.loaded ? !s.loadFailed : s.prefs.theme !== undefined;
+    if (!known) return;
+    const next = themeOf(s.prefs.theme);
+    if (next === last) return;
+    last = next;
+    applyTheme(next);
+    cacheTheme(next);
   });
 }
