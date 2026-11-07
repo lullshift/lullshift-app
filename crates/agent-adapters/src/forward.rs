@@ -15,7 +15,7 @@ use serde_json::{Map, Value, json};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use agent_ipc::EventContext;
+use agent_ipc::{EventContext, ProcessRef};
 
 use crate::hook_failure::{self, FailureReason};
 use crate::{claude_code, codex, cursor, opencode};
@@ -148,8 +148,16 @@ fn run_inner(args: &HookArgs, mut stdin: impl Read, started: OffsetDateTime) -> 
         &args.adapter,
         &event,
         context.as_ref(),
+        agent_process(),
         started,
     )
+}
+
+/// The agent's process behind this hook (decision 35, ADR-025): the first non-shell ancestor,
+/// with its start key. Read-only and cheap (a few system calls); any failure is `None`, and the
+/// event is sent without a process. Never printed or logged.
+fn agent_process() -> Option<ProcessRef> {
+    process_probe::agent_process().map(ProcessRef::from)
 }
 
 /// The optional task text for one Claude Code hook (ADR-013): prompt, question and the session
@@ -279,11 +287,28 @@ fn send_budget(started: OffsetDateTime, now: OffsetDateTime) -> Duration {
         .saturating_sub(elapsed)
 }
 
+/// Sends with the process; if the app answers `malformed` (an older app that doesn't know the
+/// `process` field), sends the same event once more without it, so a version mismatch never
+/// loses an event. `attempt` runs one exchange.
+fn exchange_with_fallback(
+    process: Option<ProcessRef>,
+    mut attempt: impl FnMut(Option<ProcessRef>) -> Result<agent_ipc::Reply, agent_ipc::ClientError>,
+) -> Result<agent_ipc::Reply, agent_ipc::ClientError> {
+    let first = attempt(process);
+    match (&first, process) {
+        (Ok(r), Some(_)) if !r.ok && r.error == Some(agent_ipc::ErrorCode::Malformed) => {
+            attempt(None)
+        }
+        _ => first,
+    }
+}
+
 fn send(
     data_dir: &Path,
     adapter: &str,
     event_json: &str,
     context: Option<&EventContext>,
+    process: Option<ProcessRef>,
     started: OffsetDateTime,
 ) -> Outcome {
     let budget = send_budget(started, OffsetDateTime::now_utc());
@@ -296,9 +321,17 @@ fn send(
     else {
         return Outcome::Failed;
     };
-    let reply = rt.block_on(agent_ipc::send_event_with_context(
-        data_dir, event_json, context, budget,
-    ));
+    let reply = exchange_with_fallback(process, |process| {
+        // The retry gets what is left of the budget, never a fresh one.
+        let left = send_budget(started, OffsetDateTime::now_utc());
+        rt.block_on(agent_ipc::send_event_full(
+            data_dir,
+            event_json,
+            context,
+            process,
+            left.min(budget),
+        ))
+    });
     let outcome = match &reply {
         Ok(r) if r.ok && r.duplicate => Outcome::Duplicate,
         Ok(r) if r.ok => Outcome::Sent,
@@ -654,6 +687,99 @@ mod tests {
         assert_eq!(outcome, Outcome::Rejected);
         let m = hook_failure::read(&dir.path().join("ipc")).expect("marker");
         assert_eq!(m.reason, FailureReason::Rejected);
+    }
+
+    fn reply(ok: bool, error: Option<agent_ipc::ErrorCode>) -> agent_ipc::Reply {
+        agent_ipc::Reply {
+            ok,
+            duplicate: false,
+            error,
+        }
+    }
+
+    #[test]
+    fn an_older_app_that_rejects_the_process_field_gets_the_event_again_without_it() {
+        let p = ProcessRef {
+            pid: 4242,
+            start: 9,
+        };
+        let mut seen = Vec::new();
+        let out = exchange_with_fallback(Some(p), |process| {
+            seen.push(process);
+            if process.is_some() {
+                Ok(reply(false, Some(agent_ipc::ErrorCode::Malformed)))
+            } else {
+                Ok(reply(true, None))
+            }
+        });
+        assert!(out.expect("reply").ok);
+        assert_eq!(seen, [Some(p), None]);
+
+        // Anything else is final: no second send.
+        for n in 0..4 {
+            let make = || match n {
+                0 => Ok(reply(true, None)),
+                1 => Ok(reply(false, Some(agent_ipc::ErrorCode::Unauthorized))),
+                2 => Ok(reply(false, Some(agent_ipc::ErrorCode::InvalidEvent))),
+                _ => Err(agent_ipc::ClientError::NotRunning),
+            };
+            let mut calls = 0;
+            let out = exchange_with_fallback(Some(p), |_| {
+                calls += 1;
+                make()
+            });
+            assert_eq!(calls, 1, "case {n}");
+            assert_eq!(out.is_ok_and(|r| r.ok), n == 0);
+        }
+        // Without a process there is nothing to drop: a malformed reply is final.
+        let mut calls = 0;
+        let _ = exchange_with_fallback(None, |_| {
+            calls += 1;
+            Ok(reply(false, Some(agent_ipc::ErrorCode::Malformed)))
+        });
+        assert_eq!(calls, 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_hook_sends_its_agent_process_with_the_event() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<Option<ProcessRef>>>> = Default::default();
+        let s2 = std::sync::Arc::clone(&seen);
+        let sink = agent_ipc::WithProcess(
+            move |_e: agent_core::AgentEvent,
+                  _c: Option<EventContext>,
+                  p: Option<ProcessRef>|
+                  -> Result<bool, agent_ipc::SinkError> {
+                s2.lock().map_err(|_| agent_ipc::SinkError)?.push(p);
+                Ok(true)
+            },
+        );
+        let _running = agent_ipc::serve(
+            dir.path(),
+            std::sync::Arc::new(sink),
+            agent_ipc::Config::default(),
+        )
+        .expect("serve");
+        let args = hook_args(dir.path());
+        let outcome = tokio::task::spawn_blocking(move || {
+            run(
+                &args,
+                std::io::Cursor::new(STOP.to_vec()),
+                OffsetDateTime::now_utc(),
+            )
+        })
+        .await
+        .expect("join");
+        assert_eq!(outcome, Outcome::Sent);
+        let got = seen.lock().expect("lock").clone();
+        assert_eq!(got.len(), 1);
+        // Whatever the test runner's ancestry is, a reported process is in range and is not the
+        // hook's own process. (Tests run under cargo, not a shell chain, so the probe normally
+        // finds the runner's parent.)
+        if let Some(p) = got[0] {
+            assert!(p.validated().is_some());
+            assert_ne!(p.pid, std::process::id());
+        }
     }
 
     #[test]

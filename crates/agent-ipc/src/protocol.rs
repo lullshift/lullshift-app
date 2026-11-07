@@ -130,6 +130,36 @@ impl EventContext {
     }
 }
 
+/// The agent's process behind a hook (decision 35, ADR-025): the hook records it so the app can
+/// notice later that the process is gone. Not task text, so it travels beside the event, not in
+/// the consent-gated [`EventContext`]. The `start` key tells the process apart from a later one
+/// that reuses the PID. Both numbers come from outside and are untrusted: [`Self::validated`]
+/// drops anything out of range, and the app only ever *reads* process information about it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProcessRef {
+    pub pid: u32,
+    pub start: u64,
+}
+
+impl ProcessRef {
+    /// `Some(self)` if the PID and the start key are in range, else `None` (the event is still
+    /// accepted, without a process).
+    pub fn validated(self) -> Option<Self> {
+        (process_probe::valid_pid(self.pid) && process_probe::valid_start(self.start))
+            .then_some(self)
+    }
+}
+
+impl From<process_probe::ProcessId> for ProcessRef {
+    fn from(id: process_probe::ProcessId) -> Self {
+        Self {
+            pid: id.pid,
+            start: id.start,
+        }
+    }
+}
+
 /// The sink could not store the event; reported to the client as `internal`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SinkError;
@@ -140,6 +170,41 @@ pub trait EventSink: Send + Sync + 'static {
     /// optional task text from the envelope; the sink stores it only if its own consent gate
     /// allows, and never in the event log.
     fn deliver(&self, event: AgentEvent, context: Option<EventContext>) -> Result<bool, SinkError>;
+
+    /// [`Self::deliver`] with the agent's process when the hook sent one (already validated).
+    /// The default ignores it, so sinks that don't track processes need no change.
+    fn deliver_with_process(
+        &self,
+        event: AgentEvent,
+        context: Option<EventContext>,
+        _process: Option<ProcessRef>,
+    ) -> Result<bool, SinkError> {
+        self.deliver(event, context)
+    }
+}
+
+/// A sink that also receives the agent's process.
+pub struct WithProcess<F>(pub F);
+
+impl<F> EventSink for WithProcess<F>
+where
+    F: Fn(AgentEvent, Option<EventContext>, Option<ProcessRef>) -> Result<bool, SinkError>
+        + Send
+        + Sync
+        + 'static,
+{
+    fn deliver(&self, event: AgentEvent, context: Option<EventContext>) -> Result<bool, SinkError> {
+        (self.0)(event, context, None)
+    }
+
+    fn deliver_with_process(
+        &self,
+        event: AgentEvent,
+        context: Option<EventContext>,
+        process: Option<ProcessRef>,
+    ) -> Result<bool, SinkError> {
+        (self.0)(event, context, process)
+    }
 }
 
 impl<F> EventSink for F
@@ -231,6 +296,8 @@ struct Envelope<'a> {
     event: &'a RawValue,
     #[serde(default)]
     context: Option<EventContext>,
+    #[serde(default)]
+    process: Option<ProcessRef>,
 }
 
 impl Handler {
@@ -324,8 +391,13 @@ impl Handler {
             return Reply::err(ErrorCode::InvalidEvent);
         };
         let context = env.context.and_then(EventContext::normalized);
+        let process = env.process.and_then(ProcessRef::validated);
         let sink = Arc::clone(&self.sink);
-        match tokio::task::spawn_blocking(move || sink.deliver(event, context)).await {
+        match tokio::task::spawn_blocking(move || {
+            sink.deliver_with_process(event, context, process)
+        })
+        .await
+        {
             Ok(Ok(true)) => Reply::stored(),
             Ok(Ok(false)) => Reply::duplicate(),
             _ => Reply::err(ErrorCode::Internal),
@@ -369,9 +441,20 @@ mod tests {
         seen: Mutex<std::collections::HashSet<String>>,
         calls: AtomicUsize,
         contexts: Mutex<Vec<Option<EventContext>>>,
+        processes: Mutex<Vec<Option<ProcessRef>>>,
     }
 
     impl EventSink for Recorder {
+        fn deliver_with_process(
+            &self,
+            event: AgentEvent,
+            context: Option<EventContext>,
+            process: Option<ProcessRef>,
+        ) -> Result<bool, SinkError> {
+            self.processes.lock().map_err(|_| SinkError)?.push(process);
+            self.deliver(event, context)
+        }
+
         fn deliver(
             &self,
             event: AgentEvent,
@@ -393,6 +476,7 @@ mod tests {
             seen: Mutex::default(),
             calls: AtomicUsize::new(0),
             contexts: Mutex::default(),
+            processes: Mutex::default(),
         });
         let sink: Arc<dyn EventSink> = rec.clone();
         (Arc::new(Handler::new(token.clone(), sink, cfg)), rec, token)
@@ -562,6 +646,86 @@ mod tests {
         let (r, _) = roundtrip(&h, &request(token.expose(), EVENT)).await;
         assert_eq!(r, Reply::stored());
         assert_eq!(*rec.contexts.lock().expect("lock"), vec![None]);
+    }
+
+    fn request_with_process(token: &str, process: &str) -> Vec<u8> {
+        format!("{{\"v\":1,\"token\":\"{token}\",\"event\":{EVENT},\"process\":{process}}}\n")
+            .into_bytes()
+    }
+
+    #[tokio::test]
+    async fn the_agent_process_is_delivered_beside_the_event_and_old_clients_have_none() {
+        let (h, rec, token) = handler(Config::default());
+        let req = request_with_process(token.expose(), r#"{"pid":4242,"start":133000000000}"#);
+        assert_eq!(roundtrip(&h, &req).await.0, Reply::stored());
+        let old = request(token.expose(), &EVENT.replace("6f1c2a52", "6f1c2a53"));
+        assert_eq!(roundtrip(&h, &old).await.0, Reply::stored());
+        let got = rec.processes.lock().expect("lock").clone();
+        assert_eq!(
+            got,
+            vec![
+                Some(ProcessRef {
+                    pid: 4242,
+                    start: 133_000_000_000
+                }),
+                None
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_out_of_range_process_is_dropped_but_the_event_is_kept() {
+        let (h, rec, token) = handler(Config::default());
+        for (n, process) in [
+            r#"{"pid":0,"start":5}"#,
+            r#"{"pid":4294967295,"start":5}"#,
+            r#"{"pid":7,"start":0}"#,
+            r#"{"pid":7,"start":9223372036854775807}"#,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let event = EVENT.replace("6f1c2a52", &format!("6f1c2a5{n}"));
+            let req = format!(
+                "{{\"v\":1,\"token\":\"{}\",\"event\":{event},\"process\":{process}}}\n",
+                token.expose()
+            );
+            assert_eq!(roundtrip(&h, req.as_bytes()).await.0, Reply::stored());
+        }
+        assert_eq!(
+            *rec.processes.lock().expect("lock"),
+            vec![None, None, None, None]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_malformed_process_is_rejected_without_echo() {
+        let (h, rec, token) = handler(Config::default());
+        for process in [
+            r#"{"pid":"x","start":5}"#,
+            r#"{"pid":-1,"start":5}"#,
+            r#"{"pid":7,"start":5,"extra":1}"#,
+            r#"{"pid":7}"#,
+            "5",
+        ] {
+            let (r, raw) = roundtrip(&h, &request_with_process(token.expose(), process)).await;
+            assert_eq!(r.error, Some(ErrorCode::Malformed), "{process}");
+            assert!(!raw.contains("extra"), "no echo");
+        }
+        assert_eq!(rec.calls.load(Ordering::SeqCst), 0, "nothing was delivered");
+    }
+
+    #[tokio::test]
+    async fn process_is_not_delivered_for_unauthorized_requests() {
+        let (h, rec, _token) = handler(Config::default());
+        let wrong = Token::generate().expect("token");
+        let (r, _) = roundtrip(
+            &h,
+            &request_with_process(wrong.expose(), r#"{"pid":4242,"start":5}"#),
+        )
+        .await;
+        assert_eq!(r.error, Some(ErrorCode::Unauthorized));
+        assert!(rec.processes.lock().expect("lock").is_empty());
     }
 
     #[tokio::test]

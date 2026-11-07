@@ -27,6 +27,7 @@ dependencies = [
  "agent-ipc",
  "getrandom 0.4.3",
  "libc",
+ "process-probe",
  "rusqlite",
  "serde",
  "serde_json",
@@ -53,6 +54,7 @@ version = "0.1.0"
 dependencies = [
  "agent-core",
  "getrandom 0.4.3",
+ "process-probe",
  "serde",
  "serde_json",
  "tempfile",
