@@ -249,7 +249,7 @@ Milestones follow `sprints/ROADMAP.md`:
 ## 11. Risks and decisions requiring validation
 
 1. **Agent hook reliability:** state is only as accurate as provider events; unknown/stale status is valid.
-2. **Third-party code from Git repos:** no central review; the sandbox is the security boundary and must be proven per OS before code activities are installable.
+2. **Third-party code from Git repos:** no central review; the sandbox is the security boundary. Third-party code activities are installable on every platform after the review shows a risk warning and the user ticks a consent box, at each install and each update that changes the code. The per-OS sandbox proof is still run, and its result is shown in the warning.
 3. **Content quality and scope:** 20 games / ~100 activities risks thin or inconsistent quality; numbers are a target, not a gate.
 4. **Engine data-schema compatibility:** schemas are public contracts; breaking changes require new engine majors kept alongside old ones.
 5. **Git availability:** users may lack `git` or credentials; built-in content must work without Git, and the UI must explain setup clearly.

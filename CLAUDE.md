@@ -49,6 +49,7 @@ Build Lullshift following `docs/PRODUCT_REQUIREMENTS.md`, `docs/TECHNICAL_ARCHIT
 - Every activity implements host-owned interruptibility (pause/resume/saveState/restoreState), keyboard access and reduced motion, works offline, and declares only supported permissions.
 - Generated (including AI-generated) activity code is untrusted: static web only, no network, filesystem, clipboard or Tauri IPC.
 - Games use original names and art; generic mechanics are fine, copies of specific branded games are not.
+- Third-party code activities (`kind: app` from non-built-in marketplaces) are installable on all platforms only after the review's risk warning and explicit consent at each install and each code-changing update (owner decision 27.5, ADR-015 amendment). The backend must refuse them without `acceptCodeRisk: true`. Never weaken the sandbox, CSP, WebRTC block or permissions model to make third-party code work, and never describe the sandbox as guaranteed.
 - Use `/activity-creator` for new activities and `/marketplace-publishing` for marketplace repos.
 
 ## Definition of done

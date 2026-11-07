@@ -33,7 +33,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 27 | 12 | Sprint 12 build and review choices | change: 27.1, 27.5, 27.6, 27.8 (built 2026-11-06) |
 | 28 | 12 | Bundled Git fallback (gix, public https) | change: build it (built 2026-11-06) |
 | 29 | 12 | Publish the creator CLI and SDK to npm | change: build it (built; Node 24+ confirmed 2026-11-07) |
-| 30 | 12 | Wording in PRD and CLAUDE.md after 27.5 | open |
+| 30 | 12 | Wording in PRD and CLAUDE.md after 27.5 | applied as suggested (2026-11-07) |
 | 31 | 12 | npm package versions before the first publish | open |
 
 ## 1. OpenCode adapter (Sprint 05)
@@ -377,7 +377,7 @@ Decision 27.5 opened third-party code activities on every platform after a warni
 - **`docs/PRODUCT_REQUIREMENTS.md` line 252** says the sandbox "must be proven per OS before code activities are installable". It is now out of date. Suggested change: "Third-party code activities are installable on every platform after the review shows a risk warning and the user ticks a consent box, at each install and each update that changes the code. The per-OS sandbox proof is still run, and its result is shown in the warning."
 - **`CLAUDE.md`, under "Activities and creators"**, suggested new line: "Third-party code activities (`kind: app` from non-built-in marketplaces) are installable on all platforms only after the review's risk warning and explicit consent at each install and each code-changing update (owner decision 27.5, ADR-015 amendment). The backend must refuse them without `acceptCodeRisk: true`. Never weaken the sandbox, CSP, WebRTC block or permissions model to make third-party code work, and never describe the sandbox as guaranteed."
 
-**Question for the owner:** apply both changes as written, change the wording, or leave them?
+**Owner decision (2026-11-07):** apply both as written. Done.
 
 ## 31. npm package versions before the first publish (open, for the owner)
 
