@@ -72,8 +72,20 @@
   --slow: 240ms;
 }
 
+/* Theme (ADR-026 section 5): Settings > Appearance sets data-theme on the root. Without it
+   (System) the OS preference decides; "light" and "dark" win over it. The dark values are
+   written twice because CSS can't share a block between a media query and a selector; the
+   contrast test checks the two copies match. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     /* Dark: "night lull" */
     --bg: #17151c;
     --bg-glow-1: #262040;
@@ -113,4 +125,45 @@
     --shadow-lg: 0 2px 6px rgb(0 0 0 / 0.35), 0 24px 48px rgb(0 0 0 / 0.45);
     --backdrop: rgb(8 6 12 / 0.6);
   }
+}
+
+:root[data-theme="dark"] {
+  /* Dark: "night lull" */
+  --bg: #17151c;
+  --bg-glow-1: #262040;
+  --bg-glow-2: #2c201b;
+  --surface: #211e28;
+  --surface-2: #2a2632;
+  --surface-hover: #27232f;
+  --border: #35303f;
+  --border-strong: #463f52;
+  --control-border: #857c91;
+
+  --text: #ece8f2;
+  --text-muted: #b0a9bb;
+  --text-subtle: #948c9f;
+
+  --accent: #b9a6ff;
+  --accent-hover: #cbbcff;
+  --accent-soft: #2a2148;
+  --on-accent: #17151c;
+
+  --attention: #f4b47c;
+  --attention-dot: #f09a55;
+  --attention-soft: #3a2a20;
+
+  --success: #93cba3;
+  --success-dot: #7dbb90;
+  --success-soft: #1f2f27;
+
+  --danger: #f2a1a1;
+  --danger-soft: #3b2326;
+
+  --neutral-dot: #6f6879;
+  --neutral-soft: #2a2632;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.25);
+  --shadow-lg: 0 2px 6px rgb(0 0 0 / 0.35), 0 24px 48px rgb(0 0 0 / 0.45);
+  --backdrop: rgb(8 6 12 / 0.6);
 }

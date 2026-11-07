@@ -355,6 +355,36 @@ export const IMPORTABLE: FoundSession[] = [
     guess: "unknown",
     tracked: false,
   },
+  {
+    provider: "claude-code",
+    sessionId: "d52e0f18-6c3b-4a72-8b1f-4e8d9c2a3f66",
+    project: "shop/checkout",
+    projectPath: "/Users/sam/code/shop/checkout",
+    title: "Handle declined cards",
+    lastActivityUtc: ago(55),
+    guess: "waiting",
+    tracked: false,
+  },
+  {
+    provider: "codex",
+    sessionId: "019e1a2b-9d4e-7f50-9bac-1d2e3f4a5b6c",
+    project: "shop/checkout",
+    projectPath: "/Users/sam/code/shop/checkout",
+    title: "Add receipt emails",
+    lastActivityUtc: ago(60 * 5),
+    guess: "unknown",
+    tracked: false,
+  },
+  {
+    provider: "cursor",
+    sessionId: "3b7d1e40-8a5c-4c92-a6d3-71f0e8b49c25",
+    project: "tools/cli",
+    projectPath: "/Users/sam/code/tools/cli",
+    title: "Rename the --dry flag",
+    lastActivityUtc: ago(60 * 30),
+    guess: "waiting",
+    tracked: false,
+  },
 ];
 
 const GUESS_STATE: Record<FoundSession["guess"], SessionView["state"]> = {

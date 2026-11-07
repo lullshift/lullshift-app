@@ -14,8 +14,10 @@ import "@fontsource-variable/figtree";
 import "../styles/tokens.css";
 import "../styles.css";
 import "../styles/home.css";
+import { startThemeSync } from "../theme";
 
 installDemoBackend();
+startThemeSync();
 
 declare global {
   interface Window {

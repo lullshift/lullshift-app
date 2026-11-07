@@ -27,7 +27,7 @@ pub use companion::{
     CompanionToolCall, CompanionToolNotice, CompanionUsage, DEFAULT_THREAD_TITLE,
     LAST_MODEL_REFUSED, MAX_ATTACHED_CHARS, MAX_MESSAGE_CHARS, MAX_MODEL_LABEL_CHARS,
     MAX_MODELS_PER_PROFILE, MAX_PROFILES, MAX_THREAD_TITLE_CHARS, MAX_THREADS, NewToolCall,
-    NewToolNotice, NewUserMessage, month_of,
+    NewToolNotice, NewUserMessage, month_of, title_from_message,
 };
 
 pub use context::{

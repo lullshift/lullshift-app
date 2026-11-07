@@ -18,6 +18,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { providerName } from "../format";
 import { activitySourceLabel } from "../marketplace/logic";
+import { effectiveTheme } from "../theme";
+import { uiPrefsStore } from "../uiPrefsStore";
 import { Icon } from "../ui/Icon";
 import { Mascot } from "../ui/Mascot";
 import { loadContent, type ContentProblem } from "./content";
@@ -296,7 +298,7 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
           type: "init",
           restore: restoreRef.current,
           reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-          theme: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+          theme: effectiveTheme(uiPrefsStore.getState().prefs.theme),
           content: contentRef.current,
         });
         setPhase({ kind: "running" });

@@ -5,7 +5,12 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const css = readFileSync(new URL("./styles/tokens.css", import.meta.url), "utf8");
-const darkStart = css.indexOf("@media (prefers-color-scheme: dark)");
+// Dark values live twice: under the OS preference (System) and under an explicit data-theme.
+const mediaStart = css.indexOf("@media (prefers-color-scheme: dark)");
+const explicitStart = css.indexOf(
+  ':root[data-theme="dark"] {',
+  css.indexOf("--backdrop", mediaStart),
+);
 
 function tokens(block: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -15,8 +20,22 @@ function tokens(block: string): Record<string, string> {
   return out;
 }
 
-const light = tokens(css.slice(0, darkStart));
-const themes = { light, dark: { ...light, ...tokens(css.slice(darkStart)) } };
+const light = tokens(css.slice(0, mediaStart));
+const darkSystem = tokens(css.slice(mediaStart, explicitStart));
+const darkExplicit = tokens(css.slice(explicitStart));
+const themes = { light, dark: { ...light, ...darkExplicit } };
+
+describe("explicit theme", () => {
+  it("has the same dark values as the OS-preference block", () => {
+    expect(explicitStart).toBeGreaterThan(mediaStart);
+    expect(Object.keys(darkSystem).length).toBeGreaterThan(20);
+    expect(darkExplicit).toEqual(darkSystem);
+  });
+
+  it("lets an explicit light theme win over a dark OS preference", () => {
+    expect(css).toContain(':root:not([data-theme="light"])');
+  });
+});
 
 function luminance(hex: string): number {
   const channel = (i: number) => {

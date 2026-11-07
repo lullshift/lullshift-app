@@ -1,6 +1,6 @@
 /* Companion reply: code blocks, links and syntax colours (decision 36). Tokens only (ADR-011).
    Colours are decoration; the code is readable without them. Light and dark follow tokens.css
-   (prefers-color-scheme). No transitions, so nothing to switch off for reduced motion. */
+   (the OS preference or the Theme setting). No transitions, so nothing to switch off for reduced motion. */
 
 .reply-text {
   display: grid;

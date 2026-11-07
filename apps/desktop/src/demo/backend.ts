@@ -420,6 +420,24 @@ function handle(cmd: string, a: Args): unknown {
       return null;
     case "companion_threads":
       return THREADS;
+    case "companion_new_thread": {
+      const now = new Date().toISOString();
+      const t = {
+        id: Math.max(0, ...THREADS.map((x) => x.id)) + 1,
+        title: typeof a.title === "string" && a.title ? a.title : DEMO_DEFAULT_TITLE,
+        profileId: null,
+        model: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      THREADS.unshift(t);
+      return t;
+    }
+    case "companion_rename_thread": {
+      const t = THREADS.find((x) => x.id === a.id);
+      if (t) t.title = String(a.title);
+      return null;
+    }
     case "companion_messages":
       return MESSAGES.filter((m) => m.threadId === a.threadId);
     case "companion_prefs":
@@ -480,6 +498,24 @@ function handle(cmd: string, a: Args): unknown {
   throw "unavailable";
 }
 
+const DEMO_DEFAULT_TITLE = "New conversation";
+
+/** Mirrors `title_from_message` in the local store: collapse whitespace, drop invisible and
+ *  control characters, cut at about 48 characters on a word boundary with an ellipsis. */
+export function titleFromMessage(text: string): string | null {
+  const collapsed = text
+    .replace(/\s+/gu, " ")
+    .replace(/[\p{Cc}\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/gu, "")
+    .trim();
+  if (!collapsed) return null;
+  const chars = [...collapsed];
+  const max = 48;
+  if (chars.length <= max) return collapsed;
+  const space = chars.slice(0, max).lastIndexOf(" ");
+  const end = chars[max] === " " ? max : space > 0 ? space : max;
+  return chars.slice(0, end).join("").trimEnd() + "…";
+}
+
 /** Threads with a reply being written, and threads whose Cancel was pressed. */
 const demoBusy = new Set<number>();
 const demoCancelled = new Set<number>();
@@ -504,7 +540,12 @@ async function demoSend(a: Args): Promise<Message> {
   demoCancelled.delete(threadId);
   const nextId = () => Math.max(0, ...MESSAGES.map((m) => m.id)) + 1;
   const user = userMessage(nextId(), threadId, String(a.text ?? ""), "pending");
+  const firstMessage = !MESSAGES.some((m) => m.threadId === threadId && m.role === "user");
   MESSAGES.push(user);
+  // Like the core: the first message names a thread that still has the default title.
+  const thread = THREADS.find((x) => x.id === threadId);
+  const named = titleFromMessage(user.text);
+  if (thread && firstMessage && named && thread.title === DEMO_DEFAULT_TITLE) thread.title = named;
   try {
     emit({ type: "started" });
     const words = DEMO_REPLY.split(" ");

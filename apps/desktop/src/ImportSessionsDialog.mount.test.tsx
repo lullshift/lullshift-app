@@ -99,7 +99,8 @@ async function render(open: boolean) {
   });
 }
 
-const boxes = () => [...host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+const boxes = () => [...host.querySelectorAll<HTMLInputElement>(".import-row input")];
+const groupBoxes = () => [...host.querySelectorAll<HTMLInputElement>(".import-group-all input")];
 const button = (text: string) =>
   [...host.querySelectorAll("button")].find((b) => b.textContent?.startsWith(text))!;
 const click = async (el: HTMLElement) => {
@@ -159,6 +160,110 @@ describe("Import sessions dialog", () => {
     expect(host.querySelector('[aria-live="polite"]')?.textContent).toBe(
       "2 of 3 shown, 1 selected.",
     );
+  });
+
+  it("groups sessions by folder, newest folder first, with a count and a heading each", async () => {
+    answer = () => ({
+      sessions: [
+        row("a1", { lastActivityUtc: "2026-11-07T08:00:00Z" }),
+        row("b2", { project: "docs/site", projectPath: "/home/u/docs/site" }),
+        row("c3", { lastActivityUtc: "2026-11-07T11:30:00Z" }),
+        row("d4", { tracked: true }),
+      ],
+      agents: [],
+      incomplete: false,
+    });
+    await render(true);
+    const headings = [...host.querySelectorAll("h3")].map((h) => h.textContent);
+    expect(headings).toEqual(["shop/api3 sessions", "docs/site1 session"]);
+    const sections = [...host.querySelectorAll("section.import-group")];
+    expect(sections[0]!.getAttribute("aria-labelledby")).toBe(sections[0]!.querySelector("h3")!.id);
+    expect(groupBoxes().map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Select all in this folder, shop/api",
+      "Select all in this folder, docs/site",
+    ]);
+    expect(host.textContent).toContain("Select all in this folder");
+  });
+
+  it("a folder checkbox is tri-state and ticks only what can be ticked", async () => {
+    answer = () => ({
+      sessions: [
+        row("a1", { lastActivityUtc: "2026-11-07T11:50:00Z" }),
+        row("c3", { lastActivityUtc: "2026-11-07T11:30:00Z" }),
+        row("d4", { tracked: true }),
+        row("e5", { project: "docs/site", projectPath: "/home/u/docs/site" }),
+      ],
+      agents: [],
+      incomplete: false,
+    });
+    await render(true);
+    const [shop] = groupBoxes();
+    expect(shop!.checked).toBe(false);
+    expect(shop!.indeterminate).toBe(false);
+    await click(boxes()[0]!);
+    expect(shop!.indeterminate).toBe(true);
+    await click(shop!);
+    expect(shop!.checked).toBe(true);
+    expect(shop!.indeterminate).toBe(false);
+    expect(boxes().filter((b) => b.checked)).toHaveLength(2);
+    expect(button("Import (2)")).toBeDefined();
+    expect(groupBoxes()[1]!.checked).toBe(false);
+    await click(shop!);
+    expect(boxes().filter((b) => b.checked)).toHaveLength(0);
+  });
+
+  it("shows folder names without invisible or bidi characters", async () => {
+    answer = () => ({
+      sessions: [
+        row("a1", { project: "sh‮op/​api", projectPath: "/home/‮u/shop/api" }),
+        row("b2", { project: "​‮", projectPath: "/x" }),
+      ],
+      agents: [],
+      incomplete: false,
+    });
+    await render(true);
+    const names = [...host.querySelectorAll(".import-group-name")].map((n) => n.textContent);
+    expect(names.sort()).toEqual(["Unknown folder", "shop/api"]);
+    const labels = groupBoxes().map((b) => b.getAttribute("aria-label"));
+    expect(labels.sort()).toEqual([
+      "Select all in this folder, Unknown folder",
+      "Select all in this folder, shop/api",
+    ]);
+    expect([...host.querySelectorAll("h3")].map((h) => h.getAttribute("title")).sort()).toContain(
+      "/home/u/shop/api",
+    );
+    expect(host.innerHTML).not.toMatch(/[\u202E\u200B]/);
+  });
+
+  it("a folder with nothing to import has a disabled checkbox", async () => {
+    answer = () => ({
+      sessions: [row("d4", { tracked: true })],
+      agents: [],
+      incomplete: false,
+    });
+    await render(true);
+    expect(groupBoxes()[0]!.disabled).toBe(true);
+  });
+
+  it("the filter works across folders and drops folders with no match", async () => {
+    answer = () => ({
+      sessions: [
+        row("a1"),
+        row("b2", { project: "docs/site", projectPath: "/home/u/docs/site", title: "Theme" }),
+      ],
+      agents: [],
+      incomplete: false,
+    });
+    await render(true);
+    const filter = host.querySelector<HTMLInputElement>('input[type="search"]')!;
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      set.call(filter, "docs");
+      filter.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect([...host.querySelectorAll("h3")]).toHaveLength(1);
+    expect(boxes()).toHaveLength(1);
   });
 
   it("Cancel imports nothing", async () => {
