@@ -4,6 +4,9 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "dashboard",
             "wait_estimates",
+            // The tray window (ADR-026 section 6).
+            "open_main",
+            "tray_hide",
             "claude_code_status",
             "claude_code_install",
             "claude_code_uninstall",

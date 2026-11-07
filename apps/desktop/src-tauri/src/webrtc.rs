@@ -175,11 +175,37 @@ mod tests {
         let conf: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
         let windows = conf["app"]["windows"].as_array().expect("windows");
-        assert_eq!(windows.len(), 1, "one window; each needs the arguments");
-        windows[0]["additionalBrowserArgs"]
-            .as_str()
-            .expect("additionalBrowserArgs is set")
-            .to_owned()
+        // Every webview shares one WebView2 environment: each window must carry exactly the
+        // same arguments, or creating the later one fails or weakens the hardening.
+        let args: Vec<&str> = windows
+            .iter()
+            .map(|w| {
+                w["additionalBrowserArgs"]
+                    .as_str()
+                    .expect("additionalBrowserArgs is set on every window")
+            })
+            .collect();
+        assert!(args.len() >= 2, "main and tray");
+        assert!(args.iter().all(|a| *a == args[0]), "{args:?}");
+        args[0].to_owned()
+    }
+
+    #[test]
+    fn the_tray_window_is_declared_hidden_with_its_own_page() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
+        let tray = conf["app"]["windows"]
+            .as_array()
+            .expect("windows")
+            .iter()
+            .find(|w| w["label"] == "tray")
+            .expect("a tray window");
+        assert_eq!(tray["url"], "tray.html");
+        assert_eq!(tray["visible"], false);
+        assert_eq!(tray["decorations"], false);
+        assert_eq!(tray["skipTaskbar"], true);
+        assert_eq!(tray["alwaysOnTop"], true);
+        assert_eq!(tray["resizable"], false);
     }
 
     #[test]
@@ -202,22 +228,31 @@ mod tests {
         // arguments must equal the release window.
         let base: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.conf.json")).expect("conf");
-        let (mut a, mut b) = (
-            overlay["app"]["windows"][0].clone(),
-            base["app"]["windows"][0].clone(),
-        );
-        let dev_args = a["additionalBrowserArgs"]
-            .as_str()
-            .expect("args")
-            .to_owned();
-        a.as_object_mut()
-            .expect("o")
-            .remove("additionalBrowserArgs");
-        b.as_object_mut()
-            .expect("o")
-            .remove("additionalBrowserArgs");
-        assert_eq!(a, b, "the overlay window must match the release window");
-        assert_eq!(overlay["app"]["windows"].as_array().expect("w").len(), 1);
+        let base_windows = base["app"]["windows"].as_array().expect("w");
+        let overlay_windows = overlay["app"]["windows"].as_array().expect("w");
+        assert_eq!(overlay_windows.len(), base_windows.len());
+        let mut dev_args = String::new();
+        for (a, b) in overlay_windows.iter().zip(base_windows) {
+            let (mut a, mut b) = (a.clone(), b.clone());
+            dev_args = a["additionalBrowserArgs"]
+                .as_str()
+                .expect("args")
+                .to_owned();
+            a.as_object_mut()
+                .expect("o")
+                .remove("additionalBrowserArgs");
+            b.as_object_mut()
+                .expect("o")
+                .remove("additionalBrowserArgs");
+            assert_eq!(a, b, "the overlay window must match the release window");
+            // Both windows get the same dev arguments.
+            assert_eq!(
+                dev_args,
+                overlay_windows[0]["additionalBrowserArgs"]
+                    .as_str()
+                    .expect("args")
+            );
+        }
         assert_eq!(
             dev_args.split_whitespace().collect::<Vec<_>>(),
             WINDOWS_DEV_ARGS

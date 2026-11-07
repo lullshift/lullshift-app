@@ -15,6 +15,7 @@ mod packaged;
 pub mod repair_hooks;
 mod session_import;
 mod settle;
+mod tray_window;
 pub mod uninstall_hooks;
 mod waits;
 mod webrtc;
@@ -464,13 +465,17 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
+            // Left click: the quick window or the main window (Settings > Appearance). Some Linux
+            // tray backends send no click events; the menu above is the way in there.
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
+                position,
+                rect,
                 ..
             } = event
             {
-                show_main(tray.app_handle());
+                tray_window::on_left_click(tray.app_handle(), position, rect);
             }
         });
     if let Some(icon) = TrayFace::Asleep
@@ -517,8 +522,10 @@ pub fn run() {
         })
         .setup(|app| {
             // Before anything can open an activity: WebRTC off in the webview (ADR-012).
-            if let Some(w) = app.get_webview_window("main") {
-                webrtc::disable(&w);
+            for label in ["main", tray_window::LABEL] {
+                if let Some(w) = app.get_webview_window(label) {
+                    webrtc::disable(&w);
+                }
             }
             let handle = app.handle().clone();
             let (store, store_health) = open_store(&handle);
@@ -562,15 +569,22 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                // Keep monitoring in the tray; quitting is explicit.
-                api.prevent_close();
-                let _ = window.hide();
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    // Keep monitoring in the tray; quitting is explicit.
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+                // The quick window closes when you click away from it.
+                WindowEvent::Focused(false) => tray_window::on_blur(window),
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
             dashboard,
             waits::wait_estimates,
+            tray_window::open_main,
+            tray_window::tray_hide,
             adapters::claude_code_status,
             adapters::claude_code_install,
             adapters::claude_code_uninstall,

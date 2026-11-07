@@ -118,6 +118,17 @@ pub enum Theme {
     Dark,
 }
 
+/// What a left click on the tray icon opens (ADR-026 section 6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TrayClick {
+    /// The small tray window.
+    #[default]
+    Quick,
+    /// The main window, as before.
+    Main,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UiPrefs {
@@ -140,6 +151,9 @@ pub struct UiPrefs {
     /// Missing in older preferences, which read as System.
     #[serde(default)]
     pub theme: Theme,
+    /// Missing in older preferences, which read as the quick window.
+    #[serde(default)]
+    pub tray_click: TrayClick,
 }
 
 impl Default for UiPrefs {
@@ -151,6 +165,7 @@ impl Default for UiPrefs {
             companion_settings_open: false,
             dock_width: None,
             theme: Theme::System,
+            tray_click: TrayClick::Quick,
         }
     }
 }
@@ -190,6 +205,7 @@ impl UiPrefs {
             // Fractional, negative or non-numeric widths read as the default width.
             dock_width: field::<u32>(&map, "dockWidth").map(clamp_dock_width),
             theme: field(&map, "theme").unwrap_or(d.theme),
+            tray_click: field(&map, "trayClick").unwrap_or(d.tray_click),
         }
     }
 
@@ -1422,6 +1438,19 @@ pub fn apply_prefs(
     Ok(())
 }
 
+/// Whether the store knows this session (the tray's "Go to session" is checked with it).
+pub fn session_exists(core: &Core, provider: &str, session_id: &str) -> Result<bool, String> {
+    with_store(core, |s| s.session(provider, session_id)).map(|r| r.is_some())
+}
+
+/// The saved interface preferences; the defaults if they can't be read (the tray click handler
+/// must always do something sensible).
+pub fn read_ui_prefs(core: &Core) -> UiPrefs {
+    with_store(core, |s| s.preference(UI_PREFS_KEY))
+        .map(|json| UiPrefs::from_stored(json.as_deref()))
+        .unwrap_or_default()
+}
+
 #[tauri::command]
 pub async fn ui_prefs(core: CoreState<'_>) -> Result<UiPrefs, String> {
     let core = Arc::clone(&core);
@@ -1655,6 +1684,30 @@ mod tests {
         // Not an object at all: the defaults.
         assert_eq!(UiPrefs::from_stored(Some("[1]")), UiPrefs::default());
         assert_eq!(UiPrefs::from_stored(Some("not json")), UiPrefs::default());
+    }
+
+    #[test]
+    fn the_tray_click_setting_reads_per_field_and_unknown_values_fall_back() {
+        let click = |json: &str| UiPrefs::from_stored(Some(json)).tray_click;
+        assert_eq!(click(r#"{"detailPanelPinned":true}"#), TrayClick::Quick);
+        assert_eq!(click(r#"{"trayClick":"main"}"#), TrayClick::Main);
+        assert_eq!(click(r#"{"trayClick":"quick"}"#), TrayClick::Quick);
+        // A value this build doesn't know, or the wrong type: the default, and the rest is kept.
+        for bad in [r#""menu""#, "3", "null", r#"{"a":1}"#] {
+            let p = UiPrefs::from_stored(Some(&format!(
+                r#"{{"detailPanelPinned":false,"onboardingDone":true,"theme":"dark","trayClick":{bad}}}"#
+            )));
+            assert_eq!(p.tray_click, TrayClick::Quick, "{bad}");
+            assert!(!p.detail_panel_pinned && p.onboarding_done, "{bad}");
+            assert_eq!(p.theme, Theme::Dark, "{bad}");
+        }
+        let main = UiPrefs {
+            tray_click: TrayClick::Main,
+            ..UiPrefs::default()
+        };
+        let json = serde_json::to_string(&main).expect("json");
+        assert!(json.contains(r#""trayClick":"main""#));
+        assert_eq!(UiPrefs::from_stored(Some(&json)), main);
     }
 
     #[test]

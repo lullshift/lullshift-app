@@ -11,6 +11,22 @@
         "label": "main",
         "visible": false,
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --webrtc-ip-handling-policy=disable_non_proxied_udp --force-webrtc-ip-handling-policy=disable_non_proxied_udp --proxy-server=http://127.0.0.1:9 --proxy-bypass-list=<-loopback>;http://tauri.localhost;http://ipc.localhost;http://lullact.localhost;http://localhost:1420"
+      },
+      {
+        "title": "Lullshift quick window",
+        "label": "tray",
+        "url": "tray.html",
+        "width": 380,
+        "height": 560,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "decorations": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "focus": true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --webrtc-ip-handling-policy=disable_non_proxied_udp --force-webrtc-ip-handling-policy=disable_non_proxied_udp --proxy-server=http://127.0.0.1:9 --proxy-bypass-list=<-loopback>;http://tauri.localhost;http://ipc.localhost;http://lullact.localhost;http://localhost:1420"
       }
     ]
   }

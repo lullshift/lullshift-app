@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "tray",
+  "description": "Quick window (ADR-026 section 6): read-only Home data and one command that opens the main window. No Companion, marketplace, hook, settings-write, activity storage or launch, or import commands.",
+  "windows": ["tray"],
+  "permissions": [
+    "allow-dashboard",
+    "allow-activities-list",
+    "allow-wait-estimates",
+    "allow-ui-prefs",
+    "allow-open-main",
+    "allow-tray-hide",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}
