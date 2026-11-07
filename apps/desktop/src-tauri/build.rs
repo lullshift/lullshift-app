@@ -3,6 +3,7 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "dashboard",
+            "wait_estimates",
             "claude_code_status",
             "claude_code_install",
             "claude_code_uninstall",

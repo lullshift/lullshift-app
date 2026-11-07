@@ -139,6 +139,8 @@ pub struct ActivityInfo {
     pub(crate) name: String,
     pub(crate) description: String,
     pub(crate) category: String,
+    /// The manifest's tags, for search and the host's own filter chips (never shown as labels).
+    tags: Vec<String>,
     version: String,
     storage: bool,
     saved_utc: Option<String>,
@@ -896,6 +898,7 @@ fn info(a: &Activity, saved_utc: Option<String>, played_seconds: i64) -> Activit
         name: m.name.clone(),
         description: m.description.clone(),
         category: m.category.clone(),
+        tags: clean_tags(&m.tags),
         version: m.version.clone(),
         storage: has_storage(a),
         saved_utc,
@@ -907,6 +910,19 @@ fn info(a: &Activity, saved_utc: Option<String>, played_seconds: i64) -> Activit
     }
 }
 
+/// Tags that match the schema's pattern, at most ten: they come from untrusted manifests.
+fn clean_tags(tags: &[String]) -> Vec<String> {
+    tags.iter()
+        .filter(|t| {
+            (1..=30).contains(&t.len())
+                && t.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        })
+        .take(10)
+        .cloned()
+        .collect()
+}
+
 fn installed_info(s: &Served, saved_utc: Option<String>, played_seconds: i64) -> ActivityInfo {
     let m = &s.manifest;
     ActivityInfo {
@@ -914,6 +930,7 @@ fn installed_info(s: &Served, saved_utc: Option<String>, played_seconds: i64) ->
         name: m.name.clone(),
         description: m.description.clone(),
         category: m.category.clone(),
+        tags: clean_tags(&m.tags),
         version: m.version.clone(),
         storage: s.has_storage(),
         saved_utc,

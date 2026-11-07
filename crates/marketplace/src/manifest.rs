@@ -19,6 +19,10 @@ pub struct Manifest {
     pub description: String,
     pub author: Option<String>,
     pub category: String,
+    /// Untrusted labels (`^[a-z0-9-]{1,30}$`, checked on install). The UI only matches them
+    /// against its own fixed tag map; they never become labels.
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub min_host_version: String,
     pub sdk_version: String,
     pub permissions: Vec<String>,
