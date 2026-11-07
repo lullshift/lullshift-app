@@ -4,6 +4,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "../companion/testDom"; // turns on React's act environment
 import { ToastRegion } from "./Toasts";
 import { pushToast, resetToasts, TOAST_MS } from "./toastQueue";
 
@@ -48,6 +49,51 @@ function setVisibility(state: "visible" | "hidden") {
     document.dispatchEvent(new Event("visibilitychange"));
   });
 }
+
+describe("focus after a notice closes", () => {
+  const dismissButtons = () => [...host.querySelectorAll<HTMLButtonElement>(".toast-dismiss")];
+  const escape = (el: Element) =>
+    act(async () => {
+      el.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      );
+    });
+
+  it("moves focus to the next notice's button when Escape closes the one that has it", async () => {
+    await act(async () => {
+      pushToast(input(1));
+      pushToast(input(2));
+    });
+    const first = host.querySelector<HTMLButtonElement>(".toast button")!;
+    first.focus();
+    await escape(first);
+    expect(toasts()).toHaveLength(1);
+    expect(document.activeElement).toBe(dismissButtons()[0]);
+    expect(host.querySelector(".toast-title")?.textContent).toBe("Notice 2");
+  });
+
+  it("moves focus to the main area when the last notice closes", async () => {
+    await act(async () => pushToast(input(1)));
+    const button = dismissButtons()[0]!;
+    button.focus();
+    await act(async () => button.click());
+    expect(toasts()).toHaveLength(0);
+    expect(document.activeElement).toBe(document.getElementById("main-content"));
+  });
+
+  it("does not move focus when the notice did not hold it, and Escape stops there", async () => {
+    await act(async () => pushToast(input(1)));
+    const page = host.querySelector<HTMLButtonElement>("main button")!;
+    page.focus();
+    const outer = vi.fn();
+    document.addEventListener("keydown", outer);
+    await escape(dismissButtons()[0]!);
+    document.removeEventListener("keydown", outer);
+    expect(toasts()).toHaveLength(0);
+    expect(document.activeElement).toBe(page);
+    expect(outer).not.toHaveBeenCalled();
+  });
+});
 
 describe("auto-dismiss and the window", () => {
   it("does not run out while the window is hidden, and starts again when it is shown", async () => {
