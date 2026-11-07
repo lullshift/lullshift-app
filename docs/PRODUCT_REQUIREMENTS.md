@@ -24,7 +24,7 @@ Agent execution creates unpredictable waiting intervals. People either watch pro
 2. **Accurate signals:** Never imply a whole task is done merely because one model turn stopped.
 3. **Interruptibility by design:** Activities can pause, persist or terminate cleanly when an agent needs input.
 4. **Local data ownership:** Task context, logs, prompts and files remain local; nothing is uploaded by Lullshift.
-5. **No account, works offline:** Everything runs and is stored locally. The only network activity is user-initiated: Git fetches of marketplaces the user added, app update checks, and BYOK Companion calls to the provider the user configured.
+5. **No account, works offline:** Everything runs and is stored locally. The only network activity is user-initiated: Git fetches of marketplaces the user added, app update checks, BYOK Companion calls to the provider the user configured, and, only when the user asks, the Companion model list from models.dev.
 6. **Agent-neutral:** Adapters supply a common event contract and declare capability limitations.
 7. **No surveillance:** Do not build individual time-on-task scoring, employee ranking or hidden employer monitoring.
 8. **Accessible and lightweight:** Tray-first interaction; keyboards, screen readers, reduced motion and clear notifications.
@@ -107,6 +107,7 @@ See section 5.
 - Explicit context sharing scopes: no context / session summary / selected notes.
 - Never grant agent execution privileges from a Companion conversation without explicit separate approval.
 - Respect provider policies, tokens and rate limits; clearly show which provider receives data.
+- Optional model browser (decision 32): only when the user presses "Load model list from models.dev" (or Refresh), the app fetches the public models.dev list once, keeps it in memory for the app run, and lets the user filter it (tools, reasoning, age, price, context) and pick a model name. No keys or messages are sent; the model name stays free text and works without the list.
 
 Context Keeper, Next Move and Companion need task context and/or AI access, so they are **host features, not SDK activities** (ADR-003).
 
@@ -206,7 +207,7 @@ Target developers first for strong distribution and accessible hook integrations
 - Local collection only: adapter name, session ID, timestamps, status and user-approved task label. **No telemetry by default**; any future diagnostics are opt-in.
 - No background clipboard reading, screen recording, transcript upload or automatic repository browsing.
 - No personal activity feeds for employers.
-- Network access limited to user-initiated Git fetches, app update checks and BYOK Companion calls.
+- Network access limited to user-initiated Git fetches, app update checks, BYOK Companion calls and, only when the user asks, the Companion model list from models.dev.
 - Secrets held by the app are limited to BYOK provider keys, stored in the OS keychain only. Git credentials remain with the user's Git tooling.
 - Third-party activities and marketplace content are untrusted; isolation, strict validation and commit pinning per section 5.
 - Signed desktop releases/updates, supply-chain scanning, dependency pinning and repeatable builds.
@@ -219,7 +220,7 @@ Target developers first for strong distribution and accessible hook integrations
 | Idle footprint | Target <150 MB steady-state resident memory on reference platforms (measure, do not promise) |
 | Event processing | 95th percentile <1 second from local hook receipt to state update in lab tests |
 | Reliability | No duplicate critical notifications after event replay; recover from process restart |
-| Offline | Full operation offline at all times; network needed only for adding/updating marketplaces, update checks and Companion |
+| Offline | Full operation offline at all times; network needed only for adding/updating marketplaces, update checks and Companion (including, only when the user asks, its model list from models.dev) |
 | Activity safety | Host-enforced pause on `needs_attention`; no state loss across pause/resume/restart |
 | Accessibility | Keyboard-only operation; screen-reader labels; reduced motion |
 | Platform coverage | Windows, macOS, Linux; publish exact tested matrix |

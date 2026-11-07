@@ -108,10 +108,21 @@ type Usage = { profileId: string; month: string; inputTokens: number; outputToke
 - `companion_set_tools_enabled({ enabled }) -> { toolsEnabled, lastScope }`
 - `companion_usage() -> Usage[]`
   - Covers the current month.
+- `companion_model_catalog({ mode: "cached" | "load" | "refresh" }) -> ModelCatalog | null` (decision 32)
+  - `cached`: memory only. Returns the list loaded earlier in this app run, or `null`. Never contacts the network; the UI calls it when the form opens.
+  - `load`: the list from memory, or one GET of `https://models.dev/api.json` if it isn't loaded yet (`fromMemory` says which).
+  - `refresh`: one GET with `If-None-Match` (the stored ETag, if any). A 304 keeps the list and sets `unchanged: true`. A failed refresh keeps the old list in memory.
+  - Concurrent `load`/`refresh` calls share one request (single-flight).
+  - `ModelCatalog = { fetchedAt: string /* RFC 3339 UTC, when models.dev last sent or confirmed the list */, unchanged: boolean, fromMemory: boolean, providers: { id, name, modelCount }[] }`.
+  - Errors: `offline` ("Can't reach models.dev…"), `timeout`, `invalidResponse` (not JSON, or larger than 16 MiB), `providerError` (HTTP status, named; the body is never included).
+- `companion_catalog_models({ providerId }) -> CatalogModel[]` (decision 32)
+  - Memory only. `notFound` when the list isn't loaded ("The model list isn't loaded…") or the provider id isn't in it.
+  - `CatalogModel = { id, name, family: string | null, toolCall, reasoning, releaseDate: string | null /* YYYY, YYYY-MM or YYYY-MM-DD */, contextTokens: number | null, outputTokens: number | null, costInput: number | null, costOutput: number | null /* USD per 1M tokens */ }`.
+  - Every `id` passes the profile model rule, so a chosen model always saves.
 
 ## Not exposed
 
-No command returns key material. No command lets the frontend choose arbitrary headers, endpoints beyond the profile's base URL, tools or system prompts. Whether the three read-only lookups are offered is decided by the stored `toolsEnabled` setting, never by an argument of `companion_send`.
+No command returns key material. No command lets the frontend choose arbitrary headers, endpoints beyond the profile's base URL, tools or system prompts. The models.dev address is a constant in `crates/companion/src/models_dev.rs`; no command can change it. Whether the three read-only lookups are offered is decided by the stored `toolsEnabled` setting, never by an argument of `companion_send`.
 
 ## Implementation notes and deviations (backend, Sprint 09)
 
