@@ -408,6 +408,17 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const scanDir = path.join(tmp, "extracted");
   mkdirSync(packDir);
   let failed = 0;
+  // Decision 31: the three packages share one version, which is also the SDK_VERSION that
+  // `lullshift --version` prints. Change them together.
+  const versions = PACKAGES.map(
+    (s) => JSON.parse(readFileSync(path.join(root, s.dir, "package.json"), "utf8")).version,
+  );
+  if (new Set(versions).size !== 1) {
+    console.log(
+      `✗ package versions differ: ${PACKAGES.map((s, i) => `${s.name}@${versions[i]}`).join(", ")}`,
+    );
+    failed += 1;
+  }
   try {
     for (const spec of PACKAGES) {
       const tgz = pack(spec, packDir);
