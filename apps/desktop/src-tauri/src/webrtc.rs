@@ -346,10 +346,9 @@ mod tests {
         let mut dirs = vec![desktop.join("src"), desktop.join("build.rs")];
         for entry in std::fs::read_dir(root.join("crates")).expect("crates dir") {
             let path = entry.expect("entry").path();
-            if path
-                .file_name()
-                .is_some_and(|n| n != "macos-webrtc" && n != "process-probe" && n != "windows-package")
-            {
+            if path.file_name().is_some_and(|n| {
+                n != "macos-webrtc" && n != "process-probe" && n != "windows-package"
+            }) {
                 dirs.push(path.join("src"));
                 dirs.push(path.join("tests"));
                 dirs.push(path.join("build.rs"));
@@ -426,7 +425,13 @@ mod tests {
             let src = std::fs::read_to_string(&path).expect("source");
             let n: usize = src
                 .lines()
-                .map(|l| l.split("//").next().unwrap_or("").matches("unsafe {").count())
+                .map(|l| {
+                    l.split("//")
+                        .next()
+                        .unwrap_or("")
+                        .matches("unsafe {")
+                        .count()
+                })
                 .sum();
             if path.file_name().is_some_and(|f| f == "windows.rs") {
                 probe_blocks = n;

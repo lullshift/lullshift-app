@@ -12,6 +12,7 @@ mod notify;
 mod packaged;
 pub mod repair_hooks;
 mod session_import;
+mod settle;
 pub mod uninstall_hooks;
 mod webrtc;
 
@@ -296,13 +297,20 @@ fn start_ipc(app: &AppHandle, core: &Arc<Core>) -> Health {
     let sink_core = Arc::clone(core);
     let sink_app = app.clone();
     let gate = std::sync::Mutex::new(AttentionGate::default());
-    let sink =
-        move |event: AgentEvent, task_text: Option<EventContext>| -> Result<bool, SinkError> {
+    let sink = agent_ipc::WithProcess(
+        move |event: AgentEvent,
+              task_text: Option<EventContext>,
+              process: Option<agent_ipc::ProcessRef>|
+              -> Result<bool, SinkError> {
             let received = OffsetDateTime::now_utc();
+            let process = process.map(|p| local_store::ProcessKey {
+                pid: p.pid,
+                start: p.start,
+            });
             let outcome = {
                 let mut guard = sink_core.store.lock().map_err(|_| SinkError)?;
                 let store = guard.as_mut().ok_or(SinkError)?;
-                context::ingest_with_context(store, &event, task_text, received)
+                context::ingest_with_process(store, &event, task_text, process, received)
                     .map_err(|_| SinkError)?
             };
             let new = matches!(outcome, IngestOutcome::Stored { .. });
@@ -332,7 +340,8 @@ fn start_ipc(app: &AppHandle, core: &Arc<Core>) -> Health {
                 }
             }
             Ok(new)
-        };
+        },
+    );
     let result = tauri::async_runtime::block_on(async move {
         agent_ipc::serve(&dir, Arc::new(sink), Config::default())
     });
@@ -541,6 +550,7 @@ pub fn run() {
                 context::reconcile_markers(&core, &dir);
             }
             context::spawn_retention(Arc::clone(&core));
+            settle::spawn(handle.clone(), Arc::clone(&core));
             app.manage(core);
             if !std::env::args().any(|a| a == HIDDEN_ARG) {
                 show_main(&handle);
@@ -573,6 +583,9 @@ pub fn run() {
             packaged::connection_fix_stale,
             notification_prefs,
             set_notification_prefs,
+            settle::session_tracking_prefs,
+            settle::set_session_tracking_prefs,
+            settle::catch_up_status,
             activities::activities_list,
             activities::activities_manage_list,
             activities::activity_info,

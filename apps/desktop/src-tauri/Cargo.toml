@@ -27,6 +27,7 @@ getrandom.workspace = true
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 include_dir = "0.7"
 local-store.workspace = true
+process-probe.workspace = true
 # Already in the lockfile through Tauri; used for engine data-schema patterns (ADR-016).
 regex = "1.13"
 serde.workspace = true

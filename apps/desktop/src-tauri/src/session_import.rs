@@ -39,7 +39,7 @@ static CURRENT: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
 
 /// The one-at-a-time lock. Only "another scan is running" is `busy`; a lock left poisoned by a
 /// panicking scan is taken over (it guards no data), so Import never stays busy for good.
-fn one_at_a_time() -> Result<MutexGuard<'static, ()>, &'static str> {
+pub(crate) fn one_at_a_time() -> Result<MutexGuard<'static, ()>, &'static str> {
     match RUNNING.try_lock() {
         Ok(g) => Ok(g),
         Err(TryLockError::Poisoned(p)) => Ok(p.into_inner()),
@@ -145,7 +145,7 @@ fn logs_state(s: LogsState) -> &'static str {
     }
 }
 
-fn state_for(guess: Guess) -> SessionState {
+pub(crate) fn state_for(guess: Guess) -> SessionState {
     match guess {
         Guess::Working => SessionState::Working,
         Guess::Waiting => SessionState::Idle,

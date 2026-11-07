@@ -223,7 +223,19 @@ pub fn ingest_with_context(
     context: Option<EventContext>,
     received: OffsetDateTime,
 ) -> Result<IngestOutcome, StoreError> {
-    let outcome = store.ingest(event, received)?;
+    ingest_with_process(store, event, context, None, received)
+}
+
+/// [`ingest_with_context`] that also records the agent's process for the process check
+/// (decision 35, ADR-025).
+pub fn ingest_with_process(
+    store: &mut Store,
+    event: &AgentEvent,
+    context: Option<EventContext>,
+    process: Option<local_store::ProcessKey>,
+    received: OffsetDateTime,
+) -> Result<IngestOutcome, StoreError> {
+    let outcome = store.ingest_with_process(event, received, process)?;
     if matches!(outcome, IngestOutcome::Stored { .. })
         && let Some(ctx) = context
     {
@@ -322,6 +334,9 @@ pub struct DashboardSession {
     /// arrived since (ADR-024): `view.last_known_state` is a guess, not an observation.
     #[serde(with = "time::serde::rfc3339::option")]
     pub imported_utc: Option<OffsetDateTime>,
+    /// Set (to `process_gone`) when Lullshift, not the agent, ended the session because the
+    /// agent's process is no longer running (ADR-025). `view.state` is then `ended`.
+    pub ended_reason: Option<String>,
 }
 
 /// Everything the dashboard joins onto the session list. A failed read of any part only hides
@@ -332,6 +347,7 @@ pub struct DashboardLookups {
     pub labels: HashMap<(String, String), SessionLabels>,
     pub disconnected: HashMap<(String, String), OffsetDateTime>,
     pub imported: HashMap<(String, String), OffsetDateTime>,
+    pub ended_reasons: HashMap<(String, String), String>,
 }
 
 impl DashboardLookups {
@@ -341,6 +357,7 @@ impl DashboardLookups {
             labels: store.session_labels().unwrap_or_default(),
             disconnected: store.disconnected_sessions().unwrap_or_default(),
             imported: store.imported_sessions().unwrap_or_default(),
+            ended_reasons: store.ended_reasons().unwrap_or_default(),
         }
     }
 }
@@ -393,6 +410,7 @@ pub fn dashboard_session(
         intent_line: labels.intent_line,
         disconnected_utc,
         imported_utc,
+        ended_reason: lookups.ended_reasons.get(&key).cloned(),
     }
 }
 
@@ -641,6 +659,9 @@ pub struct ExportData {
     /// Set while the session is still only imported from the agent's log (decision 34): its
     /// state is a guess, not a report.
     pub imported_utc: Option<OffsetDateTime>,
+    /// `process_gone` while Lullshift itself ended the session because the agent's process is
+    /// gone (ADR-025): the `ended` state was inferred, not reported.
+    pub ended_reason: Option<String>,
 }
 
 fn export_data(store: &Store, provider: &str, id: &str) -> Result<ExportData, StoreError> {
@@ -656,6 +677,10 @@ fn export_data(store: &Store, provider: &str, id: &str) -> Result<ExportData, St
             .imported_sessions()?
             .get(&(provider.to_owned(), id.to_owned()))
             .copied(),
+        ended_reason: store
+            .ended_reasons()?
+            .get(&(provider.to_owned(), id.to_owned()))
+            .cloned(),
     })
 }
 
@@ -711,6 +736,11 @@ pub fn render_markdown(d: &ExportData) -> String {
             "- State guessed from the agent's log (imported {}; the agent has not reported since): {}",
             ts(at),
             r.state.as_str()
+        );
+    } else if d.ended_reason.as_deref() == Some(agent_core::reducer::ENDED_PROCESS_GONE) {
+        let _ = writeln!(
+            o,
+            "- State: ended (inferred by Lullshift because the agent's process is gone; the agent did not report it)"
         );
     } else {
         let _ = writeln!(o, "- Last reported state: {}", r.state.as_str());
@@ -831,7 +861,15 @@ pub fn render_json(d: &ExportData) -> Result<String, serde_json::Error> {
             "lastReportedState": r.state.as_str(),
             // "reported" by the agent, or "guessed_from_log" for a session only imported from
             // the agent's log (decision 34).
-            "stateSource": if d.imported_utc.is_some() { "guessed_from_log" } else { "reported" },
+            // "process_gone" when Lullshift ended it because the agent's process is gone
+            // (ADR-025): inferred, not reported.
+            "stateSource": if d.imported_utc.is_some() {
+                "guessed_from_log"
+            } else if d.ended_reason.is_some() {
+                "inferred_process_gone"
+            } else {
+                "reported"
+            },
             "importedFromLogUtc": d.imported_utc.map(ts),
             "stateReportedUtc": r.state_timestamp_utc.map(ts),
             "lastSeenUtc": ts(r.last_seen_utc),
@@ -2034,6 +2072,28 @@ mod tests {
         let reported: serde_json::Value =
             serde_json::from_str(&render_json(&sample_data()).expect("json")).expect("parse");
         assert_eq!(reported["session"]["stateSource"], "reported");
+    }
+
+    #[test]
+    fn a_process_gone_session_exports_its_end_as_inferred() {
+        let mut store = Store::open_in_memory().expect("open");
+        let process = local_store::ProcessKey {
+            pid: 4242,
+            start: 99,
+        };
+        store
+            .ingest_with_process(&ev(1, "working", "sess-g"), T0, Some(process))
+            .expect("ingest");
+        store
+            .end_session_process_gone(P, "sess-g", process, T0, T0)
+            .expect("end");
+        let d = export_data(&store, P, "sess-g").expect("data");
+        let md = render_markdown(&d);
+        assert!(md.contains("inferred by Lullshift"), "{md}");
+        assert!(!md.contains("Last reported state"));
+        let v: serde_json::Value =
+            serde_json::from_str(&render_json(&d).expect("json")).expect("parse");
+        assert_eq!(v["session"]["stateSource"], "inferred_process_gone");
     }
 
     #[test]

@@ -3462,6 +3462,7 @@ dependencies = [
  "macos-webrtc",
  "marketplace",
  "pack-media",
+ "process-probe",
  "regex",
  "rusqlite",
  "serde",
