@@ -77,6 +77,11 @@ pub(crate) fn check(pid: u32) -> Probe {
     if ok == 0 || !valid_start(start) {
         return Probe::Unknown;
     }
+    // An exit time that is set means the process has exited, even if its exit code happened to
+    // be 259 (STILL_ACTIVE).
+    if filetime_u64(exited) != 0 {
+        return Probe::Gone;
+    }
     Probe::Running(ProcessId { pid, start })
 }
 

@@ -5,10 +5,23 @@ use std::io::ErrorKind;
 use crate::parse::{ProcStat, key_from, parse_proc_stat};
 use crate::{Info, Probe, ProcessId};
 
-fn boot_id() -> String {
+/// The boot id, or `None` if it can't be read: a start key without it could collide across a
+/// reboot, so the process is then unknown rather than keyed.
+fn boot_id() -> Option<String> {
     std::fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .ok()
         .map(|s| s.trim().to_owned())
-        .unwrap_or_default()
+        .filter(|s| !s.is_empty())
+}
+
+/// The inode of this process's PID namespace. Two processes see the same PIDs only if it is
+/// equal.
+pub(crate) fn pid_namespace() -> Option<u64> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata("/proc/self/ns/pid")
+        .ok()
+        .map(|m| m.ino())
+        .filter(|i| crate::valid_start(*i))
 }
 
 fn start_key(ticks: u64, boot: &str) -> u64 {
@@ -34,10 +47,13 @@ fn read_stat(pid: u32) -> Result<ProcStat, Probe> {
 pub(crate) fn check(pid: u32) -> Probe {
     match read_stat(pid) {
         Ok(s) if s.state == 'Z' || s.state == 'X' => Probe::Gone,
-        Ok(s) => Probe::Running(ProcessId {
-            pid,
-            start: start_key(s.start_ticks, &boot_id()),
-        }),
+        Ok(s) => match boot_id() {
+            Some(boot) => Probe::Running(ProcessId {
+                pid,
+                start: start_key(s.start_ticks, &boot),
+            }),
+            None => Probe::Unknown,
+        },
         Err(p) => p,
     }
 }
@@ -51,10 +67,11 @@ pub(crate) fn info(pid: u32) -> Option<Info> {
         .ok()?
         .trim()
         .to_owned();
+    let boot = boot_id()?;
     Some(Info {
         id: ProcessId {
             pid,
-            start: start_key(s.start_ticks, &boot_id()),
+            start: start_key(s.start_ticks, &boot),
         },
         parent: (s.ppid != 0).then_some(s.ppid),
         name,

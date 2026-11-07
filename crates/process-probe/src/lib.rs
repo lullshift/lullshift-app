@@ -33,6 +33,10 @@ mod windows;
 /// Most ancestors the hook walk looks at.
 pub const MAX_DEPTH: usize = 8;
 
+/// The hook walk stops looking after this long and reports no process, so a slow system never
+/// eats the hook's send budget (security review LOW-1).
+pub const WALK_DEADLINE: std::time::Duration = std::time::Duration::from_millis(300);
+
 /// The largest start key stored: keeps it inside a signed 63-bit database integer.
 pub const MAX_START_KEY: u64 = (1 << 62) - 1;
 
@@ -86,8 +90,11 @@ pub fn valid_start(start: u64) -> bool {
     (1..=MAX_START_KEY).contains(&start)
 }
 
-/// Whether an executable name is a command shell, which the hook walk looks through. The name
-/// may carry a directory and a `.exe` suffix; case is ignored.
+/// Whether an executable name is a command shell or a launcher that only starts another
+/// program and may exit or sit in between (`sudo`, `timeout`, `nohup`, `env`, `winpty`, the
+/// console host, WSL interop, ...), which the hook walk looks through: the agent is the first
+/// ancestor that is none of these. The name may carry a directory and a `.exe` suffix; case is
+/// ignored. The walk stays bounded by [`MAX_DEPTH`] whatever this list holds.
 pub fn is_shell(name: &str) -> bool {
     let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
     let lower = base.to_ascii_lowercase();
@@ -96,6 +103,7 @@ pub fn is_shell(name: &str) -> bool {
     let stem = stem.strip_prefix('-').unwrap_or(stem);
     matches!(
         stem,
+        // shells
         "sh" | "bash"
             | "zsh"
             | "fish"
@@ -105,11 +113,36 @@ pub fn is_shell(name: &str) -> bool {
             | "mksh"
             | "csh"
             | "tcsh"
+            | "rbash"
+            | "yash"
+            | "osh"
+            | "ysh"
+            | "elvish"
             | "cmd"
             | "powershell"
             | "pwsh"
             | "nu"
             | "xonsh"
+            // launchers and wrappers
+            | "sudo"
+            | "doas"
+            | "su"
+            | "runuser"
+            | "login"
+            | "timeout"
+            | "nohup"
+            | "env"
+            | "nice"
+            | "ionice"
+            | "setsid"
+            | "stdbuf"
+            | "script"
+            | "winpty"
+            | "conhost"
+            | "openconsole"
+            | "wsl"
+            | "wslhost"
+            | "wslg"
     )
 }
 
@@ -121,12 +154,26 @@ pub fn is_shell(name: &str) -> bool {
 /// parent, or when more than [`MAX_DEPTH`] shells are stacked.
 pub fn first_non_shell_ancestor(
     start_pid: u32,
+    lookup: impl FnMut(u32) -> Option<Info>,
+) -> Option<ProcessId> {
+    first_non_shell_ancestor_within(start_pid, WALK_DEADLINE, lookup)
+}
+
+/// [`first_non_shell_ancestor`] with an explicit time limit: no new lookup starts once
+/// `limit` has passed since the walk began, and the walk then reports no process.
+pub fn first_non_shell_ancestor_within(
+    start_pid: u32,
+    limit: std::time::Duration,
     mut lookup: impl FnMut(u32) -> Option<Info>,
 ) -> Option<ProcessId> {
+    let began = std::time::Instant::now();
     let mut current = lookup(start_pid)?;
     for _ in 0..MAX_DEPTH {
         let parent_pid = current.parent?;
         if !valid_pid(parent_pid) || parent_pid == current.id.pid {
+            return None;
+        }
+        if began.elapsed() >= limit {
             return None;
         }
         let parent = lookup(parent_pid)?;
@@ -145,6 +192,22 @@ pub fn first_non_shell_ancestor(
 /// `None` when it can't be told.
 pub fn agent_process() -> Option<ProcessId> {
     agent_process_impl()
+}
+
+/// The PID namespace of this process (Linux: the inode of `/proc/self/ns/pid`), or `None` where
+/// that is not known. A recorded process is only meaningful to a reader in the same namespace
+/// (Flatpak, containers, WSL would otherwise show PIDs the app cannot see).
+pub fn pid_namespace() -> Option<u64> {
+    pid_namespace_impl()
+}
+
+#[cfg(target_os = "linux")]
+fn pid_namespace_impl() -> Option<u64> {
+    linux::pid_namespace()
+}
+#[cfg(not(target_os = "linux"))]
+fn pid_namespace_impl() -> Option<u64> {
+    None
 }
 
 /// Looks at one PID. See [`Probe`].
@@ -230,6 +293,7 @@ mod tests {
             "claude",
             "codex",
             "Cursor.exe",
+            "node",
             "bash-completion",
             "shell.exe",
             "",
@@ -237,6 +301,75 @@ mod tests {
         ] {
             assert!(!is_shell(name), "{name}");
         }
+    }
+
+    #[test]
+    fn wrappers_and_launchers_are_looked_through_too() {
+        for name in [
+            "sudo",
+            "doas",
+            "timeout",
+            "nohup",
+            "env",
+            "winpty.exe",
+            "conhost.exe",
+            "wsl.exe",
+            "wslhost.exe",
+            "script",
+            "stdbuf",
+            "nice",
+            "elvish",
+            "yash",
+            "osh",
+            "rbash",
+            "su",
+            "OpenConsole.exe",
+            "/usr/bin/timeout",
+        ] {
+            assert!(is_shell(name), "{name}");
+        }
+        // hook -> timeout -> sudo -> sh -> agent
+        let rows = [
+            info(10, Some(9), 600, "lullshift-desktop"),
+            info(9, Some(8), 500, "timeout"),
+            info(8, Some(7), 400, "sudo"),
+            info(7, Some(6), 300, "sh"),
+            info(6, Some(1), 200, "claude"),
+        ];
+        assert_eq!(
+            first_non_shell_ancestor(10, table(&rows)),
+            Some(ProcessId { pid: 6, start: 200 })
+        );
+        // Still bounded: a long chain of wrappers gives up instead of walking forever.
+        let mut rows = vec![info(100, Some(99), 10_000, "hook")];
+        for i in 0..40u32 {
+            rows.push(info(99 - i, Some(98 - i), 9_000 - u64::from(i), "env"));
+        }
+        assert_eq!(first_non_shell_ancestor(100, table(&rows)), None);
+    }
+
+    #[test]
+    fn a_slow_system_stops_the_walk_at_its_limit() {
+        let rows = [
+            info(10, Some(9), 600, "hook"),
+            info(9, Some(8), 500, "sh"),
+            info(8, Some(1), 400, "claude"),
+        ];
+        let mut lookup = table(&rows);
+        let began = std::time::Instant::now();
+        let slow = |pid: u32| {
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            lookup(pid)
+        };
+        let found =
+            first_non_shell_ancestor_within(10, std::time::Duration::from_millis(100), slow);
+        assert_eq!(found, None, "out of time: no process, not a guess");
+        assert!(
+            began.elapsed() < std::time::Duration::from_millis(400),
+            "no further lookups after the limit"
+        );
+        // The same chain with time to spare is found.
+        assert!(first_non_shell_ancestor(10, table(&rows)).is_some());
     }
 
     #[test]

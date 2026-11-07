@@ -2,6 +2,27 @@
 //! everywhere; only some are used on each.
 #![allow(dead_code)]
 
+/// The `ps` command for one PID. `LC_ALL=C` fixes the output format and `TZ=UTC0` fixes the
+/// time zone: `lstart` prints local time, and the hook (which inherits the agent's `TZ`) and the
+/// app (which may not) must produce the same start key for the same process (security review
+/// HIGH-1).
+pub(crate) fn ps_command(pid: u32) -> std::process::Command {
+    let mut cmd = std::process::Command::new("/bin/ps");
+    cmd.env("LC_ALL", "C").env("TZ", "UTC0").args([
+        "-o",
+        "stat=",
+        "-o",
+        "ppid=",
+        "-o",
+        "lstart=",
+        "-o",
+        "comm=",
+        "-p",
+        &pid.to_string(),
+    ]);
+    cmd
+}
+
 /// FNV-1a, 64 bit. Used to fold text into an opaque start key.
 fn fnv1a(parts: &[&[u8]]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -155,6 +176,23 @@ mod tests {
         ] {
             assert_eq!(parse_ps_line(bad), None, "{bad:?}");
         }
+    }
+
+    #[test]
+    fn the_ps_command_pins_the_time_zone_and_the_locale() {
+        let cmd = ps_command(4242);
+        let env: std::collections::HashMap<_, _> = cmd
+            .get_envs()
+            .filter_map(|(k, v)| Some((k.to_str()?.to_owned(), v?.to_str()?.to_owned())))
+            .collect();
+        assert_eq!(env.get("TZ").map(String::as_str), Some("UTC0"));
+        assert_eq!(env.get("LC_ALL").map(String::as_str), Some("C"));
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(args.last().map(String::as_str), Some("4242"));
+        assert_eq!(cmd.get_program(), "/bin/ps");
     }
 
     #[test]

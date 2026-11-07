@@ -2,30 +2,17 @@
 //! Start times have one-second resolution, which is enough to tell a reused PID apart.
 
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use crate::parse::{PsLine, key_from, parse_ps_line};
+use crate::parse::{PsLine, key_from, parse_ps_line, ps_command};
 use crate::{Info, Probe, ProcessId};
 
 const DEADLINE: Duration = Duration::from_millis(800);
 
 /// Runs `ps` for one PID. `Ok(None)`: ps ran and found no such process.
 fn run(pid: u32) -> Result<Option<PsLine>, ()> {
-    let mut child = Command::new("/bin/ps")
-        .env("LC_ALL", "C")
-        .args([
-            "-o",
-            "stat=",
-            "-o",
-            "ppid=",
-            "-o",
-            "lstart=",
-            "-o",
-            "comm=",
-            "-p",
-            &pid.to_string(),
-        ])
+    let mut child = ps_command(pid)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
