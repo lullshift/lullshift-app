@@ -7,6 +7,7 @@ import type { AdapterView } from "../adapters";
 import type { CatalogModel, ModelCatalog } from "../companion/api";
 import type { ContextPrefs, SessionItem, UiPrefs } from "../context/api";
 import type { NotificationPrefs } from "../NotificationSettings";
+import type { TrackingPrefs } from "../sessionTracking";
 import type { Dashboard } from "../sessions";
 import { CATALOG, byId } from "./catalog";
 import { IMPORTABLE, MESSAGES, PROFILE, SESSIONS, THREADS, ago, importedSession } from "./data";
@@ -21,6 +22,7 @@ let uiPrefs: UiPrefs = {
   // ?welcome shows the first-launch welcome.
   onboardingDone: !params.has("welcome"),
 };
+let trackingPrefs: TrackingPrefs = { catchUpFromLogs: false };
 let notificationPrefs: NotificationPrefs = {
   needsYou: true,
   finished: true,
@@ -232,6 +234,19 @@ function handle(cmd: string, a: Args): unknown {
     case "set_context_prefs":
       contextPrefs = a.prefs as ContextPrefs;
       return null;
+    case "session_tracking_prefs":
+      return trackingPrefs;
+    case "set_session_tracking_prefs":
+      trackingPrefs = a.prefs as TrackingPrefs;
+      return trackingPrefs;
+    case "catch_up_status":
+      return {
+        outcome: trackingPrefs.catchUpFromLogs ? "done" : "not_run",
+        finishedUtc: trackingPrefs.catchUpFromLogs ? ago(2) : null,
+        updated: 1,
+        unreadable: [],
+        incomplete: false,
+      };
     case "notification_prefs":
       return notificationPrefs;
     case "set_notification_prefs":
