@@ -729,6 +729,11 @@ export function modelFacts(m: CatalogModel): string {
   return parts.join(" · ");
 }
 
+/** "1 model", "3 models". */
+export function countOf(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
 export function catalogCountText(shown: number, total: number): string {
   if (total === 0) return "This provider has no chat models in the list.";
   if (shown === 0) return `No models match these filters (out of ${total}).`;

@@ -6,6 +6,7 @@ import {
   CATALOG_PROVIDER,
   catalogCountText,
   catalogErrorText,
+  countOf,
   contextText,
   costText,
   DEFAULT_CATALOG_FILTERS,
@@ -460,6 +461,12 @@ describe("model list wording", () => {
       "context size unknown · $3 in / $15 out per 1M tokens · supports tools · reasoning · released 2026-06-10",
     );
     expect(modelFacts(MODELS[3]!)).toContain("release date unknown");
+  });
+
+  it("counts with the right plural", () => {
+    expect(countOf(1, "model")).toBe("1 model");
+    expect(countOf(0, "provider")).toBe("0 providers");
+    expect(countOf(235, "provider")).toBe("235 providers");
   });
 
   it("counts what is shown", () => {

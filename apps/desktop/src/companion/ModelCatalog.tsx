@@ -22,6 +22,7 @@ import {
   CATALOG_SORTS,
   catalogCountText,
   catalogErrorText,
+  countOf,
   DEFAULT_CATALOG_FILTERS,
   filterModels,
   filterProviders,
@@ -238,7 +239,7 @@ export function ModelCatalogBrowser({
         setAnnounce(
           c.unchanged && !c.fromMemory
             ? "The model list hasn't changed."
-            : `Model list loaded: ${c.providers.length} providers.`,
+            : `Model list loaded: ${countOf(c.providers.length, "provider")}.`,
         );
       }
     } catch (err) {
@@ -278,7 +279,7 @@ export function ModelCatalogBrowser({
         ) : (
           <>
             <span className="catalog-loaded">
-              {loadedAtText(catalog)} · {catalog.providers.length} providers
+              {loadedAtText(catalog)} · {countOf(catalog.providers.length, "provider")}
             </span>
             <button
               type="button"
@@ -337,11 +338,11 @@ export function ModelCatalogBrowser({
             <option value="">
               {providers.length === 0
                 ? "No provider matches"
-                : `Choose one of ${providers.length} providers…`}
+                : `Choose one of ${countOf(providers.length, "provider")}…`}
             </option>
             {providers.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} ({p.id}, {p.modelCount} models)
+                {p.name} ({p.id}, {countOf(p.modelCount, "model")})
               </option>
             ))}
           </select>
