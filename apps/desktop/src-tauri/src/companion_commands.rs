@@ -1237,14 +1237,30 @@ fn session_facts(store: &Store, provider: &str, id: &str) -> Result<SessionFacts
     let record = store.session(provider, id)?.ok_or(StoreError::NotFound)?;
     let ctx = store.context(provider, id)?;
     let items = store.items(provider, id)?;
-    let imported = store
-        .imported_sessions()?
-        .contains_key(&(provider.to_owned(), id.to_owned()));
-    let status = if imported {
+    let key = (provider.to_owned(), id.to_owned());
+    let imported = store.imported_sessions()?.contains_key(&key);
+    let hinted = store.log_hinted_sessions()?.contains_key(&key);
+    let inferred_end = record.state == agent_core::SessionState::Ended
+        && store
+            .ended_reasons()?
+            .get(&key)
+            .is_some_and(|r| r == agent_core::reducer::ENDED_PROCESS_GONE);
+    let status = if hinted {
+        format!(
+            "{} (guessed from the agent's log, filled in at start-up at {}; the agent has not reported a state since)",
+            record.state.as_str(),
+            ts(record.last_seen_utc)
+        )
+    } else if imported {
         format!(
             "{} (guessed from the agent's log when imported at {}; the agent has not reported a state since)",
             record.state.as_str(),
             ts(record.last_seen_utc)
+        )
+    } else if inferred_end {
+        format!(
+            "ended (inferred by Lullshift: the agent's program is no longer running; the agent did not report this; marked at {})",
+            ts(record.state_timestamp_utc.unwrap_or(record.last_seen_utc))
         )
     } else {
         format!(

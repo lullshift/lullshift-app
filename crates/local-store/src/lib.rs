@@ -1172,12 +1172,13 @@ fn session_marks(conn: &Connection, provider: &str, id: &str) -> Result<Marks> {
 
 /// The record a session had before the catch-up filled in a guess, if one is kept.
 fn load_prior(conn: &Connection, provider: &str, id: &str) -> Result<Option<SessionRecord>> {
-    let row: Option<(
+    type Prior = (
         Option<String>,
         Option<String>,
         Option<String>,
         Option<String>,
-    )> = conn
+    );
+    let row: Option<Prior> = conn
         .query_row(
             "SELECT hint_prior_state, hint_prior_state_ts, hint_prior_seen, hint_prior_received
              FROM sessions WHERE provider = ?1 AND provider_session_id = ?2",
