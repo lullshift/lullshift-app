@@ -17,6 +17,7 @@ use time::format_description::well_known::Rfc3339;
 
 use agent_ipc::EventContext;
 
+use crate::hook_failure::{self, FailureReason};
 use crate::{claude_code, codex, cursor, opencode};
 
 /// Directory under the app data dir that holds one consent marker file per adapter. The app
@@ -142,7 +143,13 @@ fn run_inner(args: &HookArgs, mut stdin: impl Read, started: OffsetDateTime) -> 
         },
         _ => return Outcome::BadArguments,
     };
-    send(&args.data_dir, &event, context.as_ref())
+    send(
+        &args.data_dir,
+        &args.adapter,
+        &event,
+        context.as_ref(),
+        started,
+    )
 }
 
 /// The optional task text for one Claude Code hook (ADR-013): prompt, question and the session
@@ -257,7 +264,32 @@ fn build_event(
     parse_event(&json).ok().map(|_| json)
 }
 
-fn send(data_dir: &Path, event_json: &str, context: Option<&EventContext>) -> Outcome {
+/// Time kept back at the end of the deadline for writing the failure marker.
+const MARKER_RESERVE: Duration = Duration::from_millis(250);
+/// Below this much time left, the event isn't sent at all (and no marker is written: there was
+/// no real attempt).
+const MIN_SEND_BUDGET: Duration = Duration::from_millis(50);
+
+/// What is left of the send budget, counted from `started` (process start), not from now: a
+/// slow stdin must eat into the send, never into the marker reserve.
+fn send_budget(started: OffsetDateTime, now: OffsetDateTime) -> Duration {
+    let elapsed = Duration::try_from(now - started).unwrap_or(Duration::ZERO);
+    DEADLINE
+        .saturating_sub(MARKER_RESERVE)
+        .saturating_sub(elapsed)
+}
+
+fn send(
+    data_dir: &Path,
+    adapter: &str,
+    event_json: &str,
+    context: Option<&EventContext>,
+    started: OffsetDateTime,
+) -> Outcome {
+    let budget = send_budget(started, OffsetDateTime::now_utc());
+    if budget < MIN_SEND_BUDGET {
+        return Outcome::TimedOut;
+    }
     let Ok(rt) = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -265,17 +297,40 @@ fn send(data_dir: &Path, event_json: &str, context: Option<&EventContext>) -> Ou
         return Outcome::Failed;
     };
     let reply = rt.block_on(agent_ipc::send_event_with_context(
-        data_dir,
-        event_json,
-        context,
-        DEADLINE.saturating_sub(Duration::from_millis(250)),
+        data_dir, event_json, context, budget,
     ));
-    match reply {
+    let outcome = match &reply {
         Ok(r) if r.ok && r.duplicate => Outcome::Duplicate,
         Ok(r) if r.ok => Outcome::Sent,
         Ok(_) => Outcome::Rejected,
         Err(agent_ipc::ClientError::NotRunning) => Outcome::AppNotRunning,
         Err(_) => Outcome::Failed,
+    };
+    if let Some(reason) = failure_reason(&reply, data_dir) {
+        // Data-free marker so the app can say why events stopped (decision 33). Silent and
+        // best effort; it runs inside the same deadline as the rest of the hook.
+        let _ = hook_failure::record(data_dir, adapter, reason, OffsetDateTime::now_utc());
+    }
+    outcome
+}
+
+/// Which failures leave a marker: a token refusal, and a failed exchange while `endpoint.json`
+/// existed (an address that leads nowhere). No connection files at all means Lullshift isn't
+/// set up or running here, which is not worth reporting.
+fn failure_reason(
+    reply: &Result<agent_ipc::Reply, agent_ipc::ClientError>,
+    data_dir: &Path,
+) -> Option<FailureReason> {
+    match reply {
+        Ok(r) if !r.ok && r.error == Some(agent_ipc::ErrorCode::Unauthorized) => {
+            Some(FailureReason::Rejected)
+        }
+        Ok(_) => None,
+        Err(_) => data_dir
+            .join(agent_ipc::transport::IPC_DIR)
+            .join(agent_ipc::transport::ENDPOINT_FILE)
+            .is_file()
+            .then_some(FailureReason::Unreachable),
     }
 }
 
@@ -497,6 +552,141 @@ mod tests {
             Outcome::AppNotRunning
         );
         assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    fn hook_args(dir: &Path) -> Vec<String> {
+        vec![
+            "claude-code".to_owned(),
+            "--data-dir".to_owned(),
+            dir.to_string_lossy().into_owned(),
+        ]
+    }
+
+    const STOP: &[u8] = br#"{"session_id":"s","hook_event_name":"Stop"}"#;
+
+    #[test]
+    fn an_old_address_leaves_an_unreachable_marker_and_nothing_else() {
+        // The stale private copy of decision 33: endpoint.json names a pipe that no longer
+        // exists, beside a token.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ipc = dir.path().join("ipc");
+        std::fs::create_dir(&ipc).expect("ipc");
+        let old = agent_ipc::Endpoint::for_launch(dir.path()).expect("endpoint");
+        std::fs::write(
+            ipc.join("endpoint.json"),
+            serde_json::to_vec(&old).expect("json"),
+        )
+        .expect("endpoint.json");
+        std::fs::write(ipc.join("token"), "a".repeat(64)).expect("token");
+        let started = std::time::Instant::now();
+        assert_eq!(
+            run(
+                &hook_args(dir.path()),
+                std::io::Cursor::new(STOP.to_vec()),
+                OffsetDateTime::now_utc()
+            ),
+            Outcome::AppNotRunning
+        );
+        assert!(started.elapsed() < DEADLINE);
+        let m = hook_failure::read(&ipc).expect("marker");
+        assert_eq!(
+            (m.adapter, m.reason),
+            ("claude-code", FailureReason::Unreachable)
+        );
+        let text = std::fs::read_to_string(ipc.join(hook_failure::MARKER_FILE)).expect("text");
+        assert!(!text.contains("\"s\"") && !text.contains(&*dir.path().to_string_lossy()));
+        // Only the marker was added; the connection files are untouched.
+        let mut names: Vec<String> = std::fs::read_dir(&ipc)
+            .expect("dir")
+            .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["endpoint.json", "last-hook-failure.json", "token"]);
+    }
+
+    #[test]
+    fn no_connection_files_leave_no_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("ipc")).expect("ipc");
+        assert_eq!(
+            run(
+                &hook_args(dir.path()),
+                std::io::Cursor::new(STOP.to_vec()),
+                OffsetDateTime::now_utc()
+            ),
+            Outcome::AppNotRunning
+        );
+        assert!(hook_failure::read(&dir.path().join("ipc")).is_none());
+        // And with no ipc directory at all, none is created.
+        let empty = tempfile::tempdir().expect("tempdir");
+        let _ = run(
+            &hook_args(empty.path()),
+            std::io::Cursor::new(STOP.to_vec()),
+            OffsetDateTime::now_utc(),
+        );
+        assert!(!empty.path().join("ipc").exists());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_refused_token_leaves_a_rejected_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sink = |_e: agent_core::AgentEvent,
+                    _c: Option<EventContext>|
+         -> Result<bool, agent_ipc::SinkError> { Ok(true) };
+        let _running = agent_ipc::serve(
+            dir.path(),
+            std::sync::Arc::new(sink),
+            agent_ipc::Config::default(),
+        )
+        .expect("serve");
+        // The hook now holds an out-of-date token (the app keeps its own in memory).
+        std::fs::write(dir.path().join("ipc").join("token"), "0".repeat(64)).expect("token");
+        let args = hook_args(dir.path());
+        let outcome = tokio::task::spawn_blocking(move || {
+            run(
+                &args,
+                std::io::Cursor::new(STOP.to_vec()),
+                OffsetDateTime::now_utc(),
+            )
+        })
+        .await
+        .expect("join");
+        assert_eq!(outcome, Outcome::Rejected);
+        let m = hook_failure::read(&dir.path().join("ipc")).expect("marker");
+        assert_eq!(m.reason, FailureReason::Rejected);
+    }
+
+    #[test]
+    fn the_send_budget_counts_from_process_start() {
+        let t = datetime!(2026-11-07 13:00:00 UTC);
+        assert_eq!(send_budget(t, t), DEADLINE - MARKER_RESERVE);
+        assert_eq!(
+            send_budget(t, t + time::Duration::milliseconds(1500)),
+            Duration::from_millis(250)
+        );
+        assert_eq!(
+            send_budget(t, t + time::Duration::seconds(5)),
+            Duration::ZERO
+        );
+        // A clock that went backwards counts as no time elapsed.
+        assert_eq!(
+            send_budget(t, t - time::Duration::seconds(5)),
+            DEADLINE - MARKER_RESERVE
+        );
+        // Started long ago (slow stdin): no send and no marker.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ipc = dir.path().join("ipc");
+        std::fs::create_dir(&ipc).expect("ipc");
+        std::fs::write(ipc.join("endpoint.json"), "{}").expect("endpoint");
+        assert_eq!(
+            run(
+                &hook_args(dir.path()),
+                std::io::Cursor::new(STOP.to_vec()),
+                OffsetDateTime::now_utc() - time::Duration::seconds(3)
+            ),
+            Outcome::TimedOut
+        );
+        assert!(hook_failure::read(&ipc).is_none());
     }
 
     #[test]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-packaged-context"
+description = "Enables the packaged_context command without any pre-configured scope."
+commands.allow = ["packaged_context"]
+
+[[permission]]
+identifier = "deny-packaged-context"
+description = "Denies the packaged_context command without any pre-configured scope."
+commands.deny = ["packaged_context"]

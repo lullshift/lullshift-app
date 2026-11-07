@@ -355,3 +355,61 @@ fn deleting_a_provider_removes_its_models_and_keeps_messages() {
     );
     assert_eq!(msgs[1].profile_id, None);
 }
+
+/// A version 15 database (before decision 34's migration 16 and this change's 17) with a
+/// session and a provider goes through 16 and then 17 in one open, with one backup of the v15 file.
+#[test]
+fn version_15_database_upgrades_through_16_and_17_with_data() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = dir.path().join("l.db");
+    {
+        let conn = Connection::open(&path).expect("raw");
+        let v15: Vec<Migration> = MIGRATIONS
+            .iter()
+            .copied()
+            .filter(|m| m.version <= 15)
+            .collect();
+        migrate(&conn, &v15, None).expect("v15");
+        conn.execute_batch(
+            "INSERT INTO sessions (provider, provider_session_id, state, state_timestamp_utc,
+               last_seen_utc, last_received_utc)
+             VALUES ('claude-code', 'old', 'idle', '2026-11-06T10:00:00Z',
+               '2026-11-06T10:00:00Z', '2026-11-06T10:00:00Z');
+             INSERT INTO companion_profiles
+               (id, kind, label, base_url, model, monthly_token_budget, is_default, created_utc, updated_utc)
+             VALUES ('p-a', 'anthropic', 'Work', 'https://api.anthropic.com', 'claude-x', NULL, 1,
+               '2026-11-01T10:00:00Z', '2026-11-01T10:00:00Z');",
+        )
+        .expect("seed");
+    }
+    let (s, report) = Store::open(&path).expect("upgrade");
+    assert_eq!((report.from_version, report.to_version), (15, 17));
+    assert_eq!(latest_version(), 17);
+
+    // 16: the session is kept and is not an imported one.
+    let conn = Connection::open(&path).expect("raw");
+    assert!(has_column(&conn, "sessions", "imported_utc"));
+    let imported: Option<i64> = conn
+        .query_row(
+            "SELECT imported_utc FROM sessions WHERE provider_session_id = 'old'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("session kept");
+    assert_eq!(imported, None);
+    assert!(s.imported_sessions().expect("imported").is_empty());
+
+    // 17: the profile's model became its default model.
+    let p = s.companion_profile("p-a").expect("read").expect("kept");
+    assert_eq!(p.model, "claude-x");
+    let models = s.companion_models(Some("p-a")).expect("models");
+    assert_eq!(models.len(), 1);
+    assert!(models[0].is_default);
+
+    // One backup, of the version 15 file.
+    let bak = report.backup.expect("backup");
+    let b = Connection::open(&bak).expect("open backup");
+    assert_eq!(version(&b), 15);
+    assert!(!has_column(&b, "sessions", "imported_utc"));
+    assert!(has_column(&b, "companion_profiles", "model"));
+}

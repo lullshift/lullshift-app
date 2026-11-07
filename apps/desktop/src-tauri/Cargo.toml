@@ -44,6 +44,9 @@ time.workspace = true
 url = "2.5"
 sha2.workspace = true
 zeroize = "1.9"
+# The one Win32 call that tells whether Lullshift runs inside another app's package
+# (decision 33). Holds the unsafe code so this crate can keep forbidding it; a no-op elsewhere.
+windows-package = { path = "../../../crates/windows-package" }
 
 # WebRTC is turned off in the webview at run time on macOS and Linux (src/webrtc.rs, ADR-012).
 # macOS: the Objective-C messages live in `macos-webrtc`, the one crate that allows unsafe code,

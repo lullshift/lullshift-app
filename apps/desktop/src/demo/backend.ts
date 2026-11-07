@@ -9,7 +9,16 @@ import type { ContextPrefs, SessionItem, UiPrefs } from "../context/api";
 import type { NotificationPrefs } from "../NotificationSettings";
 import type { Dashboard } from "../sessions";
 import { CATALOG, byId } from "./catalog";
-import { LOCAL_PROFILE, MESSAGES, PROFILE, SESSIONS, THREADS, ago } from "./data";
+import {
+  IMPORTABLE,
+  LOCAL_PROFILE,
+  MESSAGES,
+  PROFILE,
+  SESSIONS,
+  THREADS,
+  ago,
+  importedSession,
+} from "./data";
 
 type Args = Record<string, unknown>;
 
@@ -186,6 +195,40 @@ function handle(cmd: string, a: Args): unknown {
       return null;
     case "export_session":
       return "cancelled";
+    // Import sessions (decision 34): made-up logs; ?importfail shows the error state.
+    case "import_scan":
+      if (params.has("importfail")) throw "internal";
+      return {
+        sessions: IMPORTABLE.map((f) => ({
+          ...f,
+          tracked: f.tracked || SESSIONS.some((s) => s.view.providerSessionId === f.sessionId),
+        })),
+        agents: [
+          { provider: "claude-code", state: "read", sessions: 2, incomplete: false },
+          { provider: "cursor", state: "read", sessions: 1, incomplete: false },
+          { provider: "codex", state: "read", sessions: 1, incomplete: false },
+          { provider: "opencode", state: "not_found", sessions: 0, incomplete: false },
+        ],
+        incomplete: false,
+      };
+    case "import_cancel":
+      return null;
+    case "import_sessions": {
+      const picks = (a.picks ?? []) as { provider: string; sessionId: string }[];
+      let imported = 0;
+      let alreadyTracked = 0;
+      for (const p of picks) {
+        const f = IMPORTABLE.find((x) => x.provider === p.provider && x.sessionId === p.sessionId);
+        if (!f) continue;
+        if (f.tracked || SESSIONS.some((s) => s.view.providerSessionId === f.sessionId)) {
+          alreadyTracked += 1;
+          continue;
+        }
+        SESSIONS.push(importedSession(f));
+        imported += 1;
+      }
+      return { imported, alreadyTracked, notFound: 0 };
+    }
 
     // Preferences
     case "ui_prefs":
@@ -277,6 +320,13 @@ function handle(cmd: string, a: Args): unknown {
     case "cursor_status":
     case "opencode_status":
       return adapters[cmd.replace(/_status$/, "")];
+    // Packaged-app checks (decision 33): the demo runs in a browser, never inside a package.
+    case "packaged_context":
+      return { package: null };
+    case "connection_health":
+      return { package: null, scan: "skipped", stale: [], failures: [] };
+    case "connection_fix_stale":
+      throw "unsupported";
 
     // Companion
     case "companion_profiles":

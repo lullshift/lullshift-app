@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-connection-fix-stale"
+description = "Enables the connection_fix_stale command without any pre-configured scope."
+commands.allow = ["connection_fix_stale"]
+
+[[permission]]
+identifier = "deny-connection-fix-stale"
+description = "Denies the connection_fix_stale command without any pre-configured scope."
+commands.deny = ["connection_fix_stale"]

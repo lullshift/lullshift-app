@@ -3,12 +3,13 @@
 
 import type { SessionDetail, SessionItem } from "../context/api";
 import type { Message, ProviderProfile, Thread } from "../companion/api";
+import type { FoundSession } from "../importSessions";
 import type { SessionView } from "../sessions";
 
 const LOADED = Date.now();
 export const ago = (minutes: number) => new Date(LOADED - minutes * 60_000).toISOString();
 
-interface DemoSession {
+export interface DemoSession {
   view: SessionView;
   detail: SessionDetail;
 }
@@ -282,3 +283,90 @@ export const MESSAGES: Message[] = [
     290,
   ),
 ];
+
+// ---- Import sessions (decision 34): made-up sessions "found" in the agents' logs -----------
+
+export const IMPORTABLE: FoundSession[] = [
+  {
+    provider: "claude-code",
+    sessionId: "c41d9e07-5b2a-4f61-9a0e-3d7c8b1f2e55",
+    project: "shop/checkout",
+    projectPath: "/Users/sam/code/shop/checkout",
+    title: "Split the payment form into steps",
+    lastActivityUtc: ago(1),
+    guess: "working",
+    tracked: false,
+  },
+  {
+    provider: "cursor",
+    sessionId: "8a6f2c19-0d3e-4b7a-b5c1-92e4f7a03d68",
+    project: "users-sam-code-docs-site",
+    projectPath: "users-sam-code-docs-site",
+    title: "Add a dark theme toggle",
+    lastActivityUtc: ago(4),
+    guess: "may_need_you",
+    tracked: false,
+  },
+  {
+    provider: "codex",
+    sessionId: "019e1a2b-7c3d-7e4f-8a9b-0c1d2e3f4a5b",
+    project: "infra/terraform",
+    projectPath: "/Users/sam/code/infra/terraform",
+    title: "Tidy the staging variables",
+    lastActivityUtc: ago(38),
+    guess: "waiting",
+    tracked: false,
+  },
+  {
+    provider: "claude-code",
+    sessionId: "7f3a9c21-1111-4222-8333-444455556666",
+    project: "auth/service",
+    projectPath: "/Users/sam/code/auth/service",
+    title: "Token refresh fix",
+    lastActivityUtc: ago(60),
+    guess: "waiting",
+    tracked: true,
+  },
+  {
+    provider: "opencode",
+    sessionId: "ses_3kq8v2m0x1",
+    project: "tools/cli",
+    projectPath: "/Users/sam/code/tools/cli",
+    title: null,
+    lastActivityUtc: ago(60 * 26),
+    guess: "unknown",
+    tracked: false,
+  },
+];
+
+const GUESS_STATE: Record<FoundSession["guess"], SessionView["state"]> = {
+  working: "working",
+  waiting: "idle",
+  may_need_you: "needs_attention",
+  unknown: "unknown",
+};
+
+/** The dashboard entry for a made-up session after the demo "imports" it. */
+export function importedSession(f: FoundSession): DemoSession {
+  const state = GUESS_STATE[f.guess];
+  return {
+    view: {
+      ...view(f.provider, f.sessionId, state, 0, "", {
+        userTitle: null,
+        agentTitle: f.title,
+        reason: "unconfirmed_after_restart",
+        state: "unknown",
+        lastKnownState: state,
+        lastSeenUtc: f.lastActivityUtc,
+        lastReceivedUtc: f.lastActivityUtc,
+      }),
+      importedUtc: new Date().toISOString(),
+    },
+    detail: detail({
+      context: {
+        agentTitle: f.title ? { text: f.title, capturedUtc: new Date().toISOString() } : null,
+        hasCaptured: f.title !== null,
+      },
+    }),
+  };
+}

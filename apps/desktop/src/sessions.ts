@@ -35,6 +35,12 @@ export interface SessionView {
    * longer tracked and is never shown as Working or Needs you.
    */
   disconnectedUtc: string | null;
+  /**
+   * Set when the user imported the session from the agent's own log (decision 34) and no hook
+   * event has arrived since. `lastKnownState` is then only a guess from the log; the session is
+   * not tracked yet, never counts as Needs you or Working, and never alerts.
+   */
+  importedUtc?: string | null;
 }
 
 export type Health = { status: "ok" } | { status: "error"; code: string };
@@ -74,17 +80,44 @@ export function isTracked(s: Pick<SessionView, "disconnectedUtc">): boolean {
   return !s.disconnectedUtc;
 }
 
+/** True for a session imported from a log that no hook event has confirmed yet. */
+export function isImported(s: Pick<SessionView, "importedUtc">): boolean {
+  return !!s.importedUtc;
+}
+
+export const FROM_LOG_LABEL = "From log";
+
+/** What an imported session's guessed state is called: the import dialog's words. */
+const GUESS_LABELS: Partial<Record<SessionState, string>> = {
+  working: "Working",
+  idle: "Waiting for you",
+  needs_attention: "May need you",
+};
+
+type PillInput = Pick<SessionView, "state" | "disconnectedUtc"> &
+  Partial<Pick<SessionView, "importedUtc" | "lastKnownState">>;
+
 /**
  * The state that counts for grouping, summaries and the panel: a session that is no longer
  * tracked is "unknown", whatever it last reported.
  */
-export function liveState(s: Pick<SessionView, "state" | "disconnectedUtc">): SessionState {
-  return isTracked(s) ? s.state : "unknown";
+export function liveState(
+  s: Pick<SessionView, "state" | "disconnectedUtc"> & Partial<Pick<SessionView, "importedUtc">>,
+): SessionState {
+  return isTracked(s) && !isImported(s) ? s.state : "unknown";
 }
 
-/** The pill for a session. Untracked sessions say so instead of showing their last state. */
-export function sessionStateView(s: Pick<SessionView, "state" | "disconnectedUtc">): StateView {
-  return isTracked(s) ? VIEWS[s.state] : { label: NOT_TRACKED_LABEL, tone: "neutral" };
+/**
+ * The pill for a session. Untracked sessions say so instead of showing their last state; an
+ * imported one shows its guess from the log in a neutral tone (it never claims attention).
+ */
+export function sessionStateView(s: PillInput): StateView {
+  if (!isTracked(s)) return { label: NOT_TRACKED_LABEL, tone: "neutral" };
+  if (isImported(s)) {
+    const guess = s.lastKnownState ?? s.state;
+    return { label: GUESS_LABELS[guess] ?? "Unknown", tone: "neutral" };
+  }
+  return VIEWS[s.state];
 }
 
 /** Why a session shows what it shows, or null when the state is simply observed. */
@@ -92,6 +125,8 @@ export function reasonText(s: SessionView, staleAfterSeconds: number): string | 
   const lastKnown = `Last known: ${VIEWS[s.lastKnownState].label}.`;
   if (!isTracked(s))
     return `The tool was disconnected, so this session is no longer tracked. ${lastKnown}`;
+  if (isImported(s))
+    return "Imported from the agent's own log. The state is a guess until the agent sends its next update.";
   switch (s.reason) {
     case "observed":
       return null;

@@ -1166,6 +1166,69 @@ Watch Lullshift's connections with a network monitor (Resource Monitor, Little S
 
 **Result:** \_\_\_
 
+### M12-16: Lullshift started inside a packaged app (decision 33)
+
+Windows 11 with the Claude desktop app (a Store app) and Claude Code connected in Integrations.
+
+1. Quit Lullshift. In the Claude desktop app, open a terminal and start Lullshift from it (for example `& "$env:LOCALAPPDATA\Programs\Lullshift\lullshift-desktop.exe"`, or the installed path).
+2. Look at Sessions and Integrations.
+3. Quit Lullshift from the tray. Start it from the Start menu or by double-clicking it in File Explorer.
+4. In the Claude desktop app's Code tab, send a prompt in a Claude Code session. Then open Integrations.
+5. Press **Fix** on the card for Claude.
+6. In the Code tab, send another prompt in that session (or start a new session). Open Sessions.
+7. Open Integrations again and look for the card. Check `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\app.lullshift.desktop\` in File Explorer.
+
+**Expected:**
+
+- **Step 2:** both views show a warning that Lullshift was started from inside another app (Claude) and agents may not reach it, saying to quit and start it from the Start menu or File Explorer. Nothing else is blocked.
+- **Step 3:** no packaged warning.
+- **Step 4:** the session does not appear in Sessions. Integrations shows "Agents running inside Claude can't reach Lullshift: that app has out-of-date copies of Lullshift's connection files.", what is out of date (old address, access key), and, if the hook tried after this launch, "Claude Code tried to reach Lullshift at HH:MM but couldn't (unreachable)" or "(refused)". The text says Fix removes only those copies, that open sessions may need a restart, and that data from runs inside Claude stays there.
+- **Step 5:** a success message; the card goes away.
+- **Step 6:** the Claude Code session appears in Sessions (restart it if it doesn't).
+- **Step 7:** no card. In that folder `ipc\endpoint.json` and `ipc\token` are gone; `lullshift.db` and any other files are still there.
+
+**Result:** \_\_\_
+
+### M12-17: Import sessions from the agents' logs (decision 34)
+
+Before you start: Lullshift closed. Have sessions open in Claude Code in the desktop app's **Code** tab and in a terminal (one waiting for your next prompt, one asking for a permission, one working on a long task), a Cursor agent chat, a Codex CLI session and, if you have it, an OpenCode 2.x session. Task context **off** for Claude Code at first.
+
+1. Start Lullshift (agents connected). Open **Sessions** and watch a file monitor (Process Monitor filtered on `lullshift`) for a minute: no agent log is opened.
+2. Choose **Import sessions**.
+3. Check each row: agent, project folder (hover for the full path), title, last activity, guess. Compare with the real sessions.
+4. Type in the filter: an agent name, part of a folder, part of a title, the first characters of a session ID.
+5. Tick none: **Import (0)** is disabled. Tick one, then several, then **Select all shown** (with and without a filter). Watch the count.
+6. Choose **Cancel**. Then open the dialog again, tick the Claude Code sessions and a Cursor and Codex one, and choose **Import (n)**.
+7. Look at the imported sessions under **History**. Wait two minutes. Check the tray icon, notifications and a running activity.
+8. Open the dialog again.
+9. In the Claude Code session that was imported as waiting, send a prompt.
+10. Turn Task context **on** for Claude Code, delete one imported Claude Code session, and import it again. Open its detail panel. Then **Clear captured text**.
+11. With NVDA (or Narrator) and keyboard only: open the dialog, use the filter, tick rows, hear the count, import. Turn on reduced motion and repeat once.
+12. Quit Cursor, rename `~/.cursor/projects` temporarily, and open the dialog.
+13. If OpenCode is installed and closed (no `opencode.db-wal` beside `opencode.db`): open the dialog and look at OpenCode's data folder.
+14. Open the dialog and choose **Cancel** at once, while it still says "Reading the agents' logs…". Open it again.
+15. If you have a mapped network drive: point `CODEX_HOME` at a folder on it (start Lullshift from that shell) and open the dialog.
+
+**Expected:**
+
+- **Step 1:** nothing reads `~/.claude/projects`, `~/.cursor/projects`, `~/.codex/sessions` or OpenCode's `opencode.db` until step 2.
+- **Step 2:** "Reading the agents' logs…" then the list, newest first, within about 5 seconds. Process Monitor shows each log opened for at most 64 KiB at the start and 256 KiB at the end (no full reads of large transcripts).
+- **Step 3:** Claude Code sessions from the Code tab and the terminal both appear, titled with their saved name (from `/rename` or the app) or their first prompt. Guesses are plausible: the permission one "May need you" (after 30 s of quiet), the long task "Working", the idle one "Waiting for you". Cursor shows the encoded workspace folder name and is never "May need you". Sessions Lullshift already tracks say "Already in Lullshift" and can't be ticked.
+- **Step 4:** the list narrows as you type and the count says "n of m shown".
+- **Step 5:** the count is read politely and matches the ticks; Select all shown never ticks an "Already in Lullshift" row and leaves ticks on hidden rows alone.
+- **Step 6:** Cancel imports nothing. Import closes the dialog and shows "Imported n sessions."
+- **Step 7:** each imported session has a **From log** tag and a neutral pill naming its guess; none is in Needs you or Working, the summary line and nav badge don't count them, no notification or sound, the tray icon stays asleep, an activity keeps running. Task context was off: no title is stored (the row shows the tool name and short ID).
+- **Step 8:** the imported sessions now say "Already in Lullshift".
+- **Step 9:** within seconds the From log tag disappears and the session moves to Live like any tracked session (a later needs-you event notifies as usual).
+- **Step 10:** with Task context on, the re-imported session shows its title; Clear captured text removes it.
+- **Step 11:** every checkbox is read with its agent, title, folder, time and guess; focus stays in the dialog and returns to the button on close; Esc cancels. Nothing animates with reduced motion.
+- **Step 12:** "No Cursor logs found on this computer." while other agents still list. Codex: same with `~/.codex` absent. OpenCode not installed: "No OpenCode logs found on this computer."
+- **Step 13:** OpenCode sessions are listed, and no `opencode.db-shm` or `opencode.db-wal` file appears (the database is opened immutable). With OpenCode running (a `-wal` file exists) the list still works; SQLite may then touch the existing `-shm` file.
+- **Step 14:** the scan stops; reopening reads again and never says "already reading the logs".
+- **Step 15:** "Codex logs are not on a local drive, so Lullshift doesn't read them." and no log file on the network drive is opened or listed (only the folder itself is looked up, to find out where it is).
+
+**Result:** \_\_\_
+
 ### M12-18: Companion settings, models per message and reply rendering (decision 36)
 
 Use a database from before this change (with at least one provider and a conversation) so the upgrade runs. Watch Lullshift's connections with a network monitor during steps 2 and 3. Repeat steps 4 to 9 in light and dark themes, and once with reduced motion on.

@@ -15,6 +15,9 @@ fn main() {
             "opencode_status",
             "opencode_install",
             "opencode_uninstall",
+            "packaged_context",
+            "connection_health",
+            "connection_fix_stale",
             "notification_prefs",
             "set_notification_prefs",
             "activities_list",
@@ -88,6 +91,10 @@ fn main() {
             "companion_tool_decision",
             "companion_model_catalog",
             "companion_catalog_models",
+            // Import sessions (decision 34).
+            "import_scan",
+            "import_sessions",
+            "import_cancel",
         ]),
     ))
     .expect("failed to run tauri-build");

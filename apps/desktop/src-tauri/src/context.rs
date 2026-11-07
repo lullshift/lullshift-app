@@ -323,6 +323,10 @@ pub struct DashboardSession {
     /// no longer tracked. `view` keeps the last reported state (S05-T10).
     #[serde(with = "time::serde::rfc3339::option")]
     pub disconnected_utc: Option<OffsetDateTime>,
+    /// Set when the user imported the session from the agent's own log and no hook event has
+    /// arrived since (ADR-024): `view.last_known_state` is a guess, not an observation.
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub imported_utc: Option<OffsetDateTime>,
 }
 
 /// Everything the dashboard joins onto the session list. A failed read of any part only hides
@@ -332,6 +336,7 @@ pub struct DashboardLookups {
     pub summaries: HashMap<(String, String), ContextSummary>,
     pub labels: HashMap<(String, String), SessionLabels>,
     pub disconnected: HashMap<(String, String), OffsetDateTime>,
+    pub imported: HashMap<(String, String), OffsetDateTime>,
 }
 
 impl DashboardLookups {
@@ -340,6 +345,7 @@ impl DashboardLookups {
             summaries: store.context_summaries().unwrap_or_default(),
             labels: store.session_labels().unwrap_or_default(),
             disconnected: store.disconnected_sessions().unwrap_or_default(),
+            imported: store.imported_sessions().unwrap_or_default(),
         }
     }
 }
@@ -376,9 +382,11 @@ pub fn dashboard_session(
     let key = (record.provider.clone(), record.provider_session_id.clone());
     let labels = lookups.labels.get(&key).cloned().unwrap_or_default();
     let disconnected_utc = lookups.disconnected.get(&key).copied();
+    let imported_utc = lookups.imported.get(&key).copied();
     DashboardSession {
-        // A session that is no longer tracked has no return card waiting either.
+        // A session that is no longer (or not yet) tracked has no return card waiting either.
         needs_review: disconnected_utc.is_none()
+            && imported_utc.is_none()
             && needs_review(
                 view.state,
                 record.state_timestamp_utc,
@@ -389,6 +397,7 @@ pub fn dashboard_session(
         agent_title: labels.agent_title,
         intent_line: labels.intent_line,
         disconnected_utc,
+        imported_utc,
     }
 }
 
@@ -634,6 +643,9 @@ pub struct ExportData {
     pub links: Vec<(String, String)>,
     pub timeline: Vec<local_store::TimelineRow>,
     pub generated_utc: OffsetDateTime,
+    /// Set while the session is still only imported from the agent's log (decision 34): its
+    /// state is a guess, not a report.
+    pub imported_utc: Option<OffsetDateTime>,
 }
 
 fn export_data(store: &Store, provider: &str, id: &str) -> Result<ExportData, StoreError> {
@@ -645,6 +657,10 @@ fn export_data(store: &Store, provider: &str, id: &str) -> Result<ExportData, St
         links: store.links(provider, id)?,
         timeline: store.timeline(provider, id, usize::MAX >> 1)?,
         generated_utc: OffsetDateTime::now_utc(),
+        imported_utc: store
+            .imported_sessions()?
+            .get(&(provider.to_owned(), id.to_owned()))
+            .copied(),
     })
 }
 
@@ -694,7 +710,16 @@ pub fn render_markdown(d: &ExportData) -> String {
             code_span(&t.text)
         );
     }
-    let _ = writeln!(o, "- Last reported state: {}", r.state.as_str());
+    if let Some(at) = d.imported_utc {
+        let _ = writeln!(
+            o,
+            "- State guessed from the agent's log (imported {}; the agent has not reported since): {}",
+            ts(at),
+            r.state.as_str()
+        );
+    } else {
+        let _ = writeln!(o, "- Last reported state: {}", r.state.as_str());
+    }
     if let Some(t) = r.state_timestamp_utc {
         let _ = writeln!(o, "- State reported at: {}", ts(t));
     }
@@ -809,6 +834,10 @@ pub fn render_json(d: &ExportData) -> Result<String, serde_json::Error> {
             "provider": r.provider,
             "sessionId": r.provider_session_id,
             "lastReportedState": r.state.as_str(),
+            // "reported" by the agent, or "guessed_from_log" for a session only imported from
+            // the agent's log (decision 34).
+            "stateSource": if d.imported_utc.is_some() { "guessed_from_log" } else { "reported" },
+            "importedFromLogUtc": d.imported_utc.map(ts),
             "stateReportedUtc": r.state_timestamp_utc.map(ts),
             "lastSeenUtc": ts(r.last_seen_utc),
         },
@@ -1992,6 +2021,24 @@ mod tests {
             .link_sessions((P, "sess-1"), (P, "sess-2"), T0)
             .expect("link");
         export_data(&store, P, "sess-1").expect("data")
+    }
+
+    #[test]
+    fn an_imported_session_exports_its_state_as_a_guess_from_the_log() {
+        let mut store = Store::open_in_memory().expect("open");
+        store
+            .import_session(P, "sess-i", SessionState::NeedsAttention, T0, T0)
+            .expect("import");
+        let d = export_data(&store, P, "sess-i").expect("data");
+        let md = render_markdown(&d);
+        assert!(md.contains("State guessed from the agent's log"), "{md}");
+        assert!(!md.contains("Last reported state"));
+        let v: serde_json::Value =
+            serde_json::from_str(&render_json(&d).expect("json")).expect("parse");
+        assert_eq!(v["session"]["stateSource"], "guessed_from_log");
+        let reported: serde_json::Value =
+            serde_json::from_str(&render_json(&sample_data()).expect("json")).expect("parse");
+        assert_eq!(reported["session"]["stateSource"], "reported");
     }
 
     #[test]
