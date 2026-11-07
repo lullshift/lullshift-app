@@ -144,6 +144,23 @@ describe("ReplyText", () => {
     expect(dialog?.hasAttribute("open")).toBe(false);
   });
 
+  it("warns when a link points at this computer or the local network", async () => {
+    await render("Try http://192.168.1.1/admin and https://example.com/");
+    const [local, remote] = [...host.querySelectorAll<HTMLButtonElement>("button.reply-link")];
+    const dialog = host.querySelector("dialog");
+
+    await click(local!);
+    expect(dialog?.querySelector(".reply-link-local")?.textContent).toContain(
+      "on your computer or local network",
+    );
+    await click(button("Cancel"));
+
+    await click(remote!);
+    expect(dialog?.querySelector(".reply-link-local")).toBeNull();
+    await click(button("Cancel"));
+    expect(calls).toEqual([]);
+  });
+
   it("shows an error and stays open when opening fails", async () => {
     answer = () => {
       throw { kind: "offline", message: "no" };

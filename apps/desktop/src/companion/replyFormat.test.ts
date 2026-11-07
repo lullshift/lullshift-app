@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayUrl, findLinks, hostOf, parseReply } from "./replyFormat";
+import { displayUrl, findLinks, hostOf, isLocalHost, parseReply } from "./replyFormat";
 
 const links = (text: string) =>
   findLinks(text)
@@ -204,5 +204,54 @@ describe("findLinks on hostile input (security review F1)", () => {
 
   it("links every URL when there are many", () => {
     expect(links("https://a.b/c) ".repeat(7_000))).toHaveLength(7_000);
+  });
+});
+
+describe("isLocalHost (security review F6)", () => {
+  it("flags this computer and the local network", () => {
+    for (const url of [
+      "http://localhost:3000/",
+      "http://LOCALHOST./x",
+      "http://app.localhost/",
+      "http://127.0.0.1/",
+      "http://127.8.9.10/",
+      "http://2130706433/", // 127.0.0.1 written as a number
+      "http://0x7f.1/",
+      "http://0.0.0.0:8080/",
+      "http://10.1.2.3/",
+      "http://172.16.0.1/",
+      "http://172.31.255.255/",
+      "http://192.168.1.1/admin",
+      "http://169.254.169.254/latest/meta-data",
+      "http://100.64.0.1/",
+      "http://[::1]:8080/",
+      "http://[::ffff:127.0.0.1]/",
+      "http://[::ffff:192.168.0.1]/",
+      "http://[fd00::1]/",
+      "http://[fe80::1]/",
+      "http://printer.local/",
+      "http://nas.lan/",
+      "http://svc.internal/",
+      "http://box.home.arpa/",
+      "http://router/",
+    ]) {
+      expect(isLocalHost(displayUrl(url)), url).toBe(true);
+    }
+  });
+
+  it("does not flag public hosts", () => {
+    for (const url of [
+      "https://example.com/",
+      "https://localhost.example.com/",
+      "https://local.example/",
+      "http://8.8.8.8/",
+      "http://172.32.0.1/",
+      "http://192.169.0.1/",
+      "http://[2001:db8::1]/",
+      "http://[::ffff:8.8.8.8]/",
+      "not a url",
+    ]) {
+      expect(isLocalHost(displayUrl(url)), url).toBe(false);
+    }
   });
 });

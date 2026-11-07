@@ -74,7 +74,7 @@ Every answer shows which model and provider wrote it, for example "Answered by c
 Replies stream in as the provider writes them, as plain text. Two things are shown specially:
 
 - **Code blocks** (text between ``` lines) appear in their own box with a **Copy** button. About 20 common languages are coloured (for example Python, TypeScript, Rust, Go, shell, SQL, JSON and YAML); others are shown plain.
-- **Links** that start with `http://` or `https://` can be clicked. Lullshift first asks **Open this link?** and shows the full address, with any non-English letters in the host spelled out the way the browser will see them (for example `xn--…`), so a look-alike address can't hide. Nothing opens unless you press **Open in browser**. Links with a user name or password in them are not clickable.
+- **Links** that start with `http://` or `https://` can be clicked. Lullshift first asks **Open this link?** and shows the full address, with any non-English letters in the host spelled out the way the browser will see them (for example `xn--…`), so a look-alike address can't hide. If the address is on your computer or local network (for example `localhost`, `192.168.…` or a `.local` name), the confirmation also warns you that opening it sends a request to a service there. Nothing opens unless you press **Open in browser**. Links with a user name or password in them are not clickable.
 
 Formatting such as bold, headings or tables is shown as the plain text the provider sent. A screen reader hears a short status ("Companion is replying") and then the finished reply once, not every word. If the connection drops part-way, the message is marked as not sent and you can try again; the part that arrived still counts toward your budget.
 

@@ -4,7 +4,7 @@ import { Dialog } from "../ui/Dialog";
 import { companionOpenLink, toCommandError } from "./api";
 import { highlightToReact, languageLabel } from "./highlight";
 import { errorText, plainLines } from "./logic";
-import { displayUrl, findLinks, hostOf, parseReply } from "./replyFormat";
+import { displayUrl, findLinks, hostOf, isLocalHost, parseReply } from "./replyFormat";
 import "./reply.css";
 
 type CopyState = "idle" | "copied" | "failed";
@@ -181,6 +181,12 @@ function LinkDialog({ url, onClose }: { url: string | null; onClose: () => void 
             This opens <strong>{hostOf(shown)}</strong> in your browser. Lullshift doesn't check
             where links lead.
           </p>
+          {isLocalHost(shown) && (
+            <p className="reply-link-local">
+              <strong>This address is on your computer or local network.</strong> Opening it sends a
+              request to a service there, such as a router, a printer or a program on this computer.
+            </p>
+          )}
         </>
       }
       actions={

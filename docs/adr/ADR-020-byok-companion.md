@@ -235,6 +235,7 @@ All are older than two weeks at the time of the decision.
 |---|---|
 | Model output injects markup or script | Plain React text; highlighting builds only class-only spans from text; no HTML string from model output |
 | A link that disguises its target (homograph, bidi, credentials) | Only http(s); credentials not linked; confirmation shows the ASCII/punycode form; Rust re-checks and opens exactly that form |
+| A link aimed at a service on the user's computer or network (router admin page, cloud metadata address, a local dev server) | The confirmation adds a warning for localhost and loopback, private, link-local, carrier-grade NAT and unique-local addresses, `.local`/`.lan`/`.internal`/`.home.arpa` names and single-label hosts; the user still decides |
 | The UI (or a compromised page) calls an unconfigured or odd model | `send`/`retry` check `valid_model_id` and the provider's list in the backend |
 | Opening the picker leaks data | The request is the decision 32 GET with no user data; it happens at most once per app run unless Refresh is pressed |
 | Highlighting a huge block stalls the UI | Size and line caps; fall back to plain text |

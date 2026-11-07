@@ -161,6 +161,68 @@ export function displayUrl(url: string): string {
   }
 }
 
+const LOCAL_SUFFIXES = [".localhost", ".local", ".lan", ".internal", ".home.arpa"];
+
+function ipv4Parts(host: string): number[] | null {
+  const parts = host.split(".");
+  if (parts.length !== 4 || !parts.every((p) => /^\d{1,3}$/.test(p))) return null;
+  const n = parts.map(Number);
+  return n.every((x) => x <= 255) ? n : null;
+}
+
+function privateIpv4([a, b]: number[]): boolean {
+  if (a === undefined || b === undefined) return false;
+  return (
+    a === 0 || // "this network", 0.0.0.0 reaches this computer
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) || // carrier-grade NAT
+    (a === 169 && b === 254) || // link-local
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  );
+}
+
+/**
+ * True when a URL's host is this computer or the local network: localhost and loopback, private,
+ * link-local and unique-local addresses, local-only names (.local, .lan, .internal, .home.arpa)
+ * and single-label names such as "router". Opening such a link sends a request to a service on
+ * the user's own computer or network (security review F6), so the confirmation says so. Takes a
+ * URL as `displayUrl` returns it; the browser's own parser has already turned numeric forms such
+ * as "http://2130706433" into dotted IPv4.
+ */
+export function isLocalHost(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host === "") return false;
+  if (host.startsWith("[") && host.endsWith("]")) {
+    const v6 = host.slice(1, -1);
+    if (v6 === "::1" || v6 === "::") return true;
+    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(v6)?.[1];
+    if (mapped) {
+      const parts = ipv4Parts(mapped);
+      return parts !== null && privateIpv4(parts);
+    }
+    // WHATWG writes a mapped address in hex ("::ffff:7f00:1"): first hextet of the IPv4 part.
+    const hexMapped = /^::ffff:([0-9a-f]{1,4}):[0-9a-f]{1,4}$/.exec(v6)?.[1];
+    if (hexMapped) {
+      const v = parseInt(hexMapped, 16);
+      return privateIpv4([v >> 8, v & 0xff]);
+    }
+    const first = parseInt(v6.split(":")[0] || "0", 16);
+    return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
+  }
+  const v4 = ipv4Parts(host);
+  if (v4) return privateIpv4(v4);
+  const name = host.endsWith(".") ? host.slice(0, -1) : host;
+  if (name === "localhost" || !name.includes(".")) return true;
+  return LOCAL_SUFFIXES.some((s) => name.endsWith(s));
+}
+
 /** The ASCII host name of a URL, or an empty string when it does not parse. */
 export function hostOf(url: string): string {
   try {

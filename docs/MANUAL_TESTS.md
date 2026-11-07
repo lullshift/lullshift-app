@@ -1242,7 +1242,7 @@ Use a database from before this change (with at least one provider and a convers
 7. Type text and press **Shift+Enter** (new line, no send) and **Ctrl+Enter** (sends). With a Japanese or Chinese input method, press Enter to confirm a word: it doesn't send.
 8. Press **Options…**, choose a session summary, press **Done**. A badge shows the choice in the message box; click it to reopen the options; press its **×** to remove it.
 9. In the conversation list, open **⋮** on a conversation with the keyboard (Enter, arrows, Escape) and use **Rename** and **Delete**.
-10. Ask for a reply with a code block in Python, one in an unknown language and a link to `https://example.com` and to an internationalised domain (for example `https://exämple.com`). Check highlighting in both themes, **Copy** (and that "Copied" is announced), and that clicking a link shows **Open this link?** with the `xn--` form of the host. **Cancel** opens nothing; **Open in browser** opens the default browser at that exact address.
+10. Ask for a reply with a code block in Python, one in an unknown language and a link to `https://example.com` and to an internationalised domain (for example `https://exämple.com`). Check highlighting in both themes, **Copy** (and that "Copied" is announced), and that clicking a link shows **Open this link?** with the `xn--` form of the host. **Cancel** opens nothing; **Open in browser** opens the default browser at that exact address. A link to `http://192.168.1.1/` or `http://localhost:3000/` also shows a warning that the address is on your computer or local network; `https://example.com` doesn't.
 11. With NVDA (or Narrator), go through the Companion section, the picker, the composer, the menu and a reply with a code block and a link.
 
 **Expected:**
