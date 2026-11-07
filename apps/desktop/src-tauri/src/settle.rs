@@ -4,12 +4,16 @@
 //! Two independent parts, both background work that never blocks the UI:
 //!
 //! 1. **Process check**, always on. The hook records the agent's process with each event
-//!    (`process-probe`, first non-shell ancestor plus start key). At start-up and then about
-//!    every 45 seconds, sessions that are not finished and hold a recorded process are checked:
-//!    if that process is gone, or the PID now has a different start key (reused), the session is
-//!    ended with the reason `process_gone`. Only process *information* is read; nothing is ever
-//!    signalled, and an unreadable or unknown process changes nothing. No event is written, and
-//!    any later real event reopens the session (local-store).
+//!    (`process-probe`, first non-shell ancestor plus start key and PID namespace). At start-up
+//!    and then about every 45 seconds, sessions that are not finished and hold a recorded
+//!    process are checked. A session is ended with the reason `process_gone` only when all of
+//!    these hold: its process is gone (or the PID now has a different start key, so it was
+//!    reused) on two checks in a row; it has received nothing for [`QUIET_BEFORE_END`]; it is
+//!    not waiting for the user; and the process was recorded in the app's own PID namespace
+//!    (a process seen in another namespace, as in a container or Flatpak, is "unknown"). Only
+//!    process *information* is read; nothing is ever signalled, and an unreadable or unknown
+//!    process changes nothing. No event is written, and any later real event reopens the
+//!    session (local-store).
 //! 2. **Log catch-up**, off by default (a setting). At start-up, after the first process check,
 //!    the Import reader (`logscan`, ADR-024: bounded windows, no links, caps, deadline, cancel)
 //!    fills gaps for sessions Lullshift already tracks: the state from the log is applied only
@@ -120,11 +124,38 @@ pub fn verdict(recorded: ProcessKey, probe: Probe) -> Verdict {
     }
 }
 
-/// One process check: ends the sessions whose recorded process is gone. `probe` looks at one
-/// PID (read-only). Returns how many sessions were ended. Each PID is looked at once per run,
-/// however many sessions share it. The store lock is held only to read the candidates and to
-/// write the result, never while processes are looked at.
-pub fn process_check(core: &Core, probe: impl Fn(u32) -> Probe) -> usize {
+/// A session must have been silent this long before the check may end it, so a wrapper process
+/// that exited just after sending an event (or a session that is about to send the next one) is
+/// never ended on a single look.
+pub const QUIET_BEFORE_END: time::Duration = time::Duration::minutes(2);
+
+/// Consecutive checks that must find the process gone before a session is ended.
+pub const GONE_CHECKS_NEEDED: u32 = 2;
+
+/// Remembers, between checks, which sessions' processes were found gone and how many times in a
+/// row. Lives in memory only (a restart starts counting again).
+#[derive(Debug, Default)]
+pub struct GoneTracker {
+    counts: HashMap<(String, String, u32, u64), u32>,
+}
+
+/// One process check: ends the sessions whose recorded process has stayed gone. `probe` looks
+/// at one PID (read-only); `own_ns` is the app's own PID namespace. Returns how many sessions
+/// were ended. Each PID is looked at once per run, however many sessions share it. The store
+/// lock is held only to read the candidates and to write the result, never while processes are
+/// looked at.
+///
+/// Skipped, and forgotten by the tracker: sessions waiting for the user (`needs_attention`,
+/// never ended this way), sessions that received something less than [`QUIET_BEFORE_END`] ago,
+/// processes recorded in another PID namespace (or in one when the app's is unknown), and
+/// anything the look finds alive or can't tell.
+pub fn process_check(
+    core: &Core,
+    probe: impl Fn(u32) -> Probe,
+    own_ns: Option<u64>,
+    tracker: &mut GoneTracker,
+    now: OffsetDateTime,
+) -> usize {
     let candidates = match core.store.lock() {
         Ok(guard) => guard
             .as_ref()
@@ -132,22 +163,40 @@ pub fn process_check(core: &Core, probe: impl Fn(u32) -> Probe) -> usize {
             .unwrap_or_default(),
         Err(_) => return 0,
     };
-    if candidates.is_empty() {
-        return 0;
-    }
     // Anything the store receives after this moment wins over what the look finds.
     let checked = OffsetDateTime::now_utc();
     let mut seen: HashMap<u32, Probe> = HashMap::new();
-    let gone: Vec<_> = candidates
-        .into_iter()
-        .filter(|c| {
-            let p = *seen
-                .entry(c.process.pid)
-                .or_insert_with(|| probe(c.process.pid));
-            verdict(c.process, p) == Verdict::Gone
-        })
-        .collect();
-    if gone.is_empty() {
+    let mut counts = HashMap::new();
+    let mut due = Vec::new();
+    for c in candidates {
+        if c.state == agent_core::SessionState::NeedsAttention
+            || now - c.last_received_utc < QUIET_BEFORE_END
+            || c.process.ns.is_some_and(|ns| own_ns != Some(ns))
+        {
+            continue;
+        }
+        let p = *seen
+            .entry(c.process.pid)
+            .or_insert_with(|| probe(c.process.pid));
+        if verdict(c.process, p) != Verdict::Gone {
+            continue;
+        }
+        let key = (
+            c.provider.clone(),
+            c.provider_session_id.clone(),
+            c.process.pid,
+            c.process.start,
+        );
+        let n = tracker.counts.get(&key).copied().unwrap_or(0) + 1;
+        counts.insert(key, n);
+        if n >= GONE_CHECKS_NEEDED {
+            due.push(c);
+        }
+    }
+    // Only what was found gone just now is remembered: a session that came back, went quiet
+    // of the list or changed process starts counting again.
+    tracker.counts = counts;
+    if due.is_empty() {
         return 0;
     }
     let Ok(mut guard) = core.store.lock() else {
@@ -156,8 +205,8 @@ pub fn process_check(core: &Core, probe: impl Fn(u32) -> Probe) -> usize {
     let Some(store) = guard.as_mut() else {
         return 0;
     };
-    let now = OffsetDateTime::now_utc();
-    gone.iter()
+    let ended = OffsetDateTime::now_utc();
+    due.iter()
         .filter(|c| {
             store
                 .end_session_process_gone(
@@ -165,7 +214,7 @@ pub fn process_check(core: &Core, probe: impl Fn(u32) -> Probe) -> usize {
                     &c.provider_session_id,
                     c.process,
                     checked,
-                    now,
+                    ended,
                 )
                 .unwrap_or(false)
         })
@@ -299,13 +348,25 @@ fn refresh(app: &AppHandle, core: &Core) {
 }
 
 /// Starts the background worker: a process check now, the opt-in catch-up, then a process check
-/// every [`CHECK_EVERY`]. The setting is read once, at start-up.
+/// every [`CHECK_EVERY`]. The setting is read once, at start-up. A session is ended after two
+/// checks in a row, so the first end can come about 45 seconds after start-up.
 pub fn spawn(app: AppHandle, core: Arc<Core>) {
-    let _ = std::thread::Builder::new()
+    let started = std::thread::Builder::new()
         .name("settle".into())
         .spawn(move || {
+            let own_ns = process_probe::pid_namespace();
+            let mut tracker = GoneTracker::default();
+            let check = |tracker: &mut GoneTracker| {
+                process_check(
+                    &core,
+                    process_probe::check,
+                    own_ns,
+                    tracker,
+                    OffsetDateTime::now_utc(),
+                )
+            };
             let catch_up_on = load_prefs(&core).catch_up_from_logs;
-            if process_check(&core, process_probe::check) > 0 {
+            if check(&mut tracker) > 0 {
                 refresh(&app, &core);
             }
             if catch_up_on && catch_up(&core, OffsetDateTime::now_utc(), scan_logs).updated > 0 {
@@ -313,11 +374,15 @@ pub fn spawn(app: AppHandle, core: Arc<Core>) {
             }
             loop {
                 std::thread::sleep(CHECK_EVERY);
-                if process_check(&core, process_probe::check) > 0 {
+                if check(&mut tracker) > 0 {
                     refresh(&app, &core);
                 }
             }
         });
+    if started.is_err() {
+        // Once, with no task data: without the worker, sessions are not settled this run.
+        eprintln!("lullshift: the session settling worker could not start");
+    }
 }
 
 #[cfg(test)]
@@ -342,7 +407,7 @@ mod tests {
 
     fn now() -> OffsetDateTime {
         // Fixed second so event timestamps never run ahead of the receipt time.
-        OffsetDateTime::now_utc().replace_nanosecond(0).expect("ns") - time::Duration::minutes(1)
+        OffsetDateTime::now_utc().replace_nanosecond(0).expect("ns") - time::Duration::minutes(10)
     }
 
     fn core() -> Core {
@@ -350,7 +415,14 @@ mod tests {
     }
 
     fn pk(pid: u32, start: u64) -> ProcessKey {
-        ProcessKey { pid, start }
+        ProcessKey::new(pid, start)
+    }
+
+    /// Two checks in a row, as the worker makes them, the app in no namespace.
+    fn check_twice(core: &Core, probe: impl Fn(u32) -> Probe) -> usize {
+        let mut tracker = GoneTracker::default();
+        let first = process_check(core, &probe, None, &mut tracker, OffsetDateTime::now_utc());
+        first + process_check(core, &probe, None, &mut tracker, OffsetDateTime::now_utc())
     }
 
     fn running(pid: u32, start: u64) -> Probe {
@@ -358,11 +430,22 @@ mod tests {
     }
 
     fn track(core: &Core, n: u32, session: &str, kind: &str, process: Option<ProcessKey>) {
+        track_at(core, n, session, kind, process, now());
+    }
+
+    fn track_at(
+        core: &Core,
+        n: u32,
+        session: &str,
+        kind: &str,
+        process: Option<ProcessKey>,
+        received: OffsetDateTime,
+    ) {
         let mut guard = core.store.lock().expect("lock");
         guard
             .as_mut()
             .expect("store")
-            .ingest_with_process(&ev(n, kind, session), now(), process)
+            .ingest_with_process(&ev(n, kind, session), received, process)
             .expect("ingest");
     }
 
@@ -440,12 +523,21 @@ mod tests {
         let core = core();
         track(&core, 1, "gone", "working", Some(pk(100, 5)));
         track(&core, 2, "alive", "working", Some(pk(200, 5)));
-        track(&core, 3, "reused", "needs_attention", Some(pk(300, 5)));
+        track(&core, 3, "reused", "working", Some(pk(300, 5)));
         track(&core, 4, "unknown", "working", Some(pk(400, 5)));
         track(&core, 5, "no-pid", "working", None);
         track(&core, 6, "done", "completed", Some(pk(500, 5)));
+        track(&core, 7, "waiting", "needs_attention", Some(pk(600, 5)));
+        track_at(
+            &core,
+            8,
+            "just-now",
+            "working",
+            Some(pk(700, 5)),
+            OffsetDateTime::now_utc() - time::Duration::seconds(30),
+        );
         let probe = |pid: u32| match pid {
-            100 | 500 => Probe::Gone,
+            100 | 500 | 600 | 700 => Probe::Gone,
             200 => running(200, 5),
             300 => running(300, 99),
             _ => Probe::Unknown,
@@ -458,7 +550,7 @@ mod tests {
             .expect("store")
             .event_count()
             .expect("count");
-        assert_eq!(process_check(&core, probe), 2);
+        assert_eq!(check_twice(&core, probe), 2);
         assert_eq!(state_of(&core, "gone"), SessionState::Ended);
         assert_eq!(state_of(&core, "reused"), SessionState::Ended);
         assert_eq!(state_of(&core, "alive"), SessionState::Working);
@@ -469,6 +561,16 @@ mod tests {
             SessionState::Completed,
             "a finished session is a fact"
         );
+        assert_eq!(
+            state_of(&core, "waiting"),
+            SessionState::NeedsAttention,
+            "a session waiting for you is never ended this way"
+        );
+        assert_eq!(
+            state_of(&core, "just-now"),
+            SessionState::Working,
+            "it was heard from under two minutes ago"
+        );
         let guard = core.store.lock().expect("lock");
         let store = guard.as_ref().expect("store");
         assert_eq!(store.event_count().expect("count"), events_before);
@@ -476,22 +578,110 @@ mod tests {
         assert_eq!(reasons.len(), 2);
         assert!(reasons.contains_key(&(P.to_owned(), "gone".to_owned())));
         drop(guard);
-        // Nothing left to end: a second run is a no-op.
-        assert_eq!(process_check(&core, probe), 0);
+        // Nothing left to end: another run is a no-op.
+        assert_eq!(check_twice(&core, probe), 0);
     }
 
     #[test]
-    fn a_shared_process_is_looked_at_once() {
+    fn one_gone_look_never_ends_a_session_and_coming_back_resets_the_count() {
+        let core = core();
+        track(&core, 1, "a", "working", Some(pk(100, 5)));
+        let mut tracker = GoneTracker::default();
+        let now = OffsetDateTime::now_utc();
+        assert_eq!(
+            process_check(&core, |_| Probe::Gone, None, &mut tracker, now),
+            0
+        );
+        assert_eq!(
+            state_of(&core, "a"),
+            SessionState::Working,
+            "one look is not enough"
+        );
+        // Alive in between: the count starts over.
+        assert_eq!(
+            process_check(&core, |_| running(100, 5), None, &mut tracker, now),
+            0
+        );
+        assert_eq!(
+            process_check(&core, |_| Probe::Gone, None, &mut tracker, now),
+            0
+        );
+        assert_eq!(state_of(&core, "a"), SessionState::Working);
+        // Unknown in between also starts over.
+        assert_eq!(
+            process_check(&core, |_| Probe::Unknown, None, &mut tracker, now),
+            0
+        );
+        assert_eq!(
+            process_check(&core, |_| Probe::Gone, None, &mut tracker, now),
+            0
+        );
+        assert_eq!(state_of(&core, "a"), SessionState::Working);
+        // Two in a row.
+        assert_eq!(
+            process_check(&core, |_| Probe::Gone, None, &mut tracker, now),
+            1
+        );
+        assert_eq!(state_of(&core, "a"), SessionState::Ended);
+    }
+
+    #[test]
+    fn a_process_from_another_pid_namespace_is_unknown_and_never_ends_a_session() {
+        let foreign = ProcessKey {
+            ns: Some(4_026_532_000),
+            ..pk(100, 5)
+        };
+        let same = ProcessKey {
+            ns: Some(4_026_531_836),
+            ..pk(200, 5)
+        };
+        // A fresh store per case, so one case's ends never leak into the next.
+        for (own_ns, same_ends) in [(Some(4_026_531_836), true), (None, false)] {
+            let core = core();
+            track(&core, 1, "foreign", "working", Some(foreign));
+            track(&core, 2, "same", "working", Some(same));
+            let mut tracker = GoneTracker::default();
+            let now = OffsetDateTime::now_utc();
+            process_check(&core, |_| Probe::Gone, own_ns, &mut tracker, now);
+            process_check(&core, |_| Probe::Gone, own_ns, &mut tracker, now);
+            assert_eq!(
+                state_of(&core, "foreign"),
+                SessionState::Working,
+                "{own_ns:?}"
+            );
+            let expected = if same_ends {
+                SessionState::Ended
+            } else {
+                // The namespace is recorded but the app's own is unknown: no change.
+                SessionState::Working
+            };
+            assert_eq!(state_of(&core, "same"), expected, "{own_ns:?}");
+        }
+    }
+
+    #[test]
+    fn a_shared_process_is_looked_at_once_per_run() {
         let core = core();
         for (n, id) in [(1, "a"), (2, "b"), (3, "c")] {
             track(&core, n, id, "working", Some(pk(100, 5)));
         }
         let looks = Cell::new(0);
-        let ended = process_check(&core, |_| {
-            looks.set(looks.get() + 1);
-            Probe::Gone
-        });
-        assert_eq!((ended, looks.get()), (3, 1));
+        let mut tracker = GoneTracker::default();
+        let now = OffsetDateTime::now_utc();
+        let run = |tracker: &mut GoneTracker| {
+            process_check(
+                &core,
+                |_| {
+                    looks.set(looks.get() + 1);
+                    Probe::Gone
+                },
+                None,
+                tracker,
+                now,
+            )
+        };
+        assert_eq!((run(&mut tracker), looks.get()), (0, 1));
+        assert_eq!((run(&mut tracker), looks.get()), (3, 2));
     }
 
     #[test]
@@ -499,7 +689,7 @@ mod tests {
         let core = core();
         let looks = Cell::new(0);
         assert_eq!(
-            process_check(&core, |_| {
+            check_twice(&core, |_| {
                 looks.set(looks.get() + 1);
                 Probe::Gone
             }),
@@ -512,7 +702,7 @@ mod tests {
     fn a_real_event_after_process_gone_reopens_the_session() {
         let core = core();
         track(&core, 1, "a", "working", Some(pk(100, 5)));
-        assert_eq!(process_check(&core, |_| Probe::Gone), 1);
+        assert_eq!(check_twice(&core, |_| Probe::Gone), 1);
         assert_eq!(state_of(&core, "a"), SessionState::Ended);
         // The agent was alive after all (a launcher that exited): its next event reopens it.
         let mut guard = core.store.lock().expect("lock");
@@ -551,7 +741,7 @@ mod tests {
     fn a_store_that_cannot_be_read_ends_nothing() {
         let core = core();
         *core.store.lock().expect("lock") = None;
-        assert_eq!(process_check(&core, |_| Probe::Gone), 0);
+        assert_eq!(check_twice(&core, |_| Probe::Gone), 0);
         let report = apply_report(&core, &Report::default(), now());
         assert_eq!(report.outcome, "store_unavailable");
     }
@@ -643,7 +833,7 @@ mod tests {
         let core = core();
         track(&core, 1, "a", "needs_attention", None);
         // The log was last written well before Lullshift's last event.
-        let stale = now() - time::Duration::minutes(10);
+        let stale = now() - time::Duration::minutes(20);
         let out = apply_report(
             &core,
             &report(vec![found("a", Guess::Working, stale)]),
@@ -668,7 +858,7 @@ mod tests {
         track(&core, 1, "live", "working", None);
         track(&core, 2, "done", "completed", None);
         track(&core, 3, "gone", "working", Some(pk(100, 5)));
-        assert_eq!(process_check(&core, |_| Probe::Gone), 1);
+        assert_eq!(check_twice(&core, |_| Probe::Gone), 1);
         let log = OffsetDateTime::now_utc() - time::Duration::seconds(5);
         let out = apply_report(
             &core,
