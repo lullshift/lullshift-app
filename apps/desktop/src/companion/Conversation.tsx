@@ -190,28 +190,40 @@ export function Conversation({
   // One short sentence per phase for screen readers; it does not change per token.
   const status = streamStatus(stream, host);
 
+  // Every read of the thread takes a ticket, and only the newest read may set the list: reads can
+  // finish out of order, and an older one (before the reply was stored) must not win.
+  const loadSeq = useRef(0);
+
   const reload = useCallback(async (): Promise<Message[] | null> => {
+    const ticket = ++loadSeq.current;
     try {
       const list = await companionMessages(thread.id);
-      setMessages(list);
-      setLoad({ status: "ready" });
+      if (loadSeq.current === ticket) {
+        setMessages(list);
+        setLoad({ status: "ready" });
+      }
       return list;
     } catch (err) {
-      setLoad({ status: "error", text: errorText(toCommandError(err)) });
+      if (loadSeq.current === ticket) {
+        setLoad({ status: "error", text: errorText(toCommandError(err)) });
+      }
       return null;
     }
   }, [thread.id]);
 
   useEffect(() => {
     let live = true;
+    const ticket = ++loadSeq.current;
     companionMessages(thread.id)
       .then((list) => {
-        if (!live) return;
+        if (!live || loadSeq.current !== ticket) return;
         setMessages(list);
         setLoad({ status: "ready" });
       })
       .catch((err: unknown) => {
-        if (live) setLoad({ status: "error", text: errorText(toCommandError(err)) });
+        if (live && loadSeq.current === ticket) {
+          setLoad({ status: "error", text: errorText(toCommandError(err)) });
+        }
       });
     return () => {
       live = false;
@@ -231,11 +243,14 @@ export function Conversation({
     const done = () => {
       if (current) setSettled(finished.requestId);
     };
+    const ticket = ++loadSeq.current;
     companionMessages(thread.id)
       .then((list) => {
         if (!current) return;
-        setMessages(list);
-        setLoad({ status: "ready" });
+        if (loadSeq.current === ticket) {
+          setMessages(list);
+          setLoad({ status: "ready" });
+        }
         if (o.kind === "replied") {
           setLive(`Reply received. ${ellipsize(o.text.replace(/\s+/g, " "), 600)}`);
         } else if (o.kind === "failed") {
@@ -251,7 +266,9 @@ export function Conversation({
         done();
       })
       .catch((err: unknown) => {
-        if (current) setLoad({ status: "error", text: errorText(toCommandError(err)) });
+        if (current && loadSeq.current === ticket) {
+          setLoad({ status: "error", text: errorText(toCommandError(err)) });
+        }
         done();
       });
     return () => {

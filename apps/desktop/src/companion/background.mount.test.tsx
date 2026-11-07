@@ -85,6 +85,8 @@ let failSend: (e: unknown) => void = () => undefined;
 let host: HTMLDivElement;
 let root: Root;
 let active = true;
+let holdNextRead = false;
+let releaseHeld: () => void = () => undefined;
 
 const requestId = () => String(sendArgs?.requestId);
 async function emit(e: Record<string, unknown>) {
@@ -106,6 +108,7 @@ beforeEach(() => {
   calls.length = 0;
   sendArgs = null;
   active = true;
+  holdNextRead = false;
   resetInflight();
   resetToasts();
   stored = [];
@@ -117,8 +120,17 @@ beforeEach(() => {
         return THREADS;
       case "companion_prefs":
         return { toolsEnabled: false, lastScope: null };
-      case "companion_messages":
-        return stored.filter((m) => m.threadId === args.threadId);
+      case "companion_messages": {
+        const snapshot = stored.filter((m) => m.threadId === args.threadId);
+        if (holdNextRead) {
+          holdNextRead = false;
+          // This read answers with the list as it is now, but only when the test lets it.
+          return new Promise<Message[]>((resolve) => {
+            releaseHeld = () => resolve(snapshot);
+          });
+        }
+        return snapshot;
+      }
       case "companion_send":
         sendArgs = args;
         return new Promise<Message>((resolve, reject) => {
@@ -300,12 +312,32 @@ describe("a reply that finished while you were elsewhere", () => {
     expect(threadButton("Retry setting").textContent).not.toContain("New reply");
   });
 
-  it("does not keep the mark while the window is hidden, even on the open thread", async () => {
+  it("keeps the New reply mark while the window is hidden, even on the open thread", async () => {
     await startSendInThreadOne();
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
     await finishWith("done");
     expect(toastTitles()).toEqual(["Companion replied in “Retry setting”"]);
     expect(threadButton("Retry setting").textContent).toContain("New reply");
+  });
+});
+
+describe("reads of the thread that finish out of order", () => {
+  it("does not let an older read, made before the reply was stored, replace the newer list", async () => {
+    await startSendInThreadOne();
+    await click(threadButton("Lock choice"));
+    stored = [{ ...msg(10, 1, "user", "question"), status: "pending" }];
+    // Coming back reads the thread (the pending message, no reply yet); that read is held.
+    holdNextRead = true;
+    await click(threadButton("Retry setting"));
+    stored = [];
+    // The reply ends and is stored; the read made when it ended answers at once.
+    await finishWith("THE FULL REPLY");
+    expect(host.textContent).toContain("THE FULL REPLY");
+    // The old read now answers with the list from before the reply.
+    await act(async () => releaseHeld());
+    await settle();
+    expect(host.textContent).toContain("THE FULL REPLY");
+    expect(host.textContent).not.toContain("Not sent.");
   });
 });
 
