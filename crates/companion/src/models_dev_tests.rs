@@ -152,22 +152,24 @@ fn not_json_or_not_an_object_is_refused() {
 
 #[test]
 fn provider_and_model_counts_are_capped() {
+    // "a-big" comes first both by key and by insertion, so it is kept whether or not serde_json's
+    // `preserve_order` feature is on (another workspace crate turns it on).
     let mut root = serde_json::Map::new();
+    let mut models = serde_json::Map::new();
+    for i in 0..(MAX_MODELS_PER_PROVIDER + 50) {
+        models.insert(format!("m{i:05}"), serde_json::json!({ "name": "M" }));
+    }
+    root.insert("a-big".into(), serde_json::json!({ "models": models }));
     for i in 0..(MAX_PROVIDERS + 50) {
         root.insert(
             format!("p{i:05}"),
             serde_json::json!({ "name": "P", "models": { "m": { "id": "m" } } }),
         );
     }
-    let mut models = serde_json::Map::new();
-    for i in 0..(MAX_MODELS_PER_PROVIDER + 50) {
-        models.insert(format!("m{i:05}"), serde_json::json!({ "name": "M" }));
-    }
-    root.insert("a-big".into(), serde_json::json!({ "models": models }));
     let bytes = serde_json::to_vec(&Value::Object(root)).unwrap();
     let c = parse_catalog(&bytes).unwrap();
     assert_eq!(c.providers.len(), MAX_PROVIDERS);
-    let big = c.provider("a-big").expect("first in key order, so kept");
+    let big = c.provider("a-big").expect("first, so kept");
     assert_eq!(big.models.len(), MAX_MODELS_PER_PROVIDER);
 }
 
