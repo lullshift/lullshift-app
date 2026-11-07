@@ -383,7 +383,10 @@ fn version_15_database_upgrades_through_16_and_17_with_data() {
         .expect("seed");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (15, latest_version()));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (15, latest_version())
+    );
     assert!(latest_version() >= 17);
 
     // 16: the session is kept and is not an imported one.
