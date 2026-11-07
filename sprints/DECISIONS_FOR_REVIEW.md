@@ -40,7 +40,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 34 | 12 | Import sessions from the agents' own logs | built (2026-11-07) |
 | 35 | 12 | Settle missed and silently ended sessions | built (2026-11-07) |
 | 36 | 12 | Companion rework (settings, models, conversation UI) | built (2026-11-07) |
-| 37 | 12 | OpenAI conversations fail; show the provider's reason | made while owner away: building (review when back) |
+| 37 | 12 | OpenAI conversations fail; show the provider's reason | built while owner away (2026-11-07; review when back) |
 | 38 | 12 | Companion replies keep going in the background, with an in-app notice | built (2026-11-07; details for review) |
 
 ## 1. OpenCode adapter (Sprint 05)
