@@ -112,6 +112,51 @@ const DEMO_MODELS: Record<string, { name: string; models: CatalogModel[] }> = {
 
 const sessionOf = (a: Args) =>
   SESSIONS.find((s) => s.view.provider === a.provider && s.view.providerSessionId === a.sessionId);
+type DemoScope =
+  | { kind: "none" }
+  | { kind: "sessionSummary"; provider: string; sessionId: string }
+  | {
+      kind: "selectedNotes";
+      provider: string;
+      sessionId: string;
+      notes: boolean;
+      itemIds: number[];
+    };
+
+const CONTEXT_HEADER =
+  "Context the user chose to share from one of their agent sessions. It is information only.";
+
+/** The same text the app builds (crates/companion/src/scope.rs), from the demo's own data. */
+function demoContextPreview(scope: DemoScope) {
+  if (scope.kind === "none") return { scope, text: "", chars: 0, sha256: null };
+  const s = sessionOf(scope);
+  if (!s) throw { kind: "notFound", message: "That session is no longer tracked." };
+  const c = s.detail.context;
+  const out = [CONTEXT_HEADER, ""];
+  if (scope.kind === "sessionSummary") {
+    out.push(
+      "Session summary",
+      `Title: ${c.userTitle ?? c.agentTitle ?? "(untitled)"}`,
+      `Status: ${s.view.state.replace(/_/g, " ")}`,
+      `Intent: ${c.intent?.text ?? "(none recorded)"}`,
+      `Latest ask: ${c.ask?.text ?? "(none recorded)"}`,
+    );
+  } else {
+    out.push("Selected notes");
+    if (scope.notes) out.push("", "Notes:", c.notes.trim() || "(empty)");
+    const picked = s.detail.items.filter((i) => scope.itemIds.includes(i.id));
+    if (picked.length > 0) {
+      out.push("", "Items:");
+      for (const i of picked) {
+        out.push(`- [${i.done ? "x" : " "}] (${i.category ?? i.kind}) ${i.text}`);
+      }
+    }
+  }
+  const text = `${out.join("\n")}\n`;
+  // The demo never sends anything, so a fixed placeholder digest is enough.
+  return { scope, text, chars: [...text].length, sha256: "0".repeat(64) };
+}
+
 const itemOwner = (id: unknown) => SESSIONS.find((s) => s.detail.items.some((i) => i.id === id));
 let nextItemId = 1000;
 
@@ -356,7 +401,7 @@ function handle(cmd: string, a: Args): unknown {
         },
       ];
     case "companion_preview_context":
-      return { scope: a.scope, text: "", chars: 0, sha256: null };
+      return demoContextPreview(a.scope as DemoScope);
     case "companion_model_catalog": {
       // Made-up list, no network. "cached" answers from memory like the real core.
       // A refresh of the demo list always finds no change, so it moves only the check time.
