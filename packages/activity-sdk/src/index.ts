@@ -5,7 +5,7 @@
 import type { ActivityManifestV1, Help } from "@lullshift/agent-protocol";
 
 /** Version of this SDK. Manifests built with it declare `"sdkVersion": SDK_VERSION`. */
-export const SDK_VERSION = "0.2.0";
+export const SDK_VERSION = "0.1.0";
 /** Bridge protocol version spoken by this SDK. */
 export const BRIDGE_PROTOCOL = 1;
 /** File name of the bridge client that every activity carries. */

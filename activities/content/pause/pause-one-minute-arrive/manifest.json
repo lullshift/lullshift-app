@@ -10,7 +10,7 @@
   "category": "break",
   "tags": ["pause", "minute"],
   "minHostVersion": "0.1.0",
-  "sdkVersion": "0.2.0",
+  "sdkVersion": "0.1.0",
   "permissions": [],
   "offline": true,
   "engine": "lullshift.pause@1",

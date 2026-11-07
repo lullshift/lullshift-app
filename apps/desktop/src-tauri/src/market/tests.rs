@@ -102,7 +102,7 @@ fn cards_manifest(id: &str, version: &str, permissions: &[&str]) -> String {
     json!({
         "schemaVersion": 1, "kind": "content", "id": id, "version": version, "name": "Facts",
         "description": "A few facts.", "category": "break", "minHostVersion": "0.1.0",
-        "sdkVersion": "0.2.0", "permissions": permissions, "offline": true,
+        "sdkVersion": "0.1.0", "permissions": permissions, "offline": true,
         "engine": "lullshift.cards@1", "data": "deck.json"
     })
     .to_string()
@@ -111,7 +111,7 @@ fn cards_manifest(id: &str, version: &str, permissions: &[&str]) -> String {
 fn game_manifest(id: &str) -> String {
     json!({
         "schemaVersion": 1, "kind": "app", "id": id, "version": "1.0.0", "name": "Game",
-        "category": "arcade", "minHostVersion": "0.1.0", "sdkVersion": "0.2.0",
+        "category": "arcade", "minHostVersion": "0.1.0", "sdkVersion": "0.1.0",
         "permissions": [], "offline": true, "entrypoint": "index.html",
         "runtime": "isolated-web-v1",
         "interruptibility": {"pause": true, "resume": true, "persistState": true}
@@ -1588,7 +1588,7 @@ fn pictures_repo(env: &Env, name: &str, image: &[u8]) -> Repo {
         &json!({
             "schemaVersion": 1, "kind": "content", "id": PICTURES, "version": "1.0.0",
             "name": "Pictures", "description": "One picture.", "category": "interactive",
-            "minHostVersion": "0.1.0", "sdkVersion": "0.2.0", "permissions": [], "offline": true,
+            "minHostVersion": "0.1.0", "sdkVersion": "0.1.0", "permissions": [], "offline": true,
             "engine": "lullshift.quiz@1", "data": "quiz.json", "images": ["images/shape.png"]
         })
         .to_string(),

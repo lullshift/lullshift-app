@@ -1650,7 +1650,7 @@ mod tests {
 
     const PACK: &str = r#"{"schemaVersion":1,"kind":"content","id":"app.lullshift.content.test",
         "version":"1.0.0","name":"Test Pack","category":"break","minHostVersion":"0.1.0",
-        "sdkVersion":"0.2.0","permissions":[],"offline":true,"engine":"lullshift.cards@1",
+        "sdkVersion":"0.1.0","permissions":[],"offline":true,"engine":"lullshift.cards@1",
         "data":"deck.json"}"#;
 
     fn packs() -> impl Iterator<Item = &'static Activity> {

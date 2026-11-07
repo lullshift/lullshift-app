@@ -1,6 +1,6 @@
 # CLI reference
 
-`lullshift` is the creator CLI (ADR-017), version 0.2.0. It runs locally with no network and no account. It lives in `tools/lullshift-cli`.
+`lullshift` is the creator CLI (ADR-017), version 0.1.0. It runs locally with no network and no account. It lives in `tools/lullshift-cli`.
 
 ## Getting it
 
@@ -105,4 +105,4 @@ There is no CLI command to add a marketplace to the app or to publish. Users add
 ## Other options
 
 - `--help`, `-h`: usage.
-- `--version`: prints the SDK version (`0.2.0`).
+- `--version`: prints the version (`0.1.0`). The CLI, the SDK and the protocol package share one version.

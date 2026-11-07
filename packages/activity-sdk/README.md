@@ -1,6 +1,6 @@
 # Lullshift Activity SDK
 
-Everything you need to build a Lullshift activity: the bridge client, the host protocol types, and the manifest, help and summary formats. Version 0.2.0. This guide is for people and for AI tools.
+Everything you need to build a Lullshift activity: the bridge client, the host protocol types, and the manifest, help and summary formats. Version 0.1.0. This guide is for people and for AI tools.
 
 Generated code is untrusted. Follow the sandbox rules below. Never ask for more permission than the activity needs.
 

@@ -34,7 +34,7 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 28 | 12 | Bundled Git fallback (gix, public https) | change: build it (built 2026-11-06) |
 | 29 | 12 | Publish the creator CLI and SDK to npm | change: build it (built; Node 24+ confirmed 2026-11-07) |
 | 30 | 12 | Wording in PRD and CLAUDE.md after 27.5 | applied as suggested (2026-11-07) |
-| 31 | 12 | npm package versions before the first publish | all three at 0.2.0 (2026-11-07) |
+| 31 | 12 | npm package versions before the first publish | all three at 0.1.0 (2026-11-07) |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -386,4 +386,4 @@ The CLI package is version 0.1.0, but `lullshift --version` prints the SDK's ver
 - **Option A (suggested):** publish all three packages at 0.2.0, so the CLI, the SDK and `--version` agree.
 - **Option B:** keep separate versions, and make `--version` print the CLI's own version.
 
-**Owner decision (2026-11-07):** option A. All three packages are 0.2.0, and `scripts/check-npm-packages.mjs` fails if their versions ever differ. The website (lullshift.github.io) copies the creator guides from this repo at build time and has no package versions of its own; run its deploy workflow after the next push.
+**Owner decision (2026-11-07):** one shared version, first chosen as 0.2.0, then changed the same day to 0.1.0 so the first release starts at 0.1.0. The SDK constant, the bridge header and all bundled manifests (`sdkVersion`) moved from 0.2.0 to 0.1.0; nothing had been published and the app doesn't check `sdkVersion`. All three packages are 0.1.0, and `scripts/check-npm-packages.mjs` fails if their versions ever differ. The website (lullshift.github.io) copies the creator guides from this repo at build time and has no package versions of its own; run its deploy workflow after the next push.

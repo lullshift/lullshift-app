@@ -1,4 +1,4 @@
-// Lullshift activity bridge client, protocol v1 (ADR-012), from @lullshift/activity-sdk 0.2.0.
+// Lullshift activity bridge client, protocol v1 (ADR-012), from @lullshift/activity-sdk 0.1.0.
 //
 // Copy this file next to your index.html (`lullshift create` does it for you) and load it as a
 // classic script before your own code. Activities can't use module scripts:

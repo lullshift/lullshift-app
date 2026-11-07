@@ -267,7 +267,7 @@ pub fn cards_manifest(id: &str, version: &str, permissions: &[&str]) -> Value {
     json!({
         "schemaVersion": 1, "kind": "content", "id": id, "version": version, "name": "Facts",
         "description": "A few facts.", "category": "break", "minHostVersion": "0.1.0",
-        "sdkVersion": "0.2.0", "permissions": permissions, "offline": true,
+        "sdkVersion": "0.1.0", "permissions": permissions, "offline": true,
         "engine": "lullshift.cards@1", "data": "deck.json"
     })
 }
@@ -275,7 +275,7 @@ pub fn cards_manifest(id: &str, version: &str, permissions: &[&str]) -> Value {
 pub fn app_manifest(id: &str) -> Value {
     json!({
         "schemaVersion": 1, "kind": "app", "id": id, "version": "1.0.0", "name": "Game",
-        "category": "arcade", "minHostVersion": "0.1.0", "sdkVersion": "0.2.0",
+        "category": "arcade", "minHostVersion": "0.1.0", "sdkVersion": "0.1.0",
         "permissions": [], "offline": true, "entrypoint": "index.html",
         "runtime": "isolated-web-v1",
         "interruptibility": {"pause": true, "resume": true, "persistState": true}

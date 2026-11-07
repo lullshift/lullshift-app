@@ -10,7 +10,7 @@
   "category": "arcade",
   "tags": ["puzzle", "calm", "deduction"],
   "minHostVersion": "0.1.0",
-  "sdkVersion": "0.2.0",
+  "sdkVersion": "0.1.0",
   "permissions": [],
   "offline": true,
   "entrypoint": "index.html",

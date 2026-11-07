@@ -171,7 +171,7 @@ Nothing should be published from a local machine. To see exactly what would be u
 
 ```bash
 node scripts/check-npm-packages.mjs --keep ../npm-tarballs
-tar -tzf ../npm-tarballs/lullshift-cli-0.2.0.tgz
+tar -tzf ../npm-tarballs/lullshift-cli-0.1.0.tgz
 ```
 
 **Don't use `npm publish <file>.tgz` locally, not even with `--dry-run`.** npm runs `prepublishOnly` only when publishing a folder, so a tarball publish skips the guard entirely; the same command without `--dry-run`, by a mistake in the flags, would really publish if your npm login can write to `@lullshift`. The guard covers folder publishes only: `pnpm publish` and `npm publish` in a package folder are refused outside the workflow, `npm publish --dry-run` in a folder is let through, and `pnpm publish --dry-run` is refused too, because pnpm gives lifecycle scripts no way to tell a dry run apart. `--ignore-scripts` skips it.

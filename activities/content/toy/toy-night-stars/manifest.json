@@ -10,7 +10,7 @@
   "category": "interactive",
   "tags": ["stars", "night", "calm"],
   "minHostVersion": "0.1.0",
-  "sdkVersion": "0.2.0",
+  "sdkVersion": "0.1.0",
   "permissions": [],
   "offline": true,
   "engine": "lullshift.toy@1",

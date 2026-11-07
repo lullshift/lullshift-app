@@ -130,5 +130,5 @@ The owner decided to publish the CLI and the SDK to npm. This replaces "The CLI 
 ### Consequences
 
 - A change to the kits or the bundled engines reaches npm users only with the next CLI release.
-- The `lullshift --version` output is the SDK version (0.2.0), while the CLI package is 0.1.0. Align them before the first publish if that would confuse creators.
+- The CLI, the SDK and the protocol package share one version, starting at 0.1.0 (owner decision 31), and `lullshift --version` prints it. `scripts/check-npm-packages.mjs` fails if they differ. Bundled manifests declare `"sdkVersion": "0.1.0"`; the SDK had been numbered 0.2.0 inside the repository, but nothing was published, so the first release starts at 0.1.0.
 - Releasing is now two manual steps: the installers (ADR-004) and, separately, the npm packages. Either can ship without the other.

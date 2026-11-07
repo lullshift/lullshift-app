@@ -10,7 +10,7 @@
   "category": "arcade",
   "tags": ["puzzle", "calm", "memory"],
   "minHostVersion": "0.1.0",
-  "sdkVersion": "0.2.0",
+  "sdkVersion": "0.1.0",
   "permissions": ["activity.storage"],
   "offline": true,
   "entrypoint": "index.html",
