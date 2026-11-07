@@ -144,6 +144,18 @@ describe("Home", () => {
     await act(async () => button.click());
     await settle();
     expect(nav("Sessions").getAttribute("aria-current")).toBe("page");
+    // ...and that session's detail panel is open, not just the page.
+    expect(host.querySelector(".detail-panel")).not.toBeNull();
+  });
+
+  it("announces a suggestion only after Shuffle is pressed", async () => {
+    const live = () => host.querySelector(".home-suggest-actions [role=status]")?.textContent;
+    expect(live()).toBe("");
+    const shuffle = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Shuffle"),
+    )!;
+    await act(async () => shuffle.click());
+    expect(live()).toContain("Suggesting");
   });
 
   it("suggests resuming the newest save and lists saved activities", () => {

@@ -15,6 +15,8 @@ import type { PauseRequest } from "./activity/ActivityHost";
 import { createDashboardStore } from "./dashboardStore";
 import HomeView from "./home/HomeView";
 import SessionsView from "./SessionsView";
+import type { SessionKey } from "./context/api";
+import { viewKey } from "./context/panelLogic";
 import { healthProblems, liveState, sortSessions, type Dashboard } from "./sessions";
 import Settings from "./Settings";
 import { Onboarding } from "./Onboarding";
@@ -70,7 +72,19 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now());
   const [pause, setPause] = useState<PauseRequest | null>(null);
   // An activity the user chose to start from a Companion suggestion (their click, never the model).
-  const [launch, setLaunch] = useState<{ id: string; nonce: number } | null>(null);
+  const [launch, setLaunch] = useState<{
+    id: string;
+    nonce: number;
+    activity?: ActivityInfo;
+  } | null>(null);
+  // Bumps on each click of Play, Rest or Continue in the sidebar.
+  const [navNonce, setNavNonce] = useState(0);
+  // Home's "Go to session": Sessions opens that session's detail panel.
+  const [openSession, setOpenSession] = useState<{ key: SessionKey; nonce: number } | null>(null);
+  // Connect from the welcome: Integrations takes focus only once the dialog has closed.
+  const [connectPending, setConnectPending] = useState(false);
+  // Spent once the user leaves Sessions, so coming back later doesn't reopen the panel.
+  if (view !== "sessions" && openSession !== null) setOpenSession(null);
   // Bumps on each sessions-changed event so an open detail panel re-reads its session.
   const [changeTick, setChangeTick] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -143,6 +157,17 @@ export default function App() {
     welcomeWas.current = showWelcome;
   }, [showWelcome]);
 
+  // The welcome's Connect: once its dialog is gone, send focus to Integrations on the next frame
+  // (the dialog's own close would otherwise hand focus back to what opened it).
+  useEffect(() => {
+    if (!connectPending || showWelcome) return;
+    const frame = window.requestAnimationFrame(() => {
+      setConnectPending(false);
+      setIntegrationsFocus((n) => n + 1);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [connectPending, showWelcome]);
+
   // Home shows what is saved: read it fresh on each visit.
   useEffect(() => {
     if (view === "home") refreshActivities();
@@ -180,7 +205,7 @@ export default function App() {
   };
   const showPage = useCallback((p: Page) => setView(p), []);
   const startActivity = (a: ActivityInfo) => {
-    setLaunch({ id: a.id, nonce: Date.now() });
+    setLaunch({ id: a.id, nonce: Date.now(), activity: a });
     setView(pageOf(a.category));
   };
   // Integrations lives in Settings: every link that used to open it opens Settings there.
@@ -207,7 +232,10 @@ export default function App() {
         type="button"
         className="nav-item"
         aria-current={view === item.id ? "page" : undefined}
-        onClick={() => setView(item.id)}
+        onClick={() => {
+          setView(item.id);
+          if (isLibraryView(item.id)) setNavNonce((n) => n + 1);
+        }}
       >
         <Icon name={item.icon} />
         <span className="nav-label">{item.label}</span>
@@ -284,6 +312,10 @@ export default function App() {
               refreshActivities();
             }}
             onGoToSessions={() => setView("sessions")}
+            onOpenSession={(s) => {
+              setOpenSession({ key: viewKey(s), nonce: Date.now() });
+              setView("sessions");
+            }}
             onConnect={openIntegrations}
             onOpenPage={setView}
             onStartActivity={startActivity}
@@ -300,6 +332,7 @@ export default function App() {
             staleAfterSeconds={dashboard?.staleAfterSeconds ?? 600}
             now={now}
             onConnect={openIntegrations}
+            openRequest={openSession}
             changeTick={changeTick}
             onRefresh={() => void refresh()}
             onOpenSettings={() => setView("settings")}
@@ -316,6 +349,7 @@ export default function App() {
             pause={pause}
             now={now}
             launch={launch}
+            navNonce={navNonce}
             onGoToSessions={() => setView("sessions")}
             onShowPage={showPage}
           />
@@ -353,7 +387,12 @@ export default function App() {
       <Onboarding
         open={showWelcome}
         onDone={() => void updateUiPrefs({ onboardingDone: true })}
-        onConnect={openIntegrations}
+        onConnect={() => {
+          // Go to Settings now; the focus request waits for the dialog to finish closing.
+          skipHeadingFocus.current = view !== "settings";
+          setConnectPending(true);
+          setView("settings");
+        }}
         onTryActivity={(category) => setView(category ? pageOf(category) : "play")}
       />
     </div>

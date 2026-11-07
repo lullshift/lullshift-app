@@ -1422,12 +1422,17 @@ Run in light and dark.
 7. Press **Manage activities** (quiet link, top right): Manage and Marketplaces open with the same function as before (turn an activity off and on, add a marketplace), and **Back to Play** returns.
 8. Start an activity from Play, Rest, Home and Continue. Each runs in the same host. Press **Pause**, switch to Sessions, and let an agent need you: the activity pauses, the card says which tool needs you and **Go to Sessions** works.
 9. Open Settings > Integrations from **Connect an agent** on Home, from the Sessions empty state, and from the welcome: each opens Settings scrolled to Integrations with its heading focused. Connect and Disconnect still ask for consent exactly as before.
+10. Start game A, press **Pause**, then start a different activity B from Home (**Resume** or the suggestion) or from Continue. B starts as a fresh launch: its paused card shows only its own time and stats, and A kept its save (check A in Continue). Start A, press Pause, then **Resume** A from Home: it resumes at once, with one click, without showing the paused card.
+11. While an activity runs, click **Play**, **Rest** or **Continue** in the sidebar. The activity pauses and saves, the list shows, the clicked item is highlighted, and a line at the top reads "<Name> is paused" with **Resume**. Resume brings the activity back.
+12. On the paused card (and anywhere else) check there is no "In total" row or any running total of time.
+13. First launch (or after clearing the stored welcome flag): choose **Connect an agent** in the welcome. The dialog closes, Settings opens and focus lands on the Integrations heading once the dialog is gone (not on the Settings heading, not on the page body). Also press **Go to session** on Home when one session needs you: Sessions opens with that session's detail panel.
 
 **Expected:**
 
 - **Steps 1 to 4:** the split follows the manifest category only; chips are the host's own words; third-party tags are searchable text only.
 - **Steps 5 and 6:** help wording follows the activity; Continue shows no statistics.
 - **Steps 7 to 9:** nothing that worked before is lost; Integrations is a section of Settings.
+- **Steps 10 to 13:** each launch is clean, a sidebar click never leaves an activity running behind a list, and the welcome's Connect lands focus on Integrations.
 
 **Result:** \_\_\_
 

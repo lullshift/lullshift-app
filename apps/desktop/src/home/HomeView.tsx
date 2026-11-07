@@ -39,6 +39,8 @@ interface Props {
   activities: ActivityLoad;
   onRefresh: () => void;
   onGoToSessions: () => void;
+  /** Opens Sessions with this session's detail panel. */
+  onOpenSession: (s: SessionView) => void;
   onConnect: () => void;
   onOpenPage: (page: Page | "continue" | "companion") => void;
   onStartActivity: (a: ActivityInfo) => void;
@@ -57,6 +59,7 @@ export default function HomeView({
   activities,
   onRefresh,
   onGoToSessions,
+  onOpenSession,
   onConnect,
   onOpenPage,
   onStartActivity,
@@ -108,7 +111,11 @@ export default function HomeView({
           <p className="view-lede">{status.line}</p>
         </div>
         {needs.length > 0 && (
-          <button type="button" className="btn btn-primary" onClick={onGoToSessions}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => (needs.length === 1 ? onOpenSession(needs[0]!) : onGoToSessions())}
+          >
             {needs.length === 1 ? "Go to session" : "Go to sessions"}
           </button>
         )}
@@ -171,6 +178,7 @@ export default function HomeView({
         suggestion={suggestion}
         onStart={onStartActivity}
         onShuffle={() => setShuffles((n) => n + 1)}
+        announce={shuffles > 0}
         canShuffle={(list?.length ?? 0) > 1}
         onManage={() => onOpenPage("play")}
         onRetry={onRefresh}
@@ -315,6 +323,7 @@ function FitsYourWait({
   suggestion,
   onStart,
   onShuffle,
+  announce,
   canShuffle,
   onManage,
   onRetry,
@@ -324,6 +333,8 @@ function FitsYourWait({
   suggestion: Suggestion<ActivityInfo> | null;
   onStart: (a: ActivityInfo) => void;
   onShuffle: () => void;
+  /** Say what is suggested now: only after a Shuffle click, never on a recompute. */
+  announce: boolean;
   canShuffle: boolean;
   onManage: () => void;
   onRetry: () => void;
@@ -387,7 +398,9 @@ function FitsYourWait({
           </button>
         )}
         <span className="visually-hidden" role="status">
-          {`Suggesting ${a.name}, ${pageOf(a.category) === "rest" ? "a rest" : "a game"}.`}
+          {announce
+            ? `Suggesting ${a.name}, ${pageOf(a.category) === "rest" ? "a rest" : "a game"}.`
+            : ""}
         </span>
       </div>
     </section>

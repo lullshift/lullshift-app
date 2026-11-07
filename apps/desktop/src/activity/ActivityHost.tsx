@@ -15,7 +15,7 @@ import {
   type SummaryItem,
 } from "@lullshift/activity-sdk/host";
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { providerName } from "../format";
 import { activitySourceLabel } from "../marketplace/logic";
 import { effectiveTheme } from "../theme";
@@ -101,9 +101,26 @@ interface Props {
   pause: PauseRequest | null;
   onClose: () => void;
   onGoToSessions: () => void;
+  /** Lets the page above pause this launch (and wait for its save) or resume it directly. */
+  controlRef?: MutableRefObject<HostControl | null>;
 }
 
-export function ActivityHost({ activity, active, pause, onClose, onGoToSessions }: Props) {
+/** What the page above may ask of a running host. */
+export interface HostControl {
+  /** Pauses and saves (the normal path), resolving once the save finished or timed out. */
+  pauseNow: () => Promise<void>;
+  /** Resumes a paused launch in one step; does nothing in any other phase. */
+  resume: () => void;
+}
+
+export function ActivityHost({
+  activity,
+  active,
+  pause,
+  onClose,
+  onGoToSessions,
+  controlRef,
+}: Props) {
   const [phase, setPhaseState] = useState<Phase>({ kind: "loading" });
   // Empty until the saved state is loaded; the iframe is created only after that.
   const [nonce, setNonce] = useState("");
@@ -138,6 +155,8 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
   // Saves run one at a time, in the order the activity sent them, so an older state never
   // lands after a newer one. Starting a launch waits for this chain before reading.
   const saveChain = useRef<Promise<unknown>>(Promise.resolve());
+  // The save request of a pause in progress, so a second caller can wait for the same pause.
+  const freezing = useRef<Promise<unknown>>(Promise.resolve());
   // The ref lets async steps (a save finishing) see the phase as it is now, not as rendered.
   const setPhase = useCallback((next: Phase) => {
     phaseRef.current = next;
@@ -191,20 +210,20 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
   const freeze = useCallback(
     async (reason: PauseReason, provider?: string) => {
       const current = phaseRef.current.kind;
-      if (
-        current === "paused" ||
-        current === "failed" ||
-        current === "invalid" ||
-        current === "pausing"
-      )
+      if (current === "pausing") {
+        await freezing.current;
         return;
+      }
+      if (current === "paused" || current === "failed" || current === "invalid") return;
       let saved = false;
       // A frame that navigated away no longer runs the activity's bridge, so there is nothing
       // to ask: keep the last save and remove it at once.
       if (current === "running" && reason !== "navigated") {
         setPhase({ kind: "pausing" });
         post({ type: "pause" });
-        saved = await requestSave();
+        const request = requestSave();
+        freezing.current = request;
+        saved = await request;
       }
       setPhase({ kind: "paused", reason, provider, saved });
     },
@@ -247,6 +266,22 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
         }),
     [activityId, engine, setPhase],
   );
+
+  useEffect(() => {
+    if (!controlRef) return;
+    controlRef.current = {
+      pauseNow: async () => {
+        await freeze("user");
+        await saveChain.current;
+      },
+      resume: () => {
+        if (phaseRef.current.kind === "paused") void start();
+      },
+    };
+    return () => {
+      controlRef.current = null;
+    };
+  }, [controlRef, freeze, start]);
 
   // First load.
   useEffect(() => {
@@ -497,7 +532,6 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
             category={activity.category}
             summary={summary}
             playedNow={playedNow}
-            playedTotal={activity.playedSeconds + playedNow}
             preview={preview}
             onResume={() => void start()}
             onHelp={openHelp}
@@ -574,7 +608,6 @@ function PausedCard({
   category,
   summary,
   playedNow,
-  playedTotal,
   preview,
   onResume,
   onHelp,
@@ -585,7 +618,6 @@ function PausedCard({
   category: string;
   summary: SummaryItem[] | null;
   playedNow: number;
-  playedTotal: number;
   preview: string | null;
   onResume: () => void;
   onHelp: () => void;
@@ -623,13 +655,7 @@ function PausedCard({
                 ? `Paused while you were away. ${savedText}`
                 : savedText}
       </p>
-      <PausedStats
-        name={name}
-        summary={summary}
-        playedNow={playedNow}
-        playedTotal={playedTotal}
-        preview={preview}
-      />
+      <PausedStats name={name} summary={summary} playedNow={playedNow} preview={preview} />
       <div className="host-actions">
         {attention && (
           <button type="button" className="btn btn-primary" onClick={onGoToSessions} ref={primary}>

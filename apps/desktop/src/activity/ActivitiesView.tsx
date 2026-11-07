@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { relativeTime } from "../format";
 import { activitySourceLabel } from "../marketplace/logic";
 import { ManagePanel } from "../marketplace/ManagePanel";
@@ -8,7 +8,12 @@ import { Banner } from "../ui/Banner";
 import { focusIfLost } from "../ui/focus";
 import { Icon } from "../ui/Icon";
 import { Mascot } from "../ui/Mascot";
-import { ActivityHost, type ActivityInfo, type PauseRequest } from "./ActivityHost";
+import {
+  ActivityHost,
+  type ActivityInfo,
+  type HostControl,
+  type PauseRequest,
+} from "./ActivityHost";
 import { HelpDialog } from "./HelpDialog";
 import {
   availableChips,
@@ -63,7 +68,9 @@ interface Props {
   pause: PauseRequest | null;
   now: number;
   /** A start the user asked for elsewhere (Home, or a Companion suggestion they clicked). */
-  launch?: { id: string; nonce: number } | null;
+  launch?: { id: string; nonce: number; activity?: ActivityInfo } | null;
+  /** Changes on every click of Play, Rest or Continue in the sidebar. */
+  navNonce?: number;
   onGoToSessions: () => void;
   /** Open Play or Rest (also called once a launched activity's category is known). */
   onShowPage: (page: Page) => void;
@@ -83,10 +90,23 @@ export default function ActivitiesView({
   pause,
   now,
   launch,
+  navNonce = 0,
   onGoToSessions,
   onShowPage,
 }: Props) {
-  const [running, setRunning] = useState<ActivityInfo | null>(null);
+  // One launch of one activity. The host is keyed by it, so a new launch never inherits the
+  // previous one's stats, pause bookkeeping or unsaved time.
+  const [running, setRunning] = useState<{ activity: ActivityInfo; nonce: number } | null>(null);
+  const runningRef = useRef(running);
+  const launches = useRef(0);
+  const controlRef = useRef<HostControl | null>(null);
+  // False while the list is showing over a paused (or pausing) launch, after a sidebar click.
+  const [hostVisible, setHostVisible] = useState(true);
+  const [seenNav, setSeenNav] = useState(navNonce);
+  if (seenNav !== navNonce) {
+    setSeenNav(navNonce);
+    setHostVisible(false);
+  }
   const [message, setMessage] = useState<string | null>(null);
   const [helpFor, setHelpFor] = useState<ActivityInfo | null>(null);
   const [manage, setManage] = useState<ManageTab | null>(null);
@@ -102,20 +122,43 @@ export default function ActivitiesView({
     setFilters({ play: { query: "", chip: null }, rest: { query: "", chip: null } });
   }
 
+  /**
+   * Starts an activity. The same one that is already paused resumes in place (one click). A
+   * different one waits until the current launch has paused and saved, then gets a host of its own.
+   */
+  const begin = useCallback(async (a: ActivityInfo) => {
+    setMessage(null);
+    setManage(null);
+    const current = runningRef.current;
+    if (current && current.activity.id === a.id) {
+      setHostVisible(true);
+      controlRef.current?.resume();
+      return;
+    }
+    if (current) await controlRef.current?.pauseNow();
+    launches.current += 1;
+    const next = { activity: a, nonce: launches.current };
+    runningRef.current = next;
+    setRunning(next);
+    setHostVisible(true);
+  }, []);
+
   // Start the activity the user chose elsewhere, once per click. An id that is no longer
   // installed just leaves the page showing. The page then follows the activity's category.
   const lastLaunch = useRef(0);
   useEffect(() => {
     if (!launch || launch.nonce === lastLaunch.current) return;
     lastLaunch.current = launch.nonce;
-    invoke<ActivityInfo>("activity_info", { id: launch.id })
-      .then((a) => {
-        setManage(null);
-        setRunning(a);
-        onShowPage(a.category === "break" ? "rest" : "play");
-      })
-      .catch(() => setMessage("That activity isn't available any more."));
-  }, [launch, onShowPage]);
+    const go = (a: ActivityInfo) => {
+      void begin(a);
+      onShowPage(a.category === "break" ? "rest" : "play");
+    };
+    if (launch.activity) go(launch.activity);
+    else
+      invoke<ActivityInfo>("activity_info", { id: launch.id })
+        .then(go)
+        .catch(() => setMessage("That activity isn't available any more."));
+  }, [launch, onShowPage, begin]);
 
   // Closing an activity removes the player, so focus would drop to the page: put it back on the
   // heading. Only when it was lost, and only after a real close.
@@ -135,144 +178,163 @@ export default function ActivitiesView({
       setMessage(`${a.name}'s saved progress couldn't be cleared.`);
     }
   };
-  const start = (a: ActivityInfo) => {
-    setMessage(null);
-    setRunning(a);
-  };
+  const start = (a: ActivityInfo) => void begin(a);
 
   const title = manage ? "Manage activities" : page === "continue" ? "Continue" : COPY[page].title;
 
-  if (running) {
-    return (
-      <section aria-labelledby="activities-heading" className="view view-fill">
+  const showHost = running !== null && hostVisible;
+  const hostSection = running && (
+    <section
+      aria-labelledby={showHost ? "activities-heading" : undefined}
+      className="view view-fill"
+      hidden={!showHost}
+    >
+      {showHost && (
         <h1 id="activities-heading" ref={headingRef} tabIndex={-1} className="visually-hidden">
           {title}
         </h1>
-        <ActivityHost
-          activity={running}
-          active={active}
-          pause={pause}
-          onClose={() => {
-            setRunning(null);
-            refresh();
-          }}
-          onGoToSessions={onGoToSessions}
-        />
-      </section>
-    );
-  }
+      )}
+      <ActivityHost
+        key={`${running.activity.id}:${running.nonce}`}
+        activity={running.activity}
+        active={active && hostVisible}
+        pause={pause}
+        controlRef={controlRef}
+        onClose={() => {
+          runningRef.current = null;
+          setRunning(null);
+          refresh();
+        }}
+        onGoToSessions={onGoToSessions}
+      />
+    </section>
+  );
+  if (showHost) return hostSection;
 
   const list = load.status === "ready" ? load.list : [];
 
   return (
-    <section aria-labelledby="activities-heading" className="view">
-      {manage ? (
-        <>
-          <header className="view-header">
-            <h1 id="activities-heading" ref={headingRef} tabIndex={-1}>
-              {title}
-            </h1>
-            <p className="view-lede">
-              Turn activities on or off, add more from a marketplace, or remove what you installed.
-            </p>
-          </header>
-          <div className="manage-bar">
-            <nav aria-label="Manage sections">
-              <ul className="subtabs">
-                {MANAGE_TABS.map((t) => (
-                  <li key={t.id}>
-                    <button
-                      type="button"
-                      className="subtab"
-                      aria-current={manage === t.id ? "page" : undefined}
-                      onClick={() => setManage(t.id)}
-                    >
-                      {t.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-            <button
-              type="button"
-              className="btn btn-quiet"
-              onClick={() => {
-                setManage(null);
-                refresh();
-              }}
-            >
-              Back to {page === "continue" ? "Continue" : COPY[page].title}
+    <>
+      {hostSection}
+      <section aria-labelledby="activities-heading" className="view">
+        {running && (
+          <div className="paused-bar" role="status">
+            <span>{running.activity.name} is paused</span>
+            <button type="button" className="link-btn" onClick={() => void begin(running.activity)}>
+              Resume
+              <span className="visually-hidden"> {running.activity.name}</span>
             </button>
           </div>
-          {manage === "manage" && <ManagePanel onChanged={refresh} />}
-          {manage === "marketplaces" && <MarketplacesPanel now={now} onChanged={refresh} />}
-        </>
-      ) : (
-        <>
-          <header className="view-header">
-            <div className="view-header-row">
+        )}
+        {manage ? (
+          <>
+            <header className="view-header">
               <h1 id="activities-heading" ref={headingRef} tabIndex={-1}>
                 {title}
               </h1>
-              {page !== "continue" && (
-                <button type="button" className="link-quiet" onClick={() => setManage("manage")}>
-                  Manage activities
-                </button>
-              )}
+              <p className="view-lede">
+                Turn activities on or off, add more from a marketplace, or remove what you
+                installed.
+              </p>
+            </header>
+            <div className="manage-bar">
+              <nav aria-label="Manage sections">
+                <ul className="subtabs">
+                  {MANAGE_TABS.map((t) => (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        className="subtab"
+                        aria-current={manage === t.id ? "page" : undefined}
+                        onClick={() => setManage(t.id)}
+                      >
+                        {t.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+              <button
+                type="button"
+                className="btn btn-quiet"
+                onClick={() => {
+                  setManage(null);
+                  refresh();
+                }}
+              >
+                Back to {page === "continue" ? "Continue" : COPY[page].title}
+              </button>
             </div>
-            <p className="view-lede">
-              {page === "continue"
-                ? "Everything you started, newest first. Each keeps its own save."
-                : COPY[page].lede}
-            </p>
-          </header>
+            {manage === "manage" && <ManagePanel onChanged={refresh} />}
+            {manage === "marketplaces" && <MarketplacesPanel now={now} onChanged={refresh} />}
+          </>
+        ) : (
+          <>
+            <header className="view-header">
+              <div className="view-header-row">
+                <h1 id="activities-heading" ref={headingRef} tabIndex={-1}>
+                  {title}
+                </h1>
+                {page !== "continue" && (
+                  <button type="button" className="link-quiet" onClick={() => setManage("manage")}>
+                    Manage activities
+                  </button>
+                )}
+              </div>
+              <p className="view-lede">
+                {page === "continue"
+                  ? "Everything you started, newest first. Each keeps its own save."
+                  : COPY[page].lede}
+              </p>
+            </header>
 
-          {message && <Banner tone="success">{message}</Banner>}
-          {load.status === "loading" && (
-            <div className="skeletons" role="status">
-              <span className="visually-hidden">Loading activities…</span>
-              <div className="skeleton" />
-            </div>
-          )}
-          {load.status === "error" && (
-            <Banner tone="danger">
-              Activities couldn't be listed. Restart Lullshift to try again.
-            </Banner>
-          )}
-          {load.status === "ready" && page === "continue" && (
-            <ContinuePage
-              list={list}
-              now={now}
-              onResume={start}
-              onStartOver={(a) => void startOver(a)}
-              onHelp={setHelpFor}
-              onShowPage={onShowPage}
-            />
-          )}
-          {load.status === "ready" && page !== "continue" && (
-            <Library
-              page={page}
-              list={list}
-              now={now}
-              filter={filters[page]}
-              onFilter={(f) => setFilters((all) => ({ ...all, [page]: f }))}
-              onStart={start}
-              onStartOver={(a) => void startOver(a)}
-              onHelp={setHelpFor}
-              onManage={() => setManage("manage")}
-            />
-          )}
-        </>
-      )}
-      <HelpDialog
-        open={helpFor !== null}
-        name={helpFor?.name ?? ""}
-        description={helpFor?.description ?? ""}
-        help={helpFor?.help ?? null}
-        category={helpFor?.category ?? ""}
-        onClose={() => setHelpFor(null)}
-      />
-    </section>
+            {message && <Banner tone="success">{message}</Banner>}
+            {load.status === "loading" && (
+              <div className="skeletons" role="status">
+                <span className="visually-hidden">Loading activities…</span>
+                <div className="skeleton" />
+              </div>
+            )}
+            {load.status === "error" && (
+              <Banner tone="danger">
+                Activities couldn't be listed. Restart Lullshift to try again.
+              </Banner>
+            )}
+            {load.status === "ready" && page === "continue" && (
+              <ContinuePage
+                list={list}
+                now={now}
+                onResume={start}
+                onStartOver={(a) => void startOver(a)}
+                onHelp={setHelpFor}
+                onShowPage={onShowPage}
+              />
+            )}
+            {load.status === "ready" && page !== "continue" && (
+              <Library
+                page={page}
+                list={list}
+                now={now}
+                filter={filters[page]}
+                onFilter={(f) => setFilters((all) => ({ ...all, [page]: f }))}
+                onStart={start}
+                onStartOver={(a) => void startOver(a)}
+                onHelp={setHelpFor}
+                onManage={() => setManage("manage")}
+              />
+            )}
+          </>
+        )}
+        <HelpDialog
+          open={helpFor !== null}
+          name={helpFor?.name ?? ""}
+          description={helpFor?.description ?? ""}
+          help={helpFor?.help ?? null}
+          category={helpFor?.category ?? ""}
+          onClose={() => setHelpFor(null)}
+        />
+      </section>
+    </>
   );
 }
 

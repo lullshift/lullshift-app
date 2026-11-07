@@ -66,6 +66,8 @@ interface Props {
   /** Re-reads the dashboard (after a delete or review). */
   onRefresh: () => void;
   onOpenSettings: () => void;
+  /** Home's "Go to session": select this session so its detail panel opens. */
+  openRequest?: { key: SessionKey; nonce: number } | null;
 }
 
 type Tab = "live" | "history";
@@ -83,6 +85,7 @@ export default function SessionsView({
   changeTick,
   onRefresh,
   onOpenSettings,
+  openRequest = null,
 }: Props) {
   const [tab, setTab] = useState<Tab>("live");
   const [query, setQuery] = useState("");
@@ -90,6 +93,12 @@ export default function SessionsView({
   const [sort, setSort] = useState<HistorySort>({ key: "lastSeen", descending: true });
 
   const [selected, setSelected] = useState<SessionKey | null>(null);
+  // A request from Home opens that session's panel (adjusting state while rendering).
+  const [seenOpen, setSeenOpen] = useState(0);
+  if (openRequest && openRequest.nonce !== seenOpen) {
+    setSeenOpen(openRequest.nonce);
+    setSelected(openRequest.key);
+  }
   const pinned = useUiPrefs().detailPanelPinned;
   const width = useWindowWidth();
   const returnTo = useRef<string | null>(null);
