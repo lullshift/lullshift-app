@@ -135,6 +135,9 @@ pub fn session_overview(core: &Core, now: OffsetDateTime) -> Res<String> {
     let store = guard.as_ref().ok_or_else(CommandError::internal)?;
     let records = store.sessions().map_err(|_| CommandError::internal())?;
     let disconnected = store.disconnected_sessions().unwrap_or_default();
+    // Imported sessions hold a guess from the agent's log, not a reported state, so they are
+    // not presented as tracked states (decision 34, security review M3).
+    let imported = store.imported_sessions().unwrap_or_default();
     let labels = store.session_labels().unwrap_or_default();
     let prefs = ContextPrefs::from_stored(
         store
@@ -146,9 +149,14 @@ pub fn session_overview(core: &Core, now: OffsetDateTime) -> Res<String> {
     let mut tracked: Vec<_> = records
         .iter()
         .filter(|r| {
-            !disconnected.contains_key(&(r.provider.clone(), r.provider_session_id.clone()))
+            let key = (r.provider.clone(), r.provider_session_id.clone());
+            !disconnected.contains_key(&key) && !imported.contains_key(&key)
         })
         .collect();
+    let imported_count = records
+        .iter()
+        .filter(|r| imported.contains_key(&(r.provider.clone(), r.provider_session_id.clone())))
+        .count();
     tracked.sort_by_key(|a| std::cmp::Reverse(a.last_received_utc));
     let total = tracked.len();
     let rows: Vec<OverviewRow> = tracked
@@ -180,7 +188,13 @@ pub fn session_overview(core: &Core, now: OffsetDateTime) -> Res<String> {
             }
         })
         .collect();
-    Ok(render_overview(&rows, total))
+    let mut out = render_overview(&rows, total);
+    if imported_count > 0 {
+        out.push_str(&format!(
+            "\n{imported_count} more imported from agent logs are not listed: their states are only guesses from the logs and nothing has been reported since."
+        ));
+    }
+    Ok(out)
 }
 
 // ---- activities --------------------------------------------------------------------------
