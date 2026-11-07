@@ -145,7 +145,7 @@ pub fn disable(window: &tauri::WebviewWindow) {
 #[cfg(target_os = "macos")]
 mod platform {
     /// Turns off WebKit's `PeerConnectionEnabled` preference and reads it back (in the
-    /// `macos-webrtc` crate, which holds the only unsafe code for this).
+    /// `macos-webrtc` crate, which holds the unsafe code for this).
     pub fn disable(wv: &tauri::webview::PlatformWebview) -> bool {
         // Tauri documents `inner()` as the `WKWebView` of a live webview, and this runs on the
         // main thread inside `with_webview`, which is what the function requires.
@@ -341,7 +341,7 @@ mod tests {
             ["macos-webrtc", "windows-package"],
             "only macos-webrtc and windows-package may differ from the workspace lints"
         );
-        // And that crate is the only place with an unsafe block or an allow attribute.
+        // And those two crates are the only places with an unsafe block or an allow attribute.
         let mut found = Vec::new();
         let mut dirs = vec![desktop.join("src"), desktop.join("build.rs")];
         for entry in std::fs::read_dir(root.join("crates")).expect("crates dir") {
@@ -391,6 +391,31 @@ mod tests {
         assert!(
             found.is_empty(),
             "unsafe code outside macos-webrtc and windows-package: {found:?}"
+        );
+        // The windows-package exemption covers exactly its five documented Win32 calls
+        // (decision 33 review L3), and the crate denies undocumented unsafe blocks.
+        let win = std::fs::read_to_string(root.join("crates/windows-package/src/lib.rs"))
+            .expect("windows-package source");
+        let blocks: usize = win
+            .lines()
+            .map(|l| {
+                l.split("//")
+                    .next()
+                    .unwrap_or("")
+                    .matches("unsafe {")
+                    .count()
+            })
+            .sum();
+        assert_eq!(blocks, 5, "unsafe blocks in windows-package");
+        for word in ["unsafe fn", "unsafe impl", "unsafe extern"] {
+            assert!(
+                !win.lines()
+                    .any(|l| l.split("//").next().unwrap_or("").contains(word)),
+                "{word} in windows-package"
+            );
+        }
+        assert!(
+            win.contains("#![deny(clippy::undocumented_unsafe_blocks, unsafe_op_in_unsafe_fn)]")
         );
     }
 

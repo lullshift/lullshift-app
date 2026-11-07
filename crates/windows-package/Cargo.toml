@@ -12,8 +12,12 @@ publish = false
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = [
     "Win32_Foundation",
+    "Win32_Storage_FileSystem",
     "Win32_Storage_Packaging_Appx",
 ] }
+
+[dev-dependencies]
+tempfile.workspace = true
 
 # Deliberately not `workspace = true`: the workspace forbids unsafe code, and this crate exists
 # to hold the one Win32 call that needs it (`GetCurrentPackageFamilyName`), so that
