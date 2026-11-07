@@ -1,6 +1,7 @@
 //! Turns off WebRTC in a macOS `WKWebView` (ADR-012, S12-T13).
 //!
-//! This is the only crate in the workspace that allows `unsafe`; `lullshift-desktop` forbids it
+//! This is one of the two crates in the workspace that allow `unsafe` (the other is
+//! `windows-package`, decision 33); `lullshift-desktop` forbids it
 //! and calls [`disable_peer_connection`] instead. The crate is empty on other operating systems.
 //!
 //! The function body was checked against `objc2` 0.6.5 (`msg_send!`, `Retained`, `Bool`,

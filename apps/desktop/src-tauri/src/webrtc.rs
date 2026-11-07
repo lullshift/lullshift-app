@@ -20,7 +20,8 @@
 //!   `RTCPeerConnection` and `RTCDataChannel` in every frame of the page, nested ones included.
 //!   It is WebKit SPI (`-[WKPreferences _setPeerConnectionEnabled:]`, macOS 10.13.4+), so the
 //!   selector is checked first and the value read back. The Objective-C messages are in the
-//!   `macos-webrtc` crate, the only place in the workspace that allows unsafe code.
+//!   `macos-webrtc` crate, one of the two crates in the workspace that allow unsafe code (the
+//!   other is `windows-package`, decision 33).
 //! - **Linux (WebKitGTK):** `WebKitSettings:enable-webrtc` is set to false (also its default) and
 //!   read back. It covers every frame of the page.
 //!
@@ -144,7 +145,7 @@ pub fn disable(window: &tauri::WebviewWindow) {
 #[cfg(target_os = "macos")]
 mod platform {
     /// Turns off WebKit's `PeerConnectionEnabled` preference and reads it back (in the
-    /// `macos-webrtc` crate, which holds the only unsafe code).
+    /// `macos-webrtc` crate, which holds the unsafe code for this).
     pub fn disable(wv: &tauri::webview::PlatformWebview) -> bool {
         // Tauri documents `inner()` as the `WKWebView` of a live webview, and this runs on the
         // main thread inside `with_webview`, which is what the function requires.
@@ -292,11 +293,11 @@ mod tests {
     }
 
     /// Unsafe code is forbidden for this crate by inheriting the workspace lints, and only
-    /// `macos-webrtc` may opt out. `forbid` cannot be overridden by an attribute, so what has
+    /// `macos-webrtc` and `windows-package` (one Win32 call, decision 33) may opt out. `forbid` cannot be overridden by an attribute, so what has
     /// to be checked is the manifests: this crate and every other workspace crate inherit the
     /// workspace lints, the workspace forbids unsafe code, and no manifest lowers the lint.
     #[test]
-    fn only_the_macos_crate_may_allow_unsafe_code() {
+    fn only_the_platform_crates_may_allow_unsafe_code() {
         let desktop = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let root = desktop.join("../../..");
         let root_toml = std::fs::read_to_string(root.join("Cargo.toml")).expect("root manifest");
@@ -337,15 +338,18 @@ mod tests {
         exceptions.sort();
         assert_eq!(
             exceptions,
-            ["macos-webrtc"],
-            "only macos-webrtc may differ from the workspace lints"
+            ["macos-webrtc", "windows-package"],
+            "only macos-webrtc and windows-package may differ from the workspace lints"
         );
-        // And that crate is the only place with an unsafe block or an allow attribute.
+        // And those two crates are the only places with an unsafe block or an allow attribute.
         let mut found = Vec::new();
         let mut dirs = vec![desktop.join("src"), desktop.join("build.rs")];
         for entry in std::fs::read_dir(root.join("crates")).expect("crates dir") {
             let path = entry.expect("entry").path();
-            if path.file_name().is_some_and(|n| n != "macos-webrtc") {
+            if path
+                .file_name()
+                .is_some_and(|n| n != "macos-webrtc" && n != "windows-package")
+            {
                 dirs.push(path.join("src"));
                 dirs.push(path.join("tests"));
                 dirs.push(path.join("build.rs"));
@@ -386,7 +390,32 @@ mod tests {
         found.retain(|f| !f.ends_with("webrtc.rs"));
         assert!(
             found.is_empty(),
-            "unsafe code outside macos-webrtc: {found:?}"
+            "unsafe code outside macos-webrtc and windows-package: {found:?}"
+        );
+        // The windows-package exemption covers exactly its five documented Win32 calls
+        // (decision 33 review L3), and the crate denies undocumented unsafe blocks.
+        let win = std::fs::read_to_string(root.join("crates/windows-package/src/lib.rs"))
+            .expect("windows-package source");
+        let blocks: usize = win
+            .lines()
+            .map(|l| {
+                l.split("//")
+                    .next()
+                    .unwrap_or("")
+                    .matches("unsafe {")
+                    .count()
+            })
+            .sum();
+        assert_eq!(blocks, 5, "unsafe blocks in windows-package");
+        for word in ["unsafe fn", "unsafe impl", "unsafe extern"] {
+            assert!(
+                !win.lines()
+                    .any(|l| l.split("//").next().unwrap_or("").contains(word)),
+                "{word} in windows-package"
+            );
+        }
+        assert!(
+            win.contains("#![deny(clippy::undocumented_unsafe_blocks, unsafe_op_in_unsafe_fn)]")
         );
     }
 

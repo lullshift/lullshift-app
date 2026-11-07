@@ -277,6 +277,13 @@ function handle(cmd: string, a: Args): unknown {
     case "cursor_status":
     case "opencode_status":
       return adapters[cmd.replace(/_status$/, "")];
+    // Packaged-app checks (decision 33): the demo runs in a browser, never inside a package.
+    case "packaged_context":
+      return { package: null };
+    case "connection_health":
+      return { package: null, scan: "skipped", stale: [], failures: [] };
+    case "connection_fix_stale":
+      throw "unsupported";
 
     // Companion
     case "companion_profiles":

@@ -1,0 +1,32 @@
+[package]
+name = "windows-package"
+description = "Tells whether the app runs inside a Windows package (MSIX/Store app identity), for the packaged-context warning (ADR-010 amendment, decision 33). Allows unsafe code for one Win32 call."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+# Already in the lockfile (0.61.2, through Tauri's dependencies); pinned to that exact version.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_Storage_Packaging_Appx",
+] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+# Deliberately not `workspace = true`: the workspace forbids unsafe code, and this crate exists
+# to hold the one Win32 call that needs it (`GetCurrentPackageFamilyName`), so that
+# `lullshift-desktop` can keep `forbid(unsafe_code)`. A test in `lullshift-desktop`
+# (src/webrtc.rs) fails if any crate other than this one and `macos-webrtc` stops inheriting the
+# workspace lints.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
