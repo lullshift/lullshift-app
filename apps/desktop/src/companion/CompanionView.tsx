@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useState, type RefObject } from "react";
 import type { SessionView } from "../sessions";
 import { Banner } from "../ui/Banner";
 import {
@@ -14,8 +14,8 @@ import {
   type Scope,
   type Thread,
 } from "./api";
-import { CompanionSettings } from "./CompanionSettings";
 import { Conversation } from "./Conversation";
+import { onProvidersChanged } from "./events";
 import { errorText, UNAVAILABLE_TEXT } from "./logic";
 import { ThreadList } from "./ThreadList";
 import "./companion.css";
@@ -26,31 +26,35 @@ type Boot =
   | { status: "unavailable" }
   | { status: "error"; text: string };
 
-type Panel = "chat" | "settings";
-
 interface Props {
   headingRef: RefObject<HTMLHeadingElement | null>;
   sessions: readonly SessionView[];
   now: number;
   /** The user clicked a break the Companion suggested. */
   onStartActivity: (activityId: string) => void;
+  /** Opens Settings with the Companion section expanded and focused (decision 36). */
+  onOpenSettings: () => void;
 }
 
 /**
- * Companion: threads, conversation and provider settings. The Rust core holds the truth (threads,
- * messages, keys, usage); this component only keeps the last snapshot it was given.
+ * Companion: conversations only. Providers, models and lookups live in Settings (decision 36).
+ * The Rust core holds the truth (threads, messages, keys, usage); this component only keeps the
+ * last snapshot it was given.
  */
-export default function CompanionView({ headingRef, sessions, now, onStartActivity }: Props) {
+export default function CompanionView({
+  headingRef,
+  sessions,
+  now,
+  onStartActivity,
+  onOpenSettings,
+}: Props) {
   const [boot, setBoot] = useState<Boot>({ status: "loading" });
   const [prefs, setPrefs] = useState<CompanionPrefs>({ toolsEnabled: false, lastScope: null });
   const [profiles, setProfiles] = useState<ProviderProfile[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
-  const [panel, setPanel] = useState<Panel>("chat");
   const [notice, setNotice] = useState<string | null>(null);
   const [live, setLive] = useState("");
-  const settingsTabRef = useRef<HTMLButtonElement>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -97,8 +101,22 @@ export default function CompanionView({ headingRef, sessions, now, onStartActivi
             : { status: "error", text: errorText(e) },
         );
       });
+    // Providers or models changed in Settings: read them again.
+    const off = onProvidersChanged(() => {
+      companionProfiles()
+        .then((p) => {
+          if (live) setProfiles(p);
+        })
+        .catch(() => undefined);
+      companionPrefs()
+        .then((p) => {
+          if (live) setPrefs(p);
+        })
+        .catch(() => undefined);
+    });
     return () => {
       live = false;
+      off();
     };
   }, []);
 
@@ -109,13 +127,6 @@ export default function CompanionView({ headingRef, sessions, now, onStartActivi
       // Keep the last list; the conversation shows its own errors.
     }
   }, []);
-
-  // Which profile a send uses: the user's pick if it still exists, else the default, else the first.
-  const activeProfile =
-    profiles.find((p) => p.id === activeProfileId) ??
-    profiles.find((p) => p.isDefault) ??
-    profiles[0] ??
-    null;
 
   const run = async (label: string, work: () => Promise<void>) => {
     setNotice(null);
@@ -133,7 +144,6 @@ export default function CompanionView({ headingRef, sessions, now, onStartActivi
       const t = await companionNewThread();
       setThreads((cur) => [t, ...cur.filter((x) => x.id !== t.id)]);
       setSelectedId(t.id);
-      setPanel("chat");
       setLive("New conversation started.");
     });
 
@@ -153,23 +163,23 @@ export default function CompanionView({ headingRef, sessions, now, onStartActivi
       setLive("Conversation deleted.");
     });
 
-  const openSettings = () => {
-    setPanel("settings");
-    setLive("Companion settings opened.");
-  };
-
   const selected = threads.find((t) => t.id === selectedId) ?? null;
 
   return (
     <section aria-labelledby="companion-heading" className="view companion">
-      <header className="view-header">
-        <h1 id="companion-heading" ref={headingRef} tabIndex={-1}>
-          Companion
-        </h1>
-        <p className="view-lede">
-          Talk with an AI provider using your own key. Nothing from your sessions is shared unless
-          you choose it, and you see it first.
-        </p>
+      <header className="view-header companion-header">
+        <div>
+          <h1 id="companion-heading" ref={headingRef} tabIndex={-1}>
+            Companion
+          </h1>
+          <p className="view-lede">
+            Talk with an AI provider using your own key. Nothing from your sessions is shared unless
+            you choose it, and you see it first.
+          </p>
+        </div>
+        <button type="button" className="btn-link companion-settings-link" onClick={onOpenSettings}>
+          Provider settings
+        </button>
       </header>
 
       <div className="visually-hidden" role="status" aria-live="polite">
@@ -191,84 +201,47 @@ export default function CompanionView({ headingRef, sessions, now, onStartActivi
       {notice && <Banner tone="danger">{notice}</Banner>}
 
       {boot.status === "ready" && (
-        <>
-          <div className="companion-tabs" role="group" aria-label="Companion sections">
-            <button
-              type="button"
-              className="btn btn-quiet"
-              aria-pressed={panel === "chat"}
-              onClick={() => setPanel("chat")}
-            >
-              Conversations
-            </button>
-            <button
-              type="button"
-              ref={settingsTabRef}
-              className="btn btn-quiet"
-              aria-pressed={panel === "settings"}
-              onClick={openSettings}
-            >
-              Settings
-            </button>
-          </div>
-
-          {panel === "settings" ? (
-            <CompanionSettings
+        <div className="companion-layout">
+          <ThreadList
+            threads={threads}
+            selectedId={selectedId}
+            now={now}
+            onSelect={setSelectedId}
+            onCreate={() => void createThread()}
+            onRename={(id, title) => void renameThread(id, title)}
+            onDelete={(id) => void deleteThread(id)}
+          />
+          {selected ? (
+            <Conversation
+              key={selected.id}
+              thread={selected}
               profiles={profiles}
-              onProfilesChanged={(p) => {
-                setProfiles(p);
-              }}
-              onReload={reload}
-              toolsEnabled={prefs.toolsEnabled}
-              onToolsChanged={(p) => setPrefs(p)}
-              onDone={() => setPanel("chat")}
+              sessions={sessions}
+              rememberedScope={prefs.lastScope}
+              onScopeUsed={(scope: Scope) => setPrefs((p) => ({ ...p, lastScope: scope }))}
+              onStartActivity={onStartActivity}
+              onOpenSettings={onOpenSettings}
+              onActivity={() => void reloadThreads()}
             />
           ) : (
-            <div className="companion-layout">
-              <ThreadList
-                threads={threads}
-                selectedId={selectedId}
-                now={now}
-                onSelect={setSelectedId}
-                onCreate={() => void createThread()}
-                onRename={(id, title) => void renameThread(id, title)}
-                onDelete={(id) => void deleteThread(id)}
-              />
-              {selected ? (
-                <Conversation
-                  key={selected.id}
-                  thread={selected}
-                  profiles={profiles}
-                  profile={activeProfile}
-                  onPickProfile={setActiveProfileId}
-                  sessions={sessions}
-                  rememberedScope={prefs.lastScope}
-                  onScopeUsed={(scope: Scope) => setPrefs((p) => ({ ...p, lastScope: scope }))}
-                  onStartActivity={onStartActivity}
-                  onOpenSettings={openSettings}
-                  onActivity={() => void reloadThreads()}
-                />
-              ) : (
-                <div className="card companion-empty">
-                  <p className="card-title">No conversation yet</p>
-                  <p className="card-sub">
-                    Start one to ask a question. Each message sends only what you type unless you
-                    choose to add context.
-                  </p>
-                  <div className="actions">
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => void createThread()}
-                    >
-                      New conversation
-                    </button>
-                  </div>
-                </div>
-              )}
+            <div className="card companion-empty">
+              <p className="card-title">No conversation yet</p>
+              <p className="card-sub">
+                Start one to ask a question. Each message sends only what you type unless you choose
+                to add context.
+              </p>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void createThread()}
+                >
+                  New conversation
+                </button>
+              </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </section>
   );

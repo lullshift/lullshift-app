@@ -1,20 +1,77 @@
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { AppearanceSettings } from "./AppearanceSettings";
+import { CompanionSettings } from "./companion/CompanionSettings";
 import { ContextSettings } from "./context/ContextSettings";
 import { NotificationSettings } from "./NotificationSettings";
 import { Banner } from "./ui/Banner";
 import { Icon } from "./ui/Icon";
 import { Switch } from "./ui/Switch";
+import { updateUiPrefs, useUiPrefs } from "./uiPrefsStore";
 
 type Loadable<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "error" };
+
+/**
+ * Companion's providers, models and lookups (decision 36), as a section that expands and
+ * collapses. Its content reads the keychain, so it is mounted only while expanded. The expanded
+ * state is saved with the interface preferences. `focusRequest` changes when the Companion view's
+ * "Provider settings" link was used: the section opens and its button takes focus.
+ */
+export function CompanionSection({ focusRequest }: { focusRequest: number }) {
+  const { companionSettingsOpen } = useUiPrefs();
+  const open = companionSettingsOpen === true;
+  const id = useId();
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const wantFocus = useRef(false);
+
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    wantFocus.current = true;
+    void updateUiPrefs({ companionSettingsOpen: true });
+  }, [focusRequest]);
+
+  // Focus once the section is open, after its content mounted.
+  useEffect(() => {
+    if (!open || !wantFocus.current) return;
+    wantFocus.current = false;
+    buttonRef.current?.focus();
+    buttonRef.current?.scrollIntoView?.({ block: "start" });
+  }, [open]);
+
+  return (
+    <section className="settings-disclosure" aria-labelledby={`${id}-h`}>
+      <h2 className="section-title" id={`${id}-h`}>
+        <button
+          ref={buttonRef}
+          type="button"
+          className="disclosure-button"
+          aria-expanded={open}
+          aria-controls={`${id}-body`}
+          onClick={() => void updateUiPrefs({ companionSettingsOpen: !open })}
+        >
+          <span className="disclosure-chevron" aria-hidden="true" />
+          Companion
+        </button>
+      </h2>
+      <p className="row-desc settings-disclosure-desc">
+        Providers, models, keys, budgets and lookups for Companion.
+      </p>
+      <div id={`${id}-body`} hidden={!open}>
+        {open && <CompanionSettings />}
+      </div>
+    </section>
+  );
+}
 
 /** Startup and notification preferences. Both are off until the user turns them on. */
 export default function Settings({
   headingRef,
+  companionFocus = 0,
 }: {
   headingRef: RefObject<HTMLHeadingElement | null>;
+  /** Changes when the Companion section should open and take focus. */
+  companionFocus?: number;
 }) {
   const [autostart, setAutostart] = useState<Loadable<boolean>>({ status: "loading" });
   const [notify, setNotify] = useState<Loadable<boolean>>({ status: "loading" });
@@ -113,6 +170,8 @@ export default function Settings({
       </div>
 
       <ContextSettings />
+
+      <CompanionSection focusRequest={companionFocus} />
 
       <div className="card quiet-card">
         <Icon name="power" />

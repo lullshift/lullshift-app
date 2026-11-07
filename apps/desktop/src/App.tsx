@@ -55,6 +55,10 @@ export default function App() {
   const unusedHeading = useRef<HTMLHeadingElement>(null);
   const unusedCompanionHeading = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
+  // Companion's "Provider settings" link: Settings opens with its Companion section focused, so
+  // the view heading must not take focus that time.
+  const [companionFocus, setCompanionFocus] = useState(0);
+  const skipHeadingFocus = useRef(false);
   // Companion reads the keychain when it mounts, so it is mounted on first visit, not at launch.
   const [companionOpened, setCompanionOpened] = useState(false);
   // Adjusting state while rendering (React's pattern for state derived from a change).
@@ -115,6 +119,10 @@ export default function App() {
   useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false;
+      return;
+    }
+    if (skipHeadingFocus.current) {
+      skipHeadingFocus.current = false;
       return;
     }
     headingRef.current?.focus();
@@ -209,11 +217,18 @@ export default function App() {
                 setLaunch({ id, nonce: Date.now() });
                 setView("activities");
               }}
+              onOpenSettings={() => {
+                skipHeadingFocus.current = view !== "settings";
+                setCompanionFocus((n) => n + 1);
+                setView("settings");
+              }}
             />
           </div>
         )}
         {view === "integrations" && <Integrations headingRef={headingRef} />}
-        {view === "settings" && <Settings headingRef={headingRef} />}
+        {view === "settings" && (
+          <Settings headingRef={headingRef} companionFocus={companionFocus} />
+        )}
       </main>
       <Onboarding
         open={showWelcome}

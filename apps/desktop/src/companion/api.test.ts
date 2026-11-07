@@ -83,6 +83,7 @@ describe("toCommandError", () => {
     const err = await companionSend(
       1,
       "p",
+      "m",
       "my prompt text",
       { kind: "none" },
       null,
@@ -96,10 +97,20 @@ describe("toCommandError", () => {
 describe("companionSend", () => {
   it("passes the previewed context hash through", async () => {
     invoke.mockResolvedValue({});
-    await companionSend(1, "p", "hi", { kind: "none" }, null, "r-0123456789", () => undefined);
+    await companionSend(
+      1,
+      "p",
+      "model-a",
+      "hi",
+      { kind: "none" },
+      null,
+      "r-0123456789",
+      () => undefined,
+    );
     expect(invoke).toHaveBeenLastCalledWith("companion_send", {
       threadId: 1,
       profileId: "p",
+      model: "model-a",
       text: "hi",
       scope: { kind: "none" },
       expectedContextSha256: null,
@@ -109,6 +120,7 @@ describe("companionSend", () => {
     await companionSend(
       1,
       "p",
+      "m",
       "hi",
       { kind: "sessionSummary", provider: "x", sessionId: "y" },
       "ab12",
@@ -123,7 +135,12 @@ describe("streaming calls", () => {
   it("routes channel messages to the handler given for that call", async () => {
     invoke.mockResolvedValue({});
     const seen: unknown[] = [];
-    await companionRetry(5, "r-abcdefgh", (e) => seen.push(e));
+    await companionRetry(5, "p", "model-b", "r-abcdefgh", (e) => seen.push(e));
+    expect(invoke.mock.lastCall?.[1]).toMatchObject({
+      messageId: 5,
+      profileId: "p",
+      model: "model-b",
+    });
     const args = invoke.mock.lastCall?.[1] as {
       onEvent: InstanceType<typeof FakeChannel>;
       requestId: string;

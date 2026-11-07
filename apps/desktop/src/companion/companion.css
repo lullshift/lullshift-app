@@ -5,14 +5,32 @@
   max-width: 1040px;
 }
 
-.companion-tabs {
+.companion-header {
   display: flex;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-start;
+  justify-content: space-between;
 }
 
-.companion-tabs .btn[aria-pressed="true"] {
-  background: var(--accent-soft);
-  color: var(--accent-hover);
+.companion-settings-link {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.btn-link:focus-visible,
+.menu-button:focus-visible,
+.menu-item:focus-visible,
+.option-badge button:focus-visible,
+.disclosure-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn.btn-small {
+  min-height: 30px;
+  padding: 2px var(--space-3);
+  font-size: var(--text-sm);
 }
 
 .companion-layout {
@@ -60,9 +78,19 @@
 
 .thread-item {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-1);
   align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.thread-item:hover {
+  background: var(--surface-hover);
+}
+
+.thread-item-selected,
+.thread-item-selected:hover {
+  background: var(--accent-soft);
 }
 
 .thread-select {
@@ -79,13 +107,13 @@
   cursor: pointer;
 }
 
-.thread-select:hover {
-  background: var(--surface-hover);
+.thread-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .thread-select[aria-current="true"] {
   border-color: var(--accent);
-  background: var(--accent-soft);
 }
 
 .thread-title {
@@ -538,4 +566,319 @@
   display: block;
   color: var(--text-muted);
   font-size: var(--text-sm);
+}
+
+/* ---------- ⋮ menus (decision 36) ---------- */
+
+.menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.menu-button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.menu-button:hover,
+.menu-button[aria-expanded="true"] {
+  border-color: var(--control-border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  min-width: 9rem;
+  margin: 0;
+  padding: var(--space-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  list-style: none;
+}
+
+.menu-item {
+  width: 100%;
+  min-height: 32px;
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover,
+.menu-item:focus {
+  background: var(--surface-hover);
+}
+
+.menu-item-danger {
+  color: var(--danger);
+}
+
+/* ---------- Composer box, badges and model button (decision 36) ---------- */
+
+.composer-box {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.composer-box:focus-within {
+  border-color: var(--accent);
+}
+
+.composer-box .composer-text {
+  border: 0;
+  background: transparent;
+  resize: vertical;
+}
+
+.composer-box .composer-text:focus-visible {
+  outline: none;
+}
+
+.composer-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.composer-tools .composer-host {
+  margin-left: auto;
+}
+
+.composer-model {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-once {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.composer-hint {
+  margin: 0;
+}
+
+.option-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.option-badge {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 100%;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.option-badge button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.option-badge-text {
+  max-width: 22rem;
+  padding: 2px var(--space-1) 2px var(--space-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.option-badge-remove {
+  min-width: 28px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  font-weight: 700;
+}
+
+.option-badge-remove:hover {
+  background: var(--surface-hover);
+}
+
+.choice-groups {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.choice-group-provider {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.choice-group-provider legend {
+  font-weight: 600;
+}
+
+/* ---------- Answers: which model wrote them ---------- */
+
+.msg-model {
+  justify-self: start;
+  margin: 0;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Models of a provider, and the model picker ---------- */
+
+.model-list {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.model-list-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.model-rows {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.model-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.model-row-name {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.model-row-id {
+  margin-left: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.picker {
+  display: grid;
+  gap: var(--space-3);
+  min-width: min(40rem, 80vw);
+}
+
+.picker-typed {
+  display: grid;
+  gap: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.picker-typed-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.picker-typed-row .field {
+  flex: 1 1 14rem;
+}
+
+.catalog-list:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.catalog-model-active {
+  border-color: var(--control-border);
+  background: var(--surface-hover);
+}
+
+/* ---------- The Companion section of Settings ---------- */
+
+.settings-disclosure {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.settings-disclosure .section-title {
+  margin-bottom: 0;
+}
+
+.disclosure-button {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.disclosure-chevron {
+  width: 0.5em;
+  height: 0.5em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--fast) var(--ease);
+}
+
+.disclosure-button[aria-expanded="true"] .disclosure-chevron {
+  transform: rotate(45deg);
+}
+
+.settings-disclosure-desc {
+  margin: 0;
 }

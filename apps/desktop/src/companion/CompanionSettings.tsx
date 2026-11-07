@@ -1,10 +1,19 @@
+// Companion settings, shown as a section of the Settings page (decision 36): providers, their
+// models, keys, usage and the lookups switch. It reads the keychain, so it is only mounted while
+// that section is expanded.
+
 import { useCallback, useEffect, useId, useState } from "react";
 import { Banner } from "../ui/Banner";
 import { Dialog } from "../ui/Dialog";
 import {
+  companionAddModel,
   companionClearKey,
   companionDeleteProfile,
+  companionPrefs,
+  companionProfiles,
+  companionRemoveModel,
   companionSaveProfile,
+  companionSetDefaultModel,
   companionSetKey,
   companionSetToolsEnabled,
   companionTest,
@@ -16,6 +25,7 @@ import {
   type ProviderProfile,
   type Usage,
 } from "./api";
+import { providersChanged } from "./events";
 import {
   baseUrlHint,
   baseUrlProblem,
@@ -32,21 +42,19 @@ import {
   sendsToText,
   TOOLS_SETTING_HELP,
   TOOLS_SETTING_LABEL,
+  UNAVAILABLE_TEXT,
 } from "./logic";
-import { ModelCatalogBrowser } from "./ModelCatalog";
-
-interface Props {
-  profiles: readonly ProviderProfile[];
-  onProfilesChanged: (profiles: ProviderProfile[]) => void;
-  /** Re-reads profiles and threads from the core. */
-  onReload: () => Promise<void>;
-  toolsEnabled: boolean;
-  onToolsChanged: (prefs: CompanionPrefs) => void;
-  onDone: () => void;
-}
+import { modelIdProblem, modelsOf } from "./modelChoice";
+import { ModelPickerDialog } from "./ModelPicker";
+import "./companion.css";
 
 type Editing = { mode: "new" } | { mode: "edit"; id: string } | null;
 type Notice = { tone: "success" | "danger" | "info"; text: string };
+type Boot =
+  | { status: "loading" }
+  | { status: "ready" }
+  | { status: "unavailable" }
+  | { status: "error"; text: string };
 
 const KINDS: ProviderKind[] = ["anthropic", "openai", "openaiCompatible"];
 
@@ -72,12 +80,16 @@ function ProfileForm({
   const [isDefault, setIsDefault] = useState(initial?.isDefault ?? false);
   const [problems, setProblems] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const compatible = kind === "openaiCompatible";
 
   const submit = async () => {
     const found: string[] = [];
     if (!label.trim()) found.push("Give the provider a name you will recognise.");
-    if (!model.trim()) found.push("Enter the model name.");
+    if (!initial) {
+      const p = modelIdProblem(model);
+      if (p) found.push(p);
+    }
     if (compatible) {
       const p = baseUrlProblem(baseUrl);
       if (p) found.push(p);
@@ -91,7 +103,8 @@ function ProfileForm({
       kind,
       label: label.trim(),
       baseUrl: compatible ? baseUrl.trim() : undefined,
-      model: model.trim(),
+      // An edit keeps the default model; models are changed in the provider's model list.
+      model: initial ? initial.model : model.trim(),
       monthlyTokenBudget: parsed,
       isDefault,
     };
@@ -113,7 +126,7 @@ function ProfileForm({
         void submit();
       }}
     >
-      <h3 className="card-title">{initial ? "Edit provider" : "Add a provider"}</h3>
+      <h4 className="card-title">{initial ? `Edit ${initial.label}` : "Add a provider"}</h4>
 
       <label className="field-label" htmlFor={`${ids}-kind`}>
         Provider
@@ -171,30 +184,49 @@ function ProfileForm({
         </>
       )}
 
-      <label className="field-label" htmlFor={`${ids}-model`}>
-        Model
-      </label>
-      <input
-        id={`${ids}-model`}
-        className="field"
-        type="text"
-        autoComplete="off"
-        spellCheck={false}
-        list={`${ids}-models`}
-        aria-describedby={`${ids}-model-hint`}
-        value={model}
-        onChange={(e) => setModel(e.target.value)}
-      />
-      <datalist id={`${ids}-models`}>
-        {MODEL_SUGGESTIONS[kind].map((m) => (
-          <option key={m} value={m} />
-        ))}
-      </datalist>
-      <p id={`${ids}-model-hint`} className="field-note">
-        {MODEL_HINT}
-      </p>
-
-      <ModelCatalogBrowser kind={kind} chosen={model.trim()} onChoose={setModel} />
+      {!initial && (
+        <>
+          <label className="field-label" htmlFor={`${ids}-model`}>
+            First model
+          </label>
+          <div className="picker-typed-row">
+            <input
+              id={`${ids}-model`}
+              className="field"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              list={`${ids}-models`}
+              aria-describedby={`${ids}-model-hint`}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            />
+            <button type="button" className="btn btn-secondary" onClick={() => setPicking(true)}>
+              Choose from list…
+            </button>
+          </div>
+          <datalist id={`${ids}-models`}>
+            {MODEL_SUGGESTIONS[kind].map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+          <p id={`${ids}-model-hint`} className="field-note">
+            {MODEL_HINT} You can add more models after saving.
+          </p>
+          {picking && (
+            <ModelPickerDialog
+              kind={kind}
+              title="Choose the first model"
+              chosen={model.trim()}
+              onChoose={(m) => {
+                setModel(m.model);
+                setPicking(false);
+              }}
+              onClose={() => setPicking(false)}
+            />
+          )}
+        </>
+      )}
 
       <label className="field-label" htmlFor={`${ids}-budget`}>
         Monthly token budget (optional)
@@ -212,7 +244,8 @@ function ProfileForm({
       />
       <p id={`${ids}-budget-hint`} className="field-note">
         Sending stops when input plus output tokens reach this number, until next month or until you
-        raise it. Counts come from the provider's own replies.
+        raise it. It covers every model of this provider. Counts come from the provider's own
+        replies.
       </p>
 
       <label className="pick">
@@ -243,6 +276,112 @@ function ProfileForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/** A provider's models: add (from the list or typed), make default, remove. */
+export function ModelList({
+  profile,
+  onChanged,
+  say,
+}: {
+  profile: ProviderProfile;
+  onChanged: (p: ProviderProfile) => void;
+  say: (n: Notice) => void;
+}) {
+  const id = useId();
+  const [picking, setPicking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const models = modelsOf(profile);
+
+  const act = async (work: () => Promise<ProviderProfile>, done: string) => {
+    setBusy(true);
+    try {
+      onChanged(await work());
+      say({ tone: "success", text: done });
+    } catch (err) {
+      say({ tone: "danger", text: errorText(toCommandError(err), profile.host) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="model-list" aria-labelledby={`${id}-h`} role="group">
+      <h4 className="model-list-title" id={`${id}-h`}>
+        Models of {profile.label}
+      </h4>
+      <ul className="model-rows">
+        {models.map((m) => {
+          const name = m.label ?? m.model;
+          return (
+            <li key={m.model} className="model-row">
+              <span className="model-row-name">
+                {name}
+                {m.label && <code className="model-row-id">{m.model}</code>}
+              </span>
+              {m.isDefault ? (
+                <span className="pill tone-neutral">Default</span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-small"
+                  disabled={busy}
+                  aria-label={`Make ${name} the default model of ${profile.label}`}
+                  onClick={() =>
+                    void act(
+                      () => companionSetDefaultModel(profile.id, m.model),
+                      `${name} is now the default model of ${profile.label}.`,
+                    )
+                  }
+                >
+                  Make default
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-quiet btn-small"
+                disabled={busy || models.length <= 1}
+                aria-label={`Remove ${name} from ${profile.label}`}
+                title={models.length <= 1 ? "A provider keeps at least one model." : undefined}
+                onClick={() =>
+                  void act(
+                    () => companionRemoveModel(profile.id, m.model),
+                    `${name} was removed from ${profile.label}.`,
+                  )
+                }
+              >
+                Remove
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <button
+        type="button"
+        className="btn btn-secondary"
+        disabled={busy}
+        onClick={() => setPicking(true)}
+      >
+        Add a model…
+      </button>
+      {picking && (
+        <ModelPickerDialog
+          kind={profile.kind}
+          title={`Add a model to ${profile.label}`}
+          chosen=""
+          onChoose={(m) => {
+            setPicking(false);
+            void act(
+              () =>
+                companionAddModel(profile.id, m.model, m.name ? m.name.slice(0, 80) : null, false),
+              `${m.name ?? m.model} was added to ${profile.label}.`,
+            );
+          }}
+          onClose={() => setPicking(false)}
+        />
+      )}
+    </div>
   );
 }
 
@@ -321,7 +460,7 @@ function KeyPanel({
 
   return (
     <div className="card key-panel">
-      <h3 className="card-title">Key for {profile.label}</h3>
+      <h4 className="card-title">Key for {profile.label}</h4>
       <p className="key-status" role="status">
         {status}
       </p>
@@ -375,7 +514,8 @@ function KeyPanel({
         </button>
       </div>
       <p className="field-note">
-        Test connection makes one small request to {profile.host}, only when you press it.
+        Test connection makes one small request to {profile.host} with the default model, only when
+        you press it.
       </p>
       {result && (
         <div role="status">
@@ -386,8 +526,6 @@ function KeyPanel({
   );
 }
 
-/** Provider profiles, keys, usage. Companion's settings live here rather than in Settings so the
- * key, the host and the budget are next to the conversation they apply to. */
 /** The switch for read-only lookups. Off by default; every single lookup still needs approval. */
 export function ToolsSetting({
   enabled,
@@ -418,9 +556,9 @@ export function ToolsSetting({
   };
   return (
     <section className="tools-setting" aria-labelledby={`${id}-h`}>
-      <h2 className="section-title" id={`${id}-h`}>
+      <h3 className="section-title" id={`${id}-h`}>
         Lookups
-      </h2>
+      </h3>
       <label className="check-row" htmlFor={id}>
         <input
           id={id}
@@ -436,19 +574,25 @@ export function ToolsSetting({
   );
 }
 
-export function CompanionSettings({
-  profiles,
-  onProfilesChanged,
-  onReload,
-  toolsEnabled,
-  onToolsChanged,
-  onDone,
-}: Props) {
+/** Providers, models, keys, usage and lookups. Reads everything itself from the core. */
+export function CompanionSettings() {
+  const [boot, setBoot] = useState<Boot>({ status: "loading" });
+  const [profiles, setProfiles] = useState<ProviderProfile[]>([]);
+  const [toolsEnabled, setToolsEnabled] = useState(false);
   const [editing, setEditing] = useState<Editing>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [usage, setUsage] = useState<Usage[] | null>(null);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<ProviderProfile | null>(null);
+
+  const failed = (err: unknown) => {
+    const e = toCommandError(err);
+    setBoot(
+      e.kind === "unavailable"
+        ? { status: "unavailable" }
+        : { status: "error", text: errorText(e) },
+    );
+  };
 
   const loadUsage = useCallback(async () => {
     try {
@@ -459,8 +603,31 @@ export function CompanionSettings({
     }
   }, []);
 
+  const reload = useCallback(async () => {
+    try {
+      setProfiles(await companionProfiles());
+      setBoot({ status: "ready" });
+    } catch (err) {
+      failed(err);
+    }
+  }, []);
+
   useEffect(() => {
     let live = true;
+    companionProfiles()
+      .then((p) => {
+        if (!live) return;
+        setProfiles(p);
+        setBoot({ status: "ready" });
+      })
+      .catch((err: unknown) => {
+        if (live) failed(err);
+      });
+    companionPrefs()
+      .then((p) => {
+        if (live) setToolsEnabled(p.toolsEnabled);
+      })
+      .catch(() => undefined);
     companionUsage()
       .then((u) => {
         if (live) setUsage(u);
@@ -474,8 +641,18 @@ export function CompanionSettings({
   }, []);
 
   const changed = async () => {
-    await onReload();
+    await reload();
     await loadUsage();
+    providersChanged();
+  };
+
+  const replace = (saved: ProviderProfile) => {
+    setProfiles((cur) =>
+      cur.some((p) => p.id === saved.id)
+        ? cur.map((p) => (p.id === saved.id ? saved : p))
+        : [...cur, saved],
+    );
+    providersChanged();
   };
 
   const editingProfile =
@@ -490,11 +667,24 @@ export function CompanionSettings({
       await companionDeleteProfile(p.id);
       if (editing?.mode === "edit" && editing.id === p.id) setEditing(null);
       await changed();
-      setNotice({ tone: "success", text: `${p.label} and its key were removed.` });
+      setNotice({ tone: "success", text: `${p.label}, its models and its key were removed.` });
     } catch (err) {
       setNotice({ tone: "danger", text: errorText(toCommandError(err), p.host) });
     }
   };
+
+  if (boot.status === "loading") return <p className="card-sub">Loading Companion settings…</p>;
+  if (boot.status === "unavailable") return <Banner tone="info">{UNAVAILABLE_TEXT}</Banner>;
+  if (boot.status === "error") {
+    return (
+      <Banner tone="danger">
+        {boot.text}{" "}
+        <button type="button" className="btn-link" onClick={() => void reload()}>
+          Try again
+        </button>
+      </Banner>
+    );
+  }
 
   return (
     <div className="companion-settings">
@@ -503,7 +693,11 @@ export function CompanionSettings({
       </div>
       {keychainDown && <Banner tone="attention">{KEYCHAIN_MISSING_TEXT}</Banner>}
 
-      <h2 className="section-title">Providers</h2>
+      <h3 className="section-title">Providers</h3>
+      <p className="field-note">
+        Each message goes to the default model of the default provider unless you pick another one
+        for that message in the conversation.
+      </p>
       {profiles.length === 0 && (
         <p className="card-sub">
           No provider yet. Companion talks only to a provider you add, using your own key.
@@ -522,8 +716,7 @@ export function CompanionSettings({
                     {p.isDefault && <span className="pill tone-neutral"> Default</span>}
                   </p>
                   <p className="card-sub">
-                    {providerKindLabel(p.kind)} · {p.model || "no model set"} ·{" "}
-                    {sendsToText(p.host)}
+                    {providerKindLabel(p.kind)} · {sendsToText(p.host)}
                   </p>
                   <p className="card-sub">
                     {p.keychainOk
@@ -552,6 +745,7 @@ export function CompanionSettings({
                   </button>
                 </div>
               </div>
+              <ModelList profile={p} onChanged={replace} say={setNotice} />
               <div className="usage">
                 <p>{usageError && !u ? "This month's usage couldn't be read." : b.line}</p>
                 {b.fraction !== null && (
@@ -577,9 +771,6 @@ export function CompanionSettings({
           >
             Add a provider
           </button>
-          <button type="button" className="btn btn-quiet" onClick={onDone}>
-            Back to conversations
-          </button>
         </div>
       )}
 
@@ -591,11 +782,7 @@ export function CompanionSettings({
           onSaved={(saved) => {
             setNotice({ tone: "success", text: `${saved.label} was saved.` });
             setEditing({ mode: "edit", id: saved.id });
-            onProfilesChanged(
-              profiles.some((p) => p.id === saved.id)
-                ? profiles.map((p) => (p.id === saved.id ? saved : p))
-                : [...profiles, saved],
-            );
+            replace(saved);
             void changed();
           }}
         />
@@ -603,7 +790,14 @@ export function CompanionSettings({
 
       {editingProfile && <KeyPanel profile={editingProfile} onChanged={changed} say={setNotice} />}
 
-      <ToolsSetting enabled={toolsEnabled} onChanged={onToolsChanged} say={setNotice} />
+      <ToolsSetting
+        enabled={toolsEnabled}
+        onChanged={(p) => {
+          setToolsEnabled(p.toolsEnabled);
+          providersChanged();
+        }}
+        say={setNotice}
+      />
 
       <Dialog
         open={deleting !== null}
@@ -626,7 +820,7 @@ export function CompanionSettings({
         }
         description={
           <p>
-            The provider profile and its key in your system keychain are deleted. Conversations
+            The provider, its models and its key in your system keychain are deleted. Conversations
             stay, but they can't be continued with this provider.
           </p>
         }

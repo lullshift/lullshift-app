@@ -4,12 +4,12 @@
 
 import { mockIPC } from "@tauri-apps/api/mocks";
 import type { AdapterView } from "../adapters";
-import type { CatalogModel, ModelCatalog } from "../companion/api";
+import type { CatalogModel, ModelCatalog, ProviderProfile } from "../companion/api";
 import type { ContextPrefs, SessionItem, UiPrefs } from "../context/api";
 import type { NotificationPrefs } from "../NotificationSettings";
 import type { Dashboard } from "../sessions";
 import { CATALOG, byId } from "./catalog";
-import { MESSAGES, PROFILE, SESSIONS, THREADS, ago } from "./data";
+import { LOCAL_PROFILE, MESSAGES, PROFILE, SESSIONS, THREADS, ago } from "./data";
 
 type Args = Record<string, unknown>;
 
@@ -280,7 +280,15 @@ function handle(cmd: string, a: Args): unknown {
 
     // Companion
     case "companion_profiles":
-      return [PROFILE];
+      return demoProfiles;
+    case "companion_add_model":
+    case "companion_remove_model":
+    case "companion_set_default_model":
+      return changeDemoModels(cmd, a);
+    case "companion_open_link":
+      // The demo never opens anything; the dialog flow is the same as in the app.
+      console.info("[demo] would open a link after confirmation");
+      return null;
     case "companion_threads":
       return THREADS;
     case "companion_messages":
@@ -334,6 +342,48 @@ function handle(cmd: string, a: Args): unknown {
   }
   console.info(`[demo] no pretend answer for "${cmd}"`);
   throw "unavailable";
+}
+
+/** Providers and models of the demo, changed in memory only. */
+let demoProfiles: ProviderProfile[] = [PROFILE, LOCAL_PROFILE];
+
+function changeDemoModels(cmd: string, a: Args): ProviderProfile {
+  const p = demoProfiles.find((x) => x.id === a.profileId);
+  if (!p) throw { kind: "notFound", message: "That provider no longer exists." };
+  const model = String(a.model ?? "");
+  let models = [...p.models];
+  if (cmd === "companion_add_model") {
+    if (!/^[A-Za-z0-9._:/@+-]{1,200}$/.test(model)) {
+      throw { kind: "invalidInput", message: "That model name isn't allowed." };
+    }
+    const label = typeof a.label === "string" && a.label.trim() ? a.label.trim() : null;
+    if (models.some((m) => m.model === model)) {
+      models = models.map((m) => (m.model === model ? { ...m, label } : m));
+    } else {
+      models.push({ model, label, isDefault: false });
+    }
+    if (a.makeDefault === true)
+      models = models.map((m) => ({ ...m, isDefault: m.model === model }));
+  } else if (cmd === "companion_remove_model") {
+    if (models.length <= 1) {
+      throw {
+        kind: "invalidInput",
+        message: "A provider keeps at least one model. Add another one before removing this one.",
+      };
+    }
+    models = models.filter((m) => m.model !== model);
+    const first = models[0];
+    if (first && !models.some((m) => m.isDefault)) models[0] = { ...first, isDefault: true };
+  } else {
+    if (!models.some((m) => m.model === model)) {
+      throw { kind: "notFound", message: "That item no longer exists." };
+    }
+    models = models.map((m) => ({ ...m, isDefault: m.model === model }));
+  }
+  const def = models.find((m) => m.isDefault) ?? models[0];
+  const next = { ...p, models, model: def?.model ?? p.model };
+  demoProfiles = demoProfiles.map((x) => (x.id === p.id ? next : x));
+  return next;
 }
 
 export function installDemoBackend(): void {
