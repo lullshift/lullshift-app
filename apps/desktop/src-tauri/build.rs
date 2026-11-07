@@ -87,6 +87,10 @@ fn main() {
             "companion_tool_decision",
             "companion_model_catalog",
             "companion_catalog_models",
+            // Import sessions (decision 34).
+            "import_scan",
+            "import_sessions",
+            "import_cancel",
         ]),
     ))
     .expect("failed to run tauri-build");

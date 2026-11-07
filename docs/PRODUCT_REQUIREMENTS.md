@@ -206,6 +206,7 @@ Target developers first for strong distribution and accessible hook integrations
 
 - Local collection only: adapter name, session ID, timestamps, status and user-approved task label. **No telemetry by default**; any future diagnostics are opt-in.
 - No background clipboard reading, screen recording, transcript upload or automatic repository browsing.
+- Exception the user starts (owner decision 34, ADR-024): **Import sessions** reads bounded parts of the agents' own local session logs, only when the user opens it, to list sessions to import. Titles are shown in the dialog and kept only with Task context consent; nothing is uploaded.
 - No personal activity feeds for employers.
 - Network access limited to user-initiated Git fetches, app update checks, BYOK Companion calls and, only when the user asks, the Companion model list from models.dev.
 - Secrets held by the app are limited to BYOK provider keys, stored in the OS keychain only. Git credentials remain with the user's Git tooling.

@@ -768,6 +768,33 @@ fn the_overview_names_no_task_text_unless_the_capture_opt_in_is_on() {
 }
 
 #[test]
+fn imported_sessions_are_never_presented_as_reported_states() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 5000);
+    let now = OffsetDateTime::now_utc();
+    with_store(&core, |s| {
+        s.import_session(
+            "codex",
+            "019db995-c01a-7b2e-9f3c-1234567890ab",
+            agent_core::SessionState::NeedsAttention,
+            now,
+            now,
+        )
+        .map(|_| ())
+    })
+    .expect("import");
+    let out = lookups::session_overview(&core, now).expect("overview");
+    assert!(!out.contains("needs attention for"), "{out}");
+    assert!(out.contains("imported from agent logs"));
+    let facts = with_store(&core, |s| {
+        session_facts(s, "codex", "019db995-c01a-7b2e-9f3c-1234567890ab")
+    })
+    .expect("facts");
+    assert!(facts.status.contains("guessed from the agent's log"));
+    assert!(!facts.status.contains("as last reported"));
+}
+
+#[test]
 fn break_suggestions_and_help_come_from_installed_activities_only() {
     let dir = tempfile::tempdir().expect("dir");
     let core = core_with(dir.path(), memory(), 5000);

@@ -736,7 +736,10 @@ fn version_13_database_upgrades_to_14_and_keeps_installs_without_consent() {
         .expect("install");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (13, 15));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (13, latest_version())
+    );
     assert!(
         report.backup.is_some(),
         "a backup is taken before migrating"
@@ -817,7 +820,10 @@ fn version_14_database_upgrades_to_15_and_keeps_consent_without_an_address() {
         .expect("install");
     }
     let (s, report) = Store::open(&path).expect("upgrade");
-    assert_eq!((report.from_version, report.to_version), (14, 15));
+    assert_eq!(
+        (report.from_version, report.to_version),
+        (14, latest_version())
+    );
     assert!(
         report.backup.is_some(),
         "a backup is taken before migrating"

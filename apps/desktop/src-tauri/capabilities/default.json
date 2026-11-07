@@ -95,6 +95,9 @@
     "allow-companion-set-tools-enabled",
     "allow-companion-tool-decision",
     "allow-companion-model-catalog",
-    "allow-companion-catalog-models"
+    "allow-companion-catalog-models",
+    "allow-import-scan",
+    "allow-import-sessions",
+    "allow-import-cancel"
   ]
 }

@@ -11,6 +11,7 @@ mod market;
 mod notify;
 mod packaged;
 pub mod repair_hooks;
+mod session_import;
 pub mod uninstall_hooks;
 mod webrtc;
 
@@ -185,7 +186,7 @@ async fn dashboard(app: AppHandle, core: tauri::State<'_, Arc<Core>>) -> Result<
                     dashboard
                         .sessions
                         .iter()
-                        .filter(|s| s.disconnected_utc.is_none())
+                        .filter(|s| s.disconnected_utc.is_none() && s.imported_utc.is_none())
                         .map(|s| &s.view),
                 ),
             );
@@ -202,12 +203,14 @@ fn current_face(core: &Core) -> Option<TrayFace> {
     let guard = core.store.lock().ok()?;
     let store = guard.as_ref()?;
     let records = store.sessions().ok()?;
-    let disconnected = store.disconnected_sessions().unwrap_or_default();
-    Some(face_for(&records, &disconnected, core.started_utc, now))
+    let mut untracked = store.disconnected_sessions().unwrap_or_default();
+    // Imported sessions hold only a guess from a log and never wake it either (ADR-024).
+    untracked.extend(store.imported_sessions().unwrap_or_default());
+    Some(face_for(&records, &untracked, core.started_utc, now))
 }
 
-/// The mascot's face for these sessions. Sessions of a disconnected tool never wake it
-/// (S05-T10).
+/// The mascot's face for these sessions. Sessions in `disconnected` (a disconnected tool,
+/// S05-T10, or imported from a log and not heard from since, ADR-024) never wake it.
 fn face_for(
     records: &[SessionRecord],
     disconnected: &std::collections::HashMap<(String, String), OffsetDateTime>,
@@ -636,7 +639,11 @@ pub fn run() {
             companion_commands::companion_usage,
             companion_commands::companion_prefs,
             companion_commands::companion_set_tools_enabled,
-            companion_commands::companion_tool_decision
+            companion_commands::companion_tool_decision,
+            // Import sessions (decision 34).
+            session_import::import_scan,
+            session_import::import_sessions,
+            session_import::import_cancel
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lullshift");
@@ -777,6 +784,40 @@ mod tests {
         );
         gone.insert(("claude-code".to_owned(), "b".to_owned()), t);
         assert_eq!(face_for(&records, &gone, started, t), TrayFace::Asleep);
+    }
+
+    #[test]
+    fn imported_sessions_never_wake_the_mascot() {
+        let t = OffsetDateTime::now_utc();
+        let mut store = Store::open_in_memory().expect("store");
+        store
+            .import_session("claude-code", "a", SessionState::NeedsAttention, t, t)
+            .expect("import");
+        let records = store.sessions().expect("sessions");
+        let mut untracked = store.disconnected_sessions().expect("disconnected");
+        untracked.extend(store.imported_sessions().expect("imported"));
+        let started = t - time::Duration::minutes(1);
+        assert_eq!(
+            face_for(&records, &untracked, started, t),
+            TrayFace::Asleep,
+            "a guessed 'may need you' is not a needs-you"
+        );
+        // The first real hook event takes over: now it may wake the mascot (and notify).
+        let event = agent_core::parse_event(
+            r#"{"schemaVersion":1,"eventId":"00000000-0000-4000-8000-000000000001","provider":"claude-code","providerSessionId":"a","eventType":"needs_attention","timestampUtc":"2026-11-07T10:00:00Z"}"#,
+        )
+        .expect("event");
+        let outcome = store.ingest(&event, t).expect("ingest");
+        assert_eq!(
+            change_notice(&outcome).map(|(n, _)| n),
+            Some(Notice::NeedsYou)
+        );
+        let records = store.sessions().expect("sessions");
+        assert!(store.imported_sessions().expect("imported").is_empty());
+        assert_eq!(
+            face_for(&records, &Default::default(), started, t),
+            TrayFace::Awake
+        );
     }
 
     #[test]

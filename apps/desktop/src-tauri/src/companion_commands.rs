@@ -1113,11 +1113,22 @@ fn session_facts(store: &Store, provider: &str, id: &str) -> Result<SessionFacts
     let record = store.session(provider, id)?.ok_or(StoreError::NotFound)?;
     let ctx = store.context(provider, id)?;
     let items = store.items(provider, id)?;
-    let status = format!(
-        "{} (as last reported at {}; it may have changed since)",
-        record.state.as_str(),
-        ts(record.last_seen_utc)
-    );
+    let imported = store
+        .imported_sessions()?
+        .contains_key(&(provider.to_owned(), id.to_owned()));
+    let status = if imported {
+        format!(
+            "{} (guessed from the agent's log when imported at {}; the agent has not reported a state since)",
+            record.state.as_str(),
+            ts(record.last_seen_utc)
+        )
+    } else {
+        format!(
+            "{} (as last reported at {}; it may have changed since)",
+            record.state.as_str(),
+            ts(record.last_seen_utc)
+        )
+    };
     let mut facts = SessionFacts {
         status,
         items: items

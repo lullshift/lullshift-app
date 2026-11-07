@@ -29,7 +29,7 @@ Each hook runs the Lullshift executable with `hook <agent> --data-dir <app data>
 
 ### What reaches Lullshift
 
-Only the session ID, the event type and the time. Never your prompts, code, file paths, the agent's replies or your email address.
+Only the session ID, the event type and the time. Never your prompts, code, file paths, the agent's replies or your email address. (The only other way anything reaches Lullshift is an [import you start](#importing-sessions-already-running).)
 
 One exception, off by default and separate for each tool: **Task context** on the Claude Code, Codex, Cursor and OpenCode cards in Integrations. When you turn it on for a tool, Lullshift also keeps the first prompt of each session (for Claude Code also what it asks you), so you can pick up where you left off. For Codex, Cursor and OpenCode nothing else is kept: not their replies, tool inputs, commands, files or your email. The consent dialog lists exactly what is kept. Strings that look like secrets are hidden, but that is a safety net, not a guarantee. You can clear captured text at any time.
 
@@ -84,6 +84,22 @@ Cursor also loads Claude Code hooks from `~/.claude/settings.json`. If both are 
 | Partly connected | Some hooks are missing. Choose **Repair connection** |
 | Can't connect | The file isn't valid, so Lullshift won't change it. Fix the file first |
 | Hooks turned off | Codex's `config.toml` has hooks turned off |
+
+## Importing sessions already running
+
+Lullshift hears about a session when its agent sends a hook event. A session that was already open when you started Lullshift or connected the agent stays invisible until then. To bring it in now:
+
+1. In **Sessions**, choose **Import sessions** (or **Import sessions already running** when the list is empty). Lullshift reads nothing until you do.
+2. The dialog lists sessions it found in the agents' own logs on this computer (Claude Code, Cursor, Codex, and OpenCode 2.x), newest first, with the agent, project folder, title, last activity and a guess at the state: **Working**, **Waiting for you**, **May need you** or **Unknown**.
+3. Type in the filter to narrow the list (agent, folder, title or the short ID). Tick the sessions you want, or **Select all shown**, then choose **Import (n)**. Sessions Lullshift already has are shown as "Already in Lullshift". **Cancel** imports nothing.
+
+What to expect:
+
+- Lullshift reads only the start and the end of each log file, never the whole file, and never uploads anything. OpenCode keeps its sessions in a database; Lullshift runs one read-only SQLite query on it and doesn't change or add files in OpenCode's folder. If it stops early (many logs, or more than 5 seconds), the dialog says the list may be incomplete, and for which tool. Logs on a network drive are not read; the dialog says so.
+- Choosing **Cancel** or closing the dialog while it is still reading stops the reading.
+- The title is shown in the dialog. It is kept with the imported session only if **Task context** is on for that tool. If the tool had no title of its own, the dialog shows your first prompt instead; with Task context on, that is kept as the session's captured intent, not as its title.
+- The state is a guess from the end of the log. Imported sessions are listed under **History** with a **From log** tag, and the Companion and exports call their state a guess from the log. They never notify you, wake the tray icon or pause an activity. As soon as the agent sends its next hook event, the tag goes away and Lullshift tracks the session as usual.
+- Cursor's logs can't tell "may need you", so Cursor sessions are never guessed that way. OpenCode support is experimental and only guesses Working or Unknown.
 
 ## Disconnecting
 
