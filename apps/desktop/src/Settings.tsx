@@ -2,6 +2,7 @@ import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { AppearanceSettings } from "./AppearanceSettings";
+import Integrations from "./Integrations";
 import { CompanionSettings } from "./companion/CompanionSettings";
 import { ContextSettings } from "./context/ContextSettings";
 import { NotificationSettings } from "./NotificationSettings";
@@ -65,14 +66,17 @@ export function CompanionSection({ focusRequest }: { focusRequest: number }) {
   );
 }
 
-/** Startup and notification preferences. Both are off until the user turns them on. */
+/** Startup, Integrations, appearance and notification preferences. Startup and notifications are off until the user turns them on. */
 export default function Settings({
   headingRef,
   companionFocus = 0,
+  integrationsFocus = 0,
 }: {
   headingRef: RefObject<HTMLHeadingElement | null>;
   /** Changes when the Companion section should open and take focus. */
   companionFocus?: number;
+  /** Changes when Integrations should scroll into view and take focus. */
+  integrationsFocus?: number;
 }) {
   const [autostart, setAutostart] = useState<Loadable<boolean>>({ status: "loading" });
   const [notify, setNotify] = useState<Loadable<boolean>>({ status: "loading" });
@@ -140,6 +144,8 @@ export default function Settings({
           <Banner tone="danger">The startup setting couldn't be read or changed.</Banner>
         )}
       </div>
+
+      <Integrations focusRequest={integrationsFocus} />
 
       <AppearanceSettings />
 

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   adapterErrorText,
   adapterStatusText,
@@ -29,12 +29,18 @@ const PILL: Record<AdapterStatus, { label: string; tone: string }> = {
   hooks_disabled: { label: "Hooks turned off", tone: "attention" },
 };
 
-/** Claude Code hook setup. Nothing is written until the user confirms the consent dialog. */
-export default function Integrations({
-  headingRef,
-}: {
-  headingRef: RefObject<HTMLHeadingElement | null>;
-}) {
+/**
+ * Claude Code hook setup, as a section of Settings (ADR-026). Nothing is written until the user
+ * confirms the consent dialog. `focusRequest` changes when something sent the user here (Connect
+ * on the Sessions page, the welcome): the section scrolls into view and its heading takes focus.
+ */
+export default function Integrations({ focusRequest = 0 }: { focusRequest?: number }) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    headingRef.current?.focus();
+    headingRef.current?.scrollIntoView?.({ block: "start" });
+  }, [focusRequest]);
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [dialog, setDialog] = useState<"install" | "uninstall" | null>(null);
   const [busy, setBusy] = useState(false);
@@ -102,11 +108,11 @@ export default function Integrations({
   const pill = view ? PILL[view.status] : null;
 
   return (
-    <section aria-labelledby="integrations-heading" className="view">
-      <header className="view-header">
-        <h1 id="integrations-heading" ref={headingRef} tabIndex={-1}>
+    <section aria-labelledby="integrations-heading" id="integrations" className="settings-section">
+      <header className="section-head">
+        <h2 id="integrations-heading" ref={headingRef} tabIndex={-1} className="section-title">
           Integrations
-        </h1>
+        </h2>
         <p className="view-lede">Connect the agents you use so Lullshift can follow them.</p>
       </header>
 

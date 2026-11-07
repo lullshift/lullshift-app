@@ -4,20 +4,24 @@
 
 import type { Help } from "@lullshift/activity-sdk";
 import { Dialog } from "../ui/Dialog";
+import { helpLabel } from "./library";
 
 interface Props {
   open: boolean;
   name: string;
   description: string;
   help: Help | null;
+  /** The activity's category: breaks say "How it works", the rest "How to play". */
+  category: string;
   onClose: () => void;
 }
 
-export function HelpDialog({ open, name, description, help, onClose }: Props) {
+export function HelpDialog({ open, name, description, help, category, onClose }: Props) {
+  const label = helpLabel(category);
   return (
     <Dialog
       open={open}
-      title={`How to play ${name}`}
+      title={`${label} ${name}`}
       onClose={onClose}
       actions={
         <button type="button" className="btn btn-primary" onClick={onClose}>
@@ -25,12 +29,12 @@ export function HelpDialog({ open, name, description, help, onClose }: Props) {
         </button>
       }
     >
-      {help ? <HelpBody help={help} /> : <NoHelp description={description} />}
+      {help ? <HelpBody help={help} label={label} /> : <NoHelp description={description} />}
     </Dialog>
   );
 }
 
-function HelpBody({ help }: { help: Help }) {
+function HelpBody({ help, label }: { help: Help; label: string }) {
   return (
     <div className="help">
       <p className="help-summary">{help.summary}</p>
@@ -41,7 +45,7 @@ function HelpBody({ help }: { help: Help }) {
         </section>
       )}
       <section className="help-section">
-        <h3 className="help-heading">How to play</h3>
+        <h3 className="help-heading">{label}</h3>
         <ol className="help-steps">
           {help.howToPlay.map((step, i) => (
             <li key={i}>{step}</li>
@@ -81,7 +85,7 @@ function NoHelp({ description }: { description: string }) {
   return (
     <div className="help">
       {description && <p className="help-summary">{description}</p>}
-      <p className="help-missing">This activity doesn't include how-to-play help yet.</p>
+      <p className="help-missing">This activity doesn't include help yet.</p>
     </div>
   );
 }

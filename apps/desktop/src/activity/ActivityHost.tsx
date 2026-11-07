@@ -22,6 +22,7 @@ import { Icon } from "../ui/Icon";
 import { Mascot } from "../ui/Mascot";
 import { loadContent, type ContentProblem } from "./content";
 import { HelpDialog } from "./HelpDialog";
+import { helpLabel } from "./library";
 import { PausedStats } from "./PausedStats";
 import { usePreview } from "./usePreview";
 
@@ -30,6 +31,8 @@ export interface ActivityInfo {
   name: string;
   description: string;
   category: string;
+  /** Manifest tags (untrusted): searchable and matched to the host's own chips, never shown. */
+  tags?: string[];
   version: string;
   storage: boolean;
   savedUtc: string | null;
@@ -457,7 +460,7 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
         </span>
         <button type="button" className="btn btn-quiet" onClick={openHelp}>
           <Icon name="help" size={18} />
-          How to play
+          {helpLabel(activity.category)}
         </button>
         {phase.kind === "running" && (
           <button type="button" className="btn btn-quiet" onClick={() => void freeze("user")}>
@@ -489,6 +492,7 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
           <PausedCard
             phase={phase}
             name={activity.name}
+            category={activity.category}
             summary={summary}
             playedNow={playedNow}
             playedTotal={activity.playedSeconds + playedNow}
@@ -521,6 +525,7 @@ export function ActivityHost({ activity, active, pause, onClose, onGoToSessions 
         name={activity.name}
         description={activity.description}
         help={activity.help}
+        category={activity.category}
         onClose={() => setHelpOpen(false)}
       />
     </section>
@@ -564,6 +569,7 @@ function InvalidPackCard({
 function PausedCard({
   phase,
   name,
+  category,
   summary,
   playedNow,
   playedTotal,
@@ -574,6 +580,7 @@ function PausedCard({
 }: {
   phase: Extract<Phase, { kind: "paused" }>;
   name: string;
+  category: string;
   summary: SummaryItem[] | null;
   playedNow: number;
   playedTotal: number;
@@ -639,7 +646,7 @@ function PausedCard({
         </button>
         <button type="button" className="btn btn-quiet" onClick={onHelp}>
           <Icon name="help" size={18} />
-          How to play
+          {helpLabel(category)}
         </button>
       </div>
     </div>

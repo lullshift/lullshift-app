@@ -66,8 +66,17 @@ Each colour family has exactly one job:
 
 ## Layout
 
-- **Shell:** a sidebar holds the mark, the navigation with counts, and a "Local · Offline" note; content uses the full window width by default. Settings → Appearance offers "Comfortable", which keeps text views to 760 px and wide views (Sessions) to 1,120 px. The choice is saved with the other interface preferences.
-- **Narrow windows:** below 720 px the sidebar becomes a top bar.
+- **Shell** (ADR-026): a sidebar holds the mark, the navigation and a "Local only" note. Top to bottom: **Home** (the start page), **Sessions**, the group label **While you wait** with **Play**, **Rest**, **Continue** and **Companion**, then **Settings** at the bottom. Play, Rest and Continue show a quiet grey count (Continue only when something is saved); the orange badge stays reserved for "needs you" (Sessions) and Companion replies. Integrations is a section of Settings, not a nav item. Content uses the full window width by default. Settings → Appearance offers "Comfortable", which keeps text views to 760 px and wide views (Sessions) to 1,120 px. The choice is saved with the other interface preferences.
+- **Narrow windows:** below 720 px the sidebar becomes a top bar of icons (the group label and counts are dropped; every button keeps its name for screen readers).
+- **Home** (ADR-026 section 2, chosen by the product owner from mockups, 2026-11-07). One question: what do I do while my agents work? Top to bottom:
+  - **Status with the mascot.** One heading and one line ("Your agents are working", "All quiet", "No agents yet", "Agent status is unknown"); never a claim that a task is done. When something needs you, the status becomes an orange card naming the tool ("Claude Code needs you") with one **Go to session** button.
+  - **Agent strip:** up to four live sessions as small chips (state pill, tool, session name or short ID, time), with an **All sessions** link when there are more. A session that is stale or not confirmed says "not confirmed".
+  - **Fits your wait:** one suggestion card. Saved activity first (**Resume**); otherwise a rest for short or unknown waits and a game for waits of about 4 minutes or more. The line above reads "Claude Code usually takes about 6 min" (at least 5 finished stretches in 14 days, from stored events), "For a short break", or "If you'd like a break". **Shuffle** walks a date-seeded order. Never a countdown or a finish time.
+  - **Three doors:** Play, Rest, Think ahead (opens Companion).
+  - **Pick up where you left off:** up to four saved activities with **Resume**; hidden when none.
+  - Loading, error, empty and unknown states are designed: skeletons, a retry link, "No activities are turned on" with **Manage activities**.
+- **Play and Rest** (ADR-026 section 4): the library split by manifest category (arcade, interactive, productivity are Play; break is Rest). Each page has a header with a quiet **Manage activities** link, a search box (name, description, tags), filter chips from a fixed host-owned tag map (third-party tags are searchable but never shown), a **Continue** row of that page's saved items, and the card grid. The help link reads **How to play** (Play) or **How it works** (Rest) and the dialog title follows. **Manage** and **Marketplaces** open from the quiet link, with **Back to Play** or **Back to Rest**.
+- **Continue:** every saved activity, newest first, as rows with the kind, "saved N min ago", **Resume**, **Start over** and the help link. No counts, totals or streaks anywhere.
 - **Sessions view** (layout chosen by the product owner from mockups, 2026-11-05). It is built for several agent tools at once (Claude Code now, Cursor in v1):
   - A bar with **Live** and **History** tabs (with counts), a search box (session ID or tool name) and tool filter chips (All tools, then each tool). The search and chips apply to both tabs.
   - A one-line summary under the bar ("Claude Code needs you · 3 more are still working."), with a dot in the state's colour. It always counts every session, not just the filtered ones.
@@ -76,8 +85,8 @@ Each colour family has exactly one job:
   - **History:** finished, idle and unknown sessions in a full-width table (Tool, Session, State, Last seen) that scrolls inside itself. Click a column header to sort; newest first by default.
   - Below 720 px wide or 520 px tall, the fixed height is dropped and the page scrolls as one; below about 480 px of content width, the two columns stack.
 - **Session card:** tool name and state pill on the first line; short session ID and relative time ("2 min ago", exact time on hover) on the second; a reason line when the state isn't directly observed.
-- **Activities view:**
-  - A grid of cards. Each shows a kind label (Break, Game), the name, a description and "Saved 2 min ago" when there is progress. The buttons are **Start**, or **Resume** plus **Start over**.
+- **Activity cards** (Play, Rest):
+  - A grid of cards. Each shows a kind label (Rest, Game, Focus, Play), the name, a description and "Saved 2 min ago" when there is progress (no played-time totals). The buttons are **Start**, or **Resume** plus **Start over**.
   - A running activity fills the content column. Its title bar has the name, **Pause** and **Close**. The activity's own page sits in a rounded frame.
   - The paused card shows the sleeping mascot, "<Name> is paused" and "Your progress is saved". When an agent caused the pause, the heading says which tool needs you ("Claude Code needs you"), with **Go to Sessions** and **Keep playing**. An activity that stopped answering says so and keeps its last save.
   - Activities follow the app theme and reduced-motion setting, which the host passes to them at start.
