@@ -528,7 +528,7 @@ impl Store {
         };
         tx.execute(
             "UPDATE sessions SET state = ?3, state_timestamp_utc = ?4, ended_reason = ?5,
-               process_pid = NULL, process_start = NULL
+               process_pid = NULL, process_start = NULL, imported_utc = NULL
              WHERE provider = ?1 AND provider_session_id = ?2",
             params![
                 provider,
@@ -545,7 +545,8 @@ impl Store {
     /// Fills a gap from the agent's own log (decision 35, ADR-025): the session Lullshift
     /// already tracks takes `state`, a guess, only if the log is newer than Lullshift's own last
     /// word by more than [`LOG_HINT_MARGIN`]. The session is marked like an imported one (a
-    /// guess, not reported), so the next real event replaces it.
+    /// guess, not reported), so the next real event replaces it. The recorded process, if any,
+    /// is kept: the log says nothing about it, and the process check still covers the session.
     ///
     /// Never creates a session. Leaves alone: unknown sessions, finished sessions (a reported
     /// end is a fact, and logs are written after a session ends), sessions Lullshift ended
@@ -582,7 +583,7 @@ impl Store {
         }
         tx.execute(
             "UPDATE sessions SET state = ?3, state_timestamp_utc = ?4, last_seen_utc = ?4,
-               last_received_utc = ?5, imported_utc = ?5, process_pid = NULL, process_start = NULL
+               last_received_utc = ?5, imported_utc = ?5
              WHERE provider = ?1 AND provider_session_id = ?2",
             params![
                 provider,

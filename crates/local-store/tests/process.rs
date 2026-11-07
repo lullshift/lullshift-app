@@ -386,8 +386,8 @@ fn a_newer_log_fills_the_gap_as_a_marked_guess_and_a_real_event_takes_over() {
     assert_eq!(s.event_count().expect("count"), 1, "no event is written");
     assert_eq!(
         s.session_process(P, "a").expect("read"),
-        None,
-        "old process is not trusted"
+        Some(PROC),
+        "the process check still covers the session"
     );
     // Idempotent.
     assert!(
@@ -409,6 +409,38 @@ fn a_newer_log_fills_the_gap_as_a_marked_guess_and_a_real_event_takes_over() {
         }
     ));
     assert!(s.imported_sessions().expect("marked").is_empty());
+}
+
+#[test]
+fn a_guess_from_the_log_gives_way_to_the_inferred_end_when_the_process_is_gone() {
+    let mut s = Store::open_in_memory().expect("open");
+    working_with_process(&mut s, "a", 1);
+    let now = T0 + minutes(40);
+    assert!(
+        s.apply_log_hint(P, "a", SessionState::Idle, T0 + minutes(30), now)
+            .expect("hint")
+    );
+    assert!(
+        s.end_session_process_gone(P, "a", PROC, now, now + minutes(1))
+            .expect("end")
+    );
+    assert!(s.imported_sessions().expect("marked").is_empty());
+    assert!(s.ended_reasons().expect("reasons").contains_key(&key("a")));
+    // And a log written afterwards never resurrects it.
+    assert!(
+        !s.apply_log_hint(
+            P,
+            "a",
+            SessionState::Working,
+            now + minutes(30),
+            now + minutes(31)
+        )
+        .expect("hint")
+    );
+    assert_eq!(
+        s.session(P, "a").expect("read").expect("row").state,
+        SessionState::Ended
+    );
 }
 
 #[test]
