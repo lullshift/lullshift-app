@@ -9,6 +9,7 @@ mod context;
 mod hook_exe;
 mod market;
 mod notify;
+mod packaged;
 pub mod repair_hooks;
 pub mod uninstall_hooks;
 mod webrtc;
@@ -564,6 +565,9 @@ pub fn run() {
             adapters::opencode::opencode_status,
             adapters::opencode::opencode_install,
             adapters::opencode::opencode_uninstall,
+            packaged::packaged_context,
+            packaged::connection_health,
+            packaged::connection_fix_stale,
             notification_prefs,
             set_notification_prefs,
             activities::activities_list,
@@ -684,6 +688,7 @@ mod tests {
             "allow-marketplace-update",
             "allow-activity-uninstall",
             "allow-activity-set-enabled",
+            "allow-connection-fix-stale",
         ];
         let mut granted = 0;
         for (file, cap) in capabilities() {

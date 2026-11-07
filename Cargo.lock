@@ -3472,6 +3472,7 @@ dependencies = [
  "tempfile",
  "time",
  "webkit2gtk",
+ "windows-package",
  "zeroize",
 ]
 
@@ -6649,6 +6650,13 @@ checksum = "6e2e40844ac143cdb44aead537bbf727de9b044e107a0f1220392177d15b0f26"
 dependencies = [
  "windows-core",
  "windows-link",
+]
+
+[[package]]
+name = "windows-package"
+version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
