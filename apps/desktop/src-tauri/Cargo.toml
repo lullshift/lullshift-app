@@ -36,8 +36,13 @@ tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
+# Opens a confirmed http(s) link in the default browser (decision 36). Used from Rust only, behind
+# `companion_open_link`; the plugin is not registered, so the webview gets no opener permission.
+tauri-plugin-opener = "=2.7.2"
 tauri-plugin-single-instance = "2"
 time.workspace = true
+# Already in the lockfile through Tauri; parses and re-serialises links before opening them.
+url = "2.5"
 sha2.workspace = true
 zeroize = "1.9"
 # The one Win32 call that tells whether Lullshift runs inside another app's package

@@ -150,8 +150,8 @@ fn constraints_refuse_bad_rows_even_in_raw_sql() {
     let conn = Connection::open(dir.path().join("l.db")).expect("raw");
     let ins = |kind: &str, url: &str, def: i64| {
         conn.execute(
-            "INSERT INTO companion_profiles (id, kind, label, base_url, model, is_default, created_utc, updated_utc)
-             VALUES (hex(randomblob(4)), ?1, 'l', ?2, 'm', ?3, 't', 't')",
+            "INSERT INTO companion_profiles (id, kind, label, base_url, is_default, created_utc, updated_utc)
+             VALUES (hex(randomblob(4)), ?1, 'l', ?2, ?3, 't', 't')",
             rusqlite::params![kind, url, def],
         )
     };

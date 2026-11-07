@@ -79,6 +79,8 @@ export interface UiPrefs {
   contentWidth: ContentWidth;
   /** The first-launch welcome was shown and closed or skipped; it is never shown again. */
   onboardingDone: boolean;
+  /** The Companion section of Settings is expanded (decision 36). */
+  companionSettingsOpen?: boolean;
 }
 
 const k = (s: SessionKey) => ({ provider: s.provider, sessionId: s.sessionId });

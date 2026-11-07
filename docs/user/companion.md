@@ -6,7 +6,7 @@ Lullshift has no hosted AI. Until you add a provider, Companion sends nothing.
 
 ## Adding a provider
 
-Open **Companion**, then **Settings**, then **Add a provider**.
+Open **Settings** and expand the **Companion** section (or press **Provider settings** in Companion, which opens it for you). Then press **Add a provider**. Lullshift remembers whether the section is expanded.
 
 | Provider type | Where messages go |
 |---|---|
@@ -14,18 +14,22 @@ Open **Companion**, then **Settings**, then **Add a provider**.
 | OpenAI | `https://api.openai.com/v1` |
 | OpenAI-compatible | The base URL you enter, including the version part, for example `https://openrouter.ai/api/v1` or `http://localhost:11434/v1`. Plain `http` is allowed only for `localhost`, `127.0.0.1` and `::1` |
 
-Give it a name, a model and, if you like, a monthly token budget. Companion shows "Sends to" with the host name, so you always know where your text goes.
+Give it a name, a first model and, if you like, a monthly token budget. Companion shows "Sends to" with the host name, so you always know where your text goes.
 
-### Browsing models from models.dev
+### Several models per provider
+
+A provider can have up to 50 models. Under the provider, **Add a model…** opens the model picker. **Make default** chooses the model used when you don't pick one, and **Remove** takes one off the list (a provider always keeps at least one). The provider marked **Default** and its default model are what each new message starts with.
+
+### The model picker and models.dev
 
 You can type the model name yourself, or pick one from the public list at [models.dev](https://models.dev):
 
-1. Under the model field, press **Load model list from models.dev**. This sends one request to models.dev. Your keys and messages are not sent. Nothing contacts models.dev before you press it.
+1. Press **Choose from list…** (when adding a provider) or **Add a model…**. The model picker opens. The first time after Lullshift starts, it loads the list: this sends one request to models.dev, and the picker says so. Your keys and messages are not sent. Nothing contacts models.dev before you open the picker. Later, the picker shows the list from memory without asking again.
 2. For Anthropic and OpenAI you see that provider's models. For an OpenAI-compatible server, find the matching models.dev provider by name or id and choose it. This only picks which list to browse: it never fills in the base URL; you still type your server's address.
-3. Narrow the list: search by name, id or family; **Supports tools**; **Reasoning**; **Hide models older than a year**. Sort by newest (the default), cheapest input price, or name. Each model shows its context size and its price per million input and output tokens ("price unknown" when models.dev has none).
-4. Choose a model to put its name in the model field. Then save, and use **Test connection**.
+3. Narrow the list: search by name, id or family; **Supports tools**; **Reasoning**; **Hide models older than a year**. Sort by newest (the default), cheapest input price, or name. Each model shows its context size and its price per million input and output tokens ("price unknown" when models.dev has none). Use the arrow keys, Home, End, Page Up and Page Down to move through the list, and Enter to choose.
+4. Choose a model. Or type a name that isn't in the list under **Use a model name not in the list**. Then use **Test connection**.
 
-The list stays in memory until you quit Lullshift; it is never saved to disk. **Refresh** asks models.dev again and keeps your list if nothing changed; the status line then shows both when the list was loaded and when it was last checked. models.dev is a community list and may be out of date, and being listed doesn't mean your key can use a model: **Test connection** checks. If the list can't be loaded (for example, you are offline), you can still type the model name.
+The list stays in memory until you quit Lullshift; it is never saved to disk. **Refresh** asks models.dev again and keeps your list if nothing changed; the status line then shows both when the list was loaded and when it was last checked. models.dev is a community list and may be out of date, and being listed doesn't mean your key can use a model: **Test connection** checks. If the list can't be loaded (for example, you are offline), you can still type the model name in the picker.
 
 ## Your key
 
@@ -47,13 +51,32 @@ When you write a message, you choose the context to share with it:
 
 Before sending with context, you see a preview of exactly what will be attached. If the context changes after you previewed it, Lullshift asks you to review it again.
 
+Press **Options…** under the message box to choose. The choice then shows as a badge in the message box: click it to change it, or press its **×** to go back to No context.
+
 The next message starts with the choice you used last, so you don't have to pick it again. You still see the exact text in a preview, and confirm it, before every send. If the session you used last is gone, the composer goes back to No context and tells you.
 
 Context goes only with the message you chose it for. Earlier messages are sent as history only to the same host they went to before.
 
+## Writing and sending
+
+- **Enter** sends. **Shift+Enter** starts a new line. **Ctrl+Enter** also sends. While you type with an input method (for example Japanese or Chinese), Enter confirms the text and doesn't send.
+- The model button under the message box shows the model the message will use, for example "claude-sonnet · Anthropic". Press it to pick another configured model for **this message only**; after sending, it goes back to the default.
+- **Retry** uses the model the failed message was meant for, if it is still set up for that provider.
+
+## Conversations
+
+The list on the left holds your conversations. Each one has a **⋮** button ("More actions") with **Rename** and **Delete**; use the arrow keys to move in the menu and Escape to close it.
+
 ## Replies appear as they are written
 
-Replies stream in as the provider writes them, as plain text with no links. A screen reader hears a short status ("Companion is replying") and then the finished reply once, not every word. If the connection drops part-way, the message is marked as not sent and you can try again; the part that arrived still counts toward your budget.
+Every answer shows which model and provider wrote it, for example "Answered by claude-sonnet · Anthropic". Answers from before Lullshift kept this say "Model unknown".
+
+Replies stream in as the provider writes them, as plain text. Two things are shown specially:
+
+- **Code blocks** (text between ``` lines) appear in their own box with a **Copy** button. About 20 common languages are coloured (for example Python, TypeScript, Rust, Go, shell, SQL, JSON and YAML); others are shown plain.
+- **Links** that start with `http://` or `https://` can be clicked. Lullshift first asks **Open this link?** and shows the full address, with any non-English letters in the host spelled out the way the browser will see them (for example `xn--…`), so a look-alike address can't hide. If the address is on your computer or local network (for example `localhost`, `192.168.…` or a `.local` name), the confirmation also warns you that opening it sends a request to a service there. Nothing opens unless you press **Open in browser**. Links with a user name or password in them are not clickable.
+
+Formatting such as bold, headings or tables is shown as the plain text the provider sent. A screen reader hears a short status ("Companion is replying") and then the finished reply once, not every word. If the connection drops part-way, the message is marked as not sent and you can try again; the part that arrived still counts toward your budget.
 
 ## Lookups (off by default)
 

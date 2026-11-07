@@ -30,7 +30,8 @@ type ProviderProfile = {
   label: string;
   baseUrl: string; // fixed for anthropic/openai; user-entered for openaiCompatible
   host: string; // shown as "Sends to <host>"
-  model: string;
+  model: string; // the provider's default model (decision 36)
+  models: { model: string; label: string | null; isDefault: boolean }[]; // decision 36; exactly one isDefault
   monthlyTokenBudget: number | null;
   isDefault: boolean;
   hasKey: boolean; // asked of the keychain; false when the keychain can't be read
@@ -52,6 +53,8 @@ type Message = {
   attachedContext: string | null; // the text that was sent with it
   scopeKind: "none" | "sessionSummary" | "selectedNotes";
   host: string | null; // host[:port] it was sent to (user message) or came from (reply)
+  profileId: string | null; // decision 36: the provider used; null for messages from before, or after the provider was deleted
+  model: string | null; // decision 36: the model used; null for messages from before (shown as "Model unknown")
   status: "sent" | "failed" | "pending";
   error: { kind: string; message: string } | null;
   inputTokens: number | null;
@@ -76,6 +79,15 @@ type Usage = { profileId: string; month: string; inputTokens: number; outputToke
 - `companion_profiles() -> ProviderProfile[]`
 - `companion_save_profile({ profile: { id?, kind, label, baseUrl?, model, monthlyTokenBudget?, isDefault } }) -> ProviderProfile`
   - Validates the base URL: https, or http for loopback only, with no userinfo, query or fragment.
+  - `model` becomes the provider's default model, and is added to its model list if it isn't there yet (decision 36).
+- `companion_add_model({ profileId, model, label?, makeDefault }) -> ProviderProfile` (decision 36)
+  - `model` must pass `valid_model_id` (1 to 200 bytes of ASCII letters, digits and `. _ : / @ + -`). `label` is optional plain text, 1 to 80 characters after cleaning (the UI passes the models.dev name). Adding a listed model updates its label. Up to 50 models per provider. Nothing is sent anywhere.
+- `companion_remove_model({ profileId, model }) -> ProviderProfile` (decision 36)
+  - Refuses the last model (`invalidInput`: "A provider keeps at least one model…"). Removing the default makes the oldest remaining model the default.
+- `companion_set_default_model({ profileId, model }) -> ProviderProfile` (decision 36)
+  - Fails if the model isn't in the provider's list.
+- `companion_open_link({ url }) -> void` (decision 36)
+  - Opens a link from a reply in the default browser, after the user confirmed it in the UI. Accepts only `http://` or `https://` URLs with a host, no user name or password, no control characters or spaces, at most 2,048 characters; anything else is `invalidInput`. The URL opened is the parser's ASCII form (punycode host), which is what the UI showed. Uses `tauri_plugin_opener::open_url` from Rust; the opener plugin is not registered, so the WebView has no opener permission of its own.
 - `companion_delete_profile({ id }) -> void`
   - Deletes the keychain entry too.
 - `companion_set_key({ profileId, key }) -> void`
@@ -90,14 +102,16 @@ type Usage = { profileId: string; month: string; inputTokens: number; outputToke
 - `companion_delete_thread({ id }) -> void`
 - `companion_messages({ threadId }) -> Message[]`
 - `companion_preview_context({ scope }) -> ContextPreview`
-- `companion_send({ threadId, profileId, text, scope, expectedContextSha256, requestId, onEvent }) -> Message`
+- `companion_send({ threadId, profileId, model, text, scope, expectedContextSha256, requestId, onEvent }) -> Message`
+  - Decision 36: `profileId` and `model` are both required and name the pair used for this message only. `model` must pass `valid_model_id` and be in that provider's model list; otherwise `invalidInput` ("That model isn't set up for this provider. Add it in Settings, then try again."), nothing stored, nothing sent. The user message and the reply store `profileId` and `model`.
   - Sprint 12: the reply streams. `requestId` is chosen by the UI (8 to 64 characters of `A-Za-z0-9_-`) and `onEvent` is a Tauri `Channel`. Events (all carry `requestId`, and the UI ignores other ids): `started`, `round { round }`, `delta { text }` (already cleaned), `toolRequest { callId, tool, label, arguments, resultText, host }`, `toolSkipped { tool, text }`, `toolResolved { callId, approved }`. Also `toolNotice { reason, tool? }` (owner decision 27.6): `reason` is `unknown`, `malformed` or `limit`; `tool` only if a short safe identifier; never the model's arguments. Each message in `companion_messages` history carries `toolNotices` (`id, round, reason, tool, createdAt`) beside `toolCalls`. The promise still ends with the stored assistant message, or an error.
   - `expectedContextSha256` is the `sha256` of the preview the user confirmed: lowercase hex SHA-256 of the exact attached text, or `null` for scope `none`. The backend rebuilds the context and compares. On any mismatch (including a missing hash for a scope that attaches text, or a hash given for `none`) it returns `invalidInput` with "The context changed since you previewed it. Review it again.", stores nothing and makes no request. The UI then shows a new preview.
   - Only earlier messages that were sent to the same host (`host[:port]`) as this send are repeated as history. Messages that went to another host are never replayed to this one.
   - Returns the assistant message.
   - The user message is stored first, as `pending`, then marked `sent` or `failed`.
   - The context attached is built again on the backend from the scope. The text must match what the preview would show.
-- `companion_retry({ messageId, requestId, onEvent }) -> Message`
+- `companion_retry({ messageId, profileId, model, requestId, onEvent }) -> Message`
+  - Decision 36: `profileId` and `model` are checked like `companion_send`. The UI passes the failed message's own pair if it is still configured, otherwise the current choice. The host rule below still applies, so a retry can't move the attached context to another host.
   - Resends a failed user message with the same attached context. If the profile's host differs from the host stored on the message, it returns `invalidInput` ("This provider's address changed. Send the message again to review it.") and sends nothing.
 - `companion_cancel({ threadId }) -> void`
   - Returns at once and frees the thread at once (Sprint 12, decision 20.1): a new send in the same thread can start immediately. The old worker is abandoned and anything it still receives is discarded (never stored, never sent to the UI). The cancelled call is still counted in usage when its worker finishes: the provider's numbers if reported, otherwise an estimate from the request and the text received. The cancelled message says the request may already have reached the provider.
@@ -109,8 +123,8 @@ type Usage = { profileId: string; month: string; inputTokens: number; outputToke
 - `companion_usage() -> Usage[]`
   - Covers the current month.
 - `companion_model_catalog({ mode: "cached" | "load" | "refresh" }) -> ModelCatalog | null` (decision 32)
-  - `cached`: memory only. Returns the list loaded earlier in this app run, or `null`. Never contacts the network; the UI calls it when the form opens.
-  - `load`: the list from memory, or one GET of `https://models.dev/api.json` if it isn't loaded yet (`fromMemory` says which).
+  - `cached`: memory only. Returns the list loaded earlier in this app run, or `null`. Never contacts the network; the model picker calls it first when it opens.
+  - `load`: the list from memory, or one GET of `https://models.dev/api.json` if it isn't loaded yet (`fromMemory` says which). Decision 36: the model picker calls it when it opens and `cached` returned `null`, so the first opening in an app run loads the list; later openings use memory.
   - `refresh`: one GET with `If-None-Match` (the stored ETag, if any). A 304 keeps the list and sets `unchanged: true`. A failed refresh keeps the old list in memory.
   - Concurrent `load`/`refresh` calls share one request (single-flight).
   - `ModelCatalog = { loadedAt: string /* RFC 3339 UTC, when models.dev last sent the list */, checkedAt: string /* when it last sent or confirmed it; equals loadedAt until a refresh finds no change */, unchanged: boolean /* this call was a refresh answered 304 */, fromMemory: boolean, providers: { id, name, modelCount }[] }`.
@@ -129,7 +143,7 @@ No command returns key material. No command lets the frontend choose arbitrary h
 
 These are the places where the backend adds detail to the contract above or differs from it. The UI should rely on this section.
 
-- **Argument names.** Tauri maps camelCase JS arguments to the Rust parameters: `{ profile }`, `{ id }`, `{ profileId, key }`, `{ threadId, profileId, text, scope }`, `{ messageId }`, `{ scope }`. `companion_new_thread` takes `{ title? }`.
+- **Argument names.** Tauri maps camelCase JS arguments to the Rust parameters: `{ profile }`, `{ id }`, `{ profileId, key }`, `{ threadId, profileId, model, text, scope }`, `{ messageId, profileId, model }`, `{ scope }`. `companion_new_thread` takes `{ title? }`.
 - **Base URLs.** `anthropic` is fixed to `https://api.anthropic.com` (the backend adds `/v1/messages`). `openai` is fixed to `https://api.openai.com/v1` (adds `/chat/completions`). For `openaiCompatible` the user's base URL should include the version segment, such as `https://openrouter.ai/api/v1` or `http://localhost:11434/v1`; the backend adds `/chat/completions`. A `baseUrl` sent with `anthropic` or `openai` is ignored. A trailing slash is removed. Only `localhost`, `127.0.0.1` and `::1` may use `http`.
 - **`companion_save_profile`.** If `id` is given it must exist (`notFound` otherwise). The first profile becomes the default whatever `isDefault` says. Asking for `isDefault: true` clears it on the others. A profile cannot be un-defaulted directly; make another one the default. Model names may use letters, digits and `. _ : / @ + -` only. `monthlyTokenBudget` must be 1 or more, or `null` for no limit. Up to 20 profiles.
 - **Keys.** 8 to 512 characters, visible ASCII only, **no spaces** (stricter than "printable").
@@ -153,5 +167,6 @@ These are the places where the backend adds detail to the contract above or diff
 - **`companion_test`.** Sends one request with the text "Reply with the single word: ok" and 16 output tokens. Its tokens count toward the budget, and it is refused when the budget is used up.
 - **`Usage`.** One entry per profile for the current UTC month (profiles with no use show zeros). If a provider reports no usage, tokens are estimated from the text length so the budget still moves.
 - **Budget rule.** Sending is blocked when this month's input plus output tokens are at or over the limit. A call that starts under the limit may end over it.
-- **Reply text.** Bidi controls (U+202A-202E, U+2066-2069, U+200E-200F, U+061C) and invisible formatting characters (zero-width, soft hyphen, BOM, U+2028, U+2029 and the rest of `agent_core::text::is_invisible`) are removed. Control characters other than line breaks and tabs are removed, and replies are cut at 100,000 characters. Render as plain text.
+- **Reply rendering (decision 36).** The UI renders replies as plain text except fenced code blocks (highlighted with lowlight for an explicit list of about 20 languages, no auto-detection, skipped above 100,000 characters or 3,000 lines; a Copy button) and `http`/`https` links, which open only through a confirmation dialog and `companion_open_link`. No HTML string is built from model output.
+- **Reply text.** Bidi controls (U+202A-202E, U+2066-2069, U+200E-200F, U+061C) and invisible formatting characters (zero-width, soft hyphen, BOM, U+2028, U+2029 and the rest of `agent_core::text::is_invisible`) are removed. Control characters other than line breaks and tabs are removed, and replies are cut at 100,000 characters. Render as plain text (see Reply rendering above).
 - **Permissions.** Each command has its own `allow-companion-*` permission in `capabilities/default.json` (main window only).

@@ -19,6 +19,7 @@ describe("interface preferences", () => {
       detailPanelPinned: true,
       contentWidth: "full",
       onboardingDone: false,
+      companionSettingsOpen: false,
     });
   });
 
@@ -45,12 +46,14 @@ describe("interface preferences", () => {
       detailPanelPinned: false,
       contentWidth: "full",
       onboardingDone: true,
+      companionSettingsOpen: false,
     });
     await updateUiPrefs({ detailPanelPinned: true }, save);
     expect(save).toHaveBeenLastCalledWith({
       detailPanelPinned: true,
       contentWidth: "full",
       onboardingDone: true,
+      companionSettingsOpen: false,
     });
   });
 

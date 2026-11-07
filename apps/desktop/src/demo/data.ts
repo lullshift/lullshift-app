@@ -198,8 +198,27 @@ export const PROFILE: ProviderProfile = {
   baseUrl: "https://api.anthropic.com",
   host: "api.anthropic.com",
   model: "claude-sonnet-5-5",
+  models: [
+    { model: "claude-sonnet-5-5", label: null, isDefault: true },
+    { model: "claude-haiku-5-5", label: "Haiku (quick answers)", isDefault: false },
+  ],
   monthlyTokenBudget: 500_000,
   isDefault: true,
+  hasKey: true,
+  keychainOk: true,
+};
+
+/** A second, local provider, so the demo shows models grouped by provider. */
+export const LOCAL_PROFILE: ProviderProfile = {
+  id: "demo-local",
+  kind: "openaiCompatible",
+  label: "Local server",
+  baseUrl: "http://localhost:11434/v1",
+  host: "localhost:11434",
+  model: "llama3.3",
+  models: [{ model: "llama3.3", label: null, isDefault: true }],
+  monthlyTokenBudget: null,
+  isDefault: false,
   hasKey: true,
   keychainOk: true,
 };
@@ -229,6 +248,7 @@ const msg = (
   role: Message["role"],
   text: string,
   minutes: number,
+  model: string = PROFILE.model,
 ): Message => ({
   id,
   threadId,
@@ -237,6 +257,8 @@ const msg = (
   attachedContext: null,
   scopeKind: "none",
   host: role === "assistant" ? PROFILE.host : null,
+  profileId: PROFILE.id,
+  model,
   status: "sent",
   error: null,
   inputTokens: role === "assistant" ? 412 : null,
@@ -266,8 +288,9 @@ export const MESSAGES: Message[] = [
     4,
     1,
     "assistant",
-    "That's the contended case. Let the first refresh win and have the second tab re-read the new token instead of retrying its own refresh.",
+    "That's the contended case. Let the first refresh win and have the second tab re-read the new token instead of retrying its own refresh:\n\n```ts\nconst fresh = await store.read(sessionId);\nif (fresh.version !== seen.version) {\n  return fresh.token; // another tab already refreshed\n}\n```\n\nThe MDN page on the Web Locks API covers a browser-only alternative: https://developer.mozilla.org/docs/Web/API/Web_Locks_API",
     16,
+    "claude-haiku-5-5",
   ),
   msg(5, 2, "user", "Is maxRefreshAttempts or refreshRetryLimit clearer?", 300),
   msg(

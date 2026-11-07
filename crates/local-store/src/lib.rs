@@ -21,9 +21,10 @@ pub use marketplaces::{
 };
 
 pub use companion::{
-    CLEARED_RESULT_TEXT, CompanionMessage, CompanionProfile, CompanionThread, CompanionToolCall,
-    CompanionToolNotice, CompanionUsage, DEFAULT_THREAD_TITLE, MAX_ATTACHED_CHARS,
-    MAX_MESSAGE_CHARS, MAX_PROFILES, MAX_THREAD_TITLE_CHARS, MAX_THREADS, NewToolCall,
+    CLEARED_RESULT_TEXT, CompanionMessage, CompanionModel, CompanionProfile, CompanionThread,
+    CompanionToolCall, CompanionToolNotice, CompanionUsage, DEFAULT_THREAD_TITLE,
+    LAST_MODEL_REFUSED, MAX_ATTACHED_CHARS, MAX_MESSAGE_CHARS, MAX_MODEL_LABEL_CHARS,
+    MAX_MODELS_PER_PROFILE, MAX_PROFILES, MAX_THREAD_TITLE_CHARS, MAX_THREADS, NewToolCall,
     NewToolNotice, NewUserMessage, month_of,
 };
 
@@ -110,7 +111,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 16,
         sql: include_str!("../migrations/0016_imported_sessions.sql"),
     },
-    // 0017 is reserved for the Companion branch.
+    Migration {
+        version: 17,
+        sql: include_str!("../migrations/0017_companion_models.sql"),
+    },
     Migration {
         version: 18,
         sql: include_str!("../migrations/0018_process_check.sql"),
@@ -1124,4 +1128,24 @@ fn save_session(
         ],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod migration_list_tests {
+    use super::{MIGRATIONS, latest_version};
+
+    /// Migrations built in parallel are merged by hand; a gap, duplicate or wrong order here
+    /// would skip or repeat a step on upgrade.
+    #[test]
+    fn versions_are_contiguous_and_ascending_from_one() {
+        for (i, m) in MIGRATIONS.iter().enumerate() {
+            let want = i64::try_from(i).expect("small") + 1;
+            assert_eq!(m.version, want, "migration at index {i}");
+            assert!(!m.sql.trim().is_empty(), "migration {} has SQL", m.version);
+        }
+        assert_eq!(
+            latest_version(),
+            i64::try_from(MIGRATIONS.len()).expect("small")
+        );
+    }
 }

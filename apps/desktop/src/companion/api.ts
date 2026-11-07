@@ -57,7 +57,10 @@ export interface ProviderProfile {
   baseUrl: string;
   /** Shown as "Sends to <host>". */
   host: string;
+  /** The provider's default model. */
   model: string;
+  /** Every model of this provider, default first (decision 36). */
+  models: ProviderModel[];
   monthlyTokenBudget: number | null;
   isDefault: boolean;
   /** Asked of the keychain; false when the keychain can't be read. */
@@ -65,11 +68,20 @@ export interface ProviderProfile {
   keychainOk: boolean;
 }
 
+/** One model a provider offers. */
+export interface ProviderModel {
+  model: string;
+  /** Optional display name; show the model id when null. */
+  label: string | null;
+  isDefault: boolean;
+}
+
 export interface ProfileInput {
   id?: string;
   kind: ProviderKind;
   label: string;
   baseUrl?: string;
+  /** On a new provider its first (default) model; on an edit, made the default (added if new). */
   model: string;
   monthlyTokenBudget?: number | null;
   isDefault: boolean;
@@ -112,6 +124,10 @@ export interface Message {
   scopeKind: ScopeKind;
   /** The host it was sent to (your messages) or came from (replies). */
   host: string | null;
+  /** The provider it went to or came from; null when that provider was deleted. */
+  profileId: string | null;
+  /** The model it was sent to or answered by; null for rows stored without one. */
+  model: string | null;
   status: "sent" | "failed" | "pending";
   error: MessageError | null;
   inputTokens: number | null;
@@ -255,6 +271,19 @@ export const companionSetKey = (profileId: string, key: string) =>
 export const companionClearKey = (profileId: string) =>
   call<void>("companion_clear_key", { profileId });
 
+export const companionAddModel = (
+  profileId: string,
+  model: string,
+  label: string | null,
+  makeDefault: boolean,
+) => call<ProviderProfile>("companion_add_model", { profileId, model, label, makeDefault });
+
+export const companionRemoveModel = (profileId: string, model: string) =>
+  call<ProviderProfile>("companion_remove_model", { profileId, model });
+
+export const companionSetDefaultModel = (profileId: string, model: string) =>
+  call<ProviderProfile>("companion_set_default_model", { profileId, model });
+
 export const companionTest = (profileId: string) =>
   call<{ ok: true; model: string }>("companion_test", { profileId });
 
@@ -294,6 +323,7 @@ function eventChannel(onEvent: (e: StreamEvent) => void): Channel<StreamEvent> {
 export const companionSend = (
   threadId: number,
   profileId: string,
+  model: string,
   text: string,
   scope: Scope,
   expectedContextSha256: string | null,
@@ -303,6 +333,7 @@ export const companionSend = (
   call<Message>("companion_send", {
     threadId,
     profileId,
+    model,
     text,
     scope,
     expectedContextSha256,
@@ -310,11 +341,21 @@ export const companionSend = (
     onEvent: eventChannel(onEvent),
   });
 
+/** Sends a failed message again, to a provider and model you pick (usually the ones it used). */
 export const companionRetry = (
   messageId: number,
+  profileId: string,
+  model: string,
   requestId: string,
   onEvent: (e: StreamEvent) => void,
-) => call<Message>("companion_retry", { messageId, requestId, onEvent: eventChannel(onEvent) });
+) =>
+  call<Message>("companion_retry", {
+    messageId,
+    profileId,
+    model,
+    requestId,
+    onEvent: eventChannel(onEvent),
+  });
 
 /** Answers a lookup the model asked for. Nothing is sent to the provider before this. */
 export const companionToolDecision = (requestId: string, approvalId: string, approve: boolean) =>
@@ -383,3 +424,11 @@ export const companionModelCatalog = (mode: CatalogMode) =>
 /** Memory only. Fails with `notFound` when the list isn't loaded. */
 export const companionCatalogModels = (providerId: string) =>
   call<CatalogModel[]>("companion_catalog_models", { providerId });
+
+// ---- links in replies (decision 36) --------------------------------------------------------
+
+/**
+ * Opens an http(s) address in the default browser, after the user confirmed it in Lullshift's own
+ * dialog. The core checks the scheme again and refuses anything else.
+ */
+export const companionOpenLink = (url: string) => call<void>("companion_open_link", { url });

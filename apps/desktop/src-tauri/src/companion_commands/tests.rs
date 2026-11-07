@@ -302,16 +302,26 @@ fn send_events(
     let sha = preview_context(core, scope.clone())
         .ok()
         .and_then(|p| p.sha256);
+    let model = default_model(core, pid);
     super::send(
         core,
         t,
         pid,
+        &model,
         text,
         scope,
         sha.as_deref(),
         &next_request_id(),
         emit,
     )
+}
+
+/// The provider's default model, or a made-up one for an unknown provider.
+fn default_model(core: &Core, pid: &str) -> String {
+    with_store(core, |s| s.companion_profile(pid))
+        .ok()
+        .flatten()
+        .map_or_else(|| "mock-model".to_owned(), |p| p.model)
 }
 
 fn raw_send(
@@ -322,11 +332,28 @@ fn raw_send(
     scope: &Scope,
     hash: Option<&str>,
 ) -> Res<MessageDto> {
-    super::send(core, t, pid, text, scope, hash, &next_request_id(), &|_| {})
+    let model = default_model(core, pid);
+    super::send(
+        core,
+        t,
+        pid,
+        &model,
+        text,
+        scope,
+        hash,
+        &next_request_id(),
+        &|_| {},
+    )
 }
 
+/// Retries with the provider and model the message was first sent with, as the UI does.
 fn retry(core: &Core, id: i64) -> Res<MessageDto> {
-    super::retry(core, id, &next_request_id(), &|_| {})
+    let m = with_store(core, |s| s.companion_message(id))
+        .expect("read")
+        .expect("message");
+    let pid = m.profile_id.unwrap_or_default();
+    let model = m.model.unwrap_or_default();
+    super::retry(core, id, &pid, &model, &next_request_id(), &|_| {})
 }
 
 /// Points an existing compatible profile at another base URL.
@@ -1040,6 +1067,8 @@ fn dtos_match_the_contract_field_names() {
             "attachedContext",
             "scopeKind",
             "host",
+            "profileId",
+            "model",
             "status",
             "error",
             "inputTokens",
@@ -1056,6 +1085,7 @@ fn dtos_match_the_contract_field_names() {
             "baseUrl",
             "host",
             "model",
+            "models",
             "monthlyTokenBudget",
             "isDefault",
             "hasKey",
@@ -1272,3 +1302,186 @@ fn retry_after_the_address_changed_to_another_host_is_refused() {
 
 mod catalog;
 mod streaming;
+
+// ---- several models per provider, picked per message (decision 36) -------------------------
+
+#[test]
+fn models_are_managed_per_provider_and_checked() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    let pid = profile(&core, "http://127.0.0.1:9/v1", None);
+    let p = add_model(&core, &pid, "second-model", Some("Second"), false).expect("add");
+    let v = serde_json::to_value(&p).expect("json");
+    assert_eq!(v["model"], "mock-model", "default unchanged");
+    assert_eq!(v["models"][1]["model"], "second-model");
+    assert_eq!(v["models"][1]["label"], "Second");
+    assert_eq!(v["models"][1]["isDefault"], false);
+    let long = "x".repeat(201);
+    for bad in ["", "has space", "bad\u{7}", long.as_str()] {
+        assert_eq!(
+            kind(&add_model(&core, &pid, bad, None, false).unwrap_err()),
+            "invalidInput",
+            "{bad:?}"
+        );
+    }
+    assert_eq!(
+        kind(&add_model(&core, "p-nope", "m", None, false).unwrap_err()),
+        "notFound"
+    );
+    let p = set_default_model(&core, &pid, "second-model").expect("default");
+    assert_eq!(
+        serde_json::to_value(&p).expect("j")["model"],
+        "second-model"
+    );
+    assert_eq!(
+        kind(&set_default_model(&core, &pid, "unknown").unwrap_err()),
+        "notFound"
+    );
+    remove_model(&core, &pid, "second-model").expect("remove");
+    let e = remove_model(&core, &pid, "mock-model").unwrap_err();
+    assert_eq!(kind(&e), "invalidInput");
+    assert!(e.message.contains("at least one model"));
+}
+
+#[test]
+fn send_and_retry_refuse_a_model_that_isnt_configured() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    let m = mock(vec![Sc::Status(500), Sc::Ok, Sc::Ok]);
+    let pid = profile(&core, &m.base, None);
+    let t = thread(&core);
+    let other = profile(&core, &m.base, None);
+    for (p, model) in [
+        (pid.as_str(), "not-configured"),
+        (pid.as_str(), "bad model"),
+        ("p-missing", "mock-model"),
+    ] {
+        let e = super::send(
+            &core,
+            t,
+            p,
+            model,
+            "hi",
+            &Scope::None,
+            None,
+            &next_request_id(),
+            &|_| {},
+        )
+        .unwrap_err();
+        assert!(
+            ["invalidInput", "notFound"].contains(&kind(&e)),
+            "{p} {model}"
+        );
+    }
+    assert!(messages(&core, t).expect("m").is_empty(), "nothing stored");
+    assert!(m.requests.lock().expect("log").is_empty(), "nothing sent");
+
+    // A send to a second configured model is stored and sent with that model.
+    add_model(&core, &pid, "other-model", None, false).expect("add");
+    let e = super::send(
+        &core,
+        t,
+        &pid,
+        "other-model",
+        "hi",
+        &Scope::None,
+        None,
+        &next_request_id(),
+        &|_| {},
+    )
+    .unwrap_err();
+    assert_eq!(kind(&e), "providerError");
+    let failed = messages(&core, t).expect("m")[0].clone();
+    let v = serde_json::to_value(&failed).expect("j");
+    assert_eq!(v["model"], "other-model");
+    // Retry refuses an unconfigured pair and leaves the message failed.
+    let e = super::retry(&core, failed.id, &pid, "nope", &next_request_id(), &|_| {}).unwrap_err();
+    assert_eq!(kind(&e), "invalidInput");
+    assert_eq!(messages(&core, t).expect("m")[0].status, "failed");
+    // Retry with another configured pair on the same host: the answer carries that pair.
+    let reply = super::retry(
+        &core,
+        failed.id,
+        &other,
+        "mock-model",
+        &next_request_id(),
+        &|_| {},
+    )
+    .expect("retry");
+    let rv = serde_json::to_value(&reply).expect("j");
+    assert_eq!(rv["model"], "mock-model");
+    assert_eq!(rv["profileId"], other.as_str());
+    let reqs = m.requests.lock().expect("log").clone();
+    let model_of = |r: &str| {
+        let (_, body) = r.split_once("\r\n\r\n").expect("body");
+        let sent: serde_json::Value = serde_json::from_str(body).expect("json");
+        sent["model"].as_str().unwrap_or_default().to_owned()
+    };
+    assert_eq!(model_of(&reqs[0]), "other-model");
+    assert_eq!(model_of(&reqs[1]), "mock-model");
+}
+
+#[test]
+fn ui_prefs_remember_the_companion_settings_section() {
+    use crate::context::UiPrefs;
+    assert!(!UiPrefs::from_stored(Some(r#"{"detailPanelPinned":true}"#)).companion_settings_open);
+    assert!(
+        UiPrefs::from_stored(Some(
+            r#"{"detailPanelPinned":true,"companionSettingsOpen":true}"#
+        ))
+        .companion_settings_open
+    );
+}
+
+// -- security review F4 and F5
+
+#[test]
+fn only_the_last_model_refusal_gets_its_own_sentence() {
+    let last = remove_model_error(StoreError::InvalidInput(LAST_MODEL_REFUSED));
+    assert_eq!(last.kind, "invalidInput");
+    assert!(last.message.contains("keeps at least one model"));
+
+    let other = remove_model_error(StoreError::InvalidInput("model label length"));
+    assert_eq!(other.kind, "invalidInput");
+    assert!(
+        !other.message.contains("at least one model"),
+        "{}",
+        other.message
+    );
+
+    assert_eq!(remove_model_error(StoreError::NotFound).kind, "notFound");
+
+    // Through the command: an unknown model is "not found", the last one is refused.
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    let pid = profile(&core, "http://127.0.0.1:9/v1", None);
+    assert_eq!(
+        remove_model(&core, &pid, "never-added").unwrap_err().kind,
+        "notFound"
+    );
+    let e = remove_model(&core, &pid, "mock-model").unwrap_err();
+    assert!(e.message.contains("keeps at least one model"));
+}
+
+#[test]
+fn a_store_error_reading_models_is_reported_not_hidden() {
+    let dir = tempfile::tempdir().expect("dir");
+    let db = dir.path().join("l.db");
+    let core = core_with(dir.path(), memory(), 2000);
+    {
+        let (store, _) = Store::open(&db).expect("open");
+        *core.store.lock().expect("lock") = Some(store);
+    }
+    let pid = profile(&core, "http://127.0.0.1:9/v1", None);
+    assert_eq!(profiles(&core).expect("profiles")[0].models.len(), 1);
+
+    // Break only the model list query (the profile query doesn't read `label`).
+    let raw = rusqlite::Connection::open(&db).expect("raw");
+    raw.execute_batch("ALTER TABLE companion_models RENAME COLUMN label TO label_gone")
+        .expect("break");
+    drop(raw);
+
+    let e = profiles(&core).expect_err("a store error, not an empty model list");
+    assert_eq!(e.kind, "internal");
+    assert!(set_default_model(&core, &pid, "mock-model").is_err());
+}

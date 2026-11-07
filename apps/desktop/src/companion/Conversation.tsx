@@ -18,6 +18,8 @@ import {
   type Thread,
 } from "./api";
 import { Composer, type SendResult } from "./Composer";
+import { answerBadgeText, effectiveChoice, retryChoice, type ModelChoice } from "./modelChoice";
+import { ReplyText } from "./ReplyText";
 import {
   CONTEXT_CHANGED_NOTE,
   errorText,
@@ -37,8 +39,6 @@ import { ToolApprovalCard, ToolNotices, ToolRecords } from "./ToolCards";
 interface Props {
   thread: Thread;
   profiles: readonly ProviderProfile[];
-  profile: ProviderProfile | null;
-  onPickProfile: (id: string) => void;
   sessions: readonly SessionView[];
   /** The context choice of the last message sent, if any. */
   rememberedScope: Scope | null;
@@ -53,7 +53,7 @@ interface Props {
 
 type Load = { status: "loading" } | { status: "ready" } | { status: "error"; text: string };
 
-/** Plain text, one block per line. Never HTML, Markdown or links. */
+/** Plain text, one block per line. Never HTML, Markdown or links. Used for your own messages. */
 function PlainText({ text, className }: { text: string; className?: string }) {
   return (
     <div className={className ?? "msg-text"}>
@@ -68,6 +68,7 @@ function PlainText({ text, className }: { text: string; className?: string }) {
 
 function MessageItem({
   message,
+  profiles,
   host,
   retrying,
   canRetry,
@@ -76,6 +77,7 @@ function MessageItem({
   onStartActivity,
 }: {
   message: Message;
+  profiles: readonly ProviderProfile[];
   host: string | null;
   retrying: boolean;
   canRetry: boolean;
@@ -89,7 +91,13 @@ function MessageItem({
   return (
     <li className={`msg ${mine ? "msg-user" : "msg-assistant"}`}>
       <span className="msg-who">{mine ? "You" : "Companion"}</span>
-      <PlainText text={message.text} />
+      {mine ? <PlainText text={message.text} /> : <ReplyText text={message.text} />}
+      {!mine && (
+        <p className="msg-model">
+          <span className="visually-hidden">Answered by </span>
+          {answerBadgeText(message, profiles)}
+        </p>
+      )}
       {mine && message.attachedContext !== null && message.scopeKind !== "none" && (
         <details className="msg-shared">
           <summary>{sharedLabel(message.scopeKind, host)}</summary>
@@ -120,7 +128,7 @@ function MessageItem({
               <>
                 {" "}
                 <button type="button" className="btn-link" onClick={onOpenSettings}>
-                  Open Companion settings
+                  Open provider settings
                 </button>
               </>
             )}
@@ -142,8 +150,6 @@ function MessageItem({
 export function Conversation({
   thread,
   profiles,
-  profile,
-  onPickProfile,
   sessions,
   rememberedScope,
   onScopeUsed,
@@ -160,7 +166,11 @@ export function Conversation({
   const [live, setLive] = useState("");
   const [stream, setStream] = useState<StreamState | null>(null);
   const [deciding, setDeciding] = useState(false);
+  // The provider and model picked for the next message only; null means the default.
+  const [picked, setPicked] = useState<ModelChoice | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const choice = effectiveChoice(profiles, picked);
+  const profile = profiles.find((p) => p.id === choice?.profileId) ?? null;
   const host = profile?.host ?? null;
   const earlier = historyCount(messages, host);
   // One short sentence per phase for screen readers; it does not change per token.
@@ -242,25 +252,49 @@ export function Conversation({
   };
 
   const send = async (text: string, scope: Scope, expectedSha256: string | null) => {
-    if (!profile) return { stored: false, contextChanged: false };
+    if (!choice) return { stored: false, contextChanged: false };
+    const to = choice;
     const result = await track(
       messages.length,
       (requestId, onEvent) =>
-        companionSend(thread.id, profile.id, text, scope, expectedSha256, requestId, onEvent),
+        companionSend(
+          thread.id,
+          to.profileId,
+          to.model,
+          text,
+          scope,
+          expectedSha256,
+          requestId,
+          onEvent,
+        ),
       {
         optimisticText: text,
         retryId: null,
       },
     );
-    if (result.stored) onScopeUsed(scope);
+    if (result.stored) {
+      onScopeUsed(scope);
+      // The pick was for this message only: the next one goes to the default again.
+      setPicked(null);
+    }
     return result;
   };
 
   const retry = (id: number) => {
-    void track(messages.length, (requestId, onEvent) => companionRetry(id, requestId, onEvent), {
-      optimisticText: null,
-      retryId: id,
-    });
+    const m = messages.find((x) => x.id === id);
+    const to = m ? retryChoice(profiles, m, choice) : null;
+    if (!to) {
+      setProblem({ kind: "notFound", message: "Set up a provider first." });
+      return;
+    }
+    void track(
+      messages.length,
+      (requestId, onEvent) => companionRetry(id, to.profileId, to.model, requestId, onEvent),
+      {
+        optimisticText: null,
+        retryId: id,
+      },
+    );
   };
 
   const decide = async (approve: boolean) => {
@@ -313,6 +347,7 @@ export function Conversation({
             <MessageItem
               key={m.id}
               message={m}
+              profiles={profiles}
               host={host}
               retrying={retryingId === m.id}
               canRetry={!sending}
@@ -334,7 +369,7 @@ export function Conversation({
             // reply is announced once.
             <li className="msg msg-assistant msg-streaming" aria-busy="true">
               <span className="msg-who">Companion</span>
-              <PlainText text={stream.text} />
+              <ReplyText text={stream.text} streaming />
               <p className="msg-note">Still writing. You can cancel at any time.</p>
             </li>
           )}
@@ -361,7 +396,7 @@ export function Conversation({
             <>
               {" "}
               <button type="button" className="btn-link" onClick={onOpenSettings}>
-                Open Companion settings
+                Open provider settings
               </button>
             </>
           )}
@@ -370,8 +405,8 @@ export function Conversation({
 
       <Composer
         profiles={profiles}
-        profile={profile}
-        onPickProfile={onPickProfile}
+        choice={choice}
+        onPickChoice={setPicked}
         sessions={sessions}
         sending={sending}
         historyCount={earlier}

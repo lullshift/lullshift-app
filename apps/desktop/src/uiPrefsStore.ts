@@ -10,6 +10,7 @@ export const DEFAULT_UI_PREFS: UiPrefs = {
   detailPanelPinned: true,
   contentWidth: "full",
   onboardingDone: false,
+  companionSettingsOpen: false,
 };
 
 interface UiPrefsState {

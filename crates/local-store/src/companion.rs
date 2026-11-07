@@ -1,7 +1,9 @@
 //! Companion storage (Sprint 09, ADR-020): provider profiles, threads, messages and token usage.
 //!
-//! This module stores NO key material. Keys live in the OS keychain only. A profile row holds a
-//! label, provider kind, base URL, model name and an optional monthly token budget.
+//! This module stores NO key material. Keys live in the OS keychain only. A profile (provider) row
+//! holds a label, provider kind, base URL and an optional monthly token budget; its models live in
+//! `companion_models` (decision 36), one of them the provider's default. The overall default model
+//! is the default model of the default provider.
 
 use rusqlite::{OptionalExtension, Row, params};
 use time::OffsetDateTime;
@@ -16,6 +18,11 @@ pub const MAX_MESSAGE_CHARS: usize = 20_000;
 pub const MAX_ATTACHED_CHARS: usize = 60_000;
 pub const MAX_THREAD_TITLE_CHARS: usize = 120;
 pub const MAX_PROFILES: usize = 20;
+/// Most models one provider may list.
+pub const MAX_MODELS_PER_PROFILE: usize = 50;
+pub const MAX_MODEL_LABEL_CHARS: usize = 80;
+/// The `InvalidInput` reason when removing a provider's last model; callers match on it.
+pub const LAST_MODEL_REFUSED: &str = "a provider keeps at least one model";
 pub const MAX_THREADS: usize = 500;
 pub const DEFAULT_THREAD_TITLE: &str = "New conversation";
 
@@ -25,9 +32,23 @@ pub struct CompanionProfile {
     pub kind: String,
     pub label: String,
     pub base_url: String,
+    /// The provider's default model. Saving a profile adds this model to its list if it is new
+    /// and makes it the default; reading returns the current default.
     pub model: String,
     pub monthly_token_budget: Option<i64>,
     pub is_default: bool,
+}
+
+/// One model a provider offers (decision 36).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompanionModel {
+    pub id: i64,
+    pub profile_id: String,
+    pub model: String,
+    /// Optional display name; the model id is shown when absent.
+    pub label: Option<String>,
+    pub is_default: bool,
+    pub created_utc: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,7 +184,106 @@ fn msg_row(r: &Row<'_>) -> rusqlite::Result<CompanionMessage> {
     })
 }
 
-const PROFILE_COLS: &str = "id, kind, label, base_url, model, monthly_token_budget, is_default";
+const PROFILE_COLS: &str = "p.id, p.kind, p.label, p.base_url, \
+     COALESCE((SELECT m.model FROM companion_models m WHERE m.profile_id = p.id AND m.is_default = 1), ''), \
+     p.monthly_token_budget, p.is_default";
+
+const MODEL_COLS: &str = "id, profile_id, model, label, is_default, created_utc";
+
+fn model_row(r: &Row<'_>) -> rusqlite::Result<CompanionModel> {
+    Ok(CompanionModel {
+        id: r.get(0)?,
+        profile_id: r.get(1)?,
+        model: r.get(2)?,
+        label: r.get(3)?,
+        is_default: r.get::<_, i64>(4)? != 0,
+        created_utc: r.get(5)?,
+    })
+}
+
+fn clean_model_label(label: Option<&str>) -> Result<Option<String>> {
+    let Some(l) = label else { return Ok(None) };
+    let l: String = l.chars().filter(|c| !c.is_control()).collect();
+    let l = l.trim();
+    if l.is_empty() {
+        return Ok(None);
+    }
+    if l.chars().count() > MAX_MODEL_LABEL_CHARS {
+        return Err(StoreError::InvalidInput("model label length"));
+    }
+    Ok(Some(l.to_owned()))
+}
+
+/// Adds `model` to a provider (keeping an existing row) and, if asked, makes it the default.
+/// `label`: `None` leaves an existing label alone; `Some(x)` sets it (empty clears it).
+fn put_model_on(
+    tx: &rusqlite::Transaction<'_>,
+    profile_id: &str,
+    model: &str,
+    label: Option<Option<&str>>,
+    make_default: bool,
+    ts: &str,
+) -> Result<()> {
+    let known: bool = tx.query_row(
+        "SELECT EXISTS (SELECT 1 FROM companion_models WHERE profile_id = ?1 AND model = ?2)",
+        params![profile_id, model],
+        |r| r.get(0),
+    )?;
+    if !known {
+        let n: i64 = tx.query_row(
+            "SELECT count(*) FROM companion_models WHERE profile_id = ?1",
+            [profile_id],
+            |r| r.get(0),
+        )?;
+        if n as usize >= MAX_MODELS_PER_PROFILE {
+            return Err(StoreError::TooMany {
+                limit: MAX_MODELS_PER_PROFILE,
+            });
+        }
+        tx.execute(
+            "INSERT INTO companion_models (profile_id, model, label, is_default, created_utc)
+             VALUES (?1, ?2, ?3, 0, ?4)",
+            params![profile_id, model, clean_model_label(label.flatten())?, ts],
+        )
+        .map_err(check_invalid)?;
+        if n == 0 {
+            set_default_model_on(tx, profile_id, model)?;
+        }
+    } else if let Some(l) = label {
+        tx.execute(
+            "UPDATE companion_models SET label = ?3 WHERE profile_id = ?1 AND model = ?2",
+            params![profile_id, model, clean_model_label(l)?],
+        )?;
+    }
+    if make_default {
+        set_default_model_on(tx, profile_id, model)?;
+    }
+    Ok(())
+}
+
+fn set_default_model_on(
+    tx: &rusqlite::Transaction<'_>,
+    profile_id: &str,
+    model: &str,
+) -> Result<()> {
+    let known: bool = tx.query_row(
+        "SELECT EXISTS (SELECT 1 FROM companion_models WHERE profile_id = ?1 AND model = ?2)",
+        params![profile_id, model],
+        |r| r.get(0),
+    )?;
+    if !known {
+        return Err(StoreError::NotFound);
+    }
+    tx.execute(
+        "UPDATE companion_models SET is_default = 0 WHERE profile_id = ?1 AND model <> ?2",
+        params![profile_id, model],
+    )?;
+    tx.execute(
+        "UPDATE companion_models SET is_default = 1 WHERE profile_id = ?1 AND model = ?2",
+        params![profile_id, model],
+    )?;
+    Ok(())
+}
 
 fn profile_row(r: &Row<'_>) -> rusqlite::Result<CompanionProfile> {
     Ok(CompanionProfile {
@@ -236,7 +356,7 @@ impl Store {
 
     pub fn companion_profiles(&self) -> Result<Vec<CompanionProfile>> {
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT {PROFILE_COLS} FROM companion_profiles ORDER BY is_default DESC, created_utc, id"
+            "SELECT {PROFILE_COLS} FROM companion_profiles p ORDER BY p.is_default DESC, p.created_utc, p.id"
         ))?;
         let rows = stmt.query_map([], profile_row)?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -246,7 +366,7 @@ impl Store {
         Ok(self
             .conn
             .query_row(
-                &format!("SELECT {PROFILE_COLS} FROM companion_profiles WHERE id = ?1"),
+                &format!("SELECT {PROFILE_COLS} FROM companion_profiles p WHERE p.id = ?1"),
                 [id],
                 profile_row,
             )
@@ -281,29 +401,32 @@ impl Store {
             )?;
         }
         let ts = fmt_ts(now)?;
+        if p.model.trim().is_empty() {
+            return Err(StoreError::InvalidInput("a provider needs a model"));
+        }
         tx.execute(
             "INSERT INTO companion_profiles
-               (id, kind, label, base_url, model, monthly_token_budget, is_default, created_utc, updated_utc)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+               (id, kind, label, base_url, monthly_token_budget, is_default, created_utc, updated_utc)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
              ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, label = excluded.label,
-               base_url = excluded.base_url, model = excluded.model,
+               base_url = excluded.base_url,
                monthly_token_budget = excluded.monthly_token_budget,
-               is_default = CASE WHEN ?7 = 1 THEN 1 ELSE companion_profiles.is_default END,
+               is_default = CASE WHEN ?6 = 1 THEN 1 ELSE companion_profiles.is_default END,
                updated_utc = excluded.updated_utc",
             params![
                 p.id,
                 p.kind,
                 p.label,
                 p.base_url,
-                p.model,
                 p.monthly_token_budget,
                 i64::from(make_default),
                 ts
             ],
         )
         .map_err(check_invalid)?;
+        put_model_on(&tx, &p.id, &p.model, None, true, &ts)?;
         let out = tx.query_row(
-            &format!("SELECT {PROFILE_COLS} FROM companion_profiles WHERE id = ?1"),
+            &format!("SELECT {PROFILE_COLS} FROM companion_profiles p WHERE p.id = ?1"),
             [&p.id],
             profile_row,
         )?;
@@ -325,6 +448,109 @@ impl Store {
                AND NOT EXISTS (SELECT 1 FROM companion_profiles WHERE is_default = 1)",
             [],
         )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    // ---- models (decision 36) ------------------------------------------------------------
+
+    /// Models of one provider (or of every provider), default first, then oldest first.
+    pub fn companion_models(&self, profile_id: Option<&str>) -> Result<Vec<CompanionModel>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {MODEL_COLS} FROM companion_models
+             WHERE ?1 IS NULL OR profile_id = ?1
+             ORDER BY profile_id, is_default DESC, created_utc, id"
+        ))?;
+        let rows = stmt.query_map([profile_id], model_row)?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn companion_model(&self, profile_id: &str, model: &str) -> Result<Option<CompanionModel>> {
+        Ok(self
+            .conn
+            .query_row(
+                &format!(
+                    "SELECT {MODEL_COLS} FROM companion_models WHERE profile_id = ?1 AND model = ?2"
+                ),
+                params![profile_id, model],
+                model_row,
+            )
+            .optional()?)
+    }
+
+    /// Adds a model to a provider, or updates its label if it is already listed. The first model
+    /// of a provider, or one added with `make_default`, becomes its default. The caller checks
+    /// the model id with the same rule as typed names.
+    pub fn companion_add_model(
+        &mut self,
+        profile_id: &str,
+        model: &str,
+        label: Option<&str>,
+        make_default: bool,
+        now: OffsetDateTime,
+    ) -> Result<CompanionModel> {
+        let ts = fmt_ts(now)?;
+        let tx = self.conn.transaction()?;
+        let known: bool = tx.query_row(
+            "SELECT EXISTS (SELECT 1 FROM companion_profiles WHERE id = ?1)",
+            [profile_id],
+            |r| r.get(0),
+        )?;
+        if !known {
+            return Err(StoreError::NotFound);
+        }
+        put_model_on(&tx, profile_id, model, Some(label), make_default, &ts)?;
+        let out = tx.query_row(
+            &format!(
+                "SELECT {MODEL_COLS} FROM companion_models WHERE profile_id = ?1 AND model = ?2"
+            ),
+            params![profile_id, model],
+            model_row,
+        )?;
+        tx.commit()?;
+        Ok(out)
+    }
+
+    /// Removes a model from a provider. A provider keeps at least one model; if the default goes,
+    /// the oldest remaining model becomes the default.
+    pub fn companion_remove_model(&mut self, profile_id: &str, model: &str) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        let known: bool = tx.query_row(
+            "SELECT EXISTS (SELECT 1 FROM companion_models WHERE profile_id = ?1 AND model = ?2)",
+            params![profile_id, model],
+            |r| r.get(0),
+        )?;
+        if !known {
+            return Err(StoreError::NotFound);
+        }
+        let n: i64 = tx.query_row(
+            "SELECT count(*) FROM companion_models WHERE profile_id = ?1",
+            [profile_id],
+            |r| r.get(0),
+        )?;
+        if n <= 1 {
+            return Err(StoreError::InvalidInput(LAST_MODEL_REFUSED));
+        }
+        tx.execute(
+            "DELETE FROM companion_models WHERE profile_id = ?1 AND model = ?2",
+            params![profile_id, model],
+        )?;
+        tx.execute(
+            "UPDATE companion_models SET is_default = 1
+             WHERE id = (SELECT id FROM companion_models WHERE profile_id = ?1
+                         ORDER BY created_utc, id LIMIT 1)
+               AND NOT EXISTS (SELECT 1 FROM companion_models
+                               WHERE profile_id = ?1 AND is_default = 1)",
+            [profile_id],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Makes `model` the provider's default model.
+    pub fn companion_set_default_model(&mut self, profile_id: &str, model: &str) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        set_default_model_on(&tx, profile_id, model)?;
         tx.commit()?;
         Ok(())
     }
@@ -718,6 +944,21 @@ impl Store {
              WHERE id = ?1 AND role = 'user' AND status = 'failed'",
             [id],
         )?;
+        if n == 0 {
+            return Err(StoreError::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Like [`Self::companion_mark_pending`], and records the provider and model the retry goes to
+    /// (decision 36: the user may retry with another model), so the reply is booked against them.
+    pub fn companion_mark_pending_for(&self, id: i64, profile_id: &str, model: &str) -> Result<()> {
+        let n = self.conn.execute(
+            "UPDATE companion_messages SET status = 'pending', error_kind = NULL, error_message = NULL,
+               profile_id = ?2, model = ?3
+             WHERE id = ?1 AND role = 'user' AND status = 'failed'",
+            params![id, profile_id, model],
+        ).map_err(check_invalid)?;
         if n == 0 {
             return Err(StoreError::NotFound);
         }

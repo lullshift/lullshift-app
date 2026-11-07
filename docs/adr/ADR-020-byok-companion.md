@@ -187,3 +187,55 @@ The document is treated like marketplace content:
 ### Sources checked
 
 - `https://models.dev/api.json`, read on 2026-11-07 (owner's description of the shape: about 6 MB, 235 providers, `{ "<providerId>": { id, name, env, npm, api?, doc, models: { "<modelId>": { id, name, family, type?, tool_call, reasoning, release_date, last_updated, modalities { input, output }, limit { context, output }, cost { input, output, … } } } } }`, with ETag / If-None-Match support). The fetch was not repeated from this implementation's environment; the parser is lenient so shape drift skips entries instead of failing. A live check is in manual test M12-15.
+
+## Amendment (decision 36): several models, per-message choice and reply rendering
+
+Owner decision of 2026-11-07 (DECISIONS_FOR_REVIEW 36). Where this section differs from the text above, including the decision 32 amendment, this section wins.
+
+### Settings and the model picker
+
+- Provider, model, key, budget and lookup settings move from the Companion view to a collapsible **Companion** section in Settings. Whether it is expanded is a UI preference (`companionSettingsOpen` in `ui_prefs.json`). The section's content reads the keychain, so it is mounted only while expanded. The Companion view keeps conversations and a **Provider settings** link that opens Settings with the section expanded and focused.
+- The models.dev browser becomes a modal **model picker** (the shared `Dialog`), with the decision 32 filters, a keyboard-navigable list (`listbox` with `aria-activedescendant`) and a free-text entry for a model that isn't listed.
+- **Fetch rule, amending decision 32 "only on a button press":** models.dev is contacted only when the user **opens the model picker** for the first time in an app run (it asks `cached` first and calls `load` only if memory is empty) or presses **Refresh**. Opening Settings, Companion or a provider form contacts nothing. The picker keeps the sentence "Sends one request to models.dev. Your keys and messages are not sent." visible. What is sent, transport, caching and the untrusted-input rules of decision 32 are unchanged.
+
+### Data model (migration 0017)
+
+- New table `companion_models (id, profile_id → companion_profiles ON DELETE CASCADE, model, label, is_default, created_utc)`, `UNIQUE(profile_id, model)`, at most one default per profile (partial unique index), model 1..200 bytes, label 1..80 characters or null. Up to 50 models per profile.
+- The migration copies each profile's `model` into the table as its default and drops `companion_profiles.model`. Like every migration it runs after a `VACUUM INTO` backup and inside one transaction; tests cover the upgrade with data, idempotence, a failed upgrade rolling back with recovery, and the cascade.
+- Every model id passes `valid_model_id`, the same rule as before. The default provider's default model is the overall default. Removing a default promotes the oldest remaining model; the last model can't be removed.
+- Messages store the `profile_id` and `model` used (both nullable; earlier messages have neither).
+
+### Per-message choice
+
+- The composer shows the model the next message will use. The user can pick another configured provider/model pair for **one message**; after a stored send the choice returns to the default.
+- `companion_send` and `companion_retry` take an explicit `profileId` and `model`. The backend checks the model with `valid_model_id` and that it is in that provider's list; otherwise `invalidInput`, nothing stored, nothing sent. The frontend cannot make the backend call a model the user hasn't configured.
+- History replay is unchanged: only messages sent to the same host are repeated. A retry still refuses a different host than the one stored on the failed message, so a model choice can never move attached context to another host without a fresh preview.
+- Every assistant answer shows "Answered by <model> · <provider>", or "Model unknown" when not stored.
+
+### Reply rendering and links
+
+- Replies are rendered as plain text except: fenced code blocks (```` ``` ```` or `~~~`) and `http`/`https` URLs. No Markdown, no HTML, no images. `dangerouslySetInnerHTML` and `innerHTML` stay banned for model output (a test checks the Companion sources).
+- Code blocks are highlighted with lowlight 3.3.0 on highlight.js 11.11.1 for an explicit list of about 20 languages, with no auto-detection; the hast tree becomes React text nodes and class-only spans, everything else is dropped. Blocks above 100,000 characters or 3,000 lines stay plain. Each block has a Copy button whose result is announced politely.
+- A URL becomes a button only if it starts with `http://` or `https://`, has a host, no credentials and is at most 2,048 characters. Clicking it opens a confirmation dialog that shows the URL in its ASCII form (punycode host, percent-encoded path), so homographs and hidden characters are visible. Only **Open in browser** calls `companion_open_link`, which checks the URL again in Rust with the `url` crate and opens the same ASCII form with `tauri_plugin_opener::open_url`. The opener plugin is not registered as a plugin, so no `opener:*` permission is granted to the WebView; the only way to open a URL is this command, which is main-window only.
+
+### Dependencies
+
+| Dependency | Version (pinned) | Licence | Published | Use |
+|---|---|---|---|---|
+| `lowlight` (npm) | 3.3.0 | MIT | 2024-12-14 | Code highlighting to a hast tree |
+| `highlight.js` (npm) | 11.11.1 | BSD-3-Clause | 2024-12-25 | Language grammars for lowlight |
+| `tauri-plugin-opener` (crate) | =2.7.2 | Apache-2.0 OR MIT | 2026-10-14 | `open_url` from Rust |
+| `url` (crate) | 2.5 (already in the lockfile) | MIT OR Apache-2.0 | | URL parsing and ASCII serialisation |
+
+All are older than two weeks at the time of the decision.
+
+### Threat model additions
+
+| Threat | Handling |
+|---|---|
+| Model output injects markup or script | Plain React text; highlighting builds only class-only spans from text; no HTML string from model output |
+| A link that disguises its target (homograph, bidi, credentials) | Only http(s); credentials not linked; confirmation shows the ASCII/punycode form; Rust re-checks and opens exactly that form |
+| A link aimed at a service on the user's computer or network (router admin page, cloud metadata address, a local dev server) | The confirmation adds a warning for localhost and loopback, private, link-local, carrier-grade NAT and unique-local addresses, `.local`/`.lan`/`.internal`/`.home.arpa` names and single-label hosts; the user still decides |
+| The UI (or a compromised page) calls an unconfigured or odd model | `send`/`retry` check `valid_model_id` and the provider's list in the backend |
+| Opening the picker leaks data | The request is the decision 32 GET with no user data; it happens at most once per app run unless Refresh is pressed |
+| Highlighting a huge block stalls the UI | Size and line caps; fall back to plain text |
