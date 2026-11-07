@@ -73,6 +73,9 @@ export interface ContextPrefs {
 
 export type ContentWidth = "full" | "comfortable";
 
+/** System follows the operating system; Light and Dark are explicit. */
+export type Theme = "system" | "light" | "dark";
+
 export interface UiPrefs {
   detailPanelPinned: boolean;
   /** Full width is the default; comfortable keeps text columns narrower. */
@@ -83,6 +86,8 @@ export interface UiPrefs {
   companionSettingsOpen?: boolean;
   /** Width in pixels of the docked session panel; null or missing means the default. */
   dockWidth?: number | null;
+  /** Missing means System. */
+  theme?: Theme;
 }
 
 const k = (s: SessionKey) => ({ provider: s.provider, sessionId: s.sessionId });

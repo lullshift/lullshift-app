@@ -12,8 +12,10 @@ import { installDemoBackend } from "./backend";
 import "@fontsource-variable/figtree";
 import "../styles/tokens.css";
 import "../styles.css";
+import { startThemeSync } from "../theme";
 
 installDemoBackend();
+startThemeSync();
 
 declare global {
   interface Window {

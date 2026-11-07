@@ -108,6 +108,16 @@ pub enum ContentWidth {
     Comfortable,
 }
 
+/// The app theme (ADR-026 section 5). System follows the operating system.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UiPrefs {
@@ -127,6 +137,9 @@ pub struct UiPrefs {
     /// (or null) in older preferences, which read as the default width.
     #[serde(default)]
     pub dock_width: Option<u32>,
+    /// Missing in older preferences, which read as System.
+    #[serde(default)]
+    pub theme: Theme,
 }
 
 impl Default for UiPrefs {
@@ -137,6 +150,7 @@ impl Default for UiPrefs {
             onboarding_done: false,
             companion_settings_open: false,
             dock_width: None,
+            theme: Theme::System,
         }
     }
 }
@@ -1541,6 +1555,32 @@ mod tests {
         assert_eq!(UiPrefs::from_stored(Some(&json)), wide);
         assert_eq!(
             UiPrefs::from_stored(Some(r#"{"detailPanelPinned":true,"dockWidth":-5}"#)),
+            UiPrefs::default()
+        );
+        // The theme: older preferences read as System; light and dark round-trip; an unknown
+        // value falls back to the defaults.
+        assert_eq!(
+            UiPrefs::from_stored(Some(r#"{"detailPanelPinned":true}"#)).theme,
+            Theme::System
+        );
+        for theme in [Theme::System, Theme::Light, Theme::Dark] {
+            let with = UiPrefs {
+                theme,
+                ..UiPrefs::default()
+            };
+            let json = serde_json::to_string(&with).expect("serialize");
+            assert_eq!(UiPrefs::from_stored(Some(&json)), with);
+        }
+        assert!(
+            serde_json::to_string(&UiPrefs {
+                theme: Theme::Dark,
+                ..UiPrefs::default()
+            })
+            .expect("serialize")
+            .contains(r#""theme":"dark""#)
+        );
+        assert_eq!(
+            UiPrefs::from_stored(Some(r#"{"detailPanelPinned":true,"theme":"sepia"}"#)),
             UiPrefs::default()
         );
     }
