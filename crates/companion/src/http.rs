@@ -8,7 +8,7 @@ use std::io::Read;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ureq::config::Config;
 use ureq::tls::{RootCerts, TlsConfig};
@@ -18,7 +18,7 @@ use zeroize::Zeroizing;
 
 use crate::provider::{
     BuiltRequest, ChatMessage, ProviderSpec, Reply, build_request, estimate, map_status_reason,
-    parse_reply,
+    parse_reply_with,
 };
 use crate::secret::Secret;
 use crate::url_check::check_base_url;
@@ -259,7 +259,10 @@ where
     let built = build_request(&spec, key.expose(), messages, max_output_tokens);
     let scrub_key = Zeroizing::new(key.expose().to_owned());
     let sent_chars: usize = messages.iter().map(|m| m.content.chars().count()).sum();
-    let echoes: Vec<String> = messages.iter().map(|m| m.content.clone()).collect();
+    let echoes = std::sync::Arc::new(crate::reason::Echoes::new(
+        messages.iter().map(|m| m.content.clone()),
+    ));
+    let max_output = max_output_tokens;
     let kind = spec.kind;
     let cfg = *cfg;
     let loopback = checked.loopback;
@@ -272,7 +275,7 @@ where
         let result = raw
             .and_then(|raw| {
                 if (200..300).contains(&raw.status) {
-                    parse_reply(kind, &raw.body, sent_chars)
+                    parse_reply_with(kind, &raw.body, sent_chars, max_output, &scrub_key, &echoes)
                 } else {
                     let reason = crate::reason::parse(&raw.body, &scrub_key, &echoes);
                     Err(map_status_reason(
@@ -298,23 +301,38 @@ where
                     output_tokens: r.output_tokens,
                     reported: true,
                 },
-                Err(_) => LateUsage {
-                    input_tokens: estimate(sent_chars),
-                    output_tokens: 0,
-                    reported: false,
+                Err(e) => match e.usage {
+                    Some((i, o)) => LateUsage {
+                        input_tokens: i,
+                        output_tokens: o,
+                        reported: false,
+                    },
+                    None => LateUsage {
+                        input_tokens: estimate(sent_chars),
+                        output_tokens: 0,
+                        reported: false,
+                    },
                 },
             };
             on_abandoned(usage);
         }
         drop(hold);
     });
+    // The worker is bounded by the HTTP timeout; the wait is bounded here too, so a body that
+    // trickles in or stalls can never keep the caller past that time plus a short grace.
+    let started = Instant::now();
+    let bound = cfg.timeout + Duration::from_secs(2);
     loop {
-        if cancel.is_cancelled()
+        if (cancel.is_cancelled() || started.elapsed() > bound)
             && handoff
                 .compare_exchange(PENDING, ABANDONED, Ordering::SeqCst, Ordering::SeqCst)
                 .is_ok()
         {
-            return Err(CompanionError::cancelled());
+            return Err(if cancel.is_cancelled() {
+                CompanionError::cancelled()
+            } else {
+                CompanionError::timeout()
+            });
         }
         // If the cancel lost the race, the worker already delivered: use the result.
         match rx.recv_timeout(Duration::from_millis(40)) {

@@ -302,10 +302,9 @@ fn server_errors_and_odd_statuses_are_provider_errors_with_the_sanitised_reason(
         let e = r.unwrap_err();
         assert_eq!(e.kind, ErrorKind::ProviderError, "{code}");
         assert!(
-            e.message
-                .ends_with("The provider said: \"PROVIDER-BODY-TEXT\""),
+            said(&e).ends_with("The provider said: \"PROVIDER-BODY-TEXT\""),
             "{}",
-            e.message
+            said(&e)
         );
     }
 }
@@ -327,8 +326,13 @@ fn the_reason_is_shown_per_provider_for_openai_and_anthropic_shapes() {
             .starts_with("The provider didn't accept the request (HTTP 400).")
     );
     assert!(
-        e.message
-            .contains("OpenAI said: \"Unsupported parameter: 'max_completion_tokens'"),
+        said(&e).starts_with("OpenAI said: \"Unsupported parameter: 'max_completion_tokens'"),
+        "{}",
+        said(&e)
+    );
+    // The message itself stays Lullshift's fixed sentence.
+    assert!(
+        !e.message.contains("Unsupported parameter"),
         "{}",
         e.message
     );
@@ -340,10 +344,9 @@ fn the_reason_is_shown_per_provider_for_openai_and_anthropic_shapes() {
         ProviderKind::Anthropic,
         HttpConfig::default(),
     );
-    assert!(
-        r.unwrap_err()
-            .message
-            .contains("Anthropic said: \"model: String should have at least 1 character\"")
+    assert_eq!(
+        said(&r.unwrap_err()),
+        "Anthropic said: \"model: String should have at least 1 character\""
     );
 }
 
@@ -359,9 +362,9 @@ fn rejected_keys_and_rate_limits_may_carry_the_reason_too() {
     );
     let e = r.unwrap_err();
     assert_eq!(e.kind, ErrorKind::KeyRejected);
-    assert!(
-        e.message
-            .contains("OpenAI said: \"Country, region, or territory not supported\"")
+    assert_eq!(
+        said(&e),
+        "OpenAI said: \"Country, region, or territory not supported\""
     );
     let (r, _) = run(
         Scenario::Body(
@@ -374,6 +377,7 @@ fn rejected_keys_and_rate_limits_may_carry_the_reason_too() {
     let e = r.unwrap_err();
     assert_eq!(e.kind, ErrorKind::KeyRejected);
     assert!(!e.message.contains("sk-proj"), "{}", e.message);
+    assert!(!said(&e).contains("sk-proj"), "{}", said(&e));
 }
 
 #[test]
@@ -398,7 +402,7 @@ fn non_json_and_oversized_error_bodies_give_only_the_fixed_message() {
     let e = r.unwrap_err();
     assert_eq!(e.kind, ErrorKind::ProviderError);
     assert!(!e.message.contains("HIDDEN-BIG-REASON"), "{}", e.message);
-    assert!(!e.message.contains(" said:"));
+    assert!(e.reason.is_none());
 }
 
 #[test]
@@ -451,8 +455,9 @@ fn echoed_auth_header_never_reaches_the_error() {
         let e = r.unwrap_err();
         assert_eq!(e.kind, ErrorKind::ProviderError);
         assert!(!format!("{e:?}{e}").contains("SUPERSECRETKEY"));
-        assert!(e.message.contains("[hidden]"), "{}", e.message);
-        assert!(e.message.chars().count() <= 500);
+        assert!(said(&e).contains("[hidden]"), "{}", said(&e));
+        assert!(!said(&e).contains("SUPERSECRETKEY"));
+        assert!(said(&e).chars().count() <= 300);
         // The mock really did receive the key, so the test is meaningful.
         assert!(mock.requests.lock().unwrap()[0].contains("SUPERSECRETKEY"));
     }
@@ -583,4 +588,12 @@ fn cancelled_worker_keeps_its_hold_until_it_finishes_and_books_an_estimate() {
     let u = booked.lock().unwrap().expect("usage booked before release");
     assert!(!u.reported);
     assert!(u.input_tokens > 0);
+}
+
+/// The provider's words as the UI shows them: "<speaker> said: "<text>"" (empty if none).
+fn said(e: &companion::CompanionError) -> String {
+    e.reason
+        .as_ref()
+        .map(|r| format!("{} said: \"{}\"", r.speaker, r.text))
+        .unwrap_or_default()
 }

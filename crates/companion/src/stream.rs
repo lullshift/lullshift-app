@@ -82,8 +82,15 @@ pub struct Decoder {
     finished: bool,
     /// Responses API: some text was streamed.
     saw_text: bool,
+    /// Offer the model lookups; if not, any call it makes is ignored.
+    tools: bool,
+    /// The last usage the provider reported (Responses API: completed, incomplete or failed).
+    usage_in: Option<i64>,
+    usage_out: Option<i64>,
     /// The key, hidden in provider messages shown to the user.
     key: String,
+    /// What we sent, so a provider message quoting it is not shown.
+    echoes: std::sync::Arc<crate::reason::Echoes>,
     done: bool,
 }
 
@@ -97,7 +104,11 @@ impl Decoder {
             seen_ids: std::collections::HashSet::new(),
             finished: false,
             saw_text: false,
+            tools: true,
+            usage_in: None,
+            usage_out: None,
             key: String::new(),
+            echoes: std::sync::Arc::default(),
             done: false,
         }
     }
@@ -106,6 +117,20 @@ impl Decoder {
     #[must_use]
     pub fn with_key(mut self, key: &str) -> Self {
         self.key = key.to_owned();
+        self
+    }
+
+    /// Whether the request offered lookups. If not, calls the model makes are ignored.
+    #[must_use]
+    pub fn with_tools(mut self, tools: bool) -> Self {
+        self.tools = tools;
+        self
+    }
+
+    /// Sets what we sent, so a provider message quoting it is dropped.
+    #[must_use]
+    pub fn with_echoes(mut self, echoes: &std::sync::Arc<crate::reason::Echoes>) -> Self {
+        self.echoes = std::sync::Arc::clone(echoes);
         self
     }
 
@@ -122,7 +147,12 @@ impl Decoder {
         }
     }
 
-    fn finish_call(&mut self, c: PartialCall) -> Result<Piece, CompanionError> {
+    /// A finished call, validated. With lookups off (`with_tools(false)`) a call the model made
+    /// anyway is ignored whole: not validated, not counted, not an error.
+    fn finish_call(&mut self, c: PartialCall) -> Result<Option<Piece>, CompanionError> {
+        if !self.tools {
+            return Ok(None);
+        }
         self.emitted_calls += 1;
         if self.emitted_calls > MAX_CALLS_PER_REPLY
             || !valid_call_id(&c.id)
@@ -133,11 +163,11 @@ impl Decoder {
         {
             return Err(bad());
         }
-        Ok(Piece::Tool(ToolCall {
+        Ok(Some(Piece::Tool(ToolCall {
             id: c.id,
             name: c.name,
             arguments: c.args,
-        }))
+        })))
     }
 
     fn anthropic(&mut self, ev: &SseEvent) -> Result<Vec<Piece>, CompanionError> {
@@ -147,6 +177,7 @@ impl Decoder {
         match kind {
             "message_start" => {
                 let u = v.pointer("/message/usage");
+                self.note_usage(u);
                 out.push(Piece::Usage {
                     input: token(u.and_then(|u| u.get("input_tokens"))),
                     output: token(u.and_then(|u| u.get("output_tokens"))),
@@ -211,11 +242,12 @@ impl Decoder {
             "content_block_stop" => {
                 let index = v.get("index").and_then(Value::as_u64).ok_or_else(bad)?;
                 if let Some(c) = self.blocks.remove(&index) {
-                    out.push(self.finish_call(c)?);
+                    out.extend(self.finish_call(c)?);
                 }
             }
             "message_delta" => {
                 let u = v.get("usage");
+                self.note_usage(u);
                 out.push(Piece::Usage {
                     input: token(u.and_then(|u| u.get("input_tokens"))),
                     output: token(u.and_then(|u| u.get("output_tokens"))),
@@ -234,24 +266,38 @@ impl Decoder {
 
     fn flush_openai_calls(&mut self) -> Result<Vec<Piece>, CompanionError> {
         let calls = std::mem::take(&mut self.calls);
-        calls
-            .into_values()
-            .map(|c| self.finish_call(c))
-            .collect::<Result<_, _>>()
+        let mut out = Vec::new();
+        for c in calls.into_values() {
+            out.extend(self.finish_call(c)?);
+        }
+        Ok(out)
     }
 
     /// The error for `response.failed`, `response.incomplete` without output and the `error`
     /// event: the fixed sentence plus the provider's sanitised message, if it sent one.
     fn responses_error(&self, message: Option<&str>) -> CompanionError {
-        let reason = message.and_then(|m| crate::reason::excerpt(m, &self.key));
-        CompanionError::new(
-            ErrorKind::ProviderError,
-            crate::reason::append_reason(
-                "The provider reported a problem while replying.",
-                ProviderKind::OpenAi.speaker(),
-                reason.as_ref(),
-            ),
-        )
+        let reason = message.and_then(|m| crate::reason::excerpt(m, &self.key, &self.echoes));
+        in_stream_error().with_reason(crate::reason::provider_reason(
+            ProviderKind::OpenAi,
+            reason.as_ref(),
+        ))
+    }
+
+    /// The last usage the provider reported (input, output), whatever ended the reply. Used to
+    /// book a call that failed after it had been worked on.
+    pub fn reported_usage(&self) -> (Option<i64>, Option<i64>) {
+        (self.usage_in, self.usage_out)
+    }
+
+    fn note_usage(&mut self, u: Option<&Value>) {
+        if let Some(u) = u.filter(|u| u.is_object()) {
+            if let Some(i) = token(u.get("input_tokens")) {
+                self.usage_in = Some(i);
+            }
+            if let Some(o) = token(u.get("output_tokens")) {
+                self.usage_out = Some(o);
+            }
+        }
     }
 
     /// OpenAI Responses API events (verified 2026-11-07, ADR-020). Every `data:` payload is JSON
@@ -333,10 +379,11 @@ impl Decoder {
                 if let Some(a) = item.get("arguments").and_then(Value::as_str) {
                     c.args = a.to_owned();
                 }
-                out.push(self.finish_call(c)?);
+                out.extend(self.finish_call(c)?);
             }
             "response.completed" | "response.incomplete" => {
                 let u = v.pointer("/response/usage").filter(|u| u.is_object());
+                self.note_usage(u);
                 out.push(Piece::Usage {
                     input: token(u.and_then(|u| u.get("input_tokens"))),
                     output: token(u.and_then(|u| u.get("output_tokens"))),
@@ -344,15 +391,16 @@ impl Decoder {
                 });
                 out.extend(self.flush_openai_calls()?);
                 if kind == "response.incomplete" && !self.saw_text && self.emitted_calls == 0 {
-                    return Err(CompanionError::new(
-                        ErrorKind::ProviderError,
-                        "The model stopped before it wrote a reply (it reached its output limit or was filtered).",
-                    ));
+                    let why = v
+                        .pointer("/response/incomplete_details/reason")
+                        .and_then(Value::as_str);
+                    return Err(incomplete_error(why));
                 }
                 self.done = true;
                 out.push(Piece::Done);
             }
             "response.failed" => {
+                self.note_usage(v.pointer("/response/usage"));
                 let m = v.pointer("/response/error/message").and_then(Value::as_str);
                 return Err(self.responses_error(m));
             }
@@ -378,6 +426,8 @@ impl Decoder {
         }
         let mut out = Vec::new();
         if let Some(u) = v.get("usage").filter(|u| u.is_object()) {
+            self.usage_in = token(u.get("prompt_tokens")).or(self.usage_in);
+            self.usage_out = token(u.get("completion_tokens")).or(self.usage_out);
             out.push(Piece::Usage {
                 input: token(u.get("prompt_tokens")),
                 output: token(u.get("completion_tokens")),
@@ -426,6 +476,25 @@ impl Decoder {
     }
 }
 
+/// The error for a Responses reply that stopped before it wrote anything (`status: incomplete`
+/// or `response.incomplete`). `why` is `incomplete_details.reason`; only a short plain identifier
+/// is ever repeated.
+pub fn incomplete_error(why: Option<&str>) -> CompanionError {
+    let plain = why.filter(|w| {
+        !w.is_empty() && w.len() <= 40 && w.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+    });
+    let message = match plain {
+        Some("max_output_tokens") => {
+            "The model reached its output limit before it wrote a reply (it used the allowance thinking). Try again, ask for something shorter, or choose another model.".to_owned()
+        }
+        Some(other) => {
+            format!("The model stopped before it wrote a reply (reason: {other}).")
+        }
+        None => "The model stopped before it wrote a reply.".to_owned(),
+    };
+    CompanionError::new(ErrorKind::ProviderError, message)
+}
+
 /// A whole (non-streamed) OpenAI Responses body, read the same way as the stream.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResponsesBody {
@@ -433,22 +502,62 @@ pub struct ResponsesBody {
     pub calls: Vec<ToolCall>,
     pub input: Option<i64>,
     pub output: Option<i64>,
+    /// `status` was `incomplete`: the `incomplete_details.reason` (or `unknown`). The text and
+    /// calls may be empty; the caller decides whether that is an error.
+    pub incomplete: Option<String>,
+}
+
+/// A body that is an error: the error, and the usage the provider reported for it (if any).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BodyFailure {
+    pub error: CompanionError,
+    pub input: Option<i64>,
+    pub output: Option<i64>,
+}
+
+impl BodyFailure {
+    fn bare(error: CompanionError) -> Self {
+        Self {
+            error,
+            input: None,
+            output: None,
+        }
+    }
 }
 
 /// Parses a 2xx Responses body: `output[]` message items (`content[]` parts of type
 /// `output_text`) and `function_call` items, `usage.input_tokens` / `usage.output_tokens`, and a
-/// `status` of `failed` or `incomplete`. Text is not cleaned here.
-pub fn parse_responses_body(body: &[u8], key: &str) -> Result<ResponsesBody, CompanionError> {
-    let v: Value = serde_json::from_slice(body).map_err(|_| bad())?;
-    let mut d = Decoder::new(ProviderKind::OpenAi).with_key(key);
+/// `status` of `failed` (an error, with its usage) or `incomplete`. Text is not cleaned here.
+/// With `tools` false any function call is ignored before anything else looks at it.
+pub fn parse_responses_body(
+    body: &[u8],
+    key: &str,
+    echoes: &std::sync::Arc<crate::reason::Echoes>,
+    tools: bool,
+) -> Result<ResponsesBody, BodyFailure> {
+    let v: Value = serde_json::from_slice(body).map_err(|_| BodyFailure::bare(bad()))?;
+    let mut d = Decoder::new(ProviderKind::OpenAi)
+        .with_key(key)
+        .with_echoes(echoes)
+        .with_tools(tools);
+    let u = v.get("usage");
+    d.note_usage(u);
+    let (input, output) = d.reported_usage();
     let status = v
         .get("status")
         .and_then(Value::as_str)
         .unwrap_or("completed");
     if status == "failed" {
-        return Err(d.responses_error(v.pointer("/error/message").and_then(Value::as_str)));
+        return Err(BodyFailure {
+            error: d.responses_error(v.pointer("/error/message").and_then(Value::as_str)),
+            input,
+            output,
+        });
     }
-    let items = v.get("output").and_then(Value::as_array).ok_or_else(bad)?;
+    let items = v
+        .get("output")
+        .and_then(Value::as_array)
+        .ok_or_else(|| BodyFailure::bare(bad()))?;
     let mut text = String::new();
     let mut calls = Vec::new();
     for item in items {
@@ -474,31 +583,35 @@ pub fn parse_responses_body(body: &[u8], key: &str) -> Result<ResponsesBody, Com
                         .map(str::to_owned)
                         .unwrap_or_default()
                 };
-                let Piece::Tool(c) = d.finish_call(PartialCall {
-                    id: s("call_id"),
-                    name: s("name"),
-                    args: s("arguments"),
-                })?
-                else {
-                    return Err(bad());
-                };
-                calls.push(c);
+                let piece = d
+                    .finish_call(PartialCall {
+                        id: s("call_id"),
+                        name: s("name"),
+                        args: s("arguments"),
+                    })
+                    .map_err(|e| BodyFailure {
+                        error: e,
+                        input,
+                        output,
+                    })?;
+                if let Some(Piece::Tool(c)) = piece {
+                    calls.push(c);
+                }
             }
             _ => {}
         }
     }
-    if status == "incomplete" && text.trim().is_empty() && calls.is_empty() {
-        return Err(CompanionError::new(
-            ErrorKind::ProviderError,
-            "The model stopped before it wrote a reply (it reached its output limit or was filtered).",
-        ));
-    }
-    let u = v.get("usage");
+    let incomplete = (status == "incomplete").then(|| {
+        v.pointer("/incomplete_details/reason")
+            .and_then(Value::as_str)
+            .map_or_else(|| "unknown".to_owned(), str::to_owned)
+    });
     Ok(ResponsesBody {
         text,
         calls,
-        input: token(u.and_then(|u| u.get("input_tokens"))),
-        output: token(u.and_then(|u| u.get("output_tokens"))),
+        input,
+        output,
+        incomplete,
     })
 }
 
@@ -804,18 +917,20 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(e.kind, ErrorKind::ProviderError);
-        assert!(
-            e.message
-                .ends_with("OpenAI said: \"The model failed to generate a response.\""),
-            "{}",
-            e.message
+        assert_eq!(e.message, "The provider reported a problem while replying.");
+        let r = e.reason.expect("the reason travels apart from the message");
+        assert_eq!(
+            (r.speaker, r.text.as_str()),
+            ("OpenAI", "The model failed to generate a response.")
         );
         let e = run(
             ProviderKind::OpenAi,
             &["{\"type\":\"error\",\"code\":\"ERR\",\"message\":\"bad\\u202e sk-proj-abcdefgh12345678\",\"param\":null}"],
         )
         .unwrap_err();
-        assert!(!e.message.contains("sk-proj") && !e.message.contains('\u{202e}'));
+        let r = e.reason.expect("reason");
+        assert!(!r.text.contains("sk-proj") && !r.text.contains('\u{202e}'));
+        assert!(!e.message.contains("sk-proj"));
         // Incomplete with some text is a (cut) reply; without any output it is an error.
         let p = run(
             ProviderKind::OpenAi,
@@ -866,7 +981,7 @@ mod tests {
     #[test]
     fn responses_body_round_trip_with_a_tool_call() {
         let b = br#"{"id":"resp_9","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Let me check."}]},{"type":"function_call","id":"fc_9","call_id":"call_9","name":"suggest_break","arguments":"{\"available_minutes\":5}","status":"completed"}],"usage":{"input_tokens":40,"output_tokens":12}}"#;
-        let r = parse_responses_body(b, "").unwrap();
+        let r = parse_responses_body(b, "", &Default::default(), true).unwrap();
         assert_eq!(r.text, "Let me check.");
         assert_eq!(r.calls.len(), 1);
         assert_eq!(r.calls[0].id, "call_9");

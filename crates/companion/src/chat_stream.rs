@@ -22,20 +22,31 @@ use crate::http::{
 };
 use crate::provider::{
     BuiltRequest, ProviderKind, ProviderSpec, RequestPlan, build_plan_request, clean_chunk,
-    clean_reply, estimate, map_status_reason, parse_reply,
+    clean_reply, estimate, map_status_reason, parse_reply_with,
 };
 use crate::secret::Secret;
 use crate::sse::SseParser;
-use crate::stream::{Decoder, Piece, ended_early, parse_responses_body};
+use crate::stream::{Decoder, Piece, ended_early, incomplete_error, parse_responses_body};
 use crate::tools::ToolCall;
 use crate::url_check::check_base_url;
 
-/// Appended to a reply that had to be fetched without streaming (see `chat_stream`).
-pub const NO_STREAM_NOTICE: &str = "\n\n(OpenAI would not stream this reply for your organisation, so it arrived all at once. Verifying your organisation with OpenAI may allow streaming.)";
+/// What a call taught about the model, for the caller to remember for this app run (OpenAI
+/// Responses only): it answered HTTP 400 to `reasoning` or to `stream: true`, and the call went on
+/// without. Later calls to the same model should start without them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Learned {
+    pub reasoning_refused: bool,
+    pub stream_refused: bool,
+}
 
 /// A finished (or cut) streamed reply.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamReply {
+    /// False when the reply arrived all at once (the request was not streamed, was retried
+    /// without streaming, or the server ignored `stream: true`). The caller keeps this as a note
+    /// next to the reply; it is never part of the reply text.
+    pub streamed: bool,
+    pub learned: Learned,
     /// Cleaned text; may be empty when the model only asked for lookups.
     pub text: String,
     pub tool_calls: Vec<ToolCall>,
@@ -62,6 +73,9 @@ pub struct StreamFailure {
     /// The provider refused `stream: true` for this organisation (OpenAI, HTTP 400, `param` is
     /// `stream`). Set only on that refusal; `chat_stream` retries once without streaming.
     pub stream_refused: bool,
+    /// The provider refused `reasoning` (OpenAI, HTTP 400, `param` starts with `reasoning`).
+    pub reasoning_refused: bool,
+    pub learned: Learned,
 }
 
 impl StreamFailure {
@@ -73,6 +87,8 @@ impl StreamFailure {
             received: false,
             partial: String::new(),
             stream_refused: false,
+            reasoning_refused: false,
+            learned: Learned::default(),
         }
     }
 }
@@ -80,13 +96,20 @@ impl StreamFailure {
 enum Msg {
     Activity,
     Delta(String),
+    /// The worker is about to send a request that cannot stream: the whole reply is produced
+    /// before the first byte, so the caller must wait for the total timeout, not the first-byte one.
+    Retrying,
     End(Result<StreamReply, StreamFailure>),
 }
 
-/// What the error-body reader needs: the key to hide and what we sent (a reason quoting it is dropped).
+/// What the error-body reader and the failure bookkeeping need.
 struct ErrCtx {
+    /// The key, hidden in provider messages.
     key: zeroize::Zeroizing<String>,
-    echoes: Vec<String>,
+    /// What we sent: a provider message quoting it is dropped.
+    echoes: Arc<crate::reason::Echoes>,
+    /// What to book for a call that failed with no usage reported (the request's output cap).
+    max_out: i64,
 }
 
 struct Tally {
@@ -143,9 +166,13 @@ fn stream_call(
             kind,
             reason.as_ref(),
         ));
-        failure.stream_refused = status == 400
-            && kind == ProviderKind::OpenAi
-            && reason.as_ref().and_then(|r| r.param.as_deref()) == Some("stream");
+        let param = reason
+            .as_ref()
+            .and_then(|r| r.param.as_deref())
+            .unwrap_or("");
+        failure.reasoning_refused =
+            status == 400 && kind == ProviderKind::OpenAi && param.starts_with("reasoning");
+        failure.stream_refused = status == 400 && kind == ProviderKind::OpenAi && param == "stream";
         return Err(failure);
     }
     let is_stream = resp
@@ -187,6 +214,8 @@ fn stream_call(
                 received,
                 partial: text.to_owned(),
                 stream_refused: false,
+                reasoning_refused: false,
+                learned: Learned::default(),
             }
         };
 
@@ -194,7 +223,11 @@ fn stream_call(
     let mut buf = [0u8; 8 * 1024];
 
     if !is_stream {
-        // A server that ignored `stream: true`: read the whole JSON body and show it as one chunk.
+        // A reply that is not streamed (the request said so, or the server ignored
+        // `stream: true`): read the whole JSON body and show it as one chunk. The provider has
+        // already produced the reply, so a failure from here on books the output cap unless the
+        // body says what it cost.
+        tally.output = Some(ctx.max_out);
         let mut body = Vec::new();
         let limit = u64::try_from(cfg.max_response_bytes)
             .unwrap_or(u64::MAX)
@@ -227,30 +260,51 @@ fn stream_call(
         }
         let (mut t, tool_calls, input_tokens, output_tokens) = if kind == ProviderKind::OpenAi {
             // A Responses body (also the answer to the non-streaming retry).
-            let r = parse_responses_body(&body, &ctx.key)
-                .map_err(|e| failure(e, "", &[], &tally, true))?;
+            let r = match parse_responses_body(&body, &ctx.key, &ctx.echoes, tools_on) {
+                Ok(r) => r,
+                Err(f) => {
+                    // A reported failure: book what the provider counted, else the output cap.
+                    tally.input = f.input.or(tally.input);
+                    tally.output = f.output.or(tally.output);
+                    return Err(failure(f.error, "", &[], &tally, true));
+                }
+            };
+            tally.input = r.input.or(tally.input);
+            tally.output = r.output.or(tally.output);
             let t = clean_reply(&r.text);
+            // Calls were already filtered by `tools_on`, so a reply that only made calls the
+            // request did not allow counts as empty.
             if t.trim().is_empty() && r.calls.is_empty() {
-                return Err(failure(
-                    CompanionError::invalid_response(),
-                    "",
-                    &[],
-                    &tally,
-                    true,
-                ));
+                let error = match &r.incomplete {
+                    Some(why) => incomplete_error(Some(why)),
+                    None => CompanionError::invalid_response(),
+                };
+                return Err(failure(error, "", &[], &tally, true));
             }
-            let calls = if tools_on { r.calls } else { Vec::new() };
             let produced =
-                t.chars().count() + calls.iter().map(|c| c.arguments.len()).sum::<usize>();
+                t.chars().count() + r.calls.iter().map(|c| c.arguments.len()).sum::<usize>();
             (
                 t,
-                calls,
+                r.calls,
                 r.input.unwrap_or_else(|| est_chars(sent_chars)),
                 r.output.unwrap_or_else(|| est_chars(produced)),
             )
         } else {
-            let reply = parse_reply(kind, &body, sent_chars)
-                .map_err(|e| failure(e, "", &[], &tally, true))?;
+            let reply = parse_reply_with(
+                kind,
+                &body,
+                sent_chars,
+                u32::try_from(ctx.max_out).unwrap_or(u32::MAX),
+                &ctx.key,
+                &ctx.echoes,
+            )
+            .map_err(|e| {
+                if let Some((i, o)) = e.usage {
+                    tally.input = Some(i);
+                    tally.output = Some(o);
+                }
+                failure(e, "", &[], &tally, true)
+            })?;
             (
                 reply.text,
                 Vec::new(),
@@ -270,6 +324,8 @@ fn stream_call(
             let _ = tx.send(Msg::Delta(t.clone()));
         }
         return Ok(StreamReply {
+            streamed: false,
+            learned: Learned::default(),
             text: t,
             tool_calls,
             input_tokens,
@@ -280,7 +336,10 @@ fn stream_call(
     }
 
     let mut parser = SseParser::new(cfg.max_event_bytes);
-    let mut dec = Decoder::new(kind).with_key(&ctx.key);
+    let mut dec = Decoder::new(kind)
+        .with_key(&ctx.key)
+        .with_echoes(&ctx.echoes)
+        .with_tools(tools_on);
     let mut total = 0usize;
     let mut done = false;
     'read: loop {
@@ -337,9 +396,17 @@ fn stream_call(
             )
         })?;
         for ev in events {
-            let pieces = dec
-                .push(&ev)
-                .map_err(|e| failure(e, &text, &calls, &tally, received))?;
+            let pieces = match dec.push(&ev) {
+                Ok(p) => p,
+                Err(e) => {
+                    // The provider reported a failure (or sent something unusable) after working
+                    // on the call: book the last usage it reported, else the output cap.
+                    let (i, o) = dec.reported_usage();
+                    tally.input = i.or(tally.input);
+                    tally.output = Some(o.or(tally.output).unwrap_or(ctx.max_out));
+                    return Err(failure(e, &text, &calls, &tally, received));
+                }
+            };
             for piece in pieces {
                 match piece {
                     Piece::Text(t) => {
@@ -412,6 +479,8 @@ fn stream_call(
         tally.output.unwrap_or(0).max(est_chars(produced))
     };
     Ok(StreamReply {
+        streamed: true,
+        learned: Learned::default(),
         text,
         tool_calls: calls,
         input_tokens,
@@ -445,18 +514,38 @@ where
         base_url: checked.url,
         ..spec.clone()
     };
-    let built = build_plan_request(&spec, key.expose(), plan);
-    // Built up front, sent only if OpenAI refuses streaming. Never built for other providers.
-    let fallback = (spec.kind == ProviderKind::OpenAi && plan.stream).then(|| {
-        build_plan_request(
-            &spec,
-            key.expose(),
-            &RequestPlan {
-                stream: false,
-                ..*plan
-            },
-        )
-    });
+    // OpenAI Responses only: the request may have to be repeated without `reasoning` (the model
+    // has no such setting) and/or without `stream` (the organisation may not stream). Each is
+    // tried once, so build the (at most four) variants now.
+    let reasoning0 = kind_is_openai(&spec) && plan.reasoning;
+    let stream0 = plan.stream;
+    let mut variants: Vec<((bool, bool), BuiltRequest)> = Vec::new();
+    let mut want = vec![(reasoning0, stream0)];
+    if kind_is_openai(&spec) {
+        if reasoning0 {
+            want.push((false, stream0));
+        }
+        if stream0 {
+            want.push((reasoning0, false));
+        }
+        if reasoning0 && stream0 {
+            want.push((false, false));
+        }
+    }
+    for (r, s) in want {
+        variants.push((
+            (r, s),
+            build_plan_request(
+                &spec,
+                key.expose(),
+                &RequestPlan {
+                    reasoning: r,
+                    stream: s,
+                    ..*plan
+                },
+            ),
+        ));
+    }
     let sent_chars: usize = plan
         .messages
         .iter()
@@ -473,16 +562,14 @@ where
             .sum::<usize>();
     let ctx = ErrCtx {
         key: zeroize::Zeroizing::new(key.expose().to_owned()),
-        echoes: plan
-            .messages
-            .iter()
-            .map(|m| m.content.clone())
-            .chain(
+        echoes: Arc::new(crate::reason::Echoes::new(
+            plan.messages.iter().map(|m| m.content.clone()).chain(
                 plan.rounds
                     .iter()
                     .flat_map(|r| std::iter::once(r.text.clone()).chain(r.results.iter().cloned())),
-            )
-            .collect(),
+            ),
+        )),
+        max_out: i64::from(plan.max_output_tokens),
     };
     let kind = spec.kind;
     let tools_on = plan.tools;
@@ -492,41 +579,52 @@ where
     let handoff = Arc::new(AtomicU8::new(PENDING));
     let worker_handoff = Arc::clone(&handoff);
     std::thread::spawn(move || {
-        let mut result = stream_call(
-            &cfg,
-            loopback,
-            kind,
-            tools_on,
-            sent_chars,
-            built,
-            &ctx,
-            &worker_handoff,
-            &tx,
-        );
-        // OpenAI refuses `stream: true` for organisations that are not verified (HTTP 400, `param`
-        // is `stream`). Try once more without streaming and tell the user.
-        let refused = matches!(&result, Err(f) if f.stream_refused);
-        if let (true, Some(fb)) = (refused, fallback) {
-            let mut retried = stream_call(
+        let (mut reasoning, mut stream) = (reasoning0, stream0);
+        let mut learned = Learned::default();
+        // A request that cannot stream costs the provider the whole reply before the first byte.
+        let mut non_stream_sent = !stream0;
+        let mut result;
+        loop {
+            let Some(pos) = variants.iter().position(|(k, _)| *k == (reasoning, stream)) else {
+                result = Err(StreamFailure::bare(CompanionError::internal()));
+                break;
+            };
+            let (_, built) = variants.swap_remove(pos);
+            result = stream_call(
                 &cfg,
                 loopback,
                 kind,
                 tools_on,
                 sent_chars,
-                fb,
+                built,
                 &ctx,
                 &worker_handoff,
                 &tx,
             );
-            if let Ok(reply) = &mut retried
-                && !reply.text.is_empty()
-            {
-                reply.text.push_str(NO_STREAM_NOTICE);
-                if worker_handoff.load(Ordering::SeqCst) != ABANDONED {
-                    let _ = tx.send(Msg::Delta(NO_STREAM_NOTICE.to_owned()));
-                }
+            // Never start another request for a call the user has already given up on.
+            if worker_handoff.load(Ordering::SeqCst) == ABANDONED {
+                break;
             }
-            result = retried;
+            match &result {
+                // The model has no `reasoning` setting: repeat without it, once.
+                Err(f) if f.reasoning_refused && reasoning => {
+                    reasoning = false;
+                    learned.reasoning_refused = true;
+                }
+                // OpenAI refuses `stream: true` (organisation not verified): repeat without it,
+                // once. The caller is told so it waits for the total time, not the first byte.
+                Err(f) if f.stream_refused && stream => {
+                    stream = false;
+                    learned.stream_refused = true;
+                    non_stream_sent = true;
+                    let _ = tx.send(Msg::Retrying);
+                }
+                _ => break,
+            }
+        }
+        match &mut result {
+            Ok(r) => r.learned = learned,
+            Err(f) => f.learned = learned,
         }
         if worker_handoff
             .compare_exchange(PENDING, DELIVERED, Ordering::SeqCst, Ordering::SeqCst)
@@ -547,7 +645,8 @@ where
                 },
                 Err(_) => LateUsage {
                     input_tokens: est_chars(sent_chars),
-                    output_tokens: 0,
+                    // A non-streamed call was worked on in full before any byte came back.
+                    output_tokens: if non_stream_sent { ctx.max_out } else { 0 },
                     reported: false,
                 },
             };
@@ -557,6 +656,7 @@ where
 
     let mut last = Instant::now();
     let mut seen = false;
+    let mut retrying = !stream0;
     loop {
         if cancel.is_cancelled()
             && handoff
@@ -577,9 +677,15 @@ where
                 last = Instant::now();
                 seen = true;
             }
+            Ok(Msg::Retrying) => {
+                last = Instant::now();
+                retrying = true;
+            }
             Ok(Msg::End(r)) => return r,
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                let limit = if seen {
+                let limit = if retrying {
+                    cfg.total_timeout
+                } else if seen {
                     cfg.idle_timeout
                 } else {
                     cfg.first_byte_timeout
@@ -597,4 +703,8 @@ where
             }
         }
     }
+}
+
+fn kind_is_openai(spec: &ProviderSpec) -> bool {
+    spec.kind == ProviderKind::OpenAi
 }

@@ -41,10 +41,27 @@ impl ErrorKind {
     }
 }
 
+/// What the provider itself said about a refused request: one sanitised, capped sentence (see
+/// [`crate::reason`]). Kept apart from [`CompanionError::message`], which is always Lullshift's
+/// own fixed sentence, so the UI can show it as the provider's words, in its own element, and
+/// never mistake it for Lullshift's wording or run it through link detection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderReason {
+    /// "OpenAI", "Anthropic" or "The provider".
+    pub speaker: &'static str,
+    pub text: String,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct CompanionError {
     pub kind: ErrorKind,
+    /// A fixed sentence. Never provider text.
     pub message: String,
+    /// The provider's sanitised reason, if it gave a readable one.
+    pub reason: Option<ProviderReason>,
+    /// Tokens (input, output) to book for a call that failed after the provider began work on it
+    /// (a reported failure with its usage, or the output cap when none was reported). Not shown.
+    pub usage: Option<(i64, i64)>,
 }
 
 impl CompanionError {
@@ -52,7 +69,21 @@ impl CompanionError {
         Self {
             kind,
             message: message.into(),
+            reason: None,
+            usage: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_reason(mut self, reason: Option<ProviderReason>) -> Self {
+        self.reason = reason;
+        self
+    }
+
+    #[must_use]
+    pub fn with_usage(mut self, input: i64, output: i64) -> Self {
+        self.usage = Some((input, output));
+        self
     }
 
     pub fn offline() -> Self {
@@ -133,10 +164,14 @@ impl CompanionError {
         Self::new(ErrorKind::NotFound, message)
     }
 
-    /// Removes `key` from the message (defence in depth; messages carry only sanitised, scrubbed provider excerpts).
+    /// Removes `key` from the message and the provider's reason (defence in depth: the reason
+    /// was already scrubbed when it was made).
     #[must_use]
     pub fn scrubbed(mut self, key: &str) -> Self {
         self.message = crate::scrub(&self.message, key);
+        if let Some(r) = &mut self.reason {
+            r.text = crate::scrub(&r.text, key);
+        }
         self
     }
 }

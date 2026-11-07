@@ -45,6 +45,10 @@ pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 
 /// Output cap per reply.
 pub const MAX_OUTPUT_TOKENS: u32 = 1024;
+/// Output cap per chat reply on the OpenAI Responses API, where a reasoning model spends output
+/// tokens thinking before it writes. Still below any sensible monthly budget; the budget is
+/// checked before each call.
+pub const RESPONSES_MAX_OUTPUT_TOKENS: u32 = 8192;
 /// Output cap for the connection test.
 pub const TEST_OUTPUT_TOKENS: u32 = 16;
 /// Replies longer than this are cut (characters).
@@ -64,6 +68,14 @@ impl ProviderKind {
             "openai" => Some(Self::OpenAi),
             "openaiCompatible" => Some(Self::OpenAiCompatible),
             _ => None,
+        }
+    }
+
+    /// The output cap for one chat reply.
+    pub fn chat_output_cap(self) -> u32 {
+        match self {
+            Self::OpenAi => RESPONSES_MAX_OUTPUT_TOKENS,
+            Self::Anthropic | Self::OpenAiCompatible => MAX_OUTPUT_TOKENS,
         }
     }
 
@@ -138,6 +150,9 @@ pub struct RequestPlan<'a> {
     /// Offer the three lookups.
     pub tools: bool,
     pub stream: bool,
+    /// OpenAI Responses only: ask for `reasoning: {effort: "low"}`, so a model that thinks first
+    /// leaves room for the reply. Dropped (and remembered) when the model refuses it.
+    pub reasoning: bool,
     pub max_output_tokens: u32,
 }
 
@@ -191,6 +206,7 @@ pub fn build_request(
             rounds: &[],
             tools: false,
             stream: false,
+            reasoning: false,
             max_output_tokens,
         },
     )
@@ -334,6 +350,11 @@ pub fn build_plan_request(spec: &ProviderSpec, key: &str, plan: &RequestPlan<'_>
             if plan.stream {
                 body["stream"] = json!(true);
             }
+            if plan.reasoning {
+                // No model list is hard-coded: a model that has no such setting answers HTTP 400
+                // with a `reasoning...` param, and the caller retries once without it.
+                body["reasoning"] = json!({ "effort": "low" });
+            }
             if plan.tools {
                 // `strict: false`: the API defaults to strict schemas, which need every property
                 // required and `additionalProperties: false`.
@@ -442,6 +463,31 @@ pub fn parse_reply(
     body: &[u8],
     sent_chars: usize,
 ) -> Result<Reply, CompanionError> {
+    parse_reply_with(
+        kind,
+        body,
+        sent_chars,
+        MAX_OUTPUT_TOKENS,
+        "",
+        &std::sync::Arc::default(),
+    )
+}
+
+/// Like [`parse_reply`], for the real call: `key` and `echoes` guard any provider message that
+/// is shown, and `max_output` is what to book for a call that failed without reporting usage.
+///
+/// For the OpenAI Responses API a reply that stopped at the output limit before any text
+/// (`status: incomplete`, reason `max_output_tokens`) is a success with empty text, so the
+/// connection test of a model that thinks first still passes; any other failure carries the
+/// usage to book in [`CompanionError::usage`].
+pub fn parse_reply_with(
+    kind: ProviderKind,
+    body: &[u8],
+    sent_chars: usize,
+    max_output: u32,
+    key: &str,
+    echoes: &std::sync::Arc<crate::reason::Echoes>,
+) -> Result<Reply, CompanionError> {
     let v: Value = serde_json::from_slice(body).map_err(|_| CompanionError::invalid_response())?;
     let (text, input, output) = match kind {
         ProviderKind::Anthropic => {
@@ -464,7 +510,27 @@ pub fn parse_reply(
         }
         ProviderKind::OpenAi => {
             // Responses API body. Lookups are never offered on this path, so calls are ignored.
-            let r = crate::stream::parse_responses_body(body, "")?;
+            let conservative = i64::from(max_output);
+            let r = crate::stream::parse_responses_body(body, key, echoes, false).map_err(|f| {
+                let (i, o) = (
+                    f.input.unwrap_or_else(|| estimate(sent_chars)),
+                    f.output.unwrap_or(conservative),
+                );
+                f.error.with_usage(i, o)
+            })?;
+            if r.incomplete.is_some() && r.text.trim().is_empty() {
+                let input_tokens = r.input.unwrap_or_else(|| estimate(sent_chars));
+                let output_tokens = r.output.unwrap_or(conservative);
+                if r.incomplete.as_deref() == Some("max_output_tokens") {
+                    return Ok(Reply {
+                        text: String::new(),
+                        input_tokens,
+                        output_tokens,
+                    });
+                }
+                return Err(crate::stream::incomplete_error(r.incomplete.as_deref())
+                    .with_usage(input_tokens, output_tokens));
+            }
             (r.text, r.input, r.output)
         }
         ProviderKind::OpenAiCompatible => {
@@ -511,17 +577,17 @@ impl ProviderKind {
     }
 }
 
-/// Like [`map_status`], with the provider's sanitised reason (see [`crate::reason`]) appended to
-/// the fixed sentence for 4xx and 5xx statuses. The kind of error depends on the status only.
+/// Like [`map_status`], with the provider's sanitised reason (see [`crate::reason`]) attached to
+/// the error for 4xx and 5xx statuses (the message stays fixed). The kind depends on the status only.
 pub fn map_status_reason(
     status: u16,
     retry_after: Option<&str>,
     kind: ProviderKind,
     reason: Option<&crate::reason::Reason>,
 ) -> CompanionError {
-    let mut e = map_status_fixed(status, retry_after);
+    let e = map_status_fixed(status, retry_after);
     if (400..=599).contains(&status) {
-        e.message = crate::reason::append_reason(&e.message, kind.speaker(), reason);
+        return e.with_reason(crate::reason::provider_reason(kind, reason));
     }
     e
 }
@@ -680,6 +746,7 @@ mod tests {
                 rounds,
                 tools,
                 stream,
+                reasoning: false,
                 max_output_tokens: 64,
             },
         );
@@ -897,7 +964,7 @@ mod tests {
     fn responses_failures_and_empty_output_are_errors() {
         for b in [
             &br#"{"status":"failed","error":{"message":"The model failed."},"output":[]}"#[..],
-            br#"{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"reasoning"}]}"#,
+            br#"{"status":"incomplete","incomplete_details":{"reason":"content_filter"},"output":[{"type":"reasoning"}]}"#,
             br#"{"status":"completed","output":[]}"#,
             br#"{"choices":[{"message":{"content":"chat shape"}}]}"#,
         ] {
@@ -909,7 +976,42 @@ mod tests {
             1,
         )
         .unwrap_err();
-        assert!(e.message.ends_with("OpenAI said: \"The model failed.\""));
+        assert_eq!(e.message, "The provider reported a problem while replying.");
+        assert_eq!(e.reason.unwrap().text, "The model failed.");
+    }
+
+    /// M1: a failed or incomplete body books what it reported, else the output cap.
+    #[test]
+    fn failed_bodies_carry_the_usage_to_book() {
+        let no_echo = std::sync::Arc::default();
+        let reported = br#"{"status":"failed","error":{"message":"x"},"usage":{"input_tokens":30,"output_tokens":7},"output":[]}"#;
+        let e =
+            parse_reply_with(ProviderKind::OpenAi, reported, 400, 8192, "", &no_echo).unwrap_err();
+        assert_eq!(e.usage, Some((30, 7)));
+        let silent = br#"{"status":"failed","error":{"message":"x"},"output":[]}"#;
+        let e =
+            parse_reply_with(ProviderKind::OpenAi, silent, 400, 8192, "", &no_echo).unwrap_err();
+        assert_eq!(e.usage, Some((estimate(400), 8192)));
+        let filtered = br#"{"status":"incomplete","incomplete_details":{"reason":"content_filter"},"output":[],"usage":{"input_tokens":5,"output_tokens":9}}"#;
+        let e =
+            parse_reply_with(ProviderKind::OpenAi, filtered, 400, 8192, "", &no_echo).unwrap_err();
+        assert_eq!(e.usage, Some((5, 9)));
+        assert!(e.message.contains("content_filter"), "{}", e.message);
+    }
+
+    /// M2: the connection test of a model that spends its tiny allowance thinking still passes.
+    #[test]
+    fn an_incomplete_reply_at_the_output_limit_is_a_successful_test() {
+        let b = br#"{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"reasoning","summary":[]}],"usage":{"input_tokens":9,"output_tokens":16}}"#;
+        let r = parse_reply(ProviderKind::OpenAi, b, 10).unwrap();
+        assert_eq!(
+            (r.text.as_str(), r.input_tokens, r.output_tokens),
+            ("", 9, 16)
+        );
+        let none = br#"{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[]}"#;
+        let r =
+            parse_reply_with(ProviderKind::OpenAi, none, 10, 16, "", &Default::default()).unwrap();
+        assert_eq!(r.output_tokens, 16, "no usage reported: the cap is booked");
     }
 
     #[test]

@@ -85,7 +85,10 @@ fn sanitise(raw: &str, key: &str) -> String {
 
 /// Sanitises one provider message that arrived inside a stream (no body to parse). `None` when
 /// nothing is left.
-pub fn excerpt(raw: &str, key: &str) -> Option<Reason> {
+pub fn excerpt(raw: &str, key: &str, echoes: &Echoes) -> Option<Reason> {
+    if echoes.quoted_in(raw) {
+        return None;
+    }
     let message = sanitise(raw, key);
     (!message.is_empty()).then_some(Reason {
         message,
@@ -93,9 +96,87 @@ pub fn excerpt(raw: &str, key: &str) -> Option<Reason> {
     })
 }
 
-/// Parses an error body. `echoes` are strings we sent (message text, lookup answers): a reason that
-/// quotes any of them is dropped.
-pub fn parse(body: &[u8], key: &str, echoes: &[String]) -> Option<Reason> {
+/// Shortest shared run (characters, after cleaning and whitespace collapsing) that counts as the
+/// provider quoting what we sent.
+pub const ECHO_WINDOW: usize = 24;
+/// A sent text shorter than this is not treated as an echo target at all.
+const ECHO_MIN: usize = 8;
+/// Most characters of sent text considered per text and in total (a long history is cut).
+const ECHO_TEXT_CAP: usize = 200_000;
+const ECHO_TOTAL_CAP: usize = 1_000_000;
+
+/// Cleaned, whitespace-collapsed, lowercased text.
+fn norm(s: &str) -> Vec<char> {
+    clean_chunk(s)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+        .chars()
+        .collect()
+}
+
+fn window_hash(w: &[char]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    w.hash(&mut h);
+    h.finish()
+}
+
+/// What we sent, ready to check a provider message against. The check cleans and collapses both
+/// sides first (so zero-width characters or odd spacing do not hide a quote) and drops the message
+/// if it contains a whole sent text of 8 or more characters, or shares any run of
+/// [`ECHO_WINDOW`] characters with one.
+#[derive(Debug, Default)]
+pub struct Echoes {
+    texts: Vec<Vec<char>>,
+}
+
+impl Echoes {
+    pub fn new<I: IntoIterator<Item = String>>(texts: I) -> Self {
+        let mut total = 0usize;
+        let mut out = Vec::new();
+        for t in texts {
+            let mut n = norm(&t);
+            n.truncate(ECHO_TEXT_CAP);
+            if n.len() < ECHO_MIN || total >= ECHO_TOTAL_CAP {
+                continue;
+            }
+            total += n.len();
+            out.push(n);
+        }
+        Self { texts: out }
+    }
+
+    pub fn quoted_in(&self, message: &str) -> bool {
+        if self.texts.is_empty() {
+            return false;
+        }
+        let msg = norm(message);
+        let msg_str: String = msg.iter().collect();
+        let mut windows: Option<std::collections::HashSet<u64>> = None;
+        for t in &self.texts {
+            let whole: String = t.iter().collect();
+            if msg_str.contains(&whole) {
+                return true;
+            }
+            if msg.len() >= ECHO_WINDOW && t.len() >= ECHO_WINDOW {
+                let set = windows
+                    .get_or_insert_with(|| msg.windows(ECHO_WINDOW).map(window_hash).collect());
+                if t.windows(ECHO_WINDOW)
+                    .any(|w| set.contains(&window_hash(w)))
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+/// Parses an error body. `echoes` is what we sent (message text, lookup answers): a reason that
+/// quotes any of it is dropped.
+pub fn parse(body: &[u8], key: &str, echoes: &Echoes) -> Option<Reason> {
     let v: serde_json::Value = serde_json::from_slice(body).ok()?;
     let err = v.get("error")?;
     let (raw, param) = match err {
@@ -108,10 +189,7 @@ pub fn parse(body: &[u8], key: &str, echoes: &[String]) -> Option<Reason> {
         }
         _ => return None,
     };
-    if echoes
-        .iter()
-        .any(|e| e.chars().count() >= 8 && raw.contains(e.as_str()))
-    {
+    if echoes.quoted_in(raw) {
         return None;
     }
     let message = sanitise(raw, key);
@@ -129,17 +207,15 @@ pub fn parse(body: &[u8], key: &str, echoes: &[String]) -> Option<Reason> {
     Some(Reason { message, param })
 }
 
-/// Appends `<label> said: "<reason>"` to `base`, keeping the whole under the column limit.
-pub fn append_reason(base: &str, label: &str, reason: Option<&Reason>) -> String {
-    let Some(r) = reason else {
-        return base.to_owned();
-    };
-    let lead = format!("{base} {label} said: \"");
-    let room = MAX_MESSAGE_CHARS.saturating_sub(lead.chars().count() + 1);
-    if room < 8 {
-        return base.to_owned();
-    }
-    format!("{lead}{}\"", cap_chars(&r.message, room))
+/// The reason as carried on an error, spoken by `kind`'s provider.
+pub fn provider_reason(
+    kind: crate::provider::ProviderKind,
+    reason: Option<&Reason>,
+) -> Option<crate::error::ProviderReason> {
+    reason.map(|r| crate::error::ProviderReason {
+        speaker: kind.speaker(),
+        text: r.message.clone(),
+    })
 }
 
 #[cfg(test)]
@@ -149,7 +225,7 @@ mod tests {
     const KEY: &str = "sk-test-SUPERSECRETKEY-0123456789";
 
     fn p(body: &str) -> Option<Reason> {
-        parse(body.as_bytes(), KEY, &[])
+        parse(body.as_bytes(), KEY, &Echoes::default())
     }
 
     #[test]
@@ -236,15 +312,41 @@ mod tests {
 
     #[test]
     fn a_reason_that_quotes_what_we_sent_is_dropped() {
-        let sent = vec![
+        let sent = Echoes::new(vec![
             "my private message about the build".to_owned(),
             "hi".to_owned(),
-        ];
+        ]);
         let body = r#"{"error":{"message":"Invalid input: my private message about the build"}}"#;
         assert_eq!(parse(body.as_bytes(), KEY, &sent), None);
         // Short sent strings are not treated as echoes.
         let ok = r#"{"error":{"message":"hi is not valid"}}"#;
         assert!(parse(ok.as_bytes(), KEY, &sent).is_some());
+    }
+
+    #[test]
+    fn partial_quotes_and_zero_width_quotes_are_dropped() {
+        let sent = Echoes::new(vec![
+            "please summarise the quarterly numbers for the payroll migration".to_owned(),
+        ]);
+        // A 30-character piece of a longer sent text.
+        let partial =
+            r#"{"error":{"message":"bad value near 'summarise the quarterly numbers' here"}}"#;
+        assert_eq!(parse(partial.as_bytes(), KEY, &sent), None);
+        // The same piece with zero-width characters and extra spacing inserted.
+        let hidden = "{\"error\":{\"message\":\"near sum\\u200bmarise  the\\n quarterly nu\\u2060mbers ok\"}}";
+        assert_eq!(parse(hidden.as_bytes(), KEY, &sent), None);
+        // Case differences do not hide it either.
+        let upper = r#"{"error":{"message":"SUMMARISE THE QUARTERLY NUMBERS FOR"}}"#;
+        assert_eq!(parse(upper.as_bytes(), KEY, &sent), None);
+        // A shorter overlap (under 24 characters) is allowed through.
+        let short = r#"{"error":{"message":"the quarterly numbers"}}"#;
+        assert!(parse(short.as_bytes(), KEY, &sent).is_some());
+        // Streamed messages go through the same check.
+        assert_eq!(
+            excerpt("failed on: summarise the quarterly numbers for", KEY, &sent),
+            None
+        );
+        assert!(excerpt("nothing to see", KEY, &sent).is_some());
     }
 
     #[test]
@@ -260,26 +362,21 @@ mod tests {
     }
 
     #[test]
-    fn appended_message_fits_the_column() {
+    fn the_reason_is_carried_apart_from_the_fixed_message() {
+        use crate::provider::ProviderKind;
         let r = Reason {
-            message: "y".repeat(MAX_REASON_CHARS),
+            message: "no".into(),
             param: None,
         };
-        let base = "x".repeat(300);
-        let m = append_reason(&base, "The provider", Some(&r));
-        assert!(m.chars().count() <= MAX_MESSAGE_CHARS);
-        assert!(m.ends_with("\u{2026}\"") || m.ends_with('"'));
-        assert_eq!(append_reason("base", "OpenAI", None), "base");
+        let p = provider_reason(ProviderKind::OpenAi, Some(&r)).unwrap();
+        assert_eq!((p.speaker, p.text.as_str()), ("OpenAI", "no"));
+        assert_eq!(provider_reason(ProviderKind::Anthropic, None), None);
         assert_eq!(
-            append_reason(
-                "base.",
-                "OpenAI",
-                Some(&Reason {
-                    message: "no".into(),
-                    param: None
-                })
-            ),
-            "base. OpenAI said: \"no\""
+            provider_reason(ProviderKind::OpenAiCompatible, Some(&r))
+                .unwrap()
+                .speaker,
+            "The provider"
         );
+        assert!(MAX_REASON_CHARS <= MAX_MESSAGE_CHARS);
     }
 }

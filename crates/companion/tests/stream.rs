@@ -131,6 +131,7 @@ fn run_with(
         rounds: &[],
         tools,
         stream: true,
+        reasoning: false,
         max_output_tokens: 64,
     };
     let mut deltas = Vec::new();
@@ -518,9 +519,9 @@ fn http_errors_map_to_fixed_messages_with_the_sanitised_reason_and_count_nothing
     assert_eq!(f.error.kind, ErrorKind::KeyRejected);
     assert_eq!((f.input_tokens, f.output_tokens, f.received), (0, 0, false));
     assert!(
-        f.error.message.ends_with("OpenAI said: \"PROVIDER-BODY\""),
+        said(&f.error).ends_with("OpenAI said: \"PROVIDER-BODY\""),
         "{}",
-        f.error.message
+        said(&f.error)
     );
 }
 
@@ -547,7 +548,7 @@ fn stream_error_excerpts_cover_shapes_html_oversize_key_and_bidi() {
     for (kind, resp, expect) in cases {
         let mock = start_scripted(vec![resp]);
         let (r, _) = run(&mock, kind, HttpConfig::default(), false);
-        let m = r.unwrap_err().error.message;
+        let m = said(&r.unwrap_err().error);
         assert!(m.ends_with(expect), "{m}");
     }
     // HTML and oversized bodies: fixed message only.
@@ -559,7 +560,7 @@ fn stream_error_excerpts_cover_shapes_html_oversize_key_and_bidi() {
     ] {
         let mock = start_scripted(vec![resp]);
         let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
-        let m = r.unwrap_err().error.message;
+        let m = said(&r.unwrap_err().error);
         assert!(
             !m.contains("BIG-REASON") && !m.contains("said:") && !m.contains("html"),
             "{m}"
@@ -571,7 +572,7 @@ fn stream_error_excerpts_cover_shapes_html_oversize_key_and_bidi() {
         &format!("{{\"error\":{{\"message\":\"you sent {KEY} oops\"}}}}"),
     )]);
     let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
-    let m = r.unwrap_err().error.message;
+    let m = said(&r.unwrap_err().error);
     assert!(
         !m.contains("SUPERSECRETKEY") && m.contains("[hidden]"),
         "{m}"
@@ -656,6 +657,14 @@ fn responses_text_stream() -> String {
     .collect()
 }
 
+/// The provider's words as the UI shows them: `<speaker> said: "<text>"` (empty if none).
+fn said(e: &companion::CompanionError) -> String {
+    e.reason
+        .as_ref()
+        .map(|r| format!("{} said: \"{}\"", r.speaker, r.text))
+        .unwrap_or_default()
+}
+
 fn body_of(req: &str) -> serde_json::Value {
     serde_json::from_str(req.split_once("\r\n\r\n").unwrap().1).unwrap()
 }
@@ -703,6 +712,7 @@ fn responses_tool_call_round_trip() {
             rounds: &[],
             tools: true,
             stream: true,
+            reasoning: false,
             max_output_tokens: 64,
         },
         &cancel,
@@ -729,6 +739,7 @@ fn responses_tool_call_round_trip() {
             rounds: &rounds,
             tools: true,
             stream: true,
+            reasoning: false,
             max_output_tokens: 64,
         },
         &cancel,
@@ -757,7 +768,7 @@ fn responses_failure_events_are_errors_with_the_reason() {
     );
     let mock = start_scripted(vec![Resp::sse(&failed)]);
     let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
-    let m = r.unwrap_err().error.message;
+    let m = said(&r.unwrap_err().error);
     assert!(
         m.ends_with("OpenAI said: \"The model failed to generate a response.\""),
         "{m}"
@@ -785,14 +796,15 @@ fn responses_json() -> String {
 const RESPONSES_JSON_RAW: &str = r#"{"id":"resp_2","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"WholeBIDI reply"}]}],"usage":{"input_tokens":12,"output_tokens":3}}"#;
 
 #[test]
-fn a_refused_stream_is_retried_once_without_streaming_and_the_reply_says_so() {
+fn a_refused_stream_is_retried_once_without_streaming_and_reported_as_metadata() {
     let mock = start_scripted(vec![refuse_stream(), Resp::json(200, &responses_json())]);
     let (r, deltas) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
     let r = r.unwrap();
-    assert!(r.text.starts_with("Whole reply"), "{}", r.text);
-    assert!(r.text.contains("would not stream this reply"));
-    assert!(r.text.ends_with(companion::chat_stream::NO_STREAM_NOTICE));
-    assert_eq!(deltas.concat(), r.text);
+    // The reply is the model's words only; the fact that it was not streamed is metadata.
+    assert_eq!(r.text, "Whole reply");
+    assert!(!r.streamed);
+    assert!(r.learned.stream_refused && !r.learned.reasoning_refused);
+    assert_eq!(deltas.concat(), "Whole reply");
     assert_eq!((r.input_tokens, r.output_tokens), (12, 3));
     let reqs = mock.requests.lock().unwrap();
     assert_eq!(reqs.len(), 2);
@@ -819,7 +831,7 @@ fn the_retry_happens_once_and_only_for_openai_and_only_for_the_stream_param() {
     // The retry is refused too: that error is shown, with no third request.
     let mock = start_scripted(vec![refuse_stream(), refuse_stream()]);
     let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
-    let m = r.unwrap_err().error.message;
+    let m = said(&r.unwrap_err().error);
     assert!(
         m.contains("OpenAI said: \"Your organization must be verified"),
         "{m}"
@@ -832,12 +844,7 @@ fn the_retry_happens_once_and_only_for_openai_and_only_for_the_stream_param() {
     );
     let mock = start_scripted(vec![other]);
     let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
-    assert!(
-        r.unwrap_err()
-            .error
-            .message
-            .contains("Unsupported parameter: store")
-    );
+    assert!(said(&r.unwrap_err().error).contains("Unsupported parameter: store"));
     assert_eq!(mock.requests.lock().unwrap().len(), 1);
     // Compatible servers and Anthropic are never retried, whatever the body says.
     for kind in [ProviderKind::OpenAiCompatible, ProviderKind::Anthropic] {

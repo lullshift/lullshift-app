@@ -72,6 +72,12 @@ pub struct CompanionMessage {
     pub status: String,
     pub error_kind: Option<String>,
     pub error_message: Option<String>,
+    /// Who said `error_reason` ("OpenAI", "Anthropic", "The provider"), and what they said: the
+    /// provider's own sanitised words, apart from the fixed `error_message` (migration 19).
+    pub error_reason_by: Option<String>,
+    pub error_reason: Option<String>,
+    /// A reply that arrived all at once because the request was not streamed (migration 19).
+    pub no_stream: bool,
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
     pub profile_id: Option<String>,
@@ -162,7 +168,7 @@ pub fn month_of(t: OffsetDateTime) -> String {
 }
 
 const MSG_COLS: &str = "id, thread_id, role, text, attached_context, scope_kind, status, error_kind, \
-     error_message, input_tokens, output_tokens, profile_id, model, host, created_utc";
+     error_message, input_tokens, output_tokens, profile_id, model, host, created_utc, \n     error_reason_by, error_reason, no_stream";
 
 fn msg_row(r: &Row<'_>) -> rusqlite::Result<CompanionMessage> {
     Ok(CompanionMessage {
@@ -181,6 +187,9 @@ fn msg_row(r: &Row<'_>) -> rusqlite::Result<CompanionMessage> {
         model: r.get(12)?,
         host: r.get(13)?,
         created_utc: r.get(14)?,
+        error_reason_by: r.get(15)?,
+        error_reason: r.get(16)?,
+        no_stream: r.get::<_, i64>(17)? != 0,
     })
 }
 
@@ -757,6 +766,32 @@ impl Store {
         now: OffsetDateTime,
         proceed: &dyn Fn() -> bool,
     ) -> Result<Option<CompanionMessage>> {
+        self.companion_complete_send_flagged(
+            user_message,
+            reply,
+            (input_tokens, output_tokens),
+            (booked_input, booked_output),
+            now,
+            false,
+            proceed,
+        )
+    }
+
+    /// Like [`Self::companion_complete_send_if`], with `no_stream` set on the reply when it
+    /// arrived all at once because the request was not streamed (a delivery note, never part of
+    /// the text). Tokens are `(shown, booked)` pairs of (input, output).
+    pub fn companion_complete_send_flagged(
+        &mut self,
+        user_message: i64,
+        reply: &str,
+        shown: (i64, i64),
+        booked: (i64, i64),
+        now: OffsetDateTime,
+        no_stream: bool,
+        proceed: &dyn Fn() -> bool,
+    ) -> Result<Option<CompanionMessage>> {
+        let (input_tokens, output_tokens) = shown;
+        let (booked_input, booked_output) = booked;
         let ts = fmt_ts(now)?;
         let tx = self.conn.transaction()?;
         let (thread, profile, model, host): (i64, Option<String>, Option<String>, Option<String>) =
@@ -773,14 +808,25 @@ impl Store {
         }
         tx.execute(
             "UPDATE companion_messages SET status = 'sent', error_kind = NULL, error_message = NULL,
+               error_reason_by = NULL, error_reason = NULL,
                input_tokens = ?2, output_tokens = ?3 WHERE id = ?1",
             params![user_message, input_tokens, output_tokens],
         )?;
         tx.execute(
             "INSERT INTO companion_messages
-               (thread_id, role, text, scope_kind, status, output_tokens, profile_id, model, host, created_utc)
-             VALUES (?1, 'assistant', ?2, 'none', 'sent', ?3, ?4, ?5, ?6, ?7)",
-            params![thread, reply, output_tokens, profile, model, host, ts],
+               (thread_id, role, text, scope_kind, status, output_tokens, profile_id, model, host,
+                created_utc, no_stream)
+             VALUES (?1, 'assistant', ?2, 'none', 'sent', ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                thread,
+                reply,
+                output_tokens,
+                profile,
+                model,
+                host,
+                ts,
+                i64::from(no_stream)
+            ],
         )
         .map_err(check_invalid)?;
         let id = tx.last_insert_rowid();
@@ -926,11 +972,28 @@ impl Store {
 
     /// Marks a user message `failed` with a fixed kind and friendly message.
     pub fn companion_fail_message(&self, id: i64, kind: &str, message: &str) -> Result<()> {
-        let n = self.conn.execute(
-            "UPDATE companion_messages SET status = 'failed', error_kind = ?2, error_message = ?3
-             WHERE id = ?1 AND role = 'user'",
-            params![id, kind, message],
-        )?;
+        self.companion_fail_message_with(id, kind, message, None)
+    }
+
+    /// Like [`Self::companion_fail_message`], and keeps what the provider said (`(speaker,
+    /// text)`, already sanitised and at most 300 characters) apart from the fixed message.
+    pub fn companion_fail_message_with(
+        &self,
+        id: i64,
+        kind: &str,
+        message: &str,
+        reason: Option<(&str, &str)>,
+    ) -> Result<()> {
+        let (by, text) = reason.unzip();
+        let n = self
+            .conn
+            .execute(
+                "UPDATE companion_messages SET status = 'failed', error_kind = ?2, error_message = ?3,
+                   error_reason_by = ?4, error_reason = ?5
+                 WHERE id = ?1 AND role = 'user'",
+                params![id, kind, message, by, text],
+            )
+            .map_err(check_invalid)?;
         if n == 0 {
             return Err(StoreError::NotFound);
         }
@@ -940,7 +1003,8 @@ impl Store {
     /// Puts a failed user message back to `pending` for a retry.
     pub fn companion_mark_pending(&self, id: i64) -> Result<()> {
         let n = self.conn.execute(
-            "UPDATE companion_messages SET status = 'pending', error_kind = NULL, error_message = NULL
+            "UPDATE companion_messages SET status = 'pending', error_kind = NULL, error_message = NULL,
+               error_reason_by = NULL, error_reason = NULL
              WHERE id = ?1 AND role = 'user' AND status = 'failed'",
             [id],
         )?;
@@ -955,6 +1019,7 @@ impl Store {
     pub fn companion_mark_pending_for(&self, id: i64, profile_id: &str, model: &str) -> Result<()> {
         let n = self.conn.execute(
             "UPDATE companion_messages SET status = 'pending', error_kind = NULL, error_message = NULL,
+               error_reason_by = NULL, error_reason = NULL,
                profile_id = ?2, model = ?3
              WHERE id = ?1 AND role = 'user' AND status = 'failed'",
             params![id, profile_id, model],

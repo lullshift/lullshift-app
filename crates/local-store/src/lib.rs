@@ -115,6 +115,11 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 17,
         sql: include_str!("../migrations/0017_companion_models.sql"),
     },
+    // 18 is reserved by another branch; 19 is this one.
+    Migration {
+        version: 19,
+        sql: include_str!("../migrations/0019_companion_provider_reason.sql"),
+    },
 ];
 
 pub fn latest_version() -> i64 {
