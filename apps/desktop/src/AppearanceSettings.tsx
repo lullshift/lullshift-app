@@ -24,7 +24,7 @@ export function AppearanceSettings() {
         <fieldset className="row row-choice">
           <legend className="row-text">
             <span className="row-label">Theme</span>
-            <span className="row-desc">Applies to the whole app and to running activities.</span>
+            <span className="row-desc">Applies to the whole app and to activities you start.</span>
           </legend>
           <div className="choice-group">
             {THEME_OPTIONS.map((o) => (
