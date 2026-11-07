@@ -1436,12 +1436,39 @@ Run in light and dark.
 
 **Result:** \_\_\_
 
+## Tray window
+
+Not run yet: needs a real tray on each OS. Automated coverage: placement maths, preference fallback, `open_main` validation, the capability allowlist and the tray component (`pnpm --filter @lullshift/desktop test`, `cargo test -p lullshift-desktop`).
+
+### M12-27: Quick window from the tray (ADR-026 section 6)
+
+Run on Windows, then macOS, then Linux, in light and dark.
+
+1. Start Lullshift and close the main window. **Left-click** the tray icon: a small window (about 380 by 560) opens next to the icon, on screen, with no title bar and no taskbar button. Click the icon again: it closes. Open it, then click anywhere else (the desktop, another app): it closes. Open it, press **Esc**: it closes. Clicking the icon while it is open closes it and does not flash it open again.
+2. **Placement.** Repeat with the taskbar at the bottom (Windows default), then top, left and right; with the icon in the overflow flyout; on a second monitor; and at 150% or 200% display scale. The window is always fully inside the screen, never under the taskbar, next to the icon. On macOS it hangs under the menu bar icon. On Linux some tray backends send no click events: left-click may do nothing there; the right-click menu must still work (see 6).
+3. **Content.** With nothing running: the mascot asleep, "No agents yet" or "All quiet", one suggestion card with **Play** (or **Resume** when something is saved) and **Shuffle**, up to three chips, **Open Lullshift**, and the footer **Now / Library / Talk**. While an agent works the line reads "<Tool> usually takes about N min" or "For a short break". Let an agent need you: the **Needs you now** card appears first with **Go to session**, the mascot is awake, the tray icon is awake. Switch the app to Dark and back (Settings > Appearance): the quick window follows the next time it opens.
+4. **Keyboard.** Open it with the mouse: focus is on **Go to session** when something needs you, otherwise on **Play** or **Resume**. Tab walks needs card, Play, Shuffle, chips, Open Lullshift, Now, Library, Talk, in that order, with a visible focus ring. Enter or Space activates. Esc closes from anywhere inside. With a screen reader, the title and the shuffle announcement are read.
+5. **It asks, it never runs.** Press **Play** or **Resume**: the quick window closes, the main window comes to the front on Play or Rest and the activity starts there (host, pause card, sandbox as usual). Press a chip: the same. Press **Go to session**: the main window opens on Sessions with that session's panel. **Library** opens Play; **Talk** opens Companion; **Open Lullshift** opens Home. Activities never appear inside the quick window. Do this with the main window hidden (tray only), minimized and already focused.
+6. **Setting and menu.** In Settings > Appearance set **Tray click opens** to **Main window**: a left click now opens the main window as before and the quick window never shows. Set it back to **Quick window**. Right-click the icon: the menu shows **Show Lullshift** and **Quit Lullshift**, unchanged, on every OS.
+7. **Honest states.** Quit the agent connection or make the data store unreadable (rename the database while the app is closed): the quick window says "Agent status is unknown" or "Lullshift couldn't refresh just now" with **Try again**, never "all quiet" or "done". With reduced motion on in the OS, nothing in the window animates (no shimmer).
+8. **Least privilege (developer tools).** In a debug build open the quick window's devtools and run `window.__TAURI_INTERNALS__.invoke("companion_threads")`, `"marketplace_list"`, `"activity_launch"` and `"set_ui_prefs"`: each is refused (not allowed). `open_main` with an unknown activity id or view is refused too.
+
+**Expected:**
+
+- **Steps 1 and 2:** toggles, hides on blur and Esc, always fully on screen next to the icon.
+- **Steps 3 and 4:** content in the order above, focus on the first useful control, a sane tab order, no motion with reduced motion.
+- **Step 5:** every action opens the main window; nothing runs in the quick window.
+- **Steps 6 and 7:** the setting and the menu work; unknown or stale states say so.
+- **Step 8:** the quick window can only read Home data and open the main window.
+
+**Result:** \_\_\_
+
 ## Website and demo mode
 
 ### W-1: Browser demo of the desktop UI
 
 1. Run `pnpm --filter @lullshift/desktop exec vite --port 1420` and open <http://localhost:1420/demo.html>.
-2. Visit Home, Sessions (Live and History), Play, Rest, Continue, Companion and Settings (Integrations is a section of Settings). Open `/demo.html?saved` to see saved activities on Home and Continue.
+2. Visit Home, Sessions (Live and History), Play, Rest, Continue, Companion and Settings (Integrations is a section of Settings). Open `/demo.html?saved` to see saved activities on Home and Continue. Open `/tray-demo.html` (and `?saved`) for the tray window with the same made-up data, in light and dark.
 3. Start a game. In the console, run `lullshiftDemo.attention("claude-code")`.
 4. Open `/demo.html?welcome`.
 5. Run `node apps/desktop/scripts/demo-screenshots.mjs demo-screenshots`.

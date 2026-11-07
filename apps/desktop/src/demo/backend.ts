@@ -325,6 +325,14 @@ function handle(cmd: string, a: Args): unknown {
         { provider: "codex", medianSeconds: 110, stretches: 7 },
       ];
 
+    // The tray window's two commands (the demo has no main window to open).
+    case "open_main":
+      console.info("[demo] would show the main window", a);
+      return null;
+    case "tray_hide":
+      console.info("[demo] would hide the tray window");
+      return null;
+
     // Activities
     case "activities_list":
       return CATALOG.map((x) => activityInfo(x.info.id));

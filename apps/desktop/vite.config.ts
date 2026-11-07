@@ -53,9 +53,18 @@ function demoActivities(): Plugin {
 }
 
 // Vite options tailored for Tauri: fixed port, don't hide Rust errors, ignore src-tauri.
-// The build has a single input (index.html): demo.html and src/demo/ are never bundled.
+// The build has two inputs: index.html (the app) and tray.html (the tray window, which never
+// loads the app). demo.html, tray-demo.html and src/demo/ are never bundled.
 export default defineConfig({
   plugins: [react(), demoActivities()],
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        tray: fileURLToPath(new URL("./tray.html", import.meta.url)),
+      },
+    },
+  },
   clearScreen: false,
   server: {
     port: 1420,

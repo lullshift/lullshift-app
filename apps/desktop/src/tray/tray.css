@@ -1,0 +1,187 @@
+/* The tray window (ADR-026 section 6). Tokens only; see docs/DESIGN_SYSTEM.md "Tray window".
+   Fixed 380 x 560 window with no frame: a 1px border stands in for the missing chrome. */
+
+html.tray,
+html.tray body {
+  overflow: hidden;
+}
+
+html.tray body {
+  /* A flat surface: the page glow of the main window would look like a smudge at this size. */
+  background: var(--bg);
+}
+
+.tray-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+}
+
+.tray-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  outline: none;
+}
+
+.tray-top {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-5) var(--space-3);
+  text-align: center;
+}
+
+.tray-top-needs {
+  gap: 0;
+  padding-top: var(--space-3);
+}
+
+.tray-title {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-lg);
+}
+
+.tray-line {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.tray-body {
+  display: grid;
+  gap: var(--space-3);
+  padding: 0 var(--space-5) var(--space-4);
+}
+
+.tray-needs,
+.tray-suggest {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.tray-needs {
+  border-color: var(--attention-dot);
+  background: var(--attention-soft);
+}
+
+.tray-needs-title {
+  color: var(--attention);
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+
+.tray-needs-who {
+  margin: 0;
+  color: var(--text);
+}
+
+.tray-suggest-line {
+  margin: 0;
+  color: var(--text-subtle);
+  font-size: var(--text-sm);
+}
+
+.tray-suggest-name {
+  font-size: var(--text-base);
+  font-weight: 650;
+}
+
+.tray-suggest-desc {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  /* Long descriptions never push the buttons out of the window. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tray-suggest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.tray-suggest-actions .btn-primary {
+  flex: 1;
+}
+
+.tray-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tray-chip {
+  min-height: 36px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Always in view: it does not scroll away with the content above it. */
+.tray-open-row {
+  display: grid;
+  padding: var(--space-2) var(--space-5) var(--space-3);
+}
+
+.tray-open {
+  justify-content: center;
+}
+
+.tray-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tray-tab {
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tray-tab:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.tray-tab[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 650;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.tray-tab:focus-visible {
+  outline-offset: -3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tray-shell *,
+  .tray-shell *::before,
+  .tray-shell *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

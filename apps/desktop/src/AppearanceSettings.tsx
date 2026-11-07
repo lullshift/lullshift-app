@@ -1,4 +1,4 @@
-import type { ContentWidth, Theme } from "./context/api";
+import type { ContentWidth, Theme, TrayClick } from "./context/api";
 import { themeOf } from "./theme";
 import { updateUiPrefs, useUiPrefs } from "./uiPrefsStore";
 
@@ -13,10 +13,16 @@ const THEME_OPTIONS: { value: Theme; label: string; desc: string }[] = [
   { value: "dark", label: "Dark", desc: "Always dark." },
 ];
 
+const TRAY_OPTIONS: { value: TrayClick; label: string; desc: string }[] = [
+  { value: "quick", label: "Quick window", desc: "A small window next to the tray icon." },
+  { value: "main", label: "Main window", desc: "Open Lullshift itself." },
+];
+
 /** Theme and content width, saved with the other interface preferences. */
 export function AppearanceSettings() {
-  const { contentWidth, theme } = useUiPrefs();
+  const { contentWidth, theme, trayClick } = useUiPrefs();
   const currentTheme = themeOf(theme);
+  const currentTray: TrayClick = trayClick === "main" ? "main" : "quick";
   return (
     <>
       <h2 className="section-title">Appearance</h2>
@@ -58,6 +64,32 @@ export function AppearanceSettings() {
                   value={o.value}
                   checked={contentWidth === o.value}
                   onChange={() => void updateUiPrefs({ contentWidth: o.value })}
+                />
+                <span className="choice-text">
+                  <span className="choice-label">{o.label}</span>
+                  <span className="choice-desc">{o.desc}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset className="row row-choice">
+          <legend className="row-text">
+            <span className="row-label">Tray click opens</span>
+            <span className="row-desc">
+              What a click on the Lullshift icon in the tray or menu bar opens. The right-click menu
+              is unchanged.
+            </span>
+          </legend>
+          <div className="choice-group">
+            {TRAY_OPTIONS.map((o) => (
+              <label key={o.value} className="choice">
+                <input
+                  type="radio"
+                  name="tray-click"
+                  value={o.value}
+                  checked={currentTray === o.value}
+                  onChange={() => void updateUiPrefs({ trayClick: o.value })}
                 />
                 <span className="choice-text">
                   <span className="choice-label">{o.label}</span>

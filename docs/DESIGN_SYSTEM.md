@@ -103,6 +103,17 @@ Each colour family has exactly one job:
   - **Return card.** An ended session the user hasn't reviewed shows a lavender **Review** pill and a "Welcome back" card. The card never claims the task is done.
   - **Captured text** carries a small source label ("captured with your OK") and a **Clear captured text** action.
 
+## Tray window (ADR-026 section 6)
+
+A second, small window next to the tray icon (`apps/desktop/src/tray/`, entry `tray.html`): 380 x 560, no frame (a 1px `--border-strong` stands in for it), always on top while shown, hidden on blur and Esc. It uses the same tokens, `ui/` components, `styles.css` classes (`card`, `btn`, `chip`, `banner`, `skeleton`) and theme as the main window; `tray.css` adds only its layout.
+
+- **Order, top to bottom:** mascot for the state and one status line (`home/status.ts`); the **Needs you now** card first when something needs you (attention colours, one button **Go to session**); the "fits your wait" card (`suggest.ts`) with **Play** or **Resume** and **Shuffle**; up to three chips (a rest and a game before more of one kind); **Open Lullshift** (always visible, outside the scrolling area); the footer **Now / Library / Talk**.
+- **No lists, no counts, no statistics.** One suggestion, one button. Wording never claims a task is done.
+- **It asks, it never runs.** Every action calls `open_main` and the main window does the work. No activity, iframe or bridge exists in this window.
+- **Keyboard.** When shown, focus lands on the first useful control (`data-first`: the needs button, else the suggestion's button, else Open Lullshift). Tab order follows the visual order; Esc hides.
+- **Honest states.** Loading skeletons, a danger banner with **Try again** when the dashboard or the activity list can't be read, "may be out of date" when only the last good data is left, and "unknown" status copy from `homeStatus`.
+- **Reduced motion:** no shimmer or transitions. Light and dark follow the Theme setting (re-read each time the window is shown).
+
 ## Review checklist for new UI
 
 - [ ] Uses tokens and `ui/` components; no raw colours.

@@ -36,6 +36,22 @@ export function loadUiPrefs(read: () => Promise<UiPrefs> = uiPrefs): Promise<voi
   return loading;
 }
 
+/**
+ * Reads the saved preferences again (the tray window calls this each time it is shown, since the
+ * main window may have changed them while it was hidden). A failed read keeps what is there.
+ */
+export function reloadUiPrefs(read: () => Promise<UiPrefs> = uiPrefs): Promise<void> {
+  return read().then(
+    (p) =>
+      uiPrefsStore.setState({
+        prefs: { ...DEFAULT_UI_PREFS, ...p },
+        loaded: true,
+        loadFailed: false,
+      }),
+    () => undefined,
+  );
+}
+
 /** Applies a change at once and saves the whole set. A failed save keeps the change for now. */
 export function updateUiPrefs(
   change: Partial<UiPrefs>,

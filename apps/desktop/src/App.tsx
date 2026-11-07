@@ -20,6 +20,7 @@ import { viewKey } from "./context/panelLogic";
 import { healthProblems, liveState, sortSessions, type Dashboard } from "./sessions";
 import Settings from "./Settings";
 import { Onboarding } from "./Onboarding";
+import { onOpenMain, type OpenMainEvent } from "./openMain";
 import { loadUiPrefs, updateUiPrefs, useShowWelcome, useUiPrefs } from "./uiPrefsStore";
 import { Icon, type IconName } from "./ui/Icon";
 import { Mascot } from "./ui/Mascot";
@@ -225,6 +226,31 @@ export default function App() {
       }),
     [],
   );
+
+  // The tray window asked for a view (Rust already checked the request). The one subscription
+  // reads the current handler through a ref, set in an effect.
+  const openMainRef = useRef<(r: OpenMainEvent) => void>(() => undefined);
+  useEffect(() => {
+    openMainRef.current = (r) => {
+      if (r.sessionKey) {
+        setOpenSession({ key: r.sessionKey, nonce: Date.now() });
+        setView("sessions");
+      } else if (r.activityId) {
+        // Through the normal begin path of the library, like a Companion suggestion.
+        const known = libraryList?.find((a) => a.id === r.activityId);
+        if (known) startActivity(known);
+        else {
+          setLaunch({ id: r.activityId, nonce: Date.now() });
+          setView(r.view === "rest" ? "rest" : "play");
+        }
+      } else {
+        setView(r.view);
+        if (isLibraryView(r.view)) setNavNonce((n) => n + 1);
+      }
+      window.setTimeout(() => headingRef.current?.focus(), 0);
+    };
+  });
+  useEffect(() => onOpenMain((r) => openMainRef.current(r)), []);
 
   const navItem = (item: NavItem) => (
     <li key={item.id}>

@@ -76,6 +76,9 @@ export type ContentWidth = "full" | "comfortable";
 /** System follows the operating system; Light and Dark are explicit. */
 export type Theme = "system" | "light" | "dark";
 
+/** What a left click on the tray icon opens: the small quick window, or the main window. */
+export type TrayClick = "quick" | "main";
+
 export interface UiPrefs {
   detailPanelPinned: boolean;
   /** Full width is the default; comfortable keeps text columns narrower. */
@@ -88,6 +91,8 @@ export interface UiPrefs {
   dockWidth?: number | null;
   /** Missing means System. */
   theme?: Theme;
+  /** Missing means the quick window. */
+  trayClick?: TrayClick;
 }
 
 const k = (s: SessionKey) => ({ provider: s.provider, sessionId: s.sessionId });
