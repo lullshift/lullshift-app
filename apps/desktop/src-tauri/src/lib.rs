@@ -306,6 +306,7 @@ fn start_ipc(app: &AppHandle, core: &Arc<Core>) -> Health {
             let process = process.map(|p| local_store::ProcessKey {
                 pid: p.pid,
                 start: p.start,
+                ns: p.ns,
             });
             let outcome = {
                 let mut guard = sink_core.store.lock().map_err(|_| SinkError)?;

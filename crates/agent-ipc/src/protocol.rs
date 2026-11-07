@@ -140,22 +140,31 @@ impl EventContext {
 pub struct ProcessRef {
     pub pid: u32,
     pub start: u64,
+    /// The PID namespace the hook saw the process in (Linux), so the app can ignore a process
+    /// whose PID it cannot see (Flatpak, containers). Absent when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ns: Option<u64>,
 }
 
 impl ProcessRef {
-    /// `Some(self)` if the PID and the start key are in range, else `None` (the event is still
-    /// accepted, without a process).
+    /// `Some(self)` if the PID, the start key and (when present) the namespace are in range,
+    /// else `None` (the event is still accepted, without a process).
     pub fn validated(self) -> Option<Self> {
-        (process_probe::valid_pid(self.pid) && process_probe::valid_start(self.start))
-            .then_some(self)
+        (process_probe::valid_pid(self.pid)
+            && process_probe::valid_start(self.start)
+            && self.ns.is_none_or(process_probe::valid_start))
+        .then_some(self)
     }
 }
 
 impl From<process_probe::ProcessId> for ProcessRef {
+    /// The namespace is this process's own: the hook calls this for the agent it found, which
+    /// lives in the hook's PID namespace.
     fn from(id: process_probe::ProcessId) -> Self {
         Self {
             pid: id.pid,
             start: id.start,
+            ns: process_probe::pid_namespace(),
         }
     }
 }
@@ -666,7 +675,8 @@ mod tests {
             vec![
                 Some(ProcessRef {
                     pid: 4242,
-                    start: 133_000_000_000
+                    start: 133_000_000_000,
+                    ns: None
                 }),
                 None
             ]
@@ -695,6 +705,33 @@ mod tests {
         assert_eq!(
             *rec.processes.lock().expect("lock"),
             vec![None, None, None, None]
+        );
+    }
+
+    #[tokio::test]
+    async fn the_namespace_travels_and_a_bad_one_drops_the_process() {
+        let (h, rec, token) = handler(Config::default());
+        let good = request_with_process(
+            token.expose(),
+            r#"{"pid":4242,"start":133000000000,"ns":4026531836}"#,
+        );
+        assert_eq!(roundtrip(&h, &good).await.0, Reply::stored());
+        let bad_event = EVENT.replace("6f1c2a52", "6f1c2a54");
+        let bad = format!(
+            "{{\"v\":1,\"token\":\"{}\",\"event\":{bad_event},\"process\":{{\"pid\":4242,\"start\":5,\"ns\":0}}}}\n",
+            token.expose()
+        );
+        assert_eq!(roundtrip(&h, bad.as_bytes()).await.0, Reply::stored());
+        assert_eq!(
+            *rec.processes.lock().expect("lock"),
+            vec![
+                Some(ProcessRef {
+                    pid: 4242,
+                    start: 133_000_000_000,
+                    ns: Some(4_026_531_836)
+                }),
+                None
+            ]
         );
     }
 

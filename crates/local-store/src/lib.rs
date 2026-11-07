@@ -238,6 +238,19 @@ pub struct Store {
 pub struct ProcessKey {
     pub pid: u32,
     pub start: u64,
+    /// The PID namespace the process was seen in (Linux), if known.
+    pub ns: Option<u64>,
+}
+
+impl ProcessKey {
+    /// A process with no namespace information.
+    pub const fn new(pid: u32, start: u64) -> Self {
+        Self {
+            pid,
+            start,
+            ns: None,
+        }
+    }
 }
 
 /// A live-looking session with a recorded process, for the process check.
@@ -246,6 +259,9 @@ pub struct ProcessCandidate {
     pub provider: String,
     pub provider_session_id: String,
     pub process: ProcessKey,
+    pub state: SessionState,
+    /// When the session last received an event (local clock).
+    pub last_received_utc: OffsetDateTime,
 }
 
 /// A log newer than Lullshift's own last word by less than this is not "newer": the agent's log
@@ -326,18 +342,24 @@ impl Store {
             return Ok(IngestOutcome::Duplicate);
         }
         let mut current = load_session(&tx, &event.provider, &event.provider_session_id)?;
-        let (imported, process_gone) =
-            session_marks(&tx, &event.provider, &event.provider_session_id)?;
+        let marks = session_marks(&tx, &event.provider, &event.provider_session_id)?;
         let loaded = current.clone();
-        // A session imported from the agent's own log holds only a guess (ADR-024). The first
-        // real event replaces it outright, counts as a change (so it can notify like any first
-        // event), and `save_session` clears the imported mark in this same transaction.
-        if current.is_some() && imported {
+        if current.is_some() && marks.hinted {
+            // A guess the opt-in catch-up filled in over a tracked session (ADR-025): the
+            // record from before it is what the event is applied to, under the normal ordering
+            // rules. An older event cannot overwrite newer reported state, and the event only
+            // counts as a change (and so notifies) if it differs from what was reported.
+            current = load_prior(&tx, &event.provider, &event.provider_session_id)?.or(current);
+        } else if current.is_some() && marks.imported {
+            // A session imported from the agent's own log holds only a guess (ADR-024). The
+            // first real event replaces it outright, counts as a change (so it can notify like
+            // any first event), and `save_session` clears the imported mark in this same
+            // transaction.
             current = None;
         }
-        // After the import reset: the first real event of an imported session is a change.
         let before = current.as_ref().map(|r| r.state);
-        if !imported
+        let process_gone = marks.process_gone;
+        if !marks.imported
             && process_gone
             && event.event_type == EventType::Heartbeat
             && let Some(rec) = current.as_mut()
@@ -449,62 +471,98 @@ impl Store {
         Ok(out)
     }
 
+    /// Sessions whose state was filled in from the agent's log by the opt-in catch-up and that
+    /// have sent nothing since: key to when. A subset of [`Store::imported_sessions`].
+    pub fn log_hinted_sessions(&self) -> Result<HashMap<(String, String), OffsetDateTime>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT provider, provider_session_id, log_hint_utc FROM sessions
+             WHERE log_hint_utc IS NOT NULL",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut out = HashMap::new();
+        for row in rows {
+            let (p, s, t) = row?;
+            out.insert((p, s), parse_ts(&t)?);
+        }
+        Ok(out)
+    }
+
     /// The process recorded for a session, if any.
     pub fn session_process(
         &self,
         provider: &str,
         provider_session_id: &str,
     ) -> Result<Option<ProcessKey>> {
-        let row: Option<(Option<i64>, Option<i64>)> = self
+        let row: Option<(Option<i64>, Option<i64>, Option<i64>)> = self
             .conn
             .query_row(
-                "SELECT process_pid, process_start FROM sessions
+                "SELECT process_pid, process_start, process_ns FROM sessions
                  WHERE provider = ?1 AND provider_session_id = ?2",
                 params![provider, provider_session_id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .optional()?;
-        Ok(row.and_then(|(pid, start)| decode_process(pid?, start?)))
+        Ok(row.and_then(|(pid, start, ns)| decode_process(pid?, start?, ns)))
     }
 
     /// Sessions that are not finished, are still tracked, and have a recorded process: the ones
     /// the process check looks at. Newest first, at most [`MAX_PROCESS_CANDIDATES`].
     pub fn process_candidates(&self) -> Result<Vec<ProcessCandidate>> {
         let mut stmt = self.conn.prepare(
-            "SELECT provider, provider_session_id, process_pid, process_start FROM sessions
+            "SELECT provider, provider_session_id, process_pid, process_start, process_ns, state,
+                    last_received_utc
+             FROM sessions
              WHERE process_pid IS NOT NULL AND process_start IS NOT NULL
                AND disconnected_utc IS NULL
                AND state NOT IN ('completed', 'failed', 'cancelled', 'ended')
              ORDER BY last_received_utc DESC LIMIT ?1",
         )?;
+        #[allow(clippy::type_complexity)]
         let rows = stmt.query_map(params![MAX_PROCESS_CANDIDATES as i64], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
                 r.get::<_, i64>(2)?,
                 r.get::<_, i64>(3)?,
+                r.get::<_, Option<i64>>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?,
             ))
         })?;
         let mut out = Vec::new();
         for row in rows {
-            let (provider, provider_session_id, pid, start) = row?;
-            // A tampered row (out of range) is skipped, never acted on.
-            if let Some(process) = decode_process(pid, start) {
-                out.push(ProcessCandidate {
-                    provider,
-                    provider_session_id,
-                    process,
-                });
-            }
+            let (provider, provider_session_id, pid, start, ns, state, received) = row?;
+            // A tampered row (out of range, unknown state or time) is skipped, never acted on.
+            let (Some(process), Some(state), Ok(last_received_utc)) = (
+                decode_process(pid, start, ns),
+                SessionState::from_name(&state),
+                parse_ts(&received),
+            ) else {
+                continue;
+            };
+            out.push(ProcessCandidate {
+                provider,
+                provider_session_id,
+                process,
+                state,
+                last_received_utc,
+            });
         }
         Ok(out)
     }
 
     /// Ends `provider_session_id` because its process is gone (decision 35, ADR-025), but only
-    /// if, at this moment, it still holds exactly `process`, is still tracked and not finished,
-    /// and has received nothing since `checked_utc` (when the process was looked at). Otherwise
-    /// a newer event got there first and nothing changes. Returns whether the session was ended.
-    /// Writes no event; the state change is [`agent_core::reducer::process_gone`].
+    /// if, at this moment, it still holds exactly `process`, is still tracked and unfinished,
+    /// is not waiting for the user (a session that needs you is never ended this way), and has
+    /// received nothing since `checked_utc` (when the process was looked at). Otherwise a newer
+    /// event got there first and nothing changes. Returns whether the session was ended. Writes
+    /// no event; the state change is [`agent_core::reducer::process_gone`].
     pub fn end_session_process_gone(
         &mut self,
         provider: &str,
@@ -517,14 +575,22 @@ impl Store {
         let Some(rec) = load_session(&tx, provider, provider_session_id)? else {
             return Ok(false);
         };
-        let row: (Option<i64>, Option<i64>, bool) = tx.query_row(
-            "SELECT process_pid, process_start, disconnected_utc IS NOT NULL FROM sessions
-             WHERE provider = ?1 AND provider_session_id = ?2",
+        let row: (Option<i64>, Option<i64>, Option<i64>, bool) = tx.query_row(
+            "SELECT process_pid, process_start, process_ns, disconnected_utc IS NOT NULL
+             FROM sessions WHERE provider = ?1 AND provider_session_id = ?2",
             params![provider, provider_session_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )?;
-        let same = row.0.zip(row.1).and_then(|(p, s)| decode_process(p, s)) == Some(process);
-        if !same || row.2 || rec.last_received_utc > checked_utc {
+        let same = row
+            .0
+            .zip(row.1)
+            .and_then(|(p, s)| decode_process(p, s, row.2))
+            == Some(process);
+        if !same
+            || row.3
+            || rec.state == SessionState::NeedsAttention
+            || rec.last_received_utc > checked_utc
+        {
             return Ok(false);
         }
         let Some(ended) = agent_core::reducer::process_gone(rec, now_utc) else {
@@ -532,7 +598,9 @@ impl Store {
         };
         tx.execute(
             "UPDATE sessions SET state = ?3, state_timestamp_utc = ?4, ended_reason = ?5,
-               process_pid = NULL, process_start = NULL, imported_utc = NULL
+               process_pid = NULL, process_start = NULL, process_ns = NULL, imported_utc = NULL,
+               log_hint_utc = NULL, hint_prior_state = NULL, hint_prior_state_ts = NULL,
+               hint_prior_seen = NULL, hint_prior_received = NULL
              WHERE provider = ?1 AND provider_session_id = ?2",
             params![
                 provider,
@@ -549,13 +617,16 @@ impl Store {
     /// Fills a gap from the agent's own log (decision 35, ADR-025): the session Lullshift
     /// already tracks takes `state`, a guess, only if the log is newer than Lullshift's own last
     /// word by more than [`LOG_HINT_MARGIN`]. The session is marked like an imported one (a
-    /// guess, not reported), so the next real event replaces it. The recorded process, if any,
-    /// is kept: the log says nothing about it, and the process check still covers the session.
+    /// guess, not reported), and the record as it was is kept beside it, so the next real
+    /// event is applied to that record under the normal ordering rules and then clears the
+    /// mark. The recorded process, if any, is kept: the log says nothing about it, and the
+    /// process check still covers the session.
     ///
     /// Never creates a session. Leaves alone: unknown sessions, finished sessions (a reported
     /// end is a fact, and logs are written after a session ends), sessions Lullshift ended
-    /// because the process is gone, sessions whose tool was disconnected, and guesses that are
-    /// `unknown` or terminal. Returns whether anything changed. Writes no event.
+    /// because the process is gone, sessions whose tool was disconnected, sessions the user
+    /// imported (that is Import's job), and guesses that are `unknown` or terminal. Returns
+    /// whether anything changed. Writes no event.
     pub fn apply_log_hint(
         &mut self,
         provider: &str,
@@ -571,23 +642,31 @@ impl Store {
         let Some(rec) = load_session(&tx, provider, provider_session_id)? else {
             return Ok(false);
         };
-        let (disconnected, ended): (bool, bool) = tx.query_row(
-            "SELECT disconnected_utc IS NOT NULL, ended_reason IS NOT NULL FROM sessions
-             WHERE provider = ?1 AND provider_session_id = ?2",
+        let (disconnected, ended, imported, hinted): (bool, bool, bool, bool) = tx.query_row(
+            "SELECT disconnected_utc IS NOT NULL, ended_reason IS NOT NULL,
+                    imported_utc IS NOT NULL, log_hint_utc IS NOT NULL
+             FROM sessions WHERE provider = ?1 AND provider_session_id = ?2",
             params![provider, provider_session_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )?;
         let at = log_utc.min(now_utc);
         if disconnected
             || ended
+            || (imported && !hinted)
             || is_terminal_state(rec.state)
             || at <= rec.last_seen_utc + LOG_HINT_MARGIN
         {
             return Ok(false);
         }
+        // The first hint keeps the record as it was; later ones keep that first record.
         tx.execute(
-            "UPDATE sessions SET state = ?3, state_timestamp_utc = ?4, last_seen_utc = ?4,
-               last_received_utc = ?5, imported_utc = ?5
+            "UPDATE sessions SET
+               hint_prior_state = CASE WHEN log_hint_utc IS NULL THEN state ELSE hint_prior_state END,
+               hint_prior_state_ts = CASE WHEN log_hint_utc IS NULL THEN state_timestamp_utc ELSE hint_prior_state_ts END,
+               hint_prior_seen = CASE WHEN log_hint_utc IS NULL THEN last_seen_utc ELSE hint_prior_seen END,
+               hint_prior_received = CASE WHEN log_hint_utc IS NULL THEN last_received_utc ELSE hint_prior_received END,
+               state = ?3, state_timestamp_utc = ?4, last_seen_utc = ?4,
+               last_received_utc = ?5, imported_utc = ?5, log_hint_utc = ?5
              WHERE provider = ?1 AND provider_session_id = ?2",
             params![
                 provider,
@@ -1062,34 +1141,77 @@ fn is_terminal_state(state: SessionState) -> bool {
     agent_core::reducer::is_terminal(state)
 }
 
-/// Whether the session row is an unconfirmed import (ADR-024) and whether Lullshift ended it
-/// because its process was gone (ADR-025). A missing row is neither.
-fn session_marks(conn: &Connection, provider: &str, id: &str) -> Result<(bool, bool)> {
+/// What the session row says about how its state came about. A missing row has none.
+#[derive(Default)]
+struct Marks {
+    /// An unconfirmed import (ADR-024).
+    imported: bool,
+    /// A guess filled in over a tracked session by the opt-in catch-up (ADR-025).
+    hinted: bool,
+    /// Ended by Lullshift because the process was gone (ADR-025).
+    process_gone: bool,
+}
+
+fn session_marks(conn: &Connection, provider: &str, id: &str) -> Result<Marks> {
     Ok(conn
         .query_row(
-            "SELECT imported_utc IS NOT NULL, ended_reason = ?3 FROM sessions
-             WHERE provider = ?1 AND provider_session_id = ?2",
+            "SELECT imported_utc IS NOT NULL, log_hint_utc IS NOT NULL, ended_reason = ?3
+             FROM sessions WHERE provider = ?1 AND provider_session_id = ?2",
             params![provider, id, agent_core::reducer::ENDED_PROCESS_GONE],
             |r| {
-                Ok((
-                    r.get::<_, bool>(0)?,
-                    r.get::<_, Option<bool>>(1)?.unwrap_or(false),
-                ))
+                Ok(Marks {
+                    imported: r.get::<_, bool>(0)?,
+                    hinted: r.get::<_, bool>(1)?,
+                    process_gone: r.get::<_, Option<bool>>(2)?.unwrap_or(false),
+                })
             },
         )
         .optional()?
-        .unwrap_or((false, false)))
+        .unwrap_or_default())
 }
 
-/// A stored PID and start key, or `None` if either is out of range (a tampered row).
-fn decode_process(pid: i64, start: i64) -> Option<ProcessKey> {
+/// The record a session had before the catch-up filled in a guess, if one is kept.
+fn load_prior(conn: &Connection, provider: &str, id: &str) -> Result<Option<SessionRecord>> {
+    let row: Option<(
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = conn
+        .query_row(
+            "SELECT hint_prior_state, hint_prior_state_ts, hint_prior_seen, hint_prior_received
+             FROM sessions WHERE provider = ?1 AND provider_session_id = ?2",
+            params![provider, id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .optional()?;
+    let Some((Some(state), state_ts, Some(seen), Some(received))) = row else {
+        return Ok(None);
+    };
+    decode_row((
+        provider.to_owned(),
+        id.to_owned(),
+        state,
+        state_ts,
+        seen,
+        received,
+    ))
+    .map(Some)
+}
+
+/// A stored PID, start key and namespace, or `None` if the PID or start key is out of range (a
+/// tampered row). An out-of-range namespace is dropped to "unknown namespace".
+fn decode_process(pid: i64, start: i64, ns: Option<i64>) -> Option<ProcessKey> {
     let pid = u32::try_from(pid)
         .ok()
         .filter(|p| process_probe::valid_pid(*p))?;
     let start = u64::try_from(start)
         .ok()
         .filter(|s| process_probe::valid_start(*s))?;
-    Some(ProcessKey { pid, start })
+    let ns = ns
+        .and_then(|n| u64::try_from(n).ok())
+        .filter(|n| process_probe::valid_start(*n));
+    Some(ProcessKey { pid, start, ns })
 }
 
 fn save_session(
@@ -1103,8 +1225,8 @@ fn save_session(
         process.filter(|p| process_probe::valid_pid(p.pid) && process_probe::valid_start(p.start));
     tx.execute(
         "INSERT INTO sessions (provider, provider_session_id, state, state_timestamp_utc, last_seen_utc,
-           last_received_utc, process_pid, process_start)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+           last_received_utc, process_pid, process_start, process_ns)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT (provider, provider_session_id) DO UPDATE SET
            state = excluded.state,
            state_timestamp_utc = excluded.state_timestamp_utc,
@@ -1112,9 +1234,15 @@ fn save_session(
            last_received_utc = excluded.last_received_utc,
            disconnected_utc = NULL,
            imported_utc = NULL,
+           log_hint_utc = NULL,
+           hint_prior_state = NULL,
+           hint_prior_state_ts = NULL,
+           hint_prior_seen = NULL,
+           hint_prior_received = NULL,
            process_pid = excluded.process_pid,
            process_start = excluded.process_start,
-           ended_reason = CASE WHEN ?9 THEN ended_reason ELSE NULL END",
+           process_ns = excluded.process_ns,
+           ended_reason = CASE WHEN ?10 THEN ended_reason ELSE NULL END",
         params![
             r.provider,
             r.provider_session_id,
@@ -1124,6 +1252,10 @@ fn save_session(
             fmt_ts(r.last_received_utc)?,
             process.map(|p| i64::from(p.pid)),
             process.map(|p| i64::try_from(p.start).unwrap_or(0)),
+            process
+                .and_then(|p| p.ns)
+                .filter(|n| process_probe::valid_start(*n))
+                .map(|n| i64::try_from(n).unwrap_or(0)),
             keep_ended_reason,
         ],
     )?;

@@ -14,6 +14,7 @@ const P: &str = "claude-code";
 const PROC: ProcessKey = ProcessKey {
     pid: 4242,
     start: 133_000_000_000_000_000,
+    ns: None,
 };
 
 fn ev(n: u32, session: &str, kind: &str, ts: &str) -> AgentEvent {
@@ -62,15 +63,17 @@ fn an_event_records_its_process_and_one_without_clears_it() {
 fn out_of_range_processes_are_stored_as_none() {
     let mut s = Store::open_in_memory().expect("open");
     for (n, bad) in [
-        ProcessKey { pid: 0, start: 5 },
-        ProcessKey { pid: 7, start: 0 },
+        ProcessKey::new(0, 5),
+        ProcessKey::new(7, 0),
         ProcessKey {
             pid: u32::MAX,
             start: 5,
+            ns: None,
         },
         ProcessKey {
             pid: 7,
             start: u64::MAX,
+            ns: None,
         },
     ]
     .into_iter()
@@ -263,6 +266,7 @@ fn a_real_event_after_process_gone_reopens_the_session_and_clears_the_reason() {
     let again = ProcessKey {
         pid: 5151,
         start: PROC.start + 10,
+        ns: None,
     };
     let out = s
         .ingest_with_process(
@@ -537,6 +541,200 @@ fn a_log_hint_leaves_alone_what_is_not_a_gap() {
         s.session(P, "done").expect("read").expect("row").state,
         SessionState::Completed
     );
+}
+
+#[test]
+fn a_session_waiting_for_you_is_never_ended_by_the_check() {
+    let mut s = Store::open_in_memory().expect("open");
+    s.ingest_with_process(
+        &ev(1, "a", "needs_attention", "2026-11-07T10:00:00Z"),
+        T0,
+        Some(PROC),
+    )
+    .expect("ingest");
+    let now = T0 + minutes(30);
+    assert!(
+        !s.end_session_process_gone(P, "a", PROC, now, now)
+            .expect("end")
+    );
+    assert_eq!(
+        s.session(P, "a").expect("read").expect("row").state,
+        SessionState::NeedsAttention
+    );
+    assert!(s.ended_reasons().expect("reasons").is_empty());
+}
+
+#[test]
+fn the_process_namespace_is_kept_and_a_bad_one_is_dropped_not_the_process() {
+    let mut s = Store::open_in_memory().expect("open");
+    let with_ns = ProcessKey {
+        ns: Some(4_026_531_836),
+        ..PROC
+    };
+    s.ingest_with_process(
+        &ev(1, "a", "working", "2026-11-07T10:00:00Z"),
+        T0,
+        Some(with_ns),
+    )
+    .expect("ingest");
+    assert_eq!(s.session_process(P, "a").expect("read"), Some(with_ns));
+    let cands = s.process_candidates().expect("candidates");
+    assert_eq!(cands.len(), 1);
+    assert_eq!(cands[0].process, with_ns);
+    assert_eq!(cands[0].state, SessionState::Working);
+    assert_eq!(cands[0].last_received_utc, T0);
+    // The namespace is part of the compare-and-set.
+    let now = T0 + minutes(5);
+    assert!(
+        !s.end_session_process_gone(P, "a", PROC, now, now)
+            .expect("end"),
+        "a process without the namespace is not the recorded one"
+    );
+    // A namespace out of range reads as unknown; the PID and start key stay.
+    s.ingest_with_process(
+        &ev(2, "b", "working", "2026-11-07T10:00:00Z"),
+        T0,
+        Some(ProcessKey {
+            ns: Some(u64::MAX),
+            ..PROC
+        }),
+    )
+    .expect("ingest");
+    assert_eq!(s.session_process(P, "b").expect("read"), Some(PROC));
+}
+
+#[test]
+fn a_log_hint_keeps_the_record_beside_it_and_the_next_event_follows_the_normal_rules() {
+    let hint = |s: &mut Store, id: &str| {
+        s.apply_log_hint(
+            P,
+            id,
+            SessionState::Idle,
+            T0 + minutes(30),
+            T0 + minutes(40),
+        )
+        .expect("hint")
+    };
+    // 1: an event older than what was reported cannot overwrite it, and the mark clears.
+    let mut s = Store::open_in_memory().expect("open");
+    working_with_process(&mut s, "a", 1);
+    assert!(hint(&mut s, "a"));
+    assert!(
+        s.log_hinted_sessions()
+            .expect("hinted")
+            .contains_key(&key("a"))
+    );
+    let out = s
+        .ingest(
+            &ev(2, "a", "needs_attention", "2026-11-07T09:00:00Z"),
+            T0 + minutes(41),
+        )
+        .expect("ingest");
+    let IngestOutcome::Stored {
+        state_changed,
+        record,
+    } = out
+    else {
+        panic!("stored")
+    };
+    assert_eq!(record.state, SessionState::Working, "reported state kept");
+    assert_eq!(record.state_timestamp_utc, Some(T0));
+    assert!(!state_changed, "nothing changed, so nothing notifies");
+    assert!(s.imported_sessions().expect("marked").is_empty());
+    assert!(s.log_hinted_sessions().expect("hinted").is_empty());
+    // 2: the same state as reported is no change (no notification); a different one is.
+    let mut s = Store::open_in_memory().expect("open");
+    working_with_process(&mut s, "a", 1);
+    assert!(hint(&mut s, "a"));
+    let out = s
+        .ingest(
+            &ev(2, "a", "working", "2026-11-07T10:41:00Z"),
+            T0 + minutes(41),
+        )
+        .expect("ingest");
+    assert!(matches!(
+        out,
+        IngestOutcome::Stored {
+            state_changed: false,
+            ..
+        }
+    ));
+    let mut s = Store::open_in_memory().expect("open");
+    working_with_process(&mut s, "a", 1);
+    assert!(hint(&mut s, "a"));
+    let out = s
+        .ingest(
+            &ev(2, "a", "needs_attention", "2026-11-07T10:41:00Z"),
+            T0 + minutes(41),
+        )
+        .expect("ingest");
+    assert!(matches!(
+        out,
+        IngestOutcome::Stored {
+            state_changed: true,
+            ..
+        }
+    ));
+    // 3: hinting again keeps the first record, not the first guess.
+    let mut s = Store::open_in_memory().expect("open");
+    working_with_process(&mut s, "a", 1);
+    assert!(hint(&mut s, "a"));
+    assert!(
+        s.apply_log_hint(
+            P,
+            "a",
+            SessionState::Working,
+            T0 + minutes(50),
+            T0 + minutes(60)
+        )
+        .expect("second hint")
+    );
+    let out = s
+        .ingest(
+            &ev(2, "a", "working", "2026-11-07T11:01:00Z"),
+            T0 + minutes(61),
+        )
+        .expect("ingest");
+    assert!(matches!(
+        out,
+        IngestOutcome::Stored {
+            state_changed: false,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn a_user_import_is_not_a_log_hint_and_is_never_refreshed_by_the_catch_up() {
+    let mut s = Store::open_in_memory().expect("open");
+    s.import_session(P, "i", SessionState::Working, T0, T0)
+        .expect("import");
+    assert!(s.log_hinted_sessions().expect("hinted").is_empty());
+    assert!(
+        !s.apply_log_hint(
+            P,
+            "i",
+            SessionState::Idle,
+            T0 + minutes(30),
+            T0 + minutes(31)
+        )
+        .expect("hint"),
+        "Import's sessions are Import's job"
+    );
+    // A log hint is a subset of the imported mark but is told apart from it.
+    working_with_process(&mut s, "t", 1);
+    s.apply_log_hint(
+        P,
+        "t",
+        SessionState::Idle,
+        T0 + minutes(30),
+        T0 + minutes(31),
+    )
+    .expect("hint");
+    assert_eq!(s.imported_sessions().expect("marked").len(), 2);
+    let hinted = s.log_hinted_sessions().expect("hinted");
+    assert_eq!(hinted.len(), 1);
+    assert!(hinted.contains_key(&key("t")));
 }
 
 // ---- migration 0018 ----------------------------------------------------------------------

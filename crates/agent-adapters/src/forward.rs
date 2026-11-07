@@ -702,6 +702,7 @@ mod tests {
         let p = ProcessRef {
             pid: 4242,
             start: 9,
+            ns: None,
         };
         let mut seen = Vec::new();
         let out = exchange_with_fallback(Some(p), |process| {
