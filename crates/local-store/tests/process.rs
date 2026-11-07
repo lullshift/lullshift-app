@@ -792,9 +792,12 @@ fn failed_version_18_migration_rolls_back_and_keeps_data() {
     {
         version_16_database(&path);
         let conn = Connection::open(&path).expect("raw");
-        // A clash in the last of the three statements: the first two must roll back too.
-        conn.execute("ALTER TABLE sessions ADD COLUMN ended_reason TEXT", [])
-            .expect("clash");
+        // A clash on the last column the step adds: everything before it must roll back too.
+        conn.execute(
+            "ALTER TABLE sessions ADD COLUMN hint_prior_received TEXT",
+            [],
+        )
+        .expect("clash");
     }
     assert!(matches!(
         Store::open(&path),
@@ -809,12 +812,92 @@ fn failed_version_18_migration_rolls_back_and_keeps_data() {
         (16..18).contains(&v),
         "left at the last good version, got {v}"
     );
-    assert!(
-        conn.prepare("SELECT process_pid FROM sessions").is_err(),
-        "the earlier statements of the failed step were rolled back"
-    );
+    for column in [
+        "process_pid",
+        "process_start",
+        "process_ns",
+        "ended_reason",
+        "log_hint_utc",
+        "hint_prior_state",
+        "hint_prior_state_ts",
+        "hint_prior_seen",
+    ] {
+        assert!(
+            conn.prepare(&format!("SELECT {column} FROM sessions"))
+                .is_err(),
+            "{column} was rolled back with the failed step"
+        );
+    }
     let n: i64 = conn
         .query_row("SELECT count(*) FROM sessions", [], |r| r.get(0))
         .expect("rows");
     assert_eq!(n, 1, "data kept");
+}
+
+#[test]
+fn tampered_hint_prior_columns_never_make_events_fail() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("l.db");
+    {
+        let (mut s, _) = Store::open(&path).expect("open");
+        working_with_process(&mut s, "a", 1);
+        assert!(
+            s.apply_log_hint(
+                P,
+                "a",
+                SessionState::Idle,
+                T0 + minutes(30),
+                T0 + minutes(40)
+            )
+            .expect("hint")
+        );
+    }
+    for tamper in [
+        "UPDATE sessions SET hint_prior_state = 'nonsense'",
+        "UPDATE sessions SET hint_prior_seen = 'not a time'",
+        "UPDATE sessions SET hint_prior_received = NULL",
+    ] {
+        let conn = Connection::open(&path).expect("raw");
+        conn.execute(tamper, []).expect("tamper");
+        drop(conn);
+        let (mut s, _) = Store::open(&path).expect("reopen");
+        let out = s
+            .ingest(
+                &ev(
+                    100 + tamper.len() as u32,
+                    "a",
+                    "needs_attention",
+                    "2026-11-07T10:50:00Z",
+                ),
+                T0 + minutes(50),
+            )
+            .expect("an event is never refused because of the kept record");
+        let IngestOutcome::Stored { record, .. } = out else {
+            panic!("stored")
+        };
+        // Treated like an import: the event replaces the guess.
+        assert_eq!(record.state, SessionState::NeedsAttention, "{tamper}");
+        assert!(s.log_hinted_sessions().expect("hinted").is_empty());
+        // Put a fresh hint back for the next tamper.
+        drop(s);
+        let conn = Connection::open(&path).expect("raw");
+        conn.execute(
+            "UPDATE sessions SET state = 'working', state_timestamp_utc = '2026-11-07T10:00:00Z',
+               last_seen_utc = '2026-11-07T10:00:00Z', last_received_utc = '2026-11-07T10:00:00Z'",
+            [],
+        )
+        .expect("reset");
+        drop(conn);
+        let (mut s, _) = Store::open(&path).expect("reopen");
+        assert!(
+            s.apply_log_hint(
+                P,
+                "a",
+                SessionState::Idle,
+                T0 + minutes(30),
+                T0 + minutes(40)
+            )
+            .expect("hint")
+        );
+    }
 }

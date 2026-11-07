@@ -143,6 +143,28 @@ fn one_line(s: &str, max: usize) -> String {
     t.chars().take(max).collect()
 }
 
+type Marks = std::collections::HashMap<(String, String), OffsetDateTime>;
+
+/// How many sessions are plain imports and how many are catch-up guesses. The two are counted
+/// apart whatever the rows say: a tampered row that is "hinted" without being "imported" is
+/// counted once, as a guess, and the subtraction can never underflow.
+fn mark_counts(
+    records: &[agent_core::SessionRecord],
+    imported: &Marks,
+    hinted: &Marks,
+) -> (usize, usize) {
+    let key = |r: &agent_core::SessionRecord| (r.provider.clone(), r.provider_session_id.clone());
+    let hinted_count = records
+        .iter()
+        .filter(|r| hinted.contains_key(&key(r)))
+        .count();
+    let imported_count = records
+        .iter()
+        .filter(|r| imported.contains_key(&key(r)) && !hinted.contains_key(&key(r)))
+        .count();
+    (imported_count, hinted_count)
+}
+
 pub fn session_overview(core: &Core, now: OffsetDateTime) -> Res<String> {
     let guard = core.store.lock().map_err(|_| CommandError::internal())?;
     let store = guard.as_ref().ok_or_else(CommandError::internal)?;
@@ -169,15 +191,7 @@ pub fn session_overview(core: &Core, now: OffsetDateTime) -> Res<String> {
             !disconnected.contains_key(&key) && !imported.contains_key(&key)
         })
         .collect();
-    let hinted_count = records
-        .iter()
-        .filter(|r| hinted.contains_key(&(r.provider.clone(), r.provider_session_id.clone())))
-        .count();
-    let imported_count = records
-        .iter()
-        .filter(|r| imported.contains_key(&(r.provider.clone(), r.provider_session_id.clone())))
-        .count()
-        - hinted_count;
+    let (imported_count, hinted_count) = mark_counts(&records, &imported, &hinted);
     tracked.sort_by_key(|a| std::cmp::Reverse(a.last_received_utc));
     let total = tracked.len();
     let rows: Vec<OverviewRow> = tracked
@@ -446,6 +460,29 @@ mod tests {
             render_overview(&[], 0),
             "No agent sessions are being tracked right now."
         );
+    }
+
+    #[test]
+    fn mark_counts_never_underflow_on_a_tampered_row() {
+        let rec = |id: &str| agent_core::SessionRecord {
+            provider: "claude-code".into(),
+            provider_session_id: id.into(),
+            state: SessionState::Idle,
+            state_timestamp_utc: None,
+            last_seen_utc: OffsetDateTime::UNIX_EPOCH,
+            last_received_utc: OffsetDateTime::UNIX_EPOCH,
+        };
+        let key = |id: &str| ("claude-code".to_owned(), id.to_owned());
+        let t = OffsetDateTime::UNIX_EPOCH;
+        let records = [rec("import"), rec("guess"), rec("tampered"), rec("plain")];
+        let imported: Marks = [(key("import"), t), (key("guess"), t)].into();
+        // "tampered" is hinted but not imported; the old subtraction gave 2 - 2 + ... wrongly.
+        let hinted: Marks = [(key("guess"), t), (key("tampered"), t)].into();
+        assert_eq!(mark_counts(&records, &imported, &hinted), (1, 2));
+        // More hinted than imported overall: still no panic.
+        let hinted: Marks = [(key("tampered"), t), (key("plain"), t)].into();
+        let imported: Marks = Marks::new();
+        assert_eq!(mark_counts(&records, &imported, &hinted), (0, 2));
     }
 
     #[test]

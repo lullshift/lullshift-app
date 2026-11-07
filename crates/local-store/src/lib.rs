@@ -349,7 +349,11 @@ impl Store {
             // record from before it is what the event is applied to, under the normal ordering
             // rules. An older event cannot overwrite newer reported state, and the event only
             // counts as a change (and so notifies) if it differs from what was reported.
-            current = load_prior(&tx, &event.provider, &event.provider_session_id)?.or(current);
+            // A prior that can't be read (tampered columns) is treated like an import: the
+            // event replaces the guess, instead of every event for the session failing.
+            current = load_prior(&tx, &event.provider, &event.provider_session_id)
+                .ok()
+                .flatten();
         } else if current.is_some() && marks.imported {
             // A session imported from the agent's own log holds only a guess (ADR-024). The
             // first real event replaces it outright, counts as a change (so it can notify like
