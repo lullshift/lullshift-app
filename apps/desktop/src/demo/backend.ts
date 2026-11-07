@@ -486,7 +486,7 @@ const DEMO_DEFAULT_TITLE = "New conversation";
 export function titleFromMessage(text: string): string | null {
   const collapsed = text
     .replace(/\s+/gu, " ")
-    .replace(/[\p{Cc}­​-‏‪-‮⁠-⁤⁦-⁩﻿]/gu, "")
+    .replace(/[\p{Cc}\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/gu, "")
     .trim();
   if (!collapsed) return null;
   const chars = [...collapsed];
