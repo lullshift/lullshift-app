@@ -563,7 +563,8 @@ fn key_never_reaches_sqlite_results_or_errors_across_a_full_flow() {
     // The mock did get the key, so the checks below mean something.
     assert!(ok.requests.lock().expect("log")[0].contains("DESKTOPSECRET"));
     assert!(!shown.contains("DESKTOPSECRET"), "results and errors");
-    assert!(!shown.contains("PROVIDER-BODY"));
+    // The provider's reason is shown (sanitised) in the failed message, never the raw body.
+    assert!(shown.contains("said: \\\"PROVIDER-BODY\\\""), "{shown}");
 
     // Close the store (checkpointing the WAL), then look at every file in the data folder.
     *core.store.lock().expect("lock") = None;
@@ -942,7 +943,9 @@ fn errors_are_stored_with_fixed_messages_only() {
     );
     let ms = messages(&core, t).expect("m");
     let err = ms[0].error.as_ref().expect("error");
-    assert!(!err.message.contains("DESKTOPSECRET") && !err.message.contains("Bearer"));
+    // The echoed header is shown only with the key hidden.
+    assert!(!err.message.contains("DESKTOPSECRET"), "{}", err.message);
+    assert!(err.message.contains("[hidden]"), "{}", err.message);
 }
 
 #[test]
