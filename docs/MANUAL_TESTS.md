@@ -1166,6 +1166,32 @@ Watch Lullshift's connections with a network monitor (Resource Monitor, Little S
 
 **Result:** \_\_\_
 
+### M12-18: Companion settings, models per message and reply rendering (decision 36)
+
+Use a database from before this change (with at least one provider and a conversation) so the upgrade runs. Watch Lullshift's connections with a network monitor during steps 2 and 3. Repeat steps 4 to 9 in light and dark themes, and once with reduced motion on.
+
+1. Start the new build. Check that the old provider still has its model (now its default) and old answers say "Model unknown". Check that a pre-upgrade backup of the database was made (as for every migration).
+2. Open Companion. It shows conversations and a **Provider settings** link, and no settings tabs. Press **Provider settings**: Settings opens with the **Companion** section expanded and its heading button focused. Collapse it, restart, and check it stays collapsed; expand it, restart, and check it stays expanded. Opening Settings or Companion contacts nothing.
+3. In the Companion section, press **Add a model…**. The model picker opens and loads the list from models.dev (one HTTPS request; the sentence "Sends one request to models.dev…" is visible). Close it and open it again: no new request. Press **Refresh**: one request. Offline: an honest error, and typing a name under "Use a model name not in the list" still works.
+4. In the picker, use only the keyboard: Tab to the search, filters and list; arrows, Home, End, Page Up and Page Down in the list; Enter to choose; Escape to close. Focus returns to **Add a model…**.
+5. Add a second model, **Make default**, then **Remove** the other one. Try removing the last model: a clear message, nothing removed.
+6. In a conversation, press the model button under the message box and pick the non-default model. The button says "(this message only)". Send with **Enter**: the answer says "Answered by <that model> · <provider>", and the button goes back to the default. Send again: the default model answers.
+7. Type text and press **Shift+Enter** (new line, no send) and **Ctrl+Enter** (sends). With a Japanese or Chinese input method, press Enter to confirm a word: it doesn't send.
+8. Press **Options…**, choose a session summary, press **Done**. A badge shows the choice in the message box; click it to reopen the options; press its **×** to remove it.
+9. In the conversation list, open **⋮** on a conversation with the keyboard (Enter, arrows, Escape) and use **Rename** and **Delete**.
+10. Ask for a reply with a code block in Python, one in an unknown language and a link to `https://example.com` and to an internationalised domain (for example `https://exämple.com`). Check highlighting in both themes, **Copy** (and that "Copied" is announced), and that clicking a link shows **Open this link?** with the `xn--` form of the host. **Cancel** opens nothing; **Open in browser** opens the default browser at that exact address.
+11. With NVDA (or Narrator), go through the Companion section, the picker, the composer, the menu and a reply with a code block and a link.
+
+**Expected:**
+
+- **Step 1:** the upgrade keeps every provider and conversation; old answers show "Model unknown".
+- **Steps 2 and 3:** network contact only on the first picker opening per run and on Refresh, as described.
+- **Steps 4 to 9:** every control is reachable and named by keyboard; focus is visible and returns where it came from; the per-message pick is used once and then resets; Enter, Shift+Enter, Ctrl+Enter and the input method behave as described.
+- **Step 10:** no formatting other than code blocks and links; nothing opens without the confirmation; the address shown is the one opened. Syntax colours are readable in both themes.
+- **Step 11:** the expanded state, the menu, the picker list's active option, the "this message only" note and Copy's result are announced.
+
+**Result:** \_\_\_
+
 ## Website and demo mode
 
 ### W-1: Browser demo of the desktop UI

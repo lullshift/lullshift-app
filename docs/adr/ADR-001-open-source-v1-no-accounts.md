@@ -15,7 +15,7 @@ The product owner has decided the initial version must not be commercial.
 
 1. **v1 is fully open source** (Apache-2.0): desktop app, Rust core, agent protocol, activity SDK, CLI, kits, engines and all bundled games/activities.
 2. **No account of any kind.** The app is fully functional on first launch with no sign-in, no registration, no device enrollment and no offline lease. There is no "anonymous mode" because there is no other mode.
-3. **No Lullshift-operated server is required** for any v1 feature. The only network activity is user-initiated: Git fetches of marketplaces the user added (ADR-002), update checks for the app itself, BYOK Companion calls to the AI provider the user configured, and, only when the user asks, the Companion model list from models.dev (decision 32, ADR-020).
+3. **No Lullshift-operated server is required** for any v1 feature. The only network activity is user-initiated: Git fetches of marketplaces the user added (ADR-002), update checks for the app itself, BYOK Companion calls to the AI provider the user configured, and, only when the user opens the model picker or presses Refresh, the Companion model list from models.dev (decisions 32 and 36, ADR-020).
 4. **No telemetry by default.** Any future diagnostics must be opt-in.
 5. **Commercial and hosted ideas are deferred, not designed for.** Identity, sync, mobile, organization features, hosted AI, a hosted catalog and payments are recorded in `docs/future/` for possible later versions. v1 code must not add abstractions, feature flags or stubs for them.
 
