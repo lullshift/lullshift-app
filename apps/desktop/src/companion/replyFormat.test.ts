@@ -160,3 +160,49 @@ describe("displayUrl", () => {
     expect(segs).toEqual([{ kind: "code", lang: null, code: "https://a.com", closed: true }]);
   });
 });
+
+describe("findLinks on hostile input (security review F1)", () => {
+  /** Best of three runs, in milliseconds, so a busy machine doesn't fail the test. */
+  function fastest(run: () => void): number {
+    let best = Infinity;
+    for (let i = 0; i < 3; i++) {
+      const t = performance.now();
+      run();
+      best = Math.min(best, performance.now() - t);
+    }
+    return best;
+  }
+
+  const SHAPES: [string, string][] = [
+    ["a URL followed by 100k closing brackets", "https://a.b/" + ")".repeat(100_000)],
+    ["closing brackets after a short URL", "see https://a.b/x" + ")]}".repeat(33_000)],
+    [
+      "a URL of 50k opening then 50k closing brackets",
+      "https://a.b/" + "(".repeat(50_000) + ")".repeat(50_000),
+    ],
+    ["many URLs on one line", "https://a.b/c) ".repeat(7_000)],
+    ["URLs glued together", "https://".repeat(12_000)],
+    ["a trailing punctuation mix", "https://a.b/" + ".,;:!?)]}'\"".repeat(9_000)],
+  ];
+
+  for (const [name, text] of SHAPES) {
+    it(`handles ${name} quickly`, () => {
+      expect(text.length).toBeGreaterThan(90_000);
+      expect(fastest(() => findLinks(text))).toBeLessThan(50);
+    });
+  }
+
+  it("skips candidates too long to be a link and still trims short ones the same way", () => {
+    expect(links("https://a.b/" + ")".repeat(100_000))).toEqual([]);
+    expect(links("(see https://a.b/x_(y))).")).toEqual(["https://a.b/x_(y)"]);
+    expect(links("https://a.b/x)]}")).toEqual(["https://a.b/x"]);
+    const long = "https://a.b/" + "x".repeat(2048 - 12);
+    expect(long).toHaveLength(2048);
+    expect(links(`${long}).`)).toEqual([long]);
+    expect(links(`${long}y`)).toEqual([]);
+  });
+
+  it("links every URL when there are many", () => {
+    expect(links("https://a.b/c) ".repeat(7_000))).toHaveLength(7_000);
+  });
+});

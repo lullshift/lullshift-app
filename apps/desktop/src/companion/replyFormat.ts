@@ -77,27 +77,36 @@ export function parseReply(text: string): Segment[] {
   return out;
 }
 
-// A candidate starts with http:// or https:// (any case), not glued to a preceding word.
+// A candidate starts with http:// or https:// (any case), not glued to a preceding word. The
+// regex itself is linear: each match is one greedy run of non-space characters.
 const URL_CANDIDATE = /(?<![A-Za-z0-9+.-])https?:\/\/[^\s<>]+/gi;
 const TRAILING = new Set([".", ",", ";", ":", "!", "?", ")", "]", "}", "'", '"', "”", "’", "»"]);
 const PAIRS: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+/**
+ * Trailing punctuation allowed after a URL of MAX_URL_LENGTH ("…link).", "…link)?!"). A longer
+ * candidate can't become a linkable URL, so it is skipped before any trimming (security review F1:
+ * trimming used to be quadratic and ran on candidates of any length).
+ */
+const MAX_TRAILING = 8;
 
-function count(s: string, ch: string): number {
-  let n = 0;
-  for (let i = 0; i < s.length; i++) if (s[i] === ch) n++;
-  return n;
-}
-
-/** Drops trailing punctuation, keeping a closing bracket that has its opener in the URL. */
+/**
+ * Drops trailing punctuation, keeping a closing bracket that has its opener in the URL. Bracket
+ * counts are taken once and updated as characters are dropped, so this is linear.
+ */
 function trimTrailing(candidate: string): string {
+  const counts: Record<string, number> = { "(": 0, ")": 0, "[": 0, "]": 0, "{": 0, "}": 0 };
+  for (let i = 0; i < candidate.length; i++) {
+    const ch = candidate[i] ?? "";
+    if (ch in counts) counts[ch] = (counts[ch] ?? 0) + 1;
+  }
   let end = candidate.length;
   while (end > 0) {
     const ch = candidate[end - 1] ?? "";
     if (!TRAILING.has(ch)) break;
     const open = PAIRS[ch];
     if (open) {
-      const head = candidate.slice(0, end);
-      if (count(head, ch) <= count(head, open)) break;
+      if ((counts[ch] ?? 0) <= (counts[open] ?? 0)) break;
+      counts[ch] = (counts[ch] ?? 0) - 1;
     }
     end--;
   }
@@ -129,6 +138,7 @@ export function findLinks(text: string): LinkPart[] {
   let last = 0;
   for (const m of text.matchAll(URL_CANDIDATE)) {
     const start = m.index;
+    if (m[0].length > MAX_URL_LENGTH + MAX_TRAILING) continue;
     const url = trimTrailing(m[0]);
     if (!linkable(url)) continue;
     if (start > last) out.push({ kind: "text", text: text.slice(last, start) });
