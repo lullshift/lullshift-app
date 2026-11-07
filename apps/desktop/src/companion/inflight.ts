@@ -11,7 +11,7 @@
 // Several threads may stream at once; the core's busy rule is per thread.
 
 import { useSyncExternalStore } from "react";
-import { ellipsize } from "../format";
+import { ellipsize, stripInvisible } from "../format";
 import { dismissToastByKey, pushToast } from "../ui/toastQueue";
 import {
   companionMessages,
@@ -111,7 +111,7 @@ export function getEntries(): Entries {
 
 /** A short single-line title for a notice. Plain text only. */
 export function noticeTitle(title: string): string {
-  const oneLine = title.replace(/\s+/g, " ").trim() || "Untitled conversation";
+  const oneLine = stripInvisible(title).replace(/\s+/g, " ").trim() || "Untitled conversation";
   return ellipsize(oneLine, 40);
 }
 
@@ -121,20 +121,23 @@ function open(threadId: number): void {
 }
 
 function tell(entry: InflightEntry, kind: "replied" | "failed" | "approval"): void {
-  const where = `“${noticeTitle(entry.title)}”`;
+  const subject = noticeTitle(entry.title);
+  const where = `“${subject}”`;
   const action = { label: "Open", onAction: () => open(entry.threadId) };
   const key = toastKey(entry.threadId);
-  // Titles only. A reply, a prompt or an error's details never go into a notice.
+  // Titles only. A reply, a prompt or an error's details never go into a notice. The title is
+  // passed apart as `subject` so the notice can isolate it from the text around it.
   if (kind === "replied") {
-    pushToast({ key, tone: "info", title: `Companion replied in ${where}`, action });
+    pushToast({ key, tone: "info", title: `Companion replied in ${where}`, subject, action });
   } else if (kind === "failed") {
-    pushToast({ key, tone: "danger", title: `Reply failed in ${where}`, action });
+    pushToast({ key, tone: "danger", title: `Reply failed in ${where}`, subject, action });
   } else {
     pushToast({
       key,
       tone: "attention",
       assertive: true,
       title: `Companion needs your approval in ${where}`,
+      subject,
       action,
     });
   }

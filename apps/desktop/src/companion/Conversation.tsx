@@ -384,7 +384,9 @@ export function Conversation({
 
   return (
     <div className="conversation">
-      <h2 className="conversation-title">{threadLabel(thread)}</h2>
+      <h2 className="conversation-title">
+        <bdi>{threadLabel(thread)}</bdi>
+      </h2>
       <div className="visually-hidden" role="status" aria-live="polite">
         {status || live}
       </div>

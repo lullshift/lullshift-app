@@ -95,6 +95,17 @@ describe("focus after a notice closes", () => {
   });
 });
 
+describe("a user-chosen name in a notice", () => {
+  it("is isolated in <bdi> so it can't reorder the words around it", async () => {
+    await act(async () =>
+      pushToast({ ...input(1), title: "Companion replied in “gnp.exe”", subject: "gnp.exe" }),
+    );
+    const title = host.querySelector(".toast-title")!;
+    expect(title.querySelector("bdi")?.textContent).toBe("gnp.exe");
+    expect(title.textContent).toBe("Companion replied in “gnp.exe”");
+  });
+});
+
 describe("auto-dismiss and the window", () => {
   it("does not run out while the window is hidden, and starts again when it is shown", async () => {
     await act(async () => pushToast(input(1)));

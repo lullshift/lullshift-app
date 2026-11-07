@@ -9,6 +9,19 @@ function subscribeVisibility(fn: () => void): () => void {
 }
 const isVisible = () => document.visibilityState !== "hidden";
 
+/** The title, with a user-chosen name inside it isolated so it can't reorder the words around it. */
+function renderTitle({ title, subject }: Toast) {
+  const at = subject ? title.indexOf(subject) : -1;
+  if (!subject || at < 0) return title;
+  return (
+    <>
+      {title.slice(0, at)}
+      <bdi>{subject}</bdi>
+      {title.slice(at + subject.length)}
+    </>
+  );
+}
+
 function ToastItem({ toast }: { toast: Toast }) {
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -59,7 +72,7 @@ function ToastItem({ toast }: { toast: Toast }) {
       }}
     >
       <Icon name={toast.tone === "info" ? "chat" : "alert"} />
-      <p className="toast-title">{toast.title}</p>
+      <p className="toast-title">{renderTitle(toast)}</p>
       <div className="toast-actions">
         {action && (
           <button

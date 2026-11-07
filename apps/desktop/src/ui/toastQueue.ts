@@ -9,6 +9,8 @@ export interface ToastInput {
   /** The same key replaces the notice that is already showing (and restarts its timer). */
   key: string;
   title: string;
+  /** Text inside `title` that comes from the user (a conversation name); shown isolated. */
+  subject?: string;
   tone: ToastTone;
   /** Only for something that blocks progress, such as an approval. Everything else is polite. */
   assertive?: boolean;

@@ -341,6 +341,19 @@ describe("reads of the thread that finish out of order", () => {
   });
 });
 
+describe("conversation names", () => {
+  it("drops bidirectional controls and isolates the name in the list and the heading", async () => {
+    const base = answer;
+    answer = (c, a) =>
+      c === "companion_threads" ? [thread(1, "evil \u202Egnp.exe\u2066"), THREADS[1]!] : base(c, a);
+    await mount();
+    const row = threadButton("evil");
+    expect(row.querySelector(".thread-title bdi")?.textContent).toBe("evil gnp.exe");
+    expect(host.querySelector(".conversation-title bdi")?.textContent).toBe("evil gnp.exe");
+    expect(host.textContent).not.toMatch(/[\u202A-\u202E\u2066-\u2069]/);
+  });
+});
+
 describe("the notice", () => {
   const key1 = (n: number) => ({ key: `k${n}`, title: `Notice ${n}`, tone: "info" as const });
 

@@ -329,6 +329,16 @@ describe("notices", () => {
     expect(getToasts()).toHaveLength(0);
   });
 
+  it("strips bidirectional and invisible characters from the title, and passes it apart", async () => {
+    expect(noticeTitle("a\u202Eb\u2066c\u2069d\u200Be\u00ADf\uFEFFg\u2028h")).toBe("abcdefgh");
+    beginRequest(meta(1, "r", "evil \u202Egnp.exe\u2066"));
+    finishRequest(1, "r", { kind: "replied", text: "t", stored: true });
+    const t = getToasts()[0]!;
+    expect(t.subject).toBe("evil gnp.exe");
+    expect(t.title).toBe("Companion replied in “evil gnp.exe”");
+    expect(t.title).not.toMatch(/[\u202A-\u202E\u2066-\u2069]/);
+  });
+
   it("cuts long titles and never needs more than a short line", () => {
     expect(noticeTitle("x".repeat(100)).length).toBeLessThanOrEqual(40);
     expect(noticeTitle("   ")).toBe("Untitled conversation");
