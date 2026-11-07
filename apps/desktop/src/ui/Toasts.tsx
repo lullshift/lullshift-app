@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "./Icon";
 import { dismissToast, TOAST_MS, useToasts, type Toast } from "./toastQueue";
 import "./toasts.css";
@@ -40,6 +40,7 @@ function ToastItem({ toast }: { toast: Toast }) {
   // Closing a notice that holds focus must not drop focus on the page body: it goes to the next
   // notice's first button, else to the main area.
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   const close = () => {
     const el = ref.current;
     if (el?.contains(document.activeElement)) {
@@ -72,12 +73,15 @@ function ToastItem({ toast }: { toast: Toast }) {
       }}
     >
       <Icon name={toast.tone === "info" ? "chat" : "alert"} />
-      <p className="toast-title">{renderTitle(toast)}</p>
+      <p id={titleId} className="toast-title">
+        {renderTitle(toast)}
+      </p>
       <div className="toast-actions">
         {action && (
           <button
             type="button"
             className="btn btn-secondary"
+            aria-describedby={titleId}
             onClick={() => {
               dismissToast(toast.id);
               action.onAction();
@@ -89,7 +93,8 @@ function ToastItem({ toast }: { toast: Toast }) {
         <button
           type="button"
           className="btn btn-quiet toast-dismiss"
-          aria-label={`Dismiss: ${toast.title}`}
+          aria-label="Dismiss notice"
+          aria-describedby={titleId}
           onClick={close}
         >
           <Icon name="close" size={16} />

@@ -95,6 +95,22 @@ describe("focus after a notice closes", () => {
   });
 });
 
+describe("what a screen reader hears", () => {
+  it("gets the title once: the buttons are named by their action and described by the title", async () => {
+    await act(async () =>
+      pushToast({ ...input(1), action: { label: "Open", onAction: () => undefined } }),
+    );
+    const title = host.querySelector(".toast-title")!;
+    const buttons = [...host.querySelectorAll<HTMLButtonElement>(".toast button")];
+    expect(buttons.map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual([
+      "Open",
+      "Dismiss notice",
+    ]);
+    for (const b of buttons) expect(b.getAttribute("aria-describedby")).toBe(title.id);
+    expect(host.textContent?.split("Notice 1").length).toBe(2);
+  });
+});
+
 describe("a user-chosen name in a notice", () => {
   it("is isolated in <bdi> so it can't reorder the words around it", async () => {
     await act(async () =>

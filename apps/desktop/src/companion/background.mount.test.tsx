@@ -138,6 +138,7 @@ beforeEach(() => {
           failSend = reject;
         });
       case "companion_cancel":
+      case "companion_tool_decision":
         return null;
       default:
         throw new Error(`unexpected ${command}`);
@@ -256,6 +257,31 @@ describe("returning to a reply that is still being written", () => {
     await click(buttonIn(host, "Open"));
     expect(host.textContent).toContain("Tea Sort");
     expect(toastTitles()).toEqual([]);
+  });
+});
+
+describe("approving after coming back", () => {
+  it("answers the lookup of the current request, by its own ids", async () => {
+    await startSendInThreadOne();
+    await emit({
+      type: "toolRequest",
+      approvalId: "call_77",
+      tool: "suggest_break",
+      label: "Suggest a break",
+      arguments: "{}",
+      resultText: "Suggestion: Tea Sort",
+      host: "api.anthropic.com",
+    });
+    await click(threadButton("Lock choice"));
+    await click(threadButton("Retry setting"));
+    await click(buttonIn(host, "Approve"));
+    const decisions = calls.filter(([c]) => c === "companion_tool_decision");
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]![1]).toEqual({
+      requestId: requestId(),
+      approvalId: "call_77",
+      approve: true,
+    });
   });
 });
 
@@ -389,6 +415,12 @@ describe("conversation names", () => {
   });
 });
 
+/** The dismiss button of the notice with this title (they all share one name). */
+const dismissOf = (title: string) =>
+  [...host.querySelectorAll<HTMLElement>(".toast")]
+    .find((t) => t.querySelector(".toast-title")?.textContent === title)!
+    .querySelector<HTMLButtonElement>(".toast-dismiss")!;
+
 describe("the notice", () => {
   const key1 = (n: number) => ({ key: `k${n}`, title: `Notice ${n}`, tone: "info" as const });
 
@@ -403,7 +435,7 @@ describe("the notice", () => {
     const buttons = [...host.querySelectorAll<HTMLButtonElement>(".toast button")];
     expect(buttons.map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual([
       "Open",
-      "Dismiss: Companion replied in “Retry setting”",
+      "Dismiss notice",
     ]);
   });
 
@@ -461,7 +493,7 @@ describe("the notice", () => {
       for (const n of [1, 2, 3, 4]) pushToast(key1(n));
     });
     expect(toastTitles()).toEqual(["Notice 2", "Notice 3", "Notice 4"]);
-    await click(buttonIn(host, "Dismiss: Notice 3"));
+    await click(dismissOf("Notice 3"));
     expect(toastTitles()).toEqual(["Notice 2", "Notice 4"]);
   });
 
