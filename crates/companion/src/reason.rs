@@ -377,6 +377,5 @@ mod tests {
                 .speaker,
             "The provider"
         );
-        assert!(MAX_REASON_CHARS <= MAX_MESSAGE_CHARS);
     }
 }

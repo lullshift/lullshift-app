@@ -124,14 +124,27 @@ fn run_with(
     cancel: &CancelToken,
     late: Option<mpsc::Sender<LateUsage>>,
 ) -> Streamed {
+    run_opts(mock, kind, cfg, tools, (true, false), cancel, late)
+}
+
+/// `opts` is `(stream, reasoning)` as asked of the request.
+fn run_opts(
+    mock: &Mock,
+    kind: ProviderKind,
+    cfg: HttpConfig,
+    tools: bool,
+    opts: (bool, bool),
+    cancel: &CancelToken,
+    late: Option<mpsc::Sender<LateUsage>>,
+) -> Streamed {
     let key = Secret::parse(KEY).unwrap();
     let m = msgs();
     let plan = RequestPlan {
         messages: &m,
         rounds: &[],
         tools,
-        stream: true,
-        reasoning: false,
+        stream: opts.0,
+        reasoning: opts.1,
         max_output_tokens: 64,
     };
     let mut deltas = Vec::new();
@@ -453,10 +466,14 @@ fn no_first_byte_times_out() {
 
 #[test]
 fn cancel_returns_at_once_discards_late_chunks_and_books_usage() {
+    // The server pauses 3 s after the first chunk. The cancel is fired by the first chunk itself,
+    // so it no longer depends on how fast the request was made, and "at once" is measured from
+    // the cancel to the return, with a bound (1.5 s) far under the pause: a call that waited for
+    // the stream to go on would take the full 3 s.
     fn steps() -> Vec<Step> {
         vec![
             Step::Write("data: {\"choices\":[{\"delta\":{\"content\":\"early\"}}]}\n\n"),
-            Step::Sleep(700),
+            Step::Sleep(3000),
             Step::Write("data: {\"choices\":[{\"delta\":{\"content\":\"LATE\"}}]}\n\n"),
             Step::Write(
                 "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
@@ -465,26 +482,42 @@ fn cancel_returns_at_once_discards_late_chunks_and_books_usage() {
     }
     let mock = start("text/event-stream", steps);
     let cancel = CancelToken::new();
-    let c2 = cancel.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(250));
-        c2.cancel();
-    });
     let (tx, rx) = mpsc::channel();
-    let t = Instant::now();
-    let (r, deltas) = run_with(
-        &mock,
-        ProviderKind::OpenAiCompatible,
-        HttpConfig::default(),
-        false,
+    let key = Secret::parse(KEY).unwrap();
+    let m = msgs();
+    let plan = RequestPlan {
+        messages: &m,
+        rounds: &[],
+        tools: false,
+        stream: true,
+        reasoning: false,
+        max_output_tokens: 64,
+    };
+    let mut deltas: Vec<String> = Vec::new();
+    let mut cancelled_at: Option<Instant> = None;
+    let r = chat_stream(
+        &HttpConfig::default(),
+        &spec(ProviderKind::OpenAiCompatible, &mock.base),
+        &key,
+        &plan,
         &cancel,
-        Some(tx),
+        |d| {
+            deltas.push(d.to_owned());
+            if cancelled_at.is_none() {
+                cancelled_at = Some(Instant::now());
+                cancel.cancel();
+            }
+        },
+        move |u| {
+            let _ = tx.send(u);
+        },
     );
+    let returned = cancelled_at.expect("the first chunk arrived").elapsed();
     assert_eq!(r.unwrap_err().error.kind, ErrorKind::Cancelled);
-    assert!(t.elapsed() < Duration::from_millis(600), "returned at once");
+    assert!(returned < Duration::from_millis(1500), "returned at once");
     assert_eq!(deltas.concat(), "early");
     let u = rx
-        .recv_timeout(Duration::from_secs(10))
+        .recv_timeout(Duration::from_secs(15))
         .expect("late usage");
     assert!(u.input_tokens > 0);
     // Nothing late reached the caller.
@@ -584,6 +617,7 @@ struct Resp {
     status: u16,
     content_type: &'static str,
     body: String,
+    delay_ms: u64,
 }
 
 impl Resp {
@@ -592,7 +626,16 @@ impl Resp {
             status,
             content_type: "application/json",
             body: body.to_owned(),
+            delay_ms: 0,
         }
+    }
+}
+
+impl Resp {
+    /// Waits this long after reading the request before answering.
+    fn after(mut self, ms: u64) -> Self {
+        self.delay_ms = ms;
+        self
     }
 }
 
@@ -611,6 +654,7 @@ fn start_scripted(script: Vec<Resp>) -> Mock {
             };
             log.lock().unwrap().push(req);
             let r = &script[n.min(script.len() - 1)];
+            std::thread::sleep(Duration::from_millis(r.delay_ms));
             n += 1;
             let _ = write!(
                 s,
@@ -637,6 +681,7 @@ impl Resp {
             status: 200,
             content_type: "text/event-stream",
             body: body.to_owned(),
+            delay_ms: 0,
         }
     }
 }
@@ -872,4 +917,366 @@ fn compatible_providers_still_use_chat_completions_with_max_tokens() {
     let b = body_of(&reqs[0]);
     assert_eq!(b["max_tokens"], 64);
     assert!(b.get("store").is_none() && b.get("input").is_none());
+}
+
+// ---- failures that cost tokens, refused options, retries (M1, M2, M3, L1, L3, L5) ----------
+
+fn plain() -> CancelToken {
+    CancelToken::new()
+}
+
+fn failed_stream(usage: &str) -> String {
+    ev(&format!(
+        r#"{{"type":"response.failed","response":{{"status":"failed","error":{{"message":"The model failed."}}{usage}}}}}"#
+    ))
+}
+
+#[test]
+fn m1_a_failed_stream_books_what_it_reported_else_the_output_cap() {
+    let reported = failed_stream(r#","usage":{"input_tokens":30,"output_tokens":7}"#);
+    let mock = start_scripted(vec![Resp::sse(&reported)]);
+    let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+    let f = r.unwrap_err();
+    assert_eq!((f.input_tokens, f.output_tokens), (30, 7));
+    // Nothing reported: the request's output cap (64 here) is booked, not zero.
+    let silent = failed_stream("");
+    let mock = start_scripted(vec![Resp::sse(&silent)]);
+    let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+    let f = r.unwrap_err();
+    assert!(f.received && f.input_tokens > 0);
+    assert_eq!(f.output_tokens, 64);
+}
+
+#[test]
+fn m1_an_incomplete_stream_without_text_books_its_usage_and_says_why() {
+    let inc = ev(
+        r#"{"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":12,"output_tokens":64}}}"#,
+    );
+    let mock = start_scripted(vec![Resp::sse(&inc)]);
+    let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+    let f = r.unwrap_err();
+    assert_eq!((f.input_tokens, f.output_tokens), (12, 64));
+    assert!(
+        f.error.message.contains("output limit"),
+        "{}",
+        f.error.message
+    );
+    let filtered = ev(
+        r#"{"type":"response.incomplete","response":{"incomplete_details":{"reason":"content_filter"}}}"#,
+    );
+    let mock = start_scripted(vec![Resp::sse(&filtered)]);
+    let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+    let f = r.unwrap_err();
+    assert!(f.error.message.contains("content_filter"));
+    assert_eq!(f.output_tokens, 64, "no usage reported: the cap");
+}
+
+#[test]
+fn m1_non_stream_failures_book_reported_usage_else_the_cap() {
+    let with = r#"{"status":"failed","error":{"message":"x"},"usage":{"input_tokens":5,"output_tokens":9},"output":[]}"#;
+    let without = r#"{"status":"failed","error":{"message":"x"},"output":[]}"#;
+    for (body, want_out) in [(with, 9), (without, 64)] {
+        let mock = start_scripted(vec![Resp::json(200, body)]);
+        let (r, _) = run_opts(
+            &mock,
+            ProviderKind::OpenAi,
+            HttpConfig::default(),
+            false,
+            (false, false),
+            &plain(),
+            None,
+        );
+        let f = r.unwrap_err();
+        assert!(f.received);
+        assert_eq!(f.output_tokens, want_out, "{body}");
+    }
+}
+
+fn reasoning_refused() -> Resp {
+    Resp::json(
+        400,
+        r#"{"error":{"message":"Unsupported parameter: 'reasoning.effort' is not supported with this model.","type":"invalid_request_error","param":"reasoning.effort","code":"unsupported_parameter"}}"#,
+    )
+}
+
+#[test]
+fn m2_reasoning_is_sent_and_dropped_once_when_the_model_refuses_it() {
+    let mock = start_scripted(vec![
+        reasoning_refused(),
+        Resp::sse(&responses_text_stream()),
+    ]);
+    let (r, _) = run_opts(
+        &mock,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+        false,
+        (true, true),
+        &plain(),
+        None,
+    );
+    let r = r.unwrap();
+    assert!(r.learned.reasoning_refused && !r.learned.stream_refused);
+    assert!(r.streamed);
+    let reqs = mock.requests.lock().unwrap();
+    assert_eq!(reqs.len(), 2);
+    assert_eq!(body_of(&reqs[0])["reasoning"]["effort"], "low");
+    assert!(body_of(&reqs[1]).get("reasoning").is_none());
+    assert_eq!(body_of(&reqs[1])["stream"], true);
+}
+
+#[test]
+fn m2_a_model_that_refuses_both_gets_three_requests_at_most() {
+    let mock = start_scripted(vec![
+        reasoning_refused(),
+        refuse_stream(),
+        Resp::json(200, &responses_json()),
+    ]);
+    let (r, _) = run_opts(
+        &mock,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+        false,
+        (true, true),
+        &plain(),
+        None,
+    );
+    let r = r.unwrap();
+    assert!(r.learned.reasoning_refused && r.learned.stream_refused);
+    assert!(!r.streamed);
+    let reqs = mock.requests.lock().unwrap();
+    assert_eq!(reqs.len(), 3);
+    let last = body_of(&reqs[2]);
+    assert!(last.get("reasoning").is_none() && last.get("stream").is_none());
+    // Another model with a plain 400 is not retried at all.
+    let mock = start_scripted(vec![Resp::json(
+        400,
+        r#"{"error":{"message":"bad","param":"input"}}"#,
+    )]);
+    let (r, _) = run_opts(
+        &mock,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+        false,
+        (true, true),
+        &plain(),
+        None,
+    );
+    assert!(r.is_err());
+    assert_eq!(mock.requests.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn m2_reasoning_is_only_sent_to_openai() {
+    let ok = ev(r#"{"choices":[{"delta":{"content":"hi there"},"finish_reason":"stop"}]}"#)
+        + "data: [DONE]\n\n";
+    for kind in [ProviderKind::OpenAiCompatible, ProviderKind::Anthropic] {
+        let mock = start_scripted(vec![Resp::sse(&ok)]);
+        let _ = run_opts(
+            &mock,
+            kind,
+            HttpConfig::default(),
+            false,
+            (true, true),
+            &plain(),
+            None,
+        );
+        let reqs = mock.requests.lock().unwrap();
+        assert!(body_of(&reqs[0]).get("reasoning").is_none(), "{kind:?}");
+    }
+}
+
+#[test]
+fn m3_the_retry_waits_for_the_total_time_not_the_first_byte_time() {
+    // The first byte limit is 400 ms; the non-streamed answer takes 1.2 s to produce. Without
+    // the retry signal the caller would give up at 400 ms.
+    let mock = start_scripted(vec![
+        refuse_stream(),
+        Resp::json(200, &responses_json()).after(1200),
+    ]);
+    let cfg = HttpConfig {
+        first_byte_timeout: Duration::from_millis(400),
+        idle_timeout: Duration::from_millis(400),
+        ..HttpConfig::default()
+    };
+    let (r, _) = run(&mock, ProviderKind::OpenAi, cfg, false);
+    let r = r.expect("the retry was waited for");
+    assert_eq!(r.text, "Whole reply");
+    assert!(!r.streamed);
+    // A request that never streams starts in that mode too.
+    let mock = start_scripted(vec![Resp::json(200, &responses_json()).after(1200)]);
+    let (r, _) = run_opts(
+        &mock,
+        ProviderKind::OpenAi,
+        cfg,
+        false,
+        (false, false),
+        &plain(),
+        None,
+    );
+    assert!(r.is_ok());
+}
+
+#[test]
+fn m3_a_remembered_refusal_means_one_request() {
+    // The caller remembered that streaming was refused: it asks without it from the start.
+    let mock = start_scripted(vec![Resp::json(200, &responses_json())]);
+    let (r, _) = run_opts(
+        &mock,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+        false,
+        (false, false),
+        &plain(),
+        None,
+    );
+    let r = r.unwrap();
+    assert!(!r.streamed && !r.learned.stream_refused);
+    let reqs = mock.requests.lock().unwrap();
+    assert_eq!(reqs.len(), 1);
+    assert!(body_of(&reqs[0]).get("stream").is_none());
+}
+
+#[test]
+fn m3_l3_a_cancel_during_the_refused_request_gives_up_and_books_the_cap() {
+    // The refusal arrives after 500 ms; the user cancels at 150 ms. No retry may start, and the
+    // late usage books the request, with the cap as output because a non-stream answer is
+    // produced whole.
+    let mock = start_scripted(vec![
+        refuse_stream().after(500),
+        Resp::json(200, &responses_json()),
+    ]);
+    let cancel = CancelToken::new();
+    let c2 = cancel.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(150));
+        c2.cancel();
+    });
+    let (tx, rx) = mpsc::channel();
+    let (r, _) = run_with(
+        &mock,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+        false,
+        &cancel,
+        Some(tx),
+    );
+    assert_eq!(r.unwrap_err().error.kind, ErrorKind::Cancelled);
+    let u = rx.recv_timeout(Duration::from_secs(5)).expect("late usage");
+    assert!(u.input_tokens > 0);
+    std::thread::sleep(Duration::from_millis(900));
+    assert_eq!(
+        mock.requests.lock().unwrap().len(),
+        1,
+        "no second request after a cancel"
+    );
+}
+
+#[test]
+fn m3_a_cancel_while_the_non_stream_answer_is_pending_books_the_cap() {
+    let mock = start_scripted(vec![Resp::json(200, &responses_json()).after(800)]);
+    let cancel = CancelToken::new();
+    let c2 = cancel.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        c2.cancel();
+    });
+    let (tx, rx) = mpsc::channel();
+    let (r, _) = run_opts(
+        &mock,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+        false,
+        (false, false),
+        &cancel,
+        Some(tx),
+    );
+    assert_eq!(r.unwrap_err().error.kind, ErrorKind::Cancelled);
+    let u = rx.recv_timeout(Duration::from_secs(5)).expect("late usage");
+    // The answer did arrive after the cancel and says 3 output tokens; that is what it cost.
+    assert!(u.output_tokens == 3 || u.output_tokens == 64, "{u:?}");
+}
+
+#[test]
+fn l1_a_failure_event_that_quotes_what_we_sent_shows_no_reason() {
+    // The sent message is "hello there, this is a request of some size".
+    let quoting = ev(
+        r#"{"type":"response.failed","response":{"error":{"message":"Cannot handle: helloZW there, this is a request of"}}}"#,
+    )
+    .replace("ZW", "\\u200b"); // a zero-width space inside the quote
+    let mock = start_scripted(vec![Resp::sse(&quoting)]);
+    let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+    let f = r.unwrap_err();
+    assert!(f.error.reason.is_none(), "{:?}", f.error.reason);
+    let fine =
+        ev(r#"{"type":"error","message":"The server had an error","code":"x","param":null}"#);
+    let mock = start_scripted(vec![Resp::sse(&fine)]);
+    let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+    assert!(r.unwrap_err().error.reason.is_some());
+    // The same check applies to a failed non-stream body.
+    let body = r#"{"status":"failed","error":{"message":"bad: this is a request of some size"},"output":[]}"#;
+    let mock = start_scripted(vec![Resp::json(200, body)]);
+    let (r, _) = run_opts(
+        &mock,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+        false,
+        (false, false),
+        &plain(),
+        None,
+    );
+    assert!(r.unwrap_err().error.reason.is_none());
+}
+
+#[test]
+fn l5_calls_made_when_lookups_are_off_are_ignored_not_validated() {
+    // A function call with an unusable id, and nothing else: with lookups off this is an empty
+    // reply (not a crash, not an empty success).
+    let bad_call = [
+        r#"{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"bad id!","name":"x","arguments":"{}"}}"#,
+        r#"{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","call_id":"bad id!","name":"x","arguments":"{}"}}"#,
+        r#"{"type":"response.completed","response":{"usage":{"input_tokens":4,"output_tokens":2}}}"#,
+    ]
+    .iter()
+    .map(|e| ev(e))
+    .collect::<String>();
+    let mock = start_scripted(vec![Resp::sse(&bad_call)]);
+    let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+    let f = r.unwrap_err();
+    assert_eq!(f.error.kind, ErrorKind::InvalidResponse);
+    assert!(f.received);
+    // With text as well, the text is the reply and the call is dropped silently.
+    let with_text = format!(
+        "{}{}",
+        ev(r#"{"type":"response.output_text.delta","delta":"hi"}"#),
+        bad_call
+    );
+    let mock = start_scripted(vec![Resp::sse(&with_text)]);
+    let (r, _) = run(&mock, ProviderKind::OpenAi, HttpConfig::default(), false);
+    let r = r.unwrap();
+    assert_eq!(r.text, "hi");
+    assert!(r.tool_calls.is_empty());
+    // Non-stream: a body of only calls is empty when lookups are off, and keeps them when on.
+    let body = r#"{"status":"completed","output":[{"type":"function_call","call_id":"call_1","name":"suggest_break","arguments":"{}"}]}"#;
+    let mock = start_scripted(vec![Resp::json(200, body)]);
+    let (r, _) = run_opts(
+        &mock,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+        false,
+        (false, false),
+        &plain(),
+        None,
+    );
+    assert_eq!(r.unwrap_err().error.kind, ErrorKind::InvalidResponse);
+    let mock = start_scripted(vec![Resp::json(200, body)]);
+    let (r, _) = run_opts(
+        &mock,
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+        true,
+        (false, false),
+        &plain(),
+        None,
+    );
+    assert_eq!(r.unwrap().tool_calls.len(), 1);
 }

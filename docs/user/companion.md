@@ -110,7 +110,7 @@ If the provider asks for something Lullshift won't give (a lookup that doesn't e
 
 ### When the provider says no
 
-When your provider refuses a request, Lullshift shows its own sentence followed by what the provider said, for example `The provider didn't accept the request (HTTP 400). OpenAI said: "..."`. That text comes from the provider, not from Lullshift. It is shortened, stripped of hidden or control characters, and never includes your key or your message. If the provider sends no readable reason (for example a web page from a proxy), you only see Lullshift's sentence.
+When your provider refuses a request, Lullshift shows its own sentence, and under it a separate line with what the provider said, labelled with who said it, for example `OpenAI said: "..."`. Those are the provider's words, shown as plain text: any address in them is not a link and cannot be clicked. The line is shortened, stripped of hidden or control characters, and never includes your key or your message. If the provider sends no readable reason (for example a web page from a proxy), you only see Lullshift's sentence. The same line appears when Test connection fails.
 
 What the usual reasons mean:
 
@@ -119,8 +119,8 @@ What the usual reasons mean:
 - **"Incorrect API key", "invalid_api_key", or HTTP 401**: the key is wrong or revoked. Save a new key in the provider's settings.
 - **HTTP 403, or "Country, region, or territory not supported"**: the provider is blocking your account, project or location, or your key isn't allowed to use this model.
 - **"You exceeded your current quota" (HTTP 429)**: your provider account is out of credit or over its limit. This is separate from Lullshift's monthly budget.
-- **"Your organization must be verified to stream"**: OpenAI only streams some models for verified organisations. Lullshift retries once without streaming, and the reply ends with a note saying it arrived all at once. Verifying your organisation with OpenAI turns streaming back on.
-- **"The model stopped before it wrote a reply"**: some models spend their whole output allowance thinking. Try again or choose another model.
+- **"Your organization must be verified to stream"**: OpenAI only streams some models for verified organisations. Lullshift retries once without streaming and remembers that until you quit; the reply arrives all at once, with a note beside it saying so (the note is not part of the reply). Verifying your organisation with OpenAI turns streaming back on.
+- **"The model reached its output limit before it wrote a reply"**: some models spend their whole output allowance thinking. Lullshift allows 8192 output tokens on OpenAI and asks for low reasoning effort; try again, ask for something shorter, or choose another model.
 
 With the OpenAI provider, Lullshift uses OpenAI's Responses API and asks OpenAI not to store the conversation (`store: false`). OpenAI's own data and abuse-monitoring terms still apply to what you send.
 

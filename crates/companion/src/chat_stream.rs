@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 
 use crate::error::CompanionError;
 use crate::http::{
-    ABANDONED, CancelToken, DELIVERED, HttpConfig, LateUsage, PENDING, agent, classify,
+    ABANDONED, CancelToken, DELIVERED, HttpConfig, LateUsage, PENDING, agent, classify, classify_io,
 };
 use crate::provider::{
     BuiltRequest, ProviderKind, ProviderSpec, RequestPlan, build_plan_request, clean_chunk,
@@ -243,10 +243,7 @@ fn stream_call(
                     body.extend_from_slice(&buf[..n]);
                     let _ = tx.send(Msg::Activity);
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                    return Err(failure(CompanionError::timeout(), "", &[], &tally, true));
-                }
-                Err(_) => return Err(failure(CompanionError::offline(), "", &[], &tally, true)),
+                Err(e) => return Err(failure(classify_io(e), "", &[], &tally, true)),
             }
         }
         if body.len() > cfg.max_response_bytes {
@@ -355,23 +352,8 @@ fn stream_call(
         let n = match reader.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => n,
-            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                return Err(failure(
-                    CompanionError::timeout(),
-                    &text,
-                    &calls,
-                    &tally,
-                    received,
-                ));
-            }
-            Err(_) => {
-                return Err(failure(
-                    CompanionError::offline(),
-                    &text,
-                    &calls,
-                    &tally,
-                    received,
-                ));
+            Err(e) => {
+                return Err(failure(classify_io(e), &text, &calls, &tally, received));
             }
         };
         received = true;

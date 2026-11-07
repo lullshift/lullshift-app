@@ -109,6 +109,12 @@ pub(crate) fn agent(cfg: &HttpConfig, loopback: bool) -> ureq::Agent {
     b.build().new_agent()
 }
 
+/// A failed body read. ureq reports its own timeout through the reader as an `io::Error`
+/// wrapping it, so convert back before classifying: a stalled body is a timeout, not "offline".
+pub(crate) fn classify_io(e: std::io::Error) -> CompanionError {
+    classify(&ureq::Error::from(e))
+}
+
 pub(crate) fn classify(e: &ureq::Error) -> CompanionError {
     match e {
         ureq::Error::Timeout(_) => CompanionError::timeout(),
@@ -176,10 +182,7 @@ fn post(
         match reader.read(&mut chunk) {
             Ok(0) => break,
             Ok(n) => buf.extend_from_slice(&chunk[..n]),
-            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                return Err(CompanionError::timeout());
-            }
-            Err(_) => return Err(CompanionError::offline()),
+            Err(e) => return Err(classify_io(e)),
         }
     }
     if buf.len() > cfg.max_response_bytes {

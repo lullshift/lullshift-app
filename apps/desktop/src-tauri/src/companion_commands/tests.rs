@@ -1496,3 +1496,91 @@ fn a_store_error_reading_models_is_reported_not_hidden() {
     assert_eq!(e.kind, "internal");
     assert!(set_default_model(&core, &pid, "mock-model").is_err());
 }
+
+#[test]
+fn a_reply_that_was_not_streamed_is_flagged_but_its_text_and_the_replay_stay_clean() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    // The mock answers plain JSON, not a stream: the reply arrives all at once.
+    let m = mock(vec![Sc::Ok, Sc::Ok]);
+    let pid = profile(&core, &m.base, None);
+    let t = thread(&core);
+    let first = send(&core, t, &pid, "first", &Scope::None).expect("1");
+    assert!(first.not_streamed);
+    assert_eq!(first.text, "a reply", "the note is never part of the text");
+    send(&core, t, &pid, "second", &Scope::None).expect("2");
+    let ms = messages(&core, t).expect("messages");
+    let replies: Vec<_> = ms.iter().filter(|m| m.role == "assistant").collect();
+    assert_eq!(replies.len(), 2);
+    assert!(
+        replies
+            .iter()
+            .all(|r| r.not_streamed && r.text == "a reply")
+    );
+    // What is replayed to the provider is the delivered text only.
+    let body = last_body(&m).to_string();
+    assert!(body.contains("assistant"), "{body}");
+    assert!(
+        !body.contains("all at once") && !body.contains("didn't stream"),
+        "{body}"
+    );
+}
+
+#[test]
+fn refused_options_are_remembered_per_provider_and_model_for_the_app_run_only() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    assert_eq!(hints_for(&core, "p1", "m1"), Learned::default());
+    learn(&core, "p1", "m1", Learned::default());
+    learn(
+        &core,
+        "p1",
+        "m1",
+        Learned {
+            reasoning_refused: false,
+            stream_refused: true,
+        },
+    );
+    learn(
+        &core,
+        "p1",
+        "m1",
+        Learned {
+            reasoning_refused: true,
+            stream_refused: false,
+        },
+    );
+    let h = hints_for(&core, "p1", "m1");
+    assert!(h.stream_refused && h.reasoning_refused, "refusals add up");
+    // Another model of the same provider, and another provider, start fresh.
+    assert_eq!(hints_for(&core, "p1", "m2"), Learned::default());
+    assert_eq!(hints_for(&core, "p2", "m1"), Learned::default());
+    // Memory only: a new run (a new core) knows nothing.
+    let dir2 = tempfile::tempdir().expect("dir");
+    let core2 = core_with(dir2.path(), memory(), 2000);
+    assert_eq!(hints_for(&core2, "p1", "m1"), Learned::default());
+}
+
+#[test]
+fn a_failed_message_keeps_the_providers_words_in_its_own_field() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    let m = mock(vec![Sc::Status(500)]);
+    let pid = profile(&core, &m.base, None);
+    let t = thread(&core);
+    let e = send(&core, t, &pid, "hi", &Scope::None).unwrap_err();
+    // The command error carries the words apart from the fixed sentence ...
+    assert_eq!(
+        e.provider_reason.as_ref().map(|r| r.text.as_str()),
+        Some("PROVIDER-BODY")
+    );
+    assert!(!e.message.contains("PROVIDER-BODY"));
+    // ... and so does the stored message, after a reload.
+    let ms = messages(&core, t).expect("messages");
+    let err = ms[0].error.as_ref().expect("error");
+    assert_eq!(
+        err.provider_reason.as_ref().map(|r| r.speaker.as_str()),
+        Some("The provider")
+    );
+    assert!(!err.message.contains("PROVIDER-BODY"));
+}

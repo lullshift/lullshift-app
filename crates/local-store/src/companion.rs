@@ -780,6 +780,7 @@ impl Store {
     /// Like [`Self::companion_complete_send_if`], with `no_stream` set on the reply when it
     /// arrived all at once because the request was not streamed (a delivery note, never part of
     /// the text). Tokens are `(shown, booked)` pairs of (input, output).
+    #[allow(clippy::too_many_arguments)]
     pub fn companion_complete_send_flagged(
         &mut self,
         user_message: i64,

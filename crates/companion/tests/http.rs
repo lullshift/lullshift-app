@@ -23,6 +23,8 @@ enum Scenario {
     EchoAuth,
     Body(u16, &'static str),
     BigErrorBody,
+    /// Headers promise 100 bytes, 10 arrive, then silence (status given).
+    StallBody(u16),
 }
 
 struct Mock {
@@ -106,6 +108,19 @@ fn start(scn: Scenario, kind: ProviderKind) -> Mock {
                     ),
                     Scenario::Body(c, b) => {
                         respond(&mut s, &format!("{c} Whatever"), "", b.as_bytes())
+                    }
+                    Scenario::StallBody(c) => {
+                        let head = format!(
+                            "HTTP/1.1 {c} X
+content-type: application/json
+content-length: 100
+connection: close
+
+{{\"error\":\"x\"}}"
+                        );
+                        let _ = s.write_all(head.as_bytes());
+                        let _ = s.flush();
+                        std::thread::sleep(Duration::from_secs(4));
                     }
                     Scenario::BigErrorBody => {
                         let mut b = br#"{"error":{"message":"HIDDEN-BIG-REASON"}}"#.to_vec();
@@ -596,4 +611,55 @@ fn said(e: &companion::CompanionError) -> String {
         .as_ref()
         .map(|r| format!("{} said: \"{}\"", r.speaker, r.text))
         .unwrap_or_default()
+}
+
+/// L4: the connection test and any other non-streaming call are bounded: a body that stalls after
+/// the headers (a good one or an error one) ends with a timeout at the configured limit, not
+/// later, and the caller is not held past it.
+#[test]
+fn a_stalled_body_is_bounded_by_the_timeout_for_good_and_error_statuses() {
+    let cfg = HttpConfig {
+        timeout: Duration::from_millis(500),
+        ..HttpConfig::default()
+    };
+    for status in [200, 400] {
+        let t = Instant::now();
+        let (r, _) = run(Scenario::StallBody(status), ProviderKind::OpenAi, cfg);
+        let e = r.unwrap_err();
+        assert!(
+            t.elapsed() < Duration::from_millis(3000),
+            "{status}: returned after {:?}",
+            t.elapsed()
+        );
+        if status == 200 {
+            assert_eq!(e.kind, ErrorKind::Timeout);
+        } else {
+            // An unreadable error body is not a reason; the status still maps.
+            assert_eq!(e.kind, ErrorKind::ProviderError);
+            assert!(e.reason.is_none());
+        }
+    }
+}
+
+/// An incomplete Responses reply at the output limit is a successful connection test, and a failed
+/// one carries the usage to book.
+#[test]
+fn the_connection_test_passes_an_output_limit_stop_and_books_a_failed_reply() {
+    let limit = r#"{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"reasoning","summary":[]}],"usage":{"input_tokens":9,"output_tokens":16}}"#;
+    let (r, _) = run(
+        Scenario::Body(200, limit),
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+    );
+    let r = r.expect("a successful test");
+    assert_eq!((r.input_tokens, r.output_tokens), (9, 16));
+    let failed = r#"{"status":"failed","error":{"message":"The model failed."},"usage":{"input_tokens":9,"output_tokens":4},"output":[]}"#;
+    let (r, _) = run(
+        Scenario::Body(200, failed),
+        ProviderKind::OpenAi,
+        HttpConfig::default(),
+    );
+    let e = r.unwrap_err();
+    assert_eq!(e.usage, Some((9, 4)));
+    assert_eq!(said(&e), "OpenAI said: \"The model failed.\"");
 }

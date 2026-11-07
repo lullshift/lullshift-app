@@ -11,6 +11,10 @@
 //! - The models.dev model list ([`models_dev`]) is fetched only on request and kept in memory.
 //! - Nothing in this crate logs.
 
+// `CompanionError` carries a provider reason and a usage figure beside its fixed message, and it
+// is returned by value throughout; the errors are rare and boxing them would only add noise.
+#![allow(clippy::result_large_err)]
+
 pub mod budget;
 pub mod chat_stream;
 pub mod error;
