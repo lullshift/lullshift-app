@@ -25,7 +25,7 @@ You can type the model name yourself, or pick one from the public list at [model
 3. Narrow the list: search by name, id or family; **Supports tools**; **Reasoning**; **Hide models older than a year**. Sort by newest (the default), cheapest input price, or name. Each model shows its context size and its price per million input and output tokens ("price unknown" when models.dev has none).
 4. Choose a model to put its name in the model field. Then save, and use **Test connection**.
 
-The list stays in memory until you quit Lullshift; it is never saved to disk. **Refresh** asks models.dev again and keeps your list if nothing changed. models.dev is a community list and may be out of date, and being listed doesn't mean your key can use a model: **Test connection** checks. If the list can't be loaded (for example, you are offline), you can still type the model name.
+The list stays in memory until you quit Lullshift; it is never saved to disk. **Refresh** asks models.dev again and keeps your list if nothing changed; the status line then shows both when the list was loaded and when it was last checked. models.dev is a community list and may be out of date, and being listed doesn't mean your key can use a model: **Test connection** checks. If the list can't be loaded (for example, you are offline), you can still type the model name.
 
 ## Your key
 

@@ -113,11 +113,12 @@ type Usage = { profileId: string; month: string; inputTokens: number; outputToke
   - `load`: the list from memory, or one GET of `https://models.dev/api.json` if it isn't loaded yet (`fromMemory` says which).
   - `refresh`: one GET with `If-None-Match` (the stored ETag, if any). A 304 keeps the list and sets `unchanged: true`. A failed refresh keeps the old list in memory.
   - Concurrent `load`/`refresh` calls share one request (single-flight).
-  - `ModelCatalog = { fetchedAt: string /* RFC 3339 UTC, when models.dev last sent or confirmed the list */, unchanged: boolean, fromMemory: boolean, providers: { id, name, modelCount }[] }`.
+  - `ModelCatalog = { loadedAt: string /* RFC 3339 UTC, when models.dev last sent the list */, checkedAt: string /* when it last sent or confirmed it; equals loadedAt until a refresh finds no change */, unchanged: boolean /* this call was a refresh answered 304 */, fromMemory: boolean, providers: { id, name, modelCount }[] }`.
+  - At most 1,000 providers, 5,000 models per provider and 20,000 models in total; parsed as a stream without building a JSON tree.
   - Errors: `offline` ("Can't reach models.dev…"), `timeout`, `invalidResponse` (not JSON, or larger than 16 MiB), `providerError` (HTTP status, named; the body is never included).
 - `companion_catalog_models({ providerId }) -> CatalogModel[]` (decision 32)
   - Memory only. `notFound` when the list isn't loaded ("The model list isn't loaded…") or the provider id isn't in it.
-  - `CatalogModel = { id, name, family: string | null, toolCall, reasoning, releaseDate: string | null /* YYYY, YYYY-MM or YYYY-MM-DD */, contextTokens: number | null, outputTokens: number | null, costInput: number | null, costOutput: number | null /* USD per 1M tokens */ }`.
+  - `CatalogModel = { id, name: string | null /* null when models.dev gives no usable name; show the id */, family: string | null, toolCall, reasoning, releaseDate: string | null /* YYYY, YYYY-MM or YYYY-MM-DD */, contextTokens: number | null, outputTokens: number | null, costInput: number | null, costOutput: number | null /* USD per 1M tokens */ }`.
   - Every `id` passes the profile model rule, so a chosen model always saves.
 
 ## Not exposed
