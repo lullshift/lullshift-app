@@ -1,0 +1,62 @@
+/* In-app notices (ui/Toasts.tsx). The global reduced-motion rule in styles.css switches the
+   entrance animation off. */
+
+.toast-region {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 50;
+  display: grid;
+  gap: var(--space-2);
+  width: min(380px, calc(100vw - 2 * var(--space-4)));
+  pointer-events: none;
+}
+
+.toast-region > div {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.toast {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-md);
+  pointer-events: auto;
+  animation: rise var(--slow) var(--ease);
+}
+
+.toast-info .icon {
+  color: var(--accent);
+}
+
+.toast-attention .icon {
+  color: var(--attention);
+}
+
+.toast-danger {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
+.toast-danger .icon {
+  color: var(--danger);
+}
+
+.toast-title {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.toast-actions {
+  grid-column: 2;
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
