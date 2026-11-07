@@ -89,7 +89,10 @@ fn start(scn: Scenario, kind: ProviderKind) -> Mock {
                             ProviderKind::Anthropic => {
                                 r#"{"content":[{"type":"text","text":"hello there"}],"usage":{"input_tokens":11,"output_tokens":4}}"#
                             }
-                            _ => {
+                            ProviderKind::OpenAi => {
+                                r#"{"id":"resp_1","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hello there"}]}],"usage":{"input_tokens":11,"output_tokens":4,"total_tokens":15}}"#
+                            }
+                            ProviderKind::OpenAiCompatible => {
                                 r#"{"choices":[{"message":{"content":"hello there"}}],"usage":{"prompt_tokens":11,"completion_tokens":4,"total_tokens":15}}"#
                             }
                         };
@@ -230,6 +233,17 @@ fn request_has_no_tools_and_key_only_in_the_auth_header() {
             &["tools", "functions", "tool_choice", "function_call"]
         ));
         assert!(!body.contains("SUPERSECRETKEY"));
+        let path = head.lines().next().unwrap();
+        match k {
+            ProviderKind::Anthropic => assert!(path.contains("/v1/messages")),
+            ProviderKind::OpenAi => {
+                // Official OpenAI: Responses API, nothing stored on OpenAI's side.
+                assert!(path.contains("POST /responses "), "{path}");
+                assert_eq!(v["store"], false);
+                assert_eq!(v["max_output_tokens"], 64);
+            }
+            ProviderKind::OpenAiCompatible => assert!(path.contains("/chat/completions")),
+        }
         // Headers: the key appears in exactly the provider's auth header.
         let with_key: Vec<String> = head
             .lines()

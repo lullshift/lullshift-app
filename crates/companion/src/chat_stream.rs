@@ -22,13 +22,16 @@ use crate::http::{
 };
 use crate::provider::{
     BuiltRequest, ProviderKind, ProviderSpec, RequestPlan, build_plan_request, clean_chunk,
-    estimate, map_status_reason, parse_reply,
+    clean_reply, estimate, map_status_reason, parse_reply,
 };
 use crate::secret::Secret;
 use crate::sse::SseParser;
-use crate::stream::{Decoder, Piece, ended_early};
+use crate::stream::{Decoder, Piece, ended_early, parse_responses_body};
 use crate::tools::ToolCall;
 use crate::url_check::check_base_url;
+
+/// Appended to a reply that had to be fetched without streaming (see `chat_stream`).
+pub const NO_STREAM_NOTICE: &str = "\n\n(OpenAI would not stream this reply for your organisation, so it arrived all at once. Verifying your organisation with OpenAI may allow streaming.)";
 
 /// A finished (or cut) streamed reply.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -222,9 +225,39 @@ fn stream_call(
                 true,
             ));
         }
-        let reply =
-            parse_reply(kind, &body, sent_chars).map_err(|e| failure(e, "", &[], &tally, true))?;
-        let mut t = reply.text;
+        let (mut t, tool_calls, input_tokens, output_tokens) = if kind == ProviderKind::OpenAi {
+            // A Responses body (also the answer to the non-streaming retry).
+            let r = parse_responses_body(&body, &ctx.key)
+                .map_err(|e| failure(e, "", &[], &tally, true))?;
+            let t = clean_reply(&r.text);
+            if t.trim().is_empty() && r.calls.is_empty() {
+                return Err(failure(
+                    CompanionError::invalid_response(),
+                    "",
+                    &[],
+                    &tally,
+                    true,
+                ));
+            }
+            let calls = if tools_on { r.calls } else { Vec::new() };
+            let produced =
+                t.chars().count() + calls.iter().map(|c| c.arguments.len()).sum::<usize>();
+            (
+                t,
+                calls,
+                r.input.unwrap_or_else(|| est_chars(sent_chars)),
+                r.output.unwrap_or_else(|| est_chars(produced)),
+            )
+        } else {
+            let reply = parse_reply(kind, &body, sent_chars)
+                .map_err(|e| failure(e, "", &[], &tally, true))?;
+            (
+                reply.text,
+                Vec::new(),
+                reply.input_tokens,
+                reply.output_tokens,
+            )
+        };
         if t.len() > cfg.max_reply_bytes {
             let mut end = cfg.max_reply_bytes;
             while !t.is_char_boundary(end) {
@@ -233,19 +266,21 @@ fn stream_call(
             t.truncate(end);
             cut = true;
         }
-        let _ = tx.send(Msg::Delta(t.clone()));
+        if !t.is_empty() {
+            let _ = tx.send(Msg::Delta(t.clone()));
+        }
         return Ok(StreamReply {
             text: t,
-            tool_calls: Vec::new(),
-            input_tokens: reply.input_tokens,
-            output_tokens: reply.output_tokens,
+            tool_calls,
+            input_tokens,
+            output_tokens,
             reported: true,
             cut,
         });
     }
 
     let mut parser = SseParser::new(cfg.max_event_bytes);
-    let mut dec = Decoder::new(kind);
+    let mut dec = Decoder::new(kind).with_key(&ctx.key);
     let mut total = 0usize;
     let mut done = false;
     'read: loop {
@@ -411,6 +446,17 @@ where
         ..spec.clone()
     };
     let built = build_plan_request(&spec, key.expose(), plan);
+    // Built up front, sent only if OpenAI refuses streaming. Never built for other providers.
+    let fallback = (spec.kind == ProviderKind::OpenAi && plan.stream).then(|| {
+        build_plan_request(
+            &spec,
+            key.expose(),
+            &RequestPlan {
+                stream: false,
+                ..*plan
+            },
+        )
+    });
     let sent_chars: usize = plan
         .messages
         .iter()
@@ -446,7 +492,7 @@ where
     let handoff = Arc::new(AtomicU8::new(PENDING));
     let worker_handoff = Arc::clone(&handoff);
     std::thread::spawn(move || {
-        let result = stream_call(
+        let mut result = stream_call(
             &cfg,
             loopback,
             kind,
@@ -457,6 +503,31 @@ where
             &worker_handoff,
             &tx,
         );
+        // OpenAI refuses `stream: true` for organisations that are not verified (HTTP 400, `param`
+        // is `stream`). Try once more without streaming and tell the user.
+        let refused = matches!(&result, Err(f) if f.stream_refused);
+        if let (true, Some(fb)) = (refused, fallback) {
+            let mut retried = stream_call(
+                &cfg,
+                loopback,
+                kind,
+                tools_on,
+                sent_chars,
+                fb,
+                &ctx,
+                &worker_handoff,
+                &tx,
+            );
+            if let Ok(reply) = &mut retried
+                && !reply.text.is_empty()
+            {
+                reply.text.push_str(NO_STREAM_NOTICE);
+                if worker_handoff.load(Ordering::SeqCst) != ABANDONED {
+                    let _ = tx.send(Msg::Delta(NO_STREAM_NOTICE.to_owned()));
+                }
+            }
+            result = retried;
+        }
         if worker_handoff
             .compare_exchange(PENDING, DELIVERED, Ordering::SeqCst, Ordering::SeqCst)
             .is_ok()

@@ -80,6 +80,10 @@ pub struct Decoder {
     /// would make the answers ambiguous.
     seen_ids: std::collections::HashSet<String>,
     finished: bool,
+    /// Responses API: some text was streamed.
+    saw_text: bool,
+    /// The key, hidden in provider messages shown to the user.
+    key: String,
     done: bool,
 }
 
@@ -92,8 +96,17 @@ impl Decoder {
             emitted_calls: 0,
             seen_ids: std::collections::HashSet::new(),
             finished: false,
+            saw_text: false,
+            key: String::new(),
             done: false,
         }
+    }
+
+    /// Sets the key to hide in provider messages shown to the user.
+    #[must_use]
+    pub fn with_key(mut self, key: &str) -> Self {
+        self.key = key.to_owned();
+        self
     }
 
     /// True once a complete reply was seen.
@@ -104,7 +117,8 @@ impl Decoder {
     pub fn push(&mut self, ev: &SseEvent) -> Result<Vec<Piece>, CompanionError> {
         match self.kind {
             ProviderKind::Anthropic => self.anthropic(ev),
-            ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => self.openai(ev),
+            ProviderKind::OpenAi => self.responses(ev),
+            ProviderKind::OpenAiCompatible => self.openai(ev),
         }
     }
 
@@ -226,6 +240,130 @@ impl Decoder {
             .collect::<Result<_, _>>()
     }
 
+    /// The error for `response.failed`, `response.incomplete` without output and the `error`
+    /// event: the fixed sentence plus the provider's sanitised message, if it sent one.
+    fn responses_error(&self, message: Option<&str>) -> CompanionError {
+        let reason = message.and_then(|m| crate::reason::excerpt(m, &self.key));
+        CompanionError::new(
+            ErrorKind::ProviderError,
+            crate::reason::append_reason(
+                "The provider reported a problem while replying.",
+                ProviderKind::OpenAi.speaker(),
+                reason.as_ref(),
+            ),
+        )
+    }
+
+    /// OpenAI Responses API events (verified 2026-11-07, ADR-020). Every `data:` payload is JSON
+    /// with a `type`. Unknown types are ignored so new features do not break a reply.
+    fn responses(&mut self, ev: &SseEvent) -> Result<Vec<Piece>, CompanionError> {
+        let data = ev.data.trim();
+        if data == "[DONE]" {
+            // Not part of the Responses stream; tolerated.
+            return Ok(Vec::new());
+        }
+        let v: Value = serde_json::from_str(data).map_err(|_| bad())?;
+        let kind = v.get("type").and_then(Value::as_str).unwrap_or("");
+        let index = v.get("output_index").and_then(Value::as_u64).unwrap_or(0);
+        if index >= 64 {
+            return Err(bad());
+        }
+        let function_call = |v: &Value| -> bool {
+            v.pointer("/item/type").and_then(Value::as_str) == Some("function_call")
+        };
+        let mut out = Vec::new();
+        match kind {
+            "response.output_text.delta" => {
+                let t = v.get("delta").and_then(Value::as_str).ok_or_else(bad)?;
+                if !t.is_empty() {
+                    self.saw_text = true;
+                    out.push(Piece::Text(t.to_owned()));
+                }
+            }
+            "response.output_item.added" if function_call(&v) => {
+                let item = v.get("item").ok_or_else(bad)?;
+                let s = |k: &str| {
+                    item.get(k)
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                        .unwrap_or_default()
+                };
+                let args = s("arguments");
+                if args.len() > MAX_ARGUMENT_BYTES {
+                    return Err(bad());
+                }
+                self.calls.insert(
+                    index,
+                    PartialCall {
+                        id: s("call_id"),
+                        name: s("name"),
+                        args,
+                    },
+                );
+            }
+            "response.function_call_arguments.delta" => {
+                let t = v.get("delta").and_then(Value::as_str).ok_or_else(bad)?;
+                if let Some(c) = self.calls.get_mut(&index) {
+                    if c.args.len() + t.len() > MAX_ARGUMENT_BYTES {
+                        return Err(bad());
+                    }
+                    c.args.push_str(t);
+                }
+            }
+            "response.function_call_arguments.done" => {
+                if let (Some(c), Some(a)) = (
+                    self.calls.get_mut(&index),
+                    v.get("arguments").and_then(Value::as_str),
+                ) {
+                    if a.len() > MAX_ARGUMENT_BYTES {
+                        return Err(bad());
+                    }
+                    c.args = a.to_owned();
+                }
+            }
+            "response.output_item.done" if function_call(&v) => {
+                let item = v.get("item").ok_or_else(bad)?;
+                let mut c = self.calls.remove(&index).unwrap_or_default();
+                if let Some(id) = item.get("call_id").and_then(Value::as_str) {
+                    c.id = id.to_owned();
+                }
+                if let Some(n) = item.get("name").and_then(Value::as_str) {
+                    c.name = n.to_owned();
+                }
+                if let Some(a) = item.get("arguments").and_then(Value::as_str) {
+                    c.args = a.to_owned();
+                }
+                out.push(self.finish_call(c)?);
+            }
+            "response.completed" | "response.incomplete" => {
+                let u = v.pointer("/response/usage").filter(|u| u.is_object());
+                out.push(Piece::Usage {
+                    input: token(u.and_then(|u| u.get("input_tokens"))),
+                    output: token(u.and_then(|u| u.get("output_tokens"))),
+                    output_final: u.is_some(),
+                });
+                out.extend(self.flush_openai_calls()?);
+                if kind == "response.incomplete" && !self.saw_text && self.emitted_calls == 0 {
+                    return Err(CompanionError::new(
+                        ErrorKind::ProviderError,
+                        "The model stopped before it wrote a reply (it reached its output limit or was filtered).",
+                    ));
+                }
+                self.done = true;
+                out.push(Piece::Done);
+            }
+            "response.failed" => {
+                let m = v.pointer("/response/error/message").and_then(Value::as_str);
+                return Err(self.responses_error(m));
+            }
+            "error" => {
+                return Err(self.responses_error(v.get("message").and_then(Value::as_str)));
+            }
+            _ => {} // created, in_progress, content_part.*, reasoning.* and anything newer
+        }
+        Ok(out)
+    }
+
     fn openai(&mut self, ev: &SseEvent) -> Result<Vec<Piece>, CompanionError> {
         let data = ev.data.trim();
         if data == "[DONE]" {
@@ -286,6 +424,82 @@ impl Decoder {
         }
         Ok(out)
     }
+}
+
+/// A whole (non-streamed) OpenAI Responses body, read the same way as the stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResponsesBody {
+    pub text: String,
+    pub calls: Vec<ToolCall>,
+    pub input: Option<i64>,
+    pub output: Option<i64>,
+}
+
+/// Parses a 2xx Responses body: `output[]` message items (`content[]` parts of type
+/// `output_text`) and `function_call` items, `usage.input_tokens` / `usage.output_tokens`, and a
+/// `status` of `failed` or `incomplete`. Text is not cleaned here.
+pub fn parse_responses_body(body: &[u8], key: &str) -> Result<ResponsesBody, CompanionError> {
+    let v: Value = serde_json::from_slice(body).map_err(|_| bad())?;
+    let mut d = Decoder::new(ProviderKind::OpenAi).with_key(key);
+    let status = v
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("completed");
+    if status == "failed" {
+        return Err(d.responses_error(v.pointer("/error/message").and_then(Value::as_str)));
+    }
+    let items = v.get("output").and_then(Value::as_array).ok_or_else(bad)?;
+    let mut text = String::new();
+    let mut calls = Vec::new();
+    for item in items {
+        match item.get("type").and_then(Value::as_str) {
+            Some("message") => {
+                for part in item
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    if part.get("type").and_then(Value::as_str) == Some("output_text")
+                        && let Some(t) = part.get("text").and_then(Value::as_str)
+                    {
+                        text.push_str(t);
+                    }
+                }
+            }
+            Some("function_call") => {
+                let s = |k: &str| {
+                    item.get(k)
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                        .unwrap_or_default()
+                };
+                let Piece::Tool(c) = d.finish_call(PartialCall {
+                    id: s("call_id"),
+                    name: s("name"),
+                    args: s("arguments"),
+                })?
+                else {
+                    return Err(bad());
+                };
+                calls.push(c);
+            }
+            _ => {}
+        }
+    }
+    if status == "incomplete" && text.trim().is_empty() && calls.is_empty() {
+        return Err(CompanionError::new(
+            ErrorKind::ProviderError,
+            "The model stopped before it wrote a reply (it reached its output limit or was filtered).",
+        ));
+    }
+    let u = v.get("usage");
+    Ok(ResponsesBody {
+        text,
+        calls,
+        input: token(u.and_then(|u| u.get("input_tokens"))),
+        output: token(u.and_then(|u| u.get("output_tokens"))),
+    })
 }
 
 #[cfg(test)]
@@ -393,11 +607,19 @@ mod tests {
         };
         let fin = r#"{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#;
         let (a, b) = (call(0, "same"), call(1, "same"));
-        let e = run(ProviderKind::OpenAi, &[a.as_str(), b.as_str(), fin]).unwrap_err();
+        let e = run(
+            ProviderKind::OpenAiCompatible,
+            &[a.as_str(), b.as_str(), fin],
+        )
+        .unwrap_err();
         assert_eq!(e.kind, ErrorKind::InvalidResponse);
         // Different ids are fine.
         let (c, d) = (call(0, "one"), call(1, "two"));
-        let ok = run(ProviderKind::OpenAi, &[c.as_str(), d.as_str(), fin]).unwrap();
+        let ok = run(
+            ProviderKind::OpenAiCompatible,
+            &[c.as_str(), d.as_str(), fin],
+        )
+        .unwrap();
         assert_eq!(ok.iter().filter(|p| matches!(p, Piece::Tool(_))).count(), 2);
     }
 
@@ -431,7 +653,7 @@ mod tests {
     #[test]
     fn openai_text_usage_and_done() {
         let p = run(
-            ProviderKind::OpenAi,
+            ProviderKind::OpenAiCompatible,
             &[
                 r#"{"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}"#,
                 r#"{"choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}"#,
@@ -474,7 +696,7 @@ mod tests {
     #[test]
     fn openai_in_stream_error_and_limits() {
         let e = run(
-            ProviderKind::OpenAi,
+            ProviderKind::OpenAiCompatible,
             &[r#"{"error":{"message":"SECRET-BODY"}}"#],
         )
         .unwrap_err();
@@ -485,14 +707,16 @@ mod tests {
             r#"{{"choices":[{{"delta":{{"tool_calls":[{{"index":0,"id":"c","function":{{"name":"n","arguments":"{big}"}}}}]}}}}]}}"#
         );
         assert_eq!(
-            run(ProviderKind::OpenAi, &[&ev]).unwrap_err().kind,
+            run(ProviderKind::OpenAiCompatible, &[&ev])
+                .unwrap_err()
+                .kind,
             ErrorKind::InvalidResponse
         );
     }
 
     #[test]
     fn completion_is_tracked() {
-        let mut d = Decoder::new(ProviderKind::OpenAi);
+        let mut d = Decoder::new(ProviderKind::OpenAiCompatible);
         assert!(!d.complete());
         d.push(&ev(r#"{"choices":[{"delta":{"content":"x"}}]}"#))
             .unwrap();
@@ -500,5 +724,152 @@ mod tests {
         d.push(&ev(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#))
             .unwrap();
         assert!(d.complete());
+    }
+
+    // Recorded-shape fixtures for the Responses API (event names and fields as in the OpenAI
+    // API reference, checked 2026-11-07).
+    const R_TEXT: [&str; 8] = [
+        r#"{"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}"#,
+        r#"{"type":"response.in_progress","response":{"id":"resp_1"}}"#,
+        r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"msg_1","type":"message","status":"in_progress","role":"assistant","content":[]}}"#,
+        r#"{"type":"response.content_part.added","item_id":"msg_1","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}"#,
+        r#"{"type":"response.output_text.delta","item_id":"msg_1","output_index":0,"content_index":0,"delta":"Hel"}"#,
+        r#"{"type":"response.output_text.delta","item_id":"msg_1","output_index":0,"content_index":0,"delta":"lo"}"#,
+        r#"{"type":"response.output_text.done","item_id":"msg_1","output_index":0,"content_index":0,"text":"Hello"}"#,
+        r#"{"type":"response.completed","response":{"id":"resp_1","status":"completed","usage":{"input_tokens":21,"input_tokens_details":{"cached_tokens":0},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":26}}}"#,
+    ];
+
+    #[test]
+    fn responses_text_and_usage() {
+        let p = run(ProviderKind::OpenAi, &R_TEXT).unwrap();
+        assert_eq!(text(&p), "Hello");
+        assert!(p.contains(&Piece::Usage {
+            input: Some(21),
+            output: Some(5),
+            output_final: true
+        }));
+        assert_eq!(p.last(), Some(&Piece::Done));
+    }
+
+    #[test]
+    fn responses_function_call_arrives_in_pieces() {
+        let p = run(
+            ProviderKind::OpenAi,
+            &[
+                r#"{"type":"response.output_item.added","output_index":0,"item":{"id":"fc_1","type":"function_call","status":"in_progress","call_id":"call_abc","name":"suggest_break","arguments":""}}"#,
+                r#"{"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"{\"available_"}"#,
+                r#"{"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"minutes\":5}"}"#,
+                r#"{"type":"response.function_call_arguments.done","item_id":"fc_1","output_index":0,"arguments":"{\"available_minutes\":5}"}"#,
+                r#"{"type":"response.output_item.done","output_index":0,"item":{"id":"fc_1","type":"function_call","status":"completed","call_id":"call_abc","name":"suggest_break","arguments":"{\"available_minutes\":5}"}}"#,
+                r#"{"type":"response.completed","response":{"usage":{"input_tokens":30,"output_tokens":9}}}"#,
+            ],
+        )
+        .unwrap();
+        let calls: Vec<&ToolCall> = p
+            .iter()
+            .filter_map(|x| match x {
+                Piece::Tool(c) => Some(c),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id, "call_abc");
+        assert_eq!(calls[0].name, "suggest_break");
+        assert_eq!(calls[0].arguments, "{\"available_minutes\":5}");
+        assert_eq!(p.last(), Some(&Piece::Done));
+    }
+
+    #[test]
+    fn responses_call_without_done_item_is_flushed_on_completion_and_duplicates_refused() {
+        let added = r#"{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"suggest_break","arguments":"{}"}}"#;
+        let completed = r#"{"type":"response.completed","response":{}}"#;
+        let p = run(ProviderKind::OpenAi, &[added, completed]).unwrap();
+        assert!(p.iter().any(|x| matches!(x, Piece::Tool(_))));
+        // Completed without usage: not final, so the caller estimates.
+        assert!(p.contains(&Piece::Usage {
+            input: None,
+            output: None,
+            output_final: false
+        }));
+        let second = added.replace("\"output_index\":0", "\"output_index\":1");
+        let e = run(ProviderKind::OpenAi, &[added, &second, completed]).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::InvalidResponse);
+    }
+
+    #[test]
+    fn responses_failed_error_and_incomplete() {
+        let e = run(
+            ProviderKind::OpenAi,
+            &[r#"{"type":"response.failed","response":{"status":"failed","error":{"code":"server_error","message":"The model failed to generate a response."}}}"#],
+        )
+        .unwrap_err();
+        assert_eq!(e.kind, ErrorKind::ProviderError);
+        assert!(
+            e.message
+                .ends_with("OpenAI said: \"The model failed to generate a response.\""),
+            "{}",
+            e.message
+        );
+        let e = run(
+            ProviderKind::OpenAi,
+            &["{\"type\":\"error\",\"code\":\"ERR\",\"message\":\"bad\\u202e sk-proj-abcdefgh12345678\",\"param\":null}"],
+        )
+        .unwrap_err();
+        assert!(!e.message.contains("sk-proj") && !e.message.contains('\u{202e}'));
+        // Incomplete with some text is a (cut) reply; without any output it is an error.
+        let p = run(
+            ProviderKind::OpenAi,
+            &[
+                r#"{"type":"response.output_text.delta","delta":"partial"}"#,
+                r#"{"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":3,"output_tokens":1024}}}"#,
+            ],
+        )
+        .unwrap();
+        assert_eq!(text(&p), "partial");
+        assert_eq!(p.last(), Some(&Piece::Done));
+        let e = run(
+            ProviderKind::OpenAi,
+            &[r#"{"type":"response.incomplete","response":{"status":"incomplete"}}"#],
+        )
+        .unwrap_err();
+        assert_eq!(e.kind, ErrorKind::ProviderError);
+    }
+
+    #[test]
+    fn responses_ignore_unknown_events_and_refuse_garbage() {
+        let p = run(
+            ProviderKind::OpenAi,
+            &[
+                r#"{"type":"response.reasoning_summary_text.delta","delta":"thinking"}"#,
+                r#"{"type":"response.something_new","x":1}"#,
+                r#"{"type":"response.output_text.delta","delta":"ok"}"#,
+                r#"{"type":"response.completed","response":{}}"#,
+            ],
+        )
+        .unwrap();
+        assert_eq!(text(&p), "ok");
+        assert_eq!(
+            run(ProviderKind::OpenAi, &["not json"]).unwrap_err().kind,
+            ErrorKind::InvalidResponse
+        );
+        assert_eq!(
+            run(
+                ProviderKind::OpenAi,
+                &[r#"{"type":"response.output_text.delta","output_index":99,"delta":"x"}"#]
+            )
+            .unwrap_err()
+            .kind,
+            ErrorKind::InvalidResponse
+        );
+    }
+
+    #[test]
+    fn responses_body_round_trip_with_a_tool_call() {
+        let b = br#"{"id":"resp_9","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Let me check."}]},{"type":"function_call","id":"fc_9","call_id":"call_9","name":"suggest_break","arguments":"{\"available_minutes\":5}","status":"completed"}],"usage":{"input_tokens":40,"output_tokens":12}}"#;
+        let r = parse_responses_body(b, "").unwrap();
+        assert_eq!(r.text, "Let me check.");
+        assert_eq!(r.calls.len(), 1);
+        assert_eq!(r.calls[0].id, "call_9");
+        assert_eq!((r.input, r.output), (Some(40), Some(12)));
     }
 }

@@ -83,6 +83,16 @@ fn sanitise(raw: &str, key: &str) -> String {
     cap_chars(&out, MAX_REASON_CHARS)
 }
 
+/// Sanitises one provider message that arrived inside a stream (no body to parse). `None` when
+/// nothing is left.
+pub fn excerpt(raw: &str, key: &str) -> Option<Reason> {
+    let message = sanitise(raw, key);
+    (!message.is_empty()).then_some(Reason {
+        message,
+        param: None,
+    })
+}
+
 /// Parses an error body. `echoes` are strings we sent (message text, lookup answers): a reason that
 /// quotes any of them is dropped.
 pub fn parse(body: &[u8], key: &str, echoes: &[String]) -> Option<Reason> {

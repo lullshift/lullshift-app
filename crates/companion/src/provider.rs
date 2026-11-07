@@ -4,15 +4,21 @@
 //! - Anthropic Messages API, `POST {base}/v1/messages`, headers `x-api-key` and
 //!   `anthropic-version: 2023-06-01`, body `model`, `max_tokens`, `system`, `messages`;
 //!   reply `content[]` text blocks and `usage.input_tokens` / `usage.output_tokens`.
-//! - OpenAI Chat Completions, `POST {base}/chat/completions` with `Authorization: Bearer`,
-//!   body `model`, `messages`, and `max_completion_tokens` (OpenAI) or `max_tokens`
-//!   (compatible servers); reply `choices[0].message.content` and `usage.prompt_tokens` /
-//!   `usage.completion_tokens`.
+//! - OpenAI Responses API (the official `openai` kind), `POST {base}/responses` with
+//!   `Authorization: Bearer`, body `model`, `instructions`, `input`, `max_output_tokens` and
+//!   `store: false`; reply `output[]` message items (`output_text` parts) and
+//!   `usage.input_tokens` / `usage.output_tokens`. Verified against OpenAI's OpenAPI
+//!   description on 2026-11-07 (ADR-020).
+//! - OpenAI Chat Completions (`openaiCompatible` only), `POST {base}/chat/completions` with
+//!   `Authorization: Bearer`, body `model`, `messages` and `max_tokens`; reply
+//!   `choices[0].message.content` and `usage.prompt_tokens` / `usage.completion_tokens`.
 //!
-//! Streaming adds `stream: true` (and, for OpenAI, `stream_options.include_usage`). Tool shapes:
+//! Streaming adds `stream: true`. Tool shapes:
 //! - Anthropic: `tools[{name, description, input_schema}]`; the model's `tool_use` blocks go back
 //!   in an assistant message, and our answers as `tool_result` blocks (`tool_use_id`, `content`)
 //!   in the next user message.
+//! - OpenAI Responses: `tools[{type:"function", name, description, parameters, strict:false}]`;
+//!   earlier rounds replay as `function_call` and `function_call_output` input items by `call_id`.
 //! - OpenAI Chat Completions: `tools[{type:"function", function:{name, description,
 //!   parameters}}]`; the assistant message keeps `tool_calls`, and each answer is a
 //!   `role:"tool"` message with `tool_call_id`.
@@ -296,7 +302,61 @@ pub fn build_plan_request(spec: &ProviderSpec, key: &str, plan: &RequestPlan<'_>
                 body: body.to_string().into_bytes(),
             }
         }
-        ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => {
+        ProviderKind::OpenAi => {
+            // The Responses API (verified 2026-11-07, see ADR-020). `store: false` keeps the
+            // conversation off OpenAI's servers; `instructions` is the system text; earlier tool
+            // rounds are replayed as `function_call` / `function_call_output` items matched by
+            // `call_id` (no item `id`, since nothing is stored).
+            let mut input = msgs;
+            for r in replay {
+                if !r.text.trim().is_empty() {
+                    input.push(json!({ "role": "assistant", "content": r.text }));
+                }
+                for c in &r.calls {
+                    input.push(json!({
+                        "type": "function_call", "call_id": c.id,
+                        "name": c.name, "arguments": c.arguments
+                    }));
+                }
+                for (c, res) in r.calls.iter().zip(&r.results) {
+                    input.push(json!({
+                        "type": "function_call_output", "call_id": c.id, "output": res
+                    }));
+                }
+            }
+            let mut body = json!({
+                "model": spec.model,
+                "instructions": system,
+                "input": input,
+                "max_output_tokens": plan.max_output_tokens,
+                "store": false,
+            });
+            if plan.stream {
+                body["stream"] = json!(true);
+            }
+            if plan.tools {
+                // `strict: false`: the API defaults to strict schemas, which need every property
+                // required and `additionalProperties: false`.
+                body["tools"] = Value::Array(
+                    definitions()
+                        .into_iter()
+                        .map(|t| {
+                            json!({
+                                "type": "function", "name": t.name,
+                                "description": t.description, "parameters": t.schema,
+                                "strict": false
+                            })
+                        })
+                        .collect(),
+                );
+            }
+            BuiltRequest {
+                url: format!("{base}/responses"),
+                headers: vec![("authorization", Zeroizing::new(format!("Bearer {key}")))],
+                body: body.to_string().into_bytes(),
+            }
+        }
+        ProviderKind::OpenAiCompatible => {
             let mut all = vec![json!({ "role": "system", "content": system })];
             all.append(&mut msgs);
             for r in replay {
@@ -320,20 +380,12 @@ pub fn build_plan_request(spec: &ProviderSpec, key: &str, plan: &RequestPlan<'_>
                     all.push(json!({ "role": "tool", "tool_call_id": c.id, "content": res }));
                 }
             }
-            let cap_field = if spec.kind == ProviderKind::OpenAi {
-                "max_completion_tokens"
-            } else {
-                "max_tokens"
-            };
+            // Compatible servers: `max_tokens`, no `stream_options` (usage is estimated unless
+            // they report it anyway).
             let mut body = json!({ "model": spec.model, "messages": all });
-            body[cap_field] = json!(plan.max_output_tokens);
+            body["max_tokens"] = json!(plan.max_output_tokens);
             if plan.stream {
                 body["stream"] = json!(true);
-                // Only OpenAI itself is known to accept this; compatible servers are estimated
-                // unless they report usage anyway.
-                if spec.kind == ProviderKind::OpenAi {
-                    body["stream_options"] = json!({ "include_usage": true });
-                }
             }
             if plan.tools {
                 body["tools"] = Value::Array(
@@ -410,7 +462,12 @@ pub fn parse_reply(
                 u.and_then(|u| u.get("output_tokens")).and_then(token),
             )
         }
-        ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => {
+        ProviderKind::OpenAi => {
+            // Responses API body. Lookups are never offered on this path, so calls are ignored.
+            let r = crate::stream::parse_responses_body(body, "")?;
+            (r.text, r.input, r.output)
+        }
+        ProviderKind::OpenAiCompatible => {
             let text = v
                 .pointer("/choices/0/message/content")
                 .and_then(Value::as_str)
@@ -549,16 +606,30 @@ mod tests {
     }
 
     #[test]
-    fn openai_request_shapes_differ_only_in_cap_field() {
+    fn openai_uses_the_responses_api_and_compatible_servers_keep_chat_completions() {
         let a = build_request(&spec(ProviderKind::OpenAi), "KEY12345", &[user("hi")], 64);
         let b: Value = serde_json::from_slice(&a.body).unwrap();
-        assert_eq!(a.url, "https://x.example/v1/chat/completions");
+        assert_eq!(a.url, "https://x.example/v1/responses");
         assert_eq!(a.headers.len(), 1);
         assert_eq!(a.headers[0].0, "authorization");
         assert_eq!(a.headers[0].1.as_str(), "Bearer KEY12345");
-        assert_eq!(b["max_completion_tokens"], 64);
-        assert!(b.get("max_tokens").is_none());
-        assert_eq!(b["messages"][0]["role"], "system");
+        assert_eq!(b["model"], "m");
+        assert_eq!(b["instructions"], SYSTEM_PROMPT);
+        assert_eq!(b["input"][0]["role"], "user");
+        assert_eq!(b["input"][0]["content"], "hi");
+        assert_eq!(b["max_output_tokens"], 64);
+        assert_eq!(b["store"], false);
+        for absent in [
+            "max_tokens",
+            "max_completion_tokens",
+            "messages",
+            "stream",
+            "stream_options",
+            "tools",
+        ] {
+            assert!(b.get(absent).is_none(), "{absent}");
+        }
+        assert!(!String::from_utf8_lossy(&a.body).contains("KEY12345"));
         let c = build_request(
             &spec(ProviderKind::OpenAiCompatible),
             "KEY12345",
@@ -566,7 +637,10 @@ mod tests {
             64,
         );
         let b: Value = serde_json::from_slice(&c.body).unwrap();
+        assert_eq!(c.url, "https://x.example/v1/chat/completions");
         assert_eq!(b["max_tokens"], 64);
+        assert!(b.get("max_completion_tokens").is_none() && b.get("store").is_none());
+        assert_eq!(b["messages"][0]["role"], "system");
     }
 
     #[test]
@@ -626,31 +700,41 @@ mod tests {
             let on = plan_body(k, true, true, &[]);
             assert_eq!(on["tools"].as_array().unwrap().len(), 3);
             assert!(on.get("tool_choice").is_none() && on.get("functions").is_none());
-            let sys = if k == ProviderKind::Anthropic {
-                on["system"].as_str().unwrap().to_owned()
-            } else {
-                on["messages"][0]["content"].as_str().unwrap().to_owned()
+            let sys = match k {
+                ProviderKind::Anthropic => on["system"].as_str().unwrap().to_owned(),
+                ProviderKind::OpenAi => on["instructions"].as_str().unwrap().to_owned(),
+                ProviderKind::OpenAiCompatible => {
+                    on["messages"][0]["content"].as_str().unwrap().to_owned()
+                }
             };
             assert_eq!(sys, SYSTEM_PROMPT_WITH_TOOLS);
         }
         let a = plan_body(ProviderKind::Anthropic, true, false, &[]);
         assert!(a["tools"][0].get("input_schema").is_some());
         assert!(a.get("stream").is_none());
+        // Responses API: flat function tools, not strict.
         let o = plan_body(ProviderKind::OpenAi, true, false, &[]);
         assert_eq!(o["tools"][0]["type"], "function");
-        assert!(o["tools"][0]["function"].get("parameters").is_some());
+        assert!(o["tools"][0].get("function").is_none());
+        assert!(o["tools"][0]["name"].is_string());
+        assert!(o["tools"][0]["parameters"].is_object());
+        assert_eq!(o["tools"][0]["strict"], false);
+        let c = plan_body(ProviderKind::OpenAiCompatible, true, false, &[]);
+        assert_eq!(c["tools"][0]["type"], "function");
+        assert!(c["tools"][0]["function"].get("parameters").is_some());
     }
 
     #[test]
-    fn stream_options_only_for_openai() {
-        let o = plan_body(ProviderKind::OpenAi, false, true, &[]);
-        assert_eq!(o["stream_options"]["include_usage"], true);
-        for k in [ProviderKind::OpenAiCompatible, ProviderKind::Anthropic] {
-            assert!(
-                plan_body(k, false, true, &[])
-                    .get("stream_options")
-                    .is_none()
-            );
+    fn stream_options_are_never_sent() {
+        // The Responses API reports usage in `response.completed`; compatible servers get none.
+        for k in [
+            ProviderKind::OpenAi,
+            ProviderKind::OpenAiCompatible,
+            ProviderKind::Anthropic,
+        ] {
+            let b = plan_body(k, false, true, &[]);
+            assert!(b.get("stream_options").is_none());
+            assert_eq!(b["stream"], true);
         }
     }
 
@@ -668,7 +752,24 @@ mod tests {
         assert_eq!(m[2]["content"][0]["type"], "tool_result");
         assert_eq!(m[2]["content"][0]["tool_use_id"], "call_1");
 
-        let o = plan_body(ProviderKind::OpenAi, true, true, &[exchange()]);
+        // Responses API: input items matched by call_id, no item ids (nothing is stored).
+        let r = plan_body(ProviderKind::OpenAi, true, true, &[exchange()]);
+        let m = r["input"].as_array().unwrap();
+        assert_eq!(m.len(), 4); // user, assistant text, function_call, function_call_output
+        assert_eq!(m[0]["role"], "user");
+        assert_eq!(m[1]["role"], "assistant");
+        assert_eq!(m[1]["content"], "Let me check.");
+        assert_eq!(m[2]["type"], "function_call");
+        assert_eq!(m[2]["call_id"], "call_1");
+        assert_eq!(m[2]["name"], "suggest_break");
+        assert_eq!(m[2]["arguments"], "{\"available_minutes\":5}");
+        assert!(m[2].get("id").is_none());
+        assert_eq!(m[3]["type"], "function_call_output");
+        assert_eq!(m[3]["call_id"], "call_1");
+        assert_eq!(m[3]["output"], "Suggestion: Tea Sort, about 5 minutes.");
+        assert_eq!(r["store"], false);
+
+        let o = plan_body(ProviderKind::OpenAiCompatible, true, true, &[exchange()]);
         let m = o["messages"].as_array().unwrap();
         assert_eq!(m.len(), 4); // system, user, assistant, tool
         assert_eq!(m[2]["role"], "assistant");
@@ -700,19 +801,25 @@ mod tests {
                         || raw.contains("tool_result")
                         || raw.contains("tool_calls")
                         || raw.contains("tool_call_id")
+                        || raw.contains("function_call")
                         || raw.contains("\"role\":\"tool\"");
                     assert_eq!(body.get("tools").is_some(), tools);
                     assert_eq!(has_blocks, tools, "{k:?} tools={tools}");
                     if !tools {
-                        let msgs = body["messages"].as_array().unwrap();
+                        let key = if k == ProviderKind::OpenAi {
+                            "input"
+                        } else {
+                            "messages"
+                        };
+                        let msgs = body[key].as_array().unwrap();
                         // Every message is plain text; the last one is the user's turn.
                         assert!(msgs.iter().all(|m| m["content"].is_string()));
                         assert_eq!(msgs.last().unwrap()["role"], "user");
                         assert!(raw.contains("Tea Sort"));
-                        let sys = if k == ProviderKind::Anthropic {
-                            body["system"].as_str().unwrap()
-                        } else {
-                            msgs[0]["content"].as_str().unwrap()
+                        let sys = match k {
+                            ProviderKind::Anthropic => body["system"].as_str().unwrap(),
+                            ProviderKind::OpenAi => body["instructions"].as_str().unwrap(),
+                            ProviderKind::OpenAiCompatible => msgs[0]["content"].as_str().unwrap(),
                         };
                         assert_eq!(sys, SYSTEM_PROMPT);
                     }
@@ -773,11 +880,36 @@ mod tests {
             ("hello", 7, 3)
         );
         let o = br#"{"choices":[{"message":{"content":"yo"}}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}"#;
+        let r = parse_reply(ProviderKind::OpenAiCompatible, o, 10).unwrap();
+        assert_eq!(
+            (r.text.as_str(), r.input_tokens, r.output_tokens),
+            ("yo", 5, 2)
+        );
+        let o = br#"{"id":"resp_1","status":"completed","output":[{"type":"reasoning","summary":[]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"y"},{"type":"output_text","text":"o"}]}],"usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7}}"#;
         let r = parse_reply(ProviderKind::OpenAi, o, 10).unwrap();
         assert_eq!(
             (r.text.as_str(), r.input_tokens, r.output_tokens),
             ("yo", 5, 2)
         );
+    }
+
+    #[test]
+    fn responses_failures_and_empty_output_are_errors() {
+        for b in [
+            &br#"{"status":"failed","error":{"message":"The model failed."},"output":[]}"#[..],
+            br#"{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"reasoning"}]}"#,
+            br#"{"status":"completed","output":[]}"#,
+            br#"{"choices":[{"message":{"content":"chat shape"}}]}"#,
+        ] {
+            assert!(parse_reply(ProviderKind::OpenAi, b, 1).is_err());
+        }
+        let e = parse_reply(
+            ProviderKind::OpenAi,
+            br#"{"status":"failed","error":{"message":"The model failed."},"output":[]}"#,
+            1,
+        )
+        .unwrap_err();
+        assert!(e.message.ends_with("OpenAI said: \"The model failed.\""));
     }
 
     #[test]
@@ -809,7 +941,7 @@ mod tests {
     #[test]
     fn replies_are_cleaned_of_control_characters() {
         let o = "{\"choices\":[{\"message\":{\"content\":\"a\\u0007b\\nc\\u001b[31m\"}}]}";
-        let r = parse_reply(ProviderKind::OpenAi, o.as_bytes(), 1).unwrap();
+        let r = parse_reply(ProviderKind::OpenAiCompatible, o.as_bytes(), 1).unwrap();
         assert_eq!(r.text, "ab\nc[31m");
     }
 
@@ -846,7 +978,7 @@ mod tests {
             "choices": [{ "message": { "content": input } }]
         })
         .to_string();
-        let r = parse_reply(ProviderKind::OpenAi, body.as_bytes(), 10).unwrap();
+        let r = parse_reply(ProviderKind::OpenAiCompatible, body.as_bytes(), 10).unwrap();
         assert_eq!(
             r.text,
             format!("safe\nline\ttab{}", "x".repeat(hostile.len()))
