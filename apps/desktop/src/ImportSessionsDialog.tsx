@@ -10,6 +10,8 @@ import {
   countText,
   errorText,
   filterFound,
+  groupByFolder,
+  groupTick,
   importPicked,
   keyOf,
   pickable,
@@ -19,7 +21,9 @@ import {
   scanLogs,
   sortFound,
   toggleAllShown,
+  toggleGroup,
   toggleOne,
+  type FolderGroup,
   type FoundSession,
   type ScanResult,
 } from "./importSessions";
@@ -86,6 +90,7 @@ export function ImportSessionsDialog({ open, now, onClose, onImported }: Props) 
     [phase],
   );
   const shown = useMemo(() => filterFound(all, query), [all, query]);
+  const groups = useMemo(() => groupByFolder(shown), [shown]);
   const picks = picksFrom(all, selected);
   const shownPickable = pickable(shown);
   const allShownOn = shownPickable.length > 0 && shownPickable.every((s) => selected.has(keyOf(s)));
@@ -214,17 +219,18 @@ export function ImportSessionsDialog({ open, now, onClose, onImported }: Props) 
               {shown.length === 0 ? (
                 <p className="import-status">No sessions match the filter.</p>
               ) : (
-                <ul className="import-list" aria-label="Sessions found">
-                  {shown.map((s) => (
-                    <Row
-                      key={keyOf(s)}
-                      s={s}
+                <div className="import-groups" role="group" aria-label="Sessions found">
+                  {groups.map((g) => (
+                    <FolderSection
+                      key={g.key}
+                      group={g}
+                      selected={selected}
                       now={now}
-                      checked={selected.has(keyOf(s))}
-                      onToggle={() => setSelected((cur) => toggleOne(cur, s))}
+                      onToggleGroup={() => setSelected((cur) => toggleGroup(cur, g))}
+                      onToggleOne={(s) => setSelected((cur) => toggleOne(cur, s))}
                     />
                   ))}
-                </ul>
+                </div>
               )}
             </>
           )}
@@ -232,6 +238,64 @@ export function ImportSessionsDialog({ open, now, onClose, onImported }: Props) 
         </div>
       )}
     </Dialog>
+  );
+}
+
+/** One project folder: a heading with its count, a tri-state "select all", and its sessions. */
+function FolderSection({
+  group,
+  selected,
+  now,
+  onToggleGroup,
+  onToggleOne,
+}: {
+  group: FolderGroup;
+  selected: ReadonlySet<string>;
+  now: number;
+  onToggleGroup: () => void;
+  onToggleOne: (s: FoundSession) => void;
+}) {
+  const headingId = useId();
+  const box = useRef<HTMLInputElement>(null);
+  const tick = groupTick(group, selected);
+  const canTick = pickable(group.sessions).length > 0;
+  useEffect(() => {
+    if (box.current) box.current.indeterminate = tick === "some";
+  }, [tick]);
+  const n = group.sessions.length;
+  return (
+    <section className="import-group" aria-labelledby={headingId}>
+      <div className="import-group-head">
+        <h3 id={headingId} className="import-group-title" title={group.path ?? undefined}>
+          <span className="import-group-name">{group.label}</span>
+          <span className="import-group-count">
+            {n} {n === 1 ? "session" : "sessions"}
+          </span>
+        </h3>
+        <label className="import-group-all">
+          <input
+            ref={box}
+            type="checkbox"
+            checked={tick === "all"}
+            disabled={!canTick}
+            onChange={onToggleGroup}
+            aria-label={`Select all in this folder, ${group.label}`}
+          />
+          <span aria-hidden="true">Select all in this folder</span>
+        </label>
+      </div>
+      <ul className="import-list">
+        {group.sessions.map((s) => (
+          <Row
+            key={keyOf(s)}
+            s={s}
+            now={now}
+            checked={selected.has(keyOf(s))}
+            onToggle={() => onToggleOne(s)}
+          />
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -260,7 +324,6 @@ function Row({
           <span className="import-title">{s.title ?? `Session ${shortId(s.sessionId)}`}</span>
           <span className="import-meta">
             <span>{providerName(s.provider)}</span>
-            {s.project && <span title={s.projectPath ?? undefined}>{s.project}</span>}
             <time dateTime={s.lastActivityUtc} title={new Date(s.lastActivityUtc).toLocaleString()}>
               {relativeTime(s.lastActivityUtc, now)}
             </time>

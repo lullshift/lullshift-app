@@ -3,12 +3,15 @@ import {
   agentNotes,
   countText,
   filterFound,
+  groupByFolder,
+  groupTick,
   keyOf,
   picksFrom,
   resultText,
   rowLabel,
   sortFound,
   toggleAllShown,
+  toggleGroup,
   toggleOne,
   type FoundSession,
 } from "./importSessions";
@@ -162,5 +165,53 @@ describe("imported sessions on the board", () => {
     ).toBe("Waiting for you");
     // Once a hook event arrives the mark is gone and it is a normal session again.
     expect(liveState(view({ importedUtc: null }))).toBe("needs_attention");
+  });
+});
+
+describe("grouping by project folder", () => {
+  const x1 = found({ sessionId: "x1", lastActivityUtc: "2026-11-07T08:00:00Z" });
+  const x2 = found({ sessionId: "x2", lastActivityUtc: "2026-11-07T09:00:00Z", tracked: true });
+  const y1 = found({
+    sessionId: "y1",
+    project: "docs/site",
+    projectPath: "/home/u/docs/site",
+    lastActivityUtc: "2026-11-07T10:00:00Z",
+  });
+  const none = found({
+    sessionId: "n1",
+    project: null,
+    projectPath: null,
+    lastActivityUtc: "2026-11-07T11:00:00Z",
+  });
+
+  it("orders groups by their most recent session and sessions newest first", () => {
+    const groups = groupByFolder([x1, y1, x2, none]);
+    expect(groups.map((g) => g.label)).toEqual(["Unknown folder", "docs/site", "shop/api"]);
+    expect(groups[2]!.sessions.map((s) => s.sessionId)).toEqual(["x2", "x1"]);
+    expect(groups[2]!.latest).toBe(Date.parse("2026-11-07T09:00:00Z"));
+  });
+
+  it("keeps same-named folders at different paths apart", () => {
+    const a = found({ sessionId: "p1", projectPath: "/a/shop/api" });
+    const b = found({ sessionId: "p2", projectPath: "/b/shop/api" });
+    expect(groupByFolder([a, b])).toHaveLength(2);
+  });
+
+  it("has a tri-state over the sessions that can be ticked", () => {
+    const [g] = groupByFolder([x1, x2, found({ sessionId: "x3" })]);
+    expect(groupTick(g!, new Set())).toBe("none");
+    expect(groupTick(g!, new Set([keyOf(x1)]))).toBe("some");
+    expect(groupTick(g!, new Set([keyOf(x1), keyOf(found({ sessionId: "x3" }))]))).toBe("all");
+    const [onlyTracked] = groupByFolder([x2]);
+    expect(groupTick(onlyTracked!, new Set())).toBe("none");
+  });
+
+  it("toggles a whole group, skipping tracked sessions and keeping other ticks", () => {
+    const [g] = groupByFolder([x1, x2]);
+    const other = keyOf(y1);
+    const on = toggleGroup(new Set([other]), g!);
+    expect([...on].sort()).toEqual([keyOf(x1), other].sort());
+    const off = toggleGroup(on, g!);
+    expect([...off]).toEqual([other]);
   });
 });

@@ -91,6 +91,63 @@ export function filterFound(list: readonly FoundSession[], query: string): Found
   });
 }
 
+/** The sessions of one project folder. */
+export interface FolderGroup {
+  /** Stable key: the whole folder as the log states it, else the short name, else empty. */
+  key: string;
+  /** What the heading shows: the short folder, or "Unknown folder". */
+  label: string;
+  /** The whole folder; tooltip only. */
+  path: string | null;
+  /** Newest first. */
+  sessions: FoundSession[];
+  /** Newest activity in the group. */
+  latest: number;
+}
+
+export const UNKNOWN_FOLDER = "Unknown folder";
+
+/**
+ * Groups sessions by project folder. Groups are ordered by their most recent session (ties by
+ * folder name, so the order never jumps); sessions inside a group are newest first.
+ */
+export function groupByFolder(list: readonly FoundSession[]): FolderGroup[] {
+  const groups = new Map<string, FolderGroup>();
+  for (const s of sortFound(list)) {
+    const key = s.projectPath ?? s.project ?? "";
+    let g = groups.get(key);
+    if (!g) {
+      g = {
+        key,
+        label: s.project ?? s.projectPath ?? UNKNOWN_FOLDER,
+        path: s.projectPath,
+        sessions: [],
+        latest: Date.parse(s.lastActivityUtc),
+      };
+      groups.set(key, g);
+    }
+    g.sessions.push(s);
+  }
+  return [...groups.values()].sort(
+    (a, b) => b.latest - a.latest || a.label.localeCompare(b.label) || a.key.localeCompare(b.key),
+  );
+}
+
+export type GroupTick = "none" | "some" | "all";
+
+/** Tri-state of a group's checkbox over the sessions that can be ticked; "none" if none can. */
+export function groupTick(group: FolderGroup, selected: ReadonlySet<string>): GroupTick {
+  const keys = pickable(group.sessions).map(keyOf);
+  const on = keys.filter((k) => selected.has(k)).length;
+  if (on === 0) return "none";
+  return on === keys.length ? "all" : "some";
+}
+
+/** Ticks every pickable session of the group, or unticks them if all are ticked already. */
+export function toggleGroup(selected: ReadonlySet<string>, group: FolderGroup): Set<string> {
+  return toggleAllShown(selected, group.sessions);
+}
+
 /** Sessions that can be ticked (not already in Lullshift). */
 export const pickable = (list: readonly FoundSession[]) => list.filter((s) => !s.tracked);
 
