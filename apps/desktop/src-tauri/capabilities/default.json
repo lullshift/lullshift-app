@@ -94,6 +94,7 @@
     "allow-companion-model-catalog",
     "allow-companion-catalog-models",
     "allow-import-scan",
-    "allow-import-sessions"
+    "allow-import-sessions",
+    "allow-import-cancel"
   ]
 }

@@ -87,6 +87,7 @@ fn main() {
             // Import sessions (decision 34).
             "import_scan",
             "import_sessions",
+            "import_cancel",
         ]),
     ))
     .expect("failed to run tauri-build");

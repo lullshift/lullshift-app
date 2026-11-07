@@ -638,7 +638,8 @@ pub fn run() {
             companion_commands::companion_tool_decision,
             // Import sessions (decision 34).
             session_import::import_scan,
-            session_import::import_sessions
+            session_import::import_sessions,
+            session_import::import_cancel
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lullshift");
