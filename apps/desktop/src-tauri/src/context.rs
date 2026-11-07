@@ -222,6 +222,7 @@ fn notify_changed(app: &AppHandle) {
 /// Stores an event and, if the user opted in for its provider, the task text that came with
 /// it. The text is cleaned and limited again here. It goes to `session_context` only; the event
 /// log never sees it. A failure to store the text never loses the event.
+#[cfg(test)]
 pub fn ingest_with_context(
     store: &mut Store,
     event: &AgentEvent,
