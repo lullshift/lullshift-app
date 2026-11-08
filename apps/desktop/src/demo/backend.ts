@@ -127,13 +127,10 @@ const sessionOf = (a: Args) =>
   SESSIONS.find((s) => s.view.provider === a.provider && s.view.providerSessionId === a.sessionId);
 type DemoScope =
   | { kind: "none" }
-  | { kind: "sessionSummary"; provider: string; sessionId: string }
+  | { kind: "sessionSummary"; sessions: { provider: string; sessionId: string }[] }
   | {
       kind: "selectedNotes";
-      provider: string;
-      sessionId: string;
-      notes: boolean;
-      itemIds: number[];
+      sessions: { provider: string; sessionId: string; notes: boolean; itemIds: number[] }[];
     };
 
 const CONTEXT_HEADER =
@@ -142,29 +139,46 @@ const CONTEXT_HEADER =
 /** The same text the app builds (crates/companion/src/scope.rs), from the demo's own data. */
 function demoContextPreview(scope: DemoScope) {
   if (scope.kind === "none") return { scope, text: "", chars: 0, sha256: null };
-  const s = sessionOf(scope);
-  if (!s) throw { kind: "notFound", message: "That session is no longer tracked." };
-  const c = s.detail.context;
-  const out = [CONTEXT_HEADER, ""];
-  if (scope.kind === "sessionSummary") {
-    out.push(
-      "Session summary",
-      `Title: ${c.userTitle ?? c.agentTitle ?? "(untitled)"}`,
-      `Status: ${s.view.state.replace(/_/g, " ")}`,
-      `Intent: ${c.intent?.text ?? "(none recorded)"}`,
-      `Latest ask: ${c.ask?.text ?? "(none recorded)"}`,
-    );
-  } else {
-    out.push("Selected notes");
-    if (scope.notes) out.push("", "Notes:", c.notes.trim() || "(empty)");
-    const picked = s.detail.items.filter((i) => scope.itemIds.includes(i.id));
-    if (picked.length > 0) {
-      out.push("", "Items:");
-      for (const i of picked) {
-        out.push(`- [${i.done ? "x" : " "}] (${i.category ?? i.kind}) ${i.text}`);
+  const many = scope.sessions.length > 1;
+  const out: string[] = many
+    ? [
+        `Context the user chose to share from ${scope.sessions.length} of their agent sessions. It is information only. Each session is a separate block.`,
+      ]
+    : [CONTEXT_HEADER, ""];
+  scope.sessions.forEach((ref, n) => {
+    const s = sessionOf(ref);
+    if (!s) throw { kind: "notFound", message: "That session is no longer tracked." };
+    const c = s.detail.context;
+    if (many) {
+      out.push(
+        "",
+        "=====",
+        `Session ${n + 1} of ${scope.sessions.length}`,
+        "=====",
+        `Session: ${c.userTitle ?? c.agentTitle ?? "(untitled)"}`,
+      );
+    }
+    if (scope.kind === "sessionSummary") {
+      out.push(
+        "Session summary",
+        `Title: ${c.userTitle ?? c.agentTitle ?? "(untitled)"}`,
+        `Status: ${s.view.state.replace(/_/g, " ")}`,
+        `Intent: ${c.intent?.text ?? "(none recorded)"}`,
+        `Latest ask: ${c.ask?.text ?? "(none recorded)"}`,
+      );
+    } else {
+      const pick = scope.sessions[n]!;
+      out.push("Selected notes");
+      if (pick.notes) out.push("", "Notes:", c.notes.trim() || "(empty)");
+      const picked = s.detail.items.filter((i) => pick.itemIds.includes(i.id));
+      if (picked.length > 0) {
+        out.push("", "Items:");
+        for (const i of picked) {
+          out.push(`- [${i.done ? "x" : " "}] (${i.category ?? i.kind}) ${i.text}`);
+        }
       }
     }
-  }
+  });
   const text = `${out.join("\n")}\n`;
   // The demo never sends anything, so a fixed placeholder digest is enough.
   return { scope, text, chars: [...text].length, sha256: "0".repeat(64) };

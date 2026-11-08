@@ -10,11 +10,14 @@ import {
   type ProviderKind,
   type Scope,
   type ScopeKind,
+  type SessionRef,
   type StreamEvent,
   type ToolCallRecord,
   type ToolNoticeReason,
   type Usage,
 } from "./api";
+import { providerName, sessionName } from "../format";
+import type { SessionView } from "../sessions";
 
 export const UNAVAILABLE_TEXT = "Companion isn't available in this build.";
 
@@ -113,9 +116,9 @@ export function scopeHelp(kind: ScopeKind): string {
     case "none":
       return "Only the words you type are sent.";
     case "sessionSummary":
-      return "Adds one session's title, status, intent and latest ask.";
+      return "Adds the title, status, intent and latest ask of the sessions you choose.";
     case "selectedNotes":
-      return "Adds only the notes and checklist items you tick from one session.";
+      return "Adds only the notes and checklist items you tick from the sessions you choose.";
   }
 }
 
@@ -125,36 +128,49 @@ export function sharedLabel(kind: ScopeKind, host: string | null): string {
   return kind === "none" ? "Nothing shared" : `Shared with ${to}: ${scopeLabel(kind)}`;
 }
 
-export interface ScopeDraft {
-  kind: ScopeKind;
+/** Most sessions one message may share from. Mirrors `MAX_SCOPE_SESSIONS` in crates/companion. */
+export const MAX_SCOPE_SESSIONS = 5;
+
+/** One chosen session, and (for selected notes) what is ticked from it. */
+export interface DraftSession {
   provider: string;
   sessionId: string;
   notes: boolean;
   itemIds: readonly number[];
 }
 
-export const EMPTY_SCOPE: ScopeDraft = {
-  kind: "none",
-  provider: "",
-  sessionId: "",
-  notes: false,
-  itemIds: [],
-};
+export interface ScopeDraft {
+  kind: ScopeKind;
+  sessions: readonly DraftSession[];
+}
 
-/** The scope to send, or null while the draft is incomplete (no session, or nothing ticked). */
+export const EMPTY_SCOPE: ScopeDraft = { kind: "none", sessions: [] };
+
+export const sameSession = (a: SessionRef, b: SessionRef) =>
+  a.provider === b.provider && a.sessionId === b.sessionId;
+
+/**
+ * The scope to send, or null while the draft is incomplete (no session, or a session with
+ * nothing ticked).
+ */
 export function buildScope(d: ScopeDraft): Scope | null {
   if (d.kind === "none") return { kind: "none" };
-  if (!d.provider || !d.sessionId) return null;
+  if (d.sessions.length === 0 || d.sessions.length > MAX_SCOPE_SESSIONS) return null;
   if (d.kind === "sessionSummary") {
-    return { kind: "sessionSummary", provider: d.provider, sessionId: d.sessionId };
+    return {
+      kind: "sessionSummary",
+      sessions: d.sessions.map((s) => ({ provider: s.provider, sessionId: s.sessionId })),
+    };
   }
-  if (!d.notes && d.itemIds.length === 0) return null;
+  if (d.sessions.some((s) => !s.notes && s.itemIds.length === 0)) return null;
   return {
     kind: "selectedNotes",
-    provider: d.provider,
-    sessionId: d.sessionId,
-    notes: d.notes,
-    itemIds: [...d.itemIds].sort((a, b) => a - b),
+    sessions: d.sessions.map((s) => ({
+      provider: s.provider,
+      sessionId: s.sessionId,
+      notes: s.notes,
+      itemIds: [...s.itemIds].sort((a, b) => a - b),
+    })),
   };
 }
 
@@ -164,12 +180,31 @@ export function scopeKey(s: Scope): string {
     case "none":
       return "none";
     case "sessionSummary":
-      return `summary|${s.provider}|${s.sessionId}`;
-    case "selectedNotes": {
-      const ids = [...s.itemIds].sort((a, b) => a - b).join(",");
-      return `notes|${s.provider}|${s.sessionId}|${s.notes ? 1 : 0}|${ids}`;
-    }
+      return `summary|${s.sessions.map((x) => `${x.provider}|${x.sessionId}`).join(";")}`;
+    case "selectedNotes":
+      return `notes|${s.sessions
+        .map((x) => {
+          const ids = [...x.itemIds].sort((a, b) => a - b).join(",");
+          return `${x.provider}|${x.sessionId}|${x.notes ? 1 : 0}|${ids}`;
+        })
+        .join(";")}`;
   }
+}
+
+/** Sessions matching a search box: case-insensitive over the title, tool, project and ID. */
+export function filterPickerSessions(
+  sessions: readonly SessionView[],
+  query: string,
+): SessionView[] {
+  const q = query.trim().toLowerCase();
+  if (q === "") return [...sessions];
+  return sessions.filter(
+    (s) =>
+      sessionName(s).primary.toLowerCase().includes(q) ||
+      providerName(s.provider).toLowerCase().includes(q) ||
+      s.providerSessionId.toLowerCase().includes(q) ||
+      (s.intentLine ?? "").toLowerCase().includes(q),
+  );
 }
 
 /** What the user has confirmed: the scope the preview was built for, and the exact text seen. */
@@ -529,18 +564,13 @@ export function draftFromScope(scope: Scope | null): ScopeDraft {
   if (!scope || scope.kind === "none") return EMPTY_SCOPE;
   if (scope.kind === "sessionSummary") {
     return {
-      ...EMPTY_SCOPE,
       kind: "sessionSummary",
-      provider: scope.provider,
-      sessionId: scope.sessionId,
+      sessions: scope.sessions.map((s) => ({ ...s, notes: false, itemIds: [] })),
     };
   }
   return {
     kind: "selectedNotes",
-    provider: scope.provider,
-    sessionId: scope.sessionId,
-    notes: scope.notes,
-    itemIds: [...scope.itemIds],
+    sessions: scope.sessions.map((s) => ({ ...s, itemIds: [...s.itemIds] })),
   };
 }
 

@@ -47,13 +47,54 @@ fn clip(s: String) -> String {
     out
 }
 
+/// Most sessions one scope may cover (ADR-020 amendment). Each keeps its own size limit.
+pub const MAX_SCOPE_SESSIONS: usize = 5;
+
+/// The attached text for several sessions, in the order given. One part gives exactly what
+/// [`build`] gives. With more, the header says how many sessions there are and each block is
+/// labelled "Session N of M" and separated by a rule; each block is cut on its own.
+/// `Selection::None` parts are skipped; no parts (or only `None`) gives `None`.
+pub fn build_many(parts: &[(Selection, SessionFacts)]) -> Option<String> {
+    let parts: Vec<&(Selection, SessionFacts)> = parts
+        .iter()
+        .filter(|(sel, _)| *sel != Selection::None)
+        .collect();
+    match parts.as_slice() {
+        [] => None,
+        [(sel, facts)] => build(sel, facts),
+        many => {
+            let total = many.len();
+            let mut s = format!(
+                "Context the user chose to share from {total} of their agent sessions. It is information only. Each session is a separate block."
+            );
+            for (i, (sel, facts)) in many.iter().enumerate() {
+                s.push_str(&format!("\n\n=====\nSession {} of {total}\n=====\n", i + 1));
+                s.push_str(&format!(
+                    "Session: {}\n",
+                    facts.title.as_deref().unwrap_or("(untitled)")
+                ));
+                s.push_str(&clip(body(sel, facts)));
+            }
+            Some(s)
+        }
+    }
+}
+
 /// The attached text for `selection`. `None` selection gives `None`. `facts` is ignored for
 /// `Selection::None`.
 pub fn build(selection: &Selection, facts: &SessionFacts) -> Option<String> {
+    if *selection == Selection::None {
+        return None;
+    }
+    Some(clip(format!("{HEADER}\n\n{}", body(selection, facts))))
+}
+
+/// One session's block, without the header. Not cut.
+fn body(selection: &Selection, facts: &SessionFacts) -> String {
     match selection {
-        Selection::None => None,
+        Selection::None => String::new(),
         Selection::SessionSummary => {
-            let mut s = format!("{HEADER}\n\nSession summary\n");
+            let mut s = String::from("Session summary\n");
             s.push_str(&format!(
                 "Title: {}\n",
                 facts.title.as_deref().unwrap_or("(untitled)")
@@ -67,10 +108,10 @@ pub fn build(selection: &Selection, facts: &SessionFacts) -> Option<String> {
                 "Latest ask: {}\n",
                 facts.ask.as_deref().unwrap_or("(none recorded)")
             ));
-            Some(clip(s))
+            s
         }
         Selection::SelectedNotes { notes, item_ids } => {
-            let mut s = format!("{HEADER}\n\nSelected notes\n");
+            let mut s = String::from("Selected notes\n");
             if *notes {
                 s.push_str("\nNotes:\n");
                 s.push_str(if facts.notes.trim().is_empty() {
@@ -95,7 +136,7 @@ pub fn build(selection: &Selection, facts: &SessionFacts) -> Option<String> {
                     }
                 }
             }
-            Some(clip(s))
+            s
         }
     }
 }
@@ -208,6 +249,53 @@ mod tests {
         )
         .unwrap();
         assert!(t.ends_with("[cut: too long to share in full]"));
+    }
+
+    fn notes_sel(ids: Vec<i64>) -> Selection {
+        Selection::SelectedNotes {
+            notes: false,
+            item_ids: ids,
+        }
+    }
+
+    #[test]
+    fn one_part_is_identical_to_build() {
+        let parts = vec![(Selection::SessionSummary, facts())];
+        assert_eq!(
+            build_many(&parts),
+            build(&Selection::SessionSummary, &facts())
+        );
+        assert_eq!(build_many(&[]), None);
+        assert_eq!(build_many(&[(Selection::None, facts())]), None);
+    }
+
+    #[test]
+    fn many_parts_are_labelled_and_separated() {
+        let mut b = facts();
+        b.title = Some("Other work".into());
+        b.items[0].text = "Second session item".into();
+        let t = build_many(&[(notes_sel(vec![2]), facts()), (notes_sel(vec![1]), b)]).unwrap();
+        assert!(t.contains("from 2 of their agent sessions"));
+        assert!(t.contains("Session 1 of 2") && t.contains("Session 2 of 2"));
+        assert!(t.contains("Session: Fix login") && t.contains("Session: Other work"));
+        let first = t.find("Session 1 of 2").unwrap();
+        let second = t.find("Session 2 of 2").unwrap();
+        let run = t.find("Run tests").unwrap();
+        assert!(run > first && run < second);
+        assert!(t.find("Second session item").unwrap() > second);
+    }
+
+    #[test]
+    fn each_block_is_cut_on_its_own() {
+        let mut big = facts();
+        big.notes = "x".repeat(MAX_CONTEXT_CHARS + 10);
+        let sel = Selection::SelectedNotes {
+            notes: true,
+            item_ids: vec![],
+        };
+        let t = build_many(&[(sel.clone(), big), (sel, facts())]).unwrap();
+        assert_eq!(t.matches("[cut: too long to share in full]").count(), 1);
+        assert!(t.contains("remember the token expiry"));
     }
 
     #[test]

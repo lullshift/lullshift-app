@@ -239,11 +239,13 @@ describe("conversation options as badges", () => {
     expect(options.hasAttribute("open")).toBe(true);
     const summary = [...options.querySelectorAll<HTMLInputElement>('input[type="radio"]')][1]!;
     await click(summary);
-    const select = options.querySelector<HTMLSelectElement>("select")!;
-    await act(async () => {
-      select.value = "0";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    // The sessions are chosen in a second modal with a search box.
+    await click(buttonIn(options, "Choose sessions…"));
+    const pickRow = options.querySelector<HTMLInputElement>(
+      '.session-pick-list input[type="checkbox"]',
+    )!;
+    await click(pickRow);
+    await click(buttonIn(options, "Use these sessions"));
     await click(buttonIn(options, "Done"));
     expect(options.hasAttribute("open")).toBe(false);
 

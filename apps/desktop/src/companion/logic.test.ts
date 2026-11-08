@@ -26,6 +26,8 @@ import {
   historyText,
   isContextChanged,
   MAX_HISTORY_MESSAGES,
+  MAX_SCOPE_SESSIONS,
+  type DraftSession,
   shouldMountCompanion,
   errorText,
   keyInputProblem,
@@ -110,39 +112,86 @@ describe("scopes", () => {
     );
   });
 
+  const ds = (id: string, more: Partial<DraftSession> = {}): DraftSession => ({
+    provider: "c",
+    sessionId: id,
+    notes: false,
+    itemIds: [],
+    ...more,
+  });
+
   it("builds scopes only when complete", () => {
     expect(buildScope(EMPTY_SCOPE)).toEqual({ kind: "none" });
-    expect(buildScope({ ...EMPTY_SCOPE, kind: "sessionSummary" })).toBeNull();
-    expect(
-      buildScope({ ...EMPTY_SCOPE, kind: "sessionSummary", provider: "claude", sessionId: "s1" }),
-    ).toEqual({ kind: "sessionSummary", provider: "claude", sessionId: "s1" });
-    const base = { ...EMPTY_SCOPE, kind: "selectedNotes" as const, provider: "c", sessionId: "s" };
-    expect(buildScope(base)).toBeNull();
-    expect(buildScope({ ...base, itemIds: [3, 1] })).toEqual({
-      kind: "selectedNotes",
-      provider: "c",
-      sessionId: "s",
-      notes: false,
-      itemIds: [1, 3],
+    expect(buildScope({ kind: "sessionSummary", sessions: [] })).toBeNull();
+    expect(buildScope({ kind: "sessionSummary", sessions: [ds("s1"), ds("s2")] })).toEqual({
+      kind: "sessionSummary",
+      sessions: [
+        { provider: "c", sessionId: "s1" },
+        { provider: "c", sessionId: "s2" },
+      ],
     });
+    expect(buildScope({ kind: "selectedNotes", sessions: [ds("s")] })).toBeNull();
+    // Every chosen session needs something ticked.
+    expect(
+      buildScope({
+        kind: "selectedNotes",
+        sessions: [ds("a", { itemIds: [3, 1] }), ds("b")],
+      }),
+    ).toBeNull();
+    expect(
+      buildScope({
+        kind: "selectedNotes",
+        sessions: [ds("a", { itemIds: [3, 1] }), ds("b", { notes: true })],
+      }),
+    ).toEqual({
+      kind: "selectedNotes",
+      sessions: [
+        { provider: "c", sessionId: "a", notes: false, itemIds: [1, 3] },
+        { provider: "c", sessionId: "b", notes: true, itemIds: [] },
+      ],
+    });
+  });
+
+  it("refuses more than the session cap", () => {
+    const many = Array.from({ length: MAX_SCOPE_SESSIONS + 1 }, (_, i) => ds(`s${i}`));
+    expect(buildScope({ kind: "sessionSummary", sessions: many })).toBeNull();
+    expect(
+      buildScope({ kind: "sessionSummary", sessions: many.slice(0, MAX_SCOPE_SESSIONS) }),
+    ).not.toBeNull();
   });
 
   it("compares scopes regardless of item order", () => {
     const a: Scope = {
       kind: "selectedNotes",
-      provider: "c",
-      sessionId: "s",
-      notes: true,
-      itemIds: [2, 1],
+      sessions: [{ provider: "c", sessionId: "s", notes: true, itemIds: [2, 1] }],
     };
-    const b: Scope = { ...a, itemIds: [1, 2] };
+    const b: Scope = {
+      kind: "selectedNotes",
+      sessions: [{ provider: "c", sessionId: "s", notes: true, itemIds: [1, 2] }],
+    };
+    const c: Scope = {
+      kind: "selectedNotes",
+      sessions: [{ provider: "c", sessionId: "s", notes: false, itemIds: [1, 2] }],
+    };
     expect(scopeKey(a)).toBe(scopeKey(b));
-    expect(scopeKey(a)).not.toBe(scopeKey({ ...b, notes: false }));
+    expect(scopeKey(a)).not.toBe(scopeKey(c));
+  });
+
+  it("changing the chosen sessions changes the key", () => {
+    const one: Scope = { kind: "sessionSummary", sessions: [{ provider: "c", sessionId: "s" }] };
+    const two: Scope = {
+      kind: "sessionSummary",
+      sessions: [
+        { provider: "c", sessionId: "s" },
+        { provider: "c", sessionId: "t" },
+      ],
+    };
+    expect(scopeKey(one)).not.toBe(scopeKey(two));
   });
 });
 
 describe("preview gating", () => {
-  const summary: Scope = { kind: "sessionSummary", provider: "c", sessionId: "s" };
+  const summary: Scope = { kind: "sessionSummary", sessions: [{ provider: "c", sessionId: "s" }] };
   const gate = { text: "hello", hasProfile: true, sending: false };
 
   it("sends with no context straight away", () => {
@@ -160,7 +209,7 @@ describe("preview gating", () => {
 
   it("invalidates a confirmation when the scope changes", () => {
     const confirmed = { scope: summary, text: "t", sha256: "ab" };
-    const other: Scope = { ...summary, sessionId: "s2" };
+    const other: Scope = { kind: "sessionSummary", sessions: [{ provider: "c", sessionId: "s2" }] };
     expect(canSend({ ...gate, scope: other, confirmed })).toBe(false);
     expect(needsPreview(other, confirmed)).toBe(true);
   });
