@@ -24,6 +24,12 @@ pub const MAX_TITLE_CHARS: usize = 120;
 /// shorter for display).
 const INTENT_LINE_CHARS: usize = 200;
 pub const MAX_ITEMS_PER_SESSION: usize = 200;
+/// Sessions the Notes overview returns at most (newest first).
+pub const NOTES_OVERVIEW_MAX_SESSIONS: usize = 200;
+/// Total characters of user text the Notes overview returns at most. Text is never cut (an
+/// edit of a cut note would lose the rest), so a session that would pass this is left out and
+/// the overview says it is truncated.
+pub const NOTES_OVERVIEW_MAX_CHARS: usize = 1_000_000;
 
 const KINDS: [&str; 3] = ["decision", "checklist", "next_move"];
 const CATEGORIES: [&str; 4] = ["question", "acceptance", "test", "decision"];
@@ -82,6 +88,29 @@ pub struct TimelineRow {
     pub event_type: String,
     /// Enum-like hint only (`permission`, `idle_prompt`); never free text.
     pub reason: Option<String>,
+}
+
+/// One session's own notes, for the Notes overview: the user's intent, notes and checklist.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotesEntry {
+    pub provider: String,
+    pub session_id: String,
+    pub last_received_utc: OffsetDateTime,
+    pub user_title: Option<String>,
+    /// The agent's title, captured with consent.
+    pub agent_title: Option<String>,
+    /// The user's own intent (captured intent is not part of the overview).
+    pub intent: Option<String>,
+    pub notes: String,
+    /// Review checklist items in their saved order.
+    pub checklist: Vec<Item>,
+}
+
+/// The Notes overview: entries newest first, and whether some were left out by the caps.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NotesOverview {
+    pub entries: Vec<NotesEntry>,
+    pub truncated: bool,
 }
 
 /// Whether a session holds any context or items, and when it was last reviewed.
@@ -646,6 +675,84 @@ impl Store {
             })
             .collect::<Result<Vec<_>>>()?;
         out.reverse();
+        Ok(out)
+    }
+
+    /// Everything the user wrote across sessions, in one read: sessions (newest activity first)
+    /// that have an intent of the user's own, notes or checklist items. At most
+    /// [`NOTES_OVERVIEW_MAX_SESSIONS`] sessions and [`NOTES_OVERVIEW_MAX_CHARS`] characters; when
+    /// a cap is hit, `truncated` is set and later (older) sessions are left out whole.
+    pub fn notes_overview(&self) -> Result<NotesOverview> {
+        type Ctx = (Option<String>, Option<String>, String, Option<String>);
+        let mut contexts: HashMap<(String, String), Ctx> = HashMap::new();
+        let mut stmt = self.conn.prepare(
+            "SELECT provider, provider_session_id, user_intent, user_title, notes, agent_title
+             FROM session_context",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                (r.get::<_, String>(0)?, r.get::<_, String>(1)?),
+                (
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, Option<String>>(5)?,
+                ),
+            ))
+        })?;
+        for row in rows {
+            let (key, ctx) = row?;
+            contexts.insert(key, ctx);
+        }
+        let mut lists: HashMap<(String, String), Vec<Item>> = HashMap::new();
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {ITEM_COLUMNS}, provider, provider_session_id FROM session_items
+             WHERE kind = 'checklist' ORDER BY position, id"
+        ))?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                item_row(r)?,
+                (r.get::<_, String>(7)?, r.get::<_, String>(8)?),
+            ))
+        })?;
+        for row in rows {
+            let (item, key) = row?;
+            lists.entry(key).or_default().push(item);
+        }
+
+        let mut out = NotesOverview::default();
+        let mut total = 0usize;
+        // `sessions()` is already newest first.
+        for rec in self.sessions()? {
+            let key = (rec.provider.clone(), rec.provider_session_id.clone());
+            let ctx = contexts.remove(&key);
+            let checklist = lists.remove(&key).unwrap_or_default();
+            let (intent, user_title, notes, agent_title) = ctx.unwrap_or_default();
+            let intent = intent.filter(|t| !t.trim().is_empty());
+            if intent.is_none() && notes.is_empty() && checklist.is_empty() {
+                continue;
+            }
+            let size = intent.as_deref().map_or(0, chars)
+                + chars(&notes)
+                + checklist.iter().map(|i| chars(&i.text)).sum::<usize>();
+            if out.entries.len() >= NOTES_OVERVIEW_MAX_SESSIONS
+                || total.saturating_add(size) > NOTES_OVERVIEW_MAX_CHARS
+            {
+                out.truncated = true;
+                break;
+            }
+            total += size;
+            out.entries.push(NotesEntry {
+                provider: rec.provider,
+                session_id: rec.provider_session_id,
+                last_received_utc: rec.last_received_utc,
+                user_title,
+                agent_title,
+                intent,
+                notes,
+                checklist,
+            });
+        }
         Ok(out)
     }
 

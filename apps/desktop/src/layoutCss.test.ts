@@ -29,3 +29,22 @@ describe("detail panel layout", () => {
     expect(r).toContain("overflow-wrap: anywhere");
   });
 });
+
+describe("panel header buttons", () => {
+  it("share one size rule; the pressed state changes colour only", () => {
+    const r = rule(".head-btn");
+    expect(r).toContain("min-height: 32px");
+    expect(r).toContain("padding: 0 var(--space-3)");
+    expect(r).toContain("font-size: var(--text-sm)");
+    expect(r).toContain("align-items: center");
+    const pressed = rule('.pin-toggle[aria-pressed="true"]');
+    expect(pressed).not.toMatch(/height|padding|font|border-width/);
+  });
+});
+
+describe("item rows", () => {
+  it("the item text looks like text and the icon buttons are square", () => {
+    expect(rule(".item-text")).toContain("background: transparent");
+    expect(rule(".btn-icon")).toContain("width: 28px");
+  });
+});

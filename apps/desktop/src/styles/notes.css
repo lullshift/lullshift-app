@@ -1,0 +1,108 @@
+/* Notes view (ADR-026 section 7). Tokens only; light and dark come from tokens.css. */
+
+.notes {
+  gap: var(--space-5);
+}
+
+.notes-tools {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.notes-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.notes-search .icon {
+  position: absolute;
+  left: var(--space-3);
+  color: var(--text-subtle);
+  pointer-events: none;
+}
+
+.notes-search .board-search {
+  width: 100%;
+  padding-left: calc(var(--space-3) + 26px);
+}
+
+.notes-count {
+  min-height: 1.2em;
+  color: var(--text-subtle);
+  font-size: var(--text-sm);
+}
+
+.notes-empty p {
+  max-width: 48ch;
+}
+
+.notes-groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.notes-group {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  box-shadow: var(--shadow-sm);
+}
+
+.notes-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.notes-group-titles {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.notes-group-title {
+  font-size: var(--text-base);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.notes-group-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.notes-items {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* Calm by default: row borders appear on hover or focus, so a long list reads as text. */
+.notes-group .item {
+  border-color: transparent;
+  background: transparent;
+  padding-inline: 0;
+}
+
+.notes-group .item:hover,
+.notes-group .item:focus-within {
+  border-color: var(--border);
+  background: var(--surface);
+  padding-inline: var(--space-3);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .notes-group {
+    animation: rise var(--fast) var(--ease);
+  }
+}

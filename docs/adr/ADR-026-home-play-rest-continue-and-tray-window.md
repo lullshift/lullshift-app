@@ -58,6 +58,16 @@ Settings > Appearance gets **Theme: System, Light, Dark** (default System), save
 - **Least privilege.** The tray window has its own capability file granting only: reading the dashboard, the activity list, saved-state presence, the suggestion data, and one new command that shows the main window at a view (and optionally starts an activity by id, validated against installed, enabled activities). It gets no companion, marketplace, hook, settings or storage commands. Its CSP is the same as the main window's.
 - A setting under Settings > Appearance, **Tray click opens: Quick window / Main window** (default Quick window), for people who prefer the old behaviour.
 
+### 7. Notes view (amendment)
+
+Sidebar: **Notes** sits right after **Sessions**, with a quiet grey count of open (not done) checklist items and no count when there are none. It never gets the orange badge; that stays for "needs you" (and Companion replies).
+
+- **What it is.** One place to see what the user wrote across sessions without finding the session first: the user's own **intent**, the **"Before you answer" checklist** and the free **notes** of every session. Captured (agent) text, decisions and Next Move items are not part of it.
+- **Layout.** A local, case-insensitive search (intent, items, notes, session title, tool); filter chips **All / Open items / Done items / Notes / Intents**; a session-state filter (**Any state / Needs you / Working / Idle / Ended**). Results are grouped by session, newest activity first. Each group shows the session title, tool, state pill and time, then the intent, the checklist and the notes, editable in place with the same components and save behaviour as the session panel. **Open session** goes to Sessions with that session's panel open (the same flow as Home's "Go to session"). A session the dashboard no longer lists is shown with an "Unknown" state and no Open button.
+- **Data.** One read command, `notes_overview` (main window only; not in the tray capability), returns every session that has a user intent, notes or checklist items. Bounded in Rust: at most 200 sessions and 1,000,000 characters of text; text is never cut (a cut note could be saved back shorter), whole older sessions are left out and the view says so. Edits use the existing commands; the view re-reads Rust afterwards. No schema change.
+- **Empty states.** No notes at all: the mascot and one line on where notes come from. No matches: a way to clear the search and filters.
+- **Checklist rows (also in the session panel).** The item text is edited in place: focus or click it, Enter or leaving the field saves, Esc cancels, empty text counts as cancel and never deletes. The checkbox only toggles done. Reorder with the up and down icon buttons or Alt+Up and Alt+Down on the row. Delete is an icon button that asks for confirmation in the app's dialog.
+
 ## Consequences
 
 - The app's first screen is about the person's wait, not a board; Sessions keeps its full layout (ADR-011, decision S04-T07) for detail.

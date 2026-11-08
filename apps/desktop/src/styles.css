@@ -1781,7 +1781,7 @@ button.session.tone-attention:hover {
 
 .detail-title-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-2);
   min-width: 0;
 }
@@ -1808,8 +1808,14 @@ button.session.tone-attention:hover {
   gap: var(--space-2);
 }
 
-.pin-toggle {
+/* One size for every header button (Rename, Pin/Pinned), in every state. */
+.head-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   min-height: 32px;
+  min-width: 4.5rem;
   padding: 0 var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
@@ -1818,12 +1824,14 @@ button.session.tone-attention:hover {
   font: inherit;
   font-size: var(--text-sm);
   font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .pin-toggle[aria-pressed="true"] {
   background: var(--accent-soft);
-  border-color: transparent;
+  border-color: var(--accent-soft);
   color: var(--accent);
 }
 
@@ -1840,7 +1848,7 @@ button.session.tone-attention:hover {
 }
 
 .icon-btn:hover,
-.pin-toggle:hover {
+.head-btn:hover {
   background: var(--surface-hover);
 }
 
@@ -1972,9 +1980,41 @@ button.session.tone-attention:hover {
   gap: 2px;
 }
 
+/* The item text is a button that opens the inline editor; it looks like text. */
 .item-text {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 2px var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+  cursor: text;
+}
+
+.item-text:hover {
+  border-color: var(--border);
+}
+
+.item-text:focus-visible {
+  outline: 2px solid var(--focus, var(--accent));
+  outline-offset: 1px;
+}
+
+.item:focus {
+  outline: none;
+}
+
+.btn-icon {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  width: 28px;
 }
 
 .item-text.is-done {

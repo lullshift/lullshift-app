@@ -14,6 +14,7 @@ import "@fontsource-variable/figtree";
 import "../styles/tokens.css";
 import "../styles.css";
 import "../styles/home.css";
+import "../styles/notes.css";
 import { startThemeSync } from "../theme";
 
 installDemoBackend();

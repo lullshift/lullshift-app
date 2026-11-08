@@ -14,6 +14,9 @@ import { ToastRegion } from "./ui/Toasts";
 import type { PauseRequest } from "./activity/ActivityHost";
 import { createDashboardStore } from "./dashboardStore";
 import HomeView from "./home/HomeView";
+import NotesView from "./notes/NotesView";
+import { openItemCount } from "./notes/notesLogic";
+import { overviewOf, useNotesOverview } from "./notes/useNotesOverview";
 import SessionsView from "./SessionsView";
 import type { SessionKey } from "./context/api";
 import { viewKey } from "./context/panelLogic";
@@ -32,7 +35,8 @@ const CHANGE_DEBOUNCE_MS = 250;
 
 const dashboardStore = createDashboardStore(() => invoke<Dashboard>("dashboard"));
 
-type ViewId = "home" | "sessions" | "play" | "rest" | "continue" | "companion" | "settings";
+type ViewId =
+  "home" | "sessions" | "notes" | "play" | "rest" | "continue" | "companion" | "settings";
 
 interface NavItem {
   id: ViewId;
@@ -40,10 +44,11 @@ interface NavItem {
   icon: IconName;
 }
 
-// ADR-026 section 1: Home and Sessions, then the "While you wait" group, then Settings last.
+// ADR-026 sections 1 and 7: Home, Sessions and Notes, then the "While you wait" group, then Settings last.
 const NAV_TOP: NavItem[] = [
   { id: "home", label: "Home", icon: "home" },
   { id: "sessions", label: "Sessions", icon: "sessions" },
+  { id: "notes", label: "Notes", icon: "notes" },
 ];
 const NAV_WAIT: NavItem[] = [
   { id: "play", label: "Play", icon: "play" },
@@ -88,6 +93,8 @@ export default function App() {
   if (view !== "sessions" && openSession !== null) setOpenSession(null);
   // Bumps on each sessions-changed event so an open detail panel re-reads its session.
   const [changeTick, setChangeTick] = useState(0);
+  const notes = useNotesOverview(changeTick);
+  const reloadNotes = notes.reload;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   // The library heading while those views are hidden (only the visible view gets focus).
@@ -169,6 +176,11 @@ export default function App() {
     return () => window.cancelAnimationFrame(frame);
   }, [connectPending, showWelcome]);
 
+  // Notes shows what was written in session panels: read it fresh on each visit.
+  useEffect(() => {
+    if (view === "notes") void reloadNotes();
+  }, [view, reloadNotes]);
+
   // Home shows what is saved: read it fresh on each visit.
   useEffect(() => {
     if (view === "home") refreshActivities();
@@ -197,7 +209,11 @@ export default function App() {
 
   // Sidebar counts: what is in each library, and how many activities have a save.
   const libraryList = activityLoad.status === "ready" ? activityLoad.list : null;
+  const notesOverview = overviewOf(notes.load);
   const counts: Partial<Record<ViewId, number>> = {
+    // Open checklist items; no count at all when there are none (and never an orange badge).
+    ...(notesOverview &&
+      openItemCount(notesOverview) > 0 && { notes: openItemCount(notesOverview) }),
     ...(libraryList && {
       play: onPage(libraryList, "play").length,
       rest: onPage(libraryList, "rest").length,
@@ -347,6 +363,19 @@ export default function App() {
             onConnect={openIntegrations}
             onOpenPage={setView}
             onStartActivity={startActivity}
+          />
+        )}
+        {view === "notes" && (
+          <NotesView
+            headingRef={headingRef}
+            load={notes.load}
+            reload={notes.reload}
+            sessions={sessions}
+            now={now}
+            onOpenSession={(key) => {
+              setOpenSession({ key, nonce: Date.now() });
+              setView("sessions");
+            }}
           />
         )}
         {view === "sessions" && (

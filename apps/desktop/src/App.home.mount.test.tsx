@@ -53,6 +53,30 @@ vi.mock("@tauri-apps/api/core", () => ({
           ipc: { status: "ok" },
           staleAfterSeconds: 600,
         });
+      case "notes_overview":
+        return Promise.resolve({
+          truncated: false,
+          sessions: [
+            {
+              provider: "claude-code",
+              sessionId: "abc12345",
+              lastReceivedUtc: new Date().toISOString(),
+              userTitle: null,
+              agentTitle: null,
+              intent: null,
+              notes: "a note",
+              checklist: [1, 2, 3].map((id) => ({
+                id,
+                kind: "checklist",
+                category: null,
+                text: `Check ${id}`,
+                done: id === 3,
+                position: id,
+                createdUtc: new Date().toISOString(),
+              })),
+            },
+          ],
+        });
       case "activities_list":
         return Promise.resolve(ACTIVITIES);
       case "wait_estimates":
@@ -113,6 +137,7 @@ describe("navigation", () => {
     expect(labels).toEqual([
       "Home",
       "Sessions",
+      "Notes",
       "Play",
       "Rest",
       "Continue",
@@ -130,6 +155,24 @@ describe("navigation", () => {
     expect(nav("Continue").querySelector(".nav-count")?.textContent).toBe("2");
     expect(nav("Sessions").querySelector(".nav-badge")?.textContent).toContain("1");
     expect(nav("Play").querySelector(".nav-badge")).toBeNull();
+  });
+
+  it("counts open checklist items on Notes, never with the orange badge", () => {
+    expect(nav("Notes").querySelector(".nav-count")?.textContent).toBe("2");
+    expect(nav("Notes").querySelector(".nav-badge")).toBeNull();
+  });
+
+  it("opens Notes with the user's text and Open session goes to that session", async () => {
+    await go("Notes");
+    expect(host.querySelector("h1")?.textContent).toBe("Notes");
+    expect(visibleText()).toContain("a note");
+    const open = [...host.querySelectorAll("button")].find((b) =>
+      b.getAttribute("aria-label")?.startsWith("Open session"),
+    )!;
+    await act(async () => open.click());
+    await settle();
+    expect(host.querySelector("h1")?.textContent).toBe("Sessions");
+    expect(nav("Sessions").getAttribute("aria-current")).toBe("page");
   });
 });
 

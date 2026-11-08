@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-notes-overview"
+description = "Enables the notes_overview command without any pre-configured scope."
+commands.allow = ["notes_overview"]
+
+[[permission]]
+identifier = "deny-notes-overview"
+description = "Denies the notes_overview command without any pre-configured scope."
+commands.deny = ["notes_overview"]

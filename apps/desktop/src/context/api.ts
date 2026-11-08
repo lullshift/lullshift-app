@@ -65,6 +65,27 @@ export interface SessionDetail {
   retentionDays: RetentionDays;
 }
 
+/** One session's own text, for the Notes view (ADR-026 section 7). */
+export interface NotesSession {
+  provider: string;
+  sessionId: string;
+  lastReceivedUtc: string;
+  userTitle: string | null;
+  agentTitle: string | null;
+  /** The user's own intent; captured intent is not part of the overview. */
+  intent: string | null;
+  notes: string;
+  /** Review checklist items in their saved order. */
+  checklist: SessionItem[];
+}
+
+export interface NotesOverview {
+  /** Newest activity first; at most 200 sessions. */
+  sessions: NotesSession[];
+  /** Older sessions were left out by the size caps. */
+  truncated: boolean;
+}
+
 export interface ContextPrefs {
   retentionDays: RetentionDays;
   /** Opt-in capture per adapter id (ADR-013). Missing means off. */
@@ -98,6 +119,9 @@ export interface UiPrefs {
 const k = (s: SessionKey) => ({ provider: s.provider, sessionId: s.sessionId });
 
 export const sessionDetail = (s: SessionKey) => invoke<SessionDetail>("session_detail", k(s));
+
+/** Every session's intent, checklist and notes in one read (bounded in Rust). */
+export const notesOverview = () => invoke<NotesOverview>("notes_overview");
 
 export const setSessionNotes = (s: SessionKey, notes: string) =>
   invoke<null>("set_session_notes", { ...k(s), notes });

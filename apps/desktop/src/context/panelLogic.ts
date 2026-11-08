@@ -71,33 +71,44 @@ const EVENT_LABELS: Record<string, string> = {
   heartbeat: "Still connected",
 };
 
-const REASON_LABELS: Record<string, string> = {
-  permission: "asked for permission",
-  prompt_input_exit: "waiting for your input",
-  idle: "waiting for you",
-  idle_prompt: "waiting for you",
+/**
+ * Every `needs_attention` reason the adapters emit (plus the older `idle` and `prompt_input_exit`
+ * values), in words. `permission` comes from Claude Code's PermissionRequest hook and from Codex;
+ * `permission_prompt`, `idle_prompt` and `elicitation_dialog` are Claude Code notification types.
+ * Cursor, opencode and the log scan send no reason. A test pins this list to the adapters.
+ */
+const ATTENTION_REASONS: Record<string, { label: string; ask: string }> = {
+  permission: {
+    label: "asked for permission",
+    ask: "It's asking for your permission to continue.",
+  },
+  permission_prompt: {
+    label: "asked for permission",
+    ask: "It's asking for your permission to continue.",
+  },
+  elicitation_dialog: {
+    label: "asked you a question",
+    ask: "It's asking you a question.",
+  },
+  idle_prompt: { label: "waiting for you", ask: "It's waiting for your input." },
+  idle: { label: "waiting for you", ask: "It's waiting for your input." },
+  prompt_input_exit: { label: "waiting for your input", ask: "It's waiting for your input." },
 };
+
+export const ATTENTION_REASON_IDS = Object.keys(ATTENTION_REASONS);
 
 /** Plain-language timeline label; unknown events and reasons are shown as they are, never hidden. */
 export function timelineLabel(e: Pick<TimelineEntry, "eventType" | "reason">): string {
   const base = EVENT_LABELS[e.eventType] ?? `Event: ${e.eventType.replaceAll("_", " ")}`;
   if (e.eventType !== "needs_attention" || !e.reason) return base;
-  return `${base} (${REASON_LABELS[e.reason] ?? e.reason.replaceAll("_", " ")})`;
+  return `${base} (${ATTENTION_REASONS[e.reason]?.label ?? e.reason.replaceAll("_", " ")})`;
 }
 
 /** What the agent is asking, in words, when the adapter didn't report the text (consent off). */
 export function askFallback(timeline: readonly TimelineEntry[]): string {
   const last = [...timeline].reverse().find((e) => e.eventType === "needs_attention");
-  switch (last?.reason) {
-    case "permission":
-      return "It's asking for your permission to continue.";
-    case "prompt_input_exit":
-    case "idle":
-    case "idle_prompt":
-      return "It's waiting for your input.";
-    default:
-      return "It's waiting for you, but it didn't say why.";
-  }
+  const known = last?.reason ? ATTENTION_REASONS[last.reason] : undefined;
+  return known?.ask ?? "It's waiting for you, but it didn't say why.";
 }
 
 export const CATEGORIES: { id: NextMoveCategory; label: string }[] = [

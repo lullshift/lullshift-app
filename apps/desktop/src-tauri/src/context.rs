@@ -707,6 +707,50 @@ fn detail(store: &Store, provider: &str, id: &str) -> Result<SessionDetailDto, S
     })
 }
 
+/// One session's own text for the Notes view (ADR-026 section 7).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesSessionDto {
+    provider: String,
+    session_id: String,
+    last_received_utc: String,
+    user_title: Option<String>,
+    agent_title: Option<String>,
+    intent: Option<String>,
+    notes: String,
+    checklist: Vec<ItemDto>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesOverviewDto {
+    sessions: Vec<NotesSessionDto>,
+    /// Older sessions were left out by the size caps.
+    truncated: bool,
+}
+
+/// Everything the user wrote across sessions, bounded by the store's caps. Reads only.
+fn notes_overview_dto(store: &Store) -> Result<NotesOverviewDto, StoreError> {
+    let o = store.notes_overview()?;
+    Ok(NotesOverviewDto {
+        truncated: o.truncated,
+        sessions: o
+            .entries
+            .into_iter()
+            .map(|e| NotesSessionDto {
+                provider: e.provider,
+                session_id: e.session_id,
+                last_received_utc: ts(e.last_received_utc),
+                user_title: e.user_title,
+                agent_title: e.agent_title,
+                intent: e.intent,
+                notes: e.notes,
+                checklist: e.checklist.into_iter().map(ItemDto::from).collect(),
+            })
+            .collect(),
+    })
+}
+
 // ---- export ------------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1059,6 +1103,13 @@ pub async fn session_detail(
 ) -> Result<SessionDetailDto, String> {
     let core = Arc::clone(&core);
     blocking(move || with_store(&core, |s| detail(s, &provider, &session_id))).await
+}
+
+/// The Notes view: every session's intent, checklist and notes in one read (main window only).
+#[tauri::command]
+pub async fn notes_overview(core: CoreState<'_>) -> Result<NotesOverviewDto, String> {
+    let core = Arc::clone(&core);
+    blocking(move || with_store(&core, |s| notes_overview_dto(s))).await
 }
 
 #[tauri::command]
@@ -2558,6 +2609,24 @@ mod tests {
         let json = serde_json::to_value(detail(&store, P, "fresh").expect("detail")).expect("json");
         assert_eq!(json["context"]["notes"], "");
         assert!(json["context"]["intent"].is_null() && json["items"] == serde_json::json!([]));
+    }
+
+    #[test]
+    fn notes_overview_dto_is_camel_case_bounded_and_empty_when_nothing_written() {
+        let mut store = Store::open_in_memory().expect("open");
+        store.ingest(&ev(1, "working", "s"), T0).expect("ingest");
+        let json = serde_json::to_value(notes_overview_dto(&store).expect("dto")).expect("json");
+        assert_eq!(json["sessions"], serde_json::json!([]));
+        assert_eq!(json["truncated"], false);
+        store.set_notes(P, "s", "my note", T0).expect("notes");
+        store
+            .add_item(P, "s", "checklist", None, "check", T0)
+            .expect("item");
+        let json = serde_json::to_value(notes_overview_dto(&store).expect("dto")).expect("json");
+        assert_eq!(json["sessions"][0]["sessionId"], "s");
+        assert_eq!(json["sessions"][0]["notes"], "my note");
+        assert_eq!(json["sessions"][0]["checklist"][0]["text"], "check");
+        assert!(json["sessions"][0]["lastReceivedUtc"].is_string());
     }
 
     #[test]

@@ -484,3 +484,99 @@ fn secure_delete_is_on_and_deletes_checkpoint_the_wal() {
     let bytes = std::fs::read(&path).expect("read db");
     assert!(!String::from_utf8_lossy(&bytes).contains("SENTINEL_WAL_TEXT"));
 }
+
+// -- Notes overview
+
+#[test]
+fn notes_overview_is_empty_without_user_text() {
+    let s = store_with(&["a", "b"]);
+    let o = s.notes_overview().expect("overview");
+    assert!(o.entries.is_empty() && !o.truncated);
+}
+
+#[test]
+fn notes_overview_lists_sessions_with_text_newest_first_and_checklist_only() {
+    let mut s = Store::open_in_memory().expect("open");
+    let t = |h: i64| T0 + Duration::hours(h);
+    s.ingest(&ev(1, "old", "working", "2026-11-05T10:00:00Z"), t(0))
+        .expect("ingest");
+    s.ingest(&ev(2, "new", "working", "2026-11-05T11:00:00Z"), t(1))
+        .expect("ingest");
+    s.ingest(&ev(3, "plain", "working", "2026-11-05T12:00:00Z"), t(2))
+        .expect("ingest");
+    s.set_notes(P, "old", "remember", T0).expect("notes");
+    s.set_user_intent(P, "new", "ship it", T0).expect("intent");
+    for text in ["second", "third"] {
+        s.add_item(P, "new", "checklist", None, text, T0)
+            .expect("item");
+    }
+    s.add_item(P, "new", "decision", None, "not shown", T0)
+        .expect("item");
+    s.add_item(P, "plain", "next_move", Some("question"), "nm", T0)
+        .expect("item");
+    let o = s.notes_overview().expect("overview");
+    let ids: Vec<_> = o.entries.iter().map(|e| e.session_id.as_str()).collect();
+    assert_eq!(
+        ids,
+        ["new", "old"],
+        "newest first; sessions without text left out"
+    );
+    assert_eq!(o.entries[0].intent.as_deref(), Some("ship it"));
+    let texts: Vec<_> = o.entries[0]
+        .checklist
+        .iter()
+        .map(|i| i.text.as_str())
+        .collect();
+    assert_eq!(texts, ["second", "third"], "checklist only, in saved order");
+    assert_eq!(o.entries[1].notes, "remember");
+    assert!(!o.truncated);
+}
+
+#[test]
+fn notes_overview_ignores_captured_intent() {
+    let mut s = store_with(&["a"]);
+    s.record_prompt(P, "a", "captured text", T0)
+        .expect("capture");
+    assert!(s.notes_overview().expect("overview").entries.is_empty());
+}
+
+#[test]
+fn notes_overview_caps_sessions_and_total_size() {
+    let mut s = Store::open_in_memory().expect("open");
+    for i in 0..205u32 {
+        let id = format!("s{i:03}");
+        let ts = format!("2026-11-05T10:{:02}:{:02}Z", i / 60, i % 60);
+        s.ingest(
+            &ev(i + 1, &id, "working", &ts),
+            T0 + Duration::seconds(i64::from(i)),
+        )
+        .expect("ingest");
+        s.set_notes(P, &id, "n", T0).expect("notes");
+    }
+    let o = s.notes_overview().expect("overview");
+    assert_eq!(o.entries.len(), 200);
+    assert!(o.truncated);
+    assert_eq!(o.entries[0].session_id, "s204", "the newest are kept");
+
+    let mut s = Store::open_in_memory().expect("open");
+    let big = "x".repeat(MAX_NOTES_CHARS);
+    for i in 0..60u32 {
+        let id = format!("b{i:02}");
+        let ts = format!("2026-11-05T10:00:{i:02}Z");
+        s.ingest(
+            &ev(i + 1, &id, "working", &ts),
+            T0 + Duration::seconds(i64::from(i)),
+        )
+        .expect("ingest");
+        s.set_notes(P, &id, &big, T0).expect("notes");
+    }
+    let o = s.notes_overview().expect("overview");
+    assert!(
+        o.truncated && o.entries.len() == 50,
+        "1,000,000 / 20,000 whole notes"
+    );
+    assert!(
+        o.entries.iter().all(|e| e.notes.len() == MAX_NOTES_CHARS),
+        "never cut"
+    );
+}

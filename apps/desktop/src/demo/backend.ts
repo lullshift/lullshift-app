@@ -213,6 +213,27 @@ function handle(cmd: string, a: Args): unknown {
       if (!s) throw "not_found";
       return structuredClone(s.detail);
     }
+    case "notes_overview": {
+      // Newest first, like Rust; only the user's own text, and only the checklist.
+      const sessions = SESSIONS.map((s) => {
+        const c = s.detail.context;
+        return {
+          provider: s.view.provider,
+          sessionId: s.view.providerSessionId,
+          lastReceivedUtc: s.view.lastReceivedUtc,
+          userTitle: c.userTitle,
+          agentTitle: c.agentTitle?.text ?? null,
+          intent: c.intent?.source === "user" ? c.intent.text : null,
+          notes: c.notes,
+          checklist: s.detail.items
+            .filter((i) => i.kind === "checklist")
+            .sort((x, y) => x.position - y.position),
+        };
+      })
+        .filter((n) => n.intent || n.notes || n.checklist.length > 0)
+        .sort((x, y) => Date.parse(y.lastReceivedUtc) - Date.parse(x.lastReceivedUtc));
+      return structuredClone({ sessions, truncated: false });
+    }
     case "set_session_notes":
       sessionOf(a)!.detail.context.notes = String(a.notes);
       return null;
@@ -258,7 +279,18 @@ function handle(cmd: string, a: Args): unknown {
       s.detail.context.reviewedUtc = new Date().toISOString();
       return null;
     }
-    case "move_session_item":
+    case "move_session_item": {
+      const s = itemOwner(a.id);
+      const item = s?.detail.items.find((i) => i.id === a.id);
+      if (!s || !item) throw "not_found";
+      const same = s.detail.items
+        .filter((i) => i.kind === item.kind)
+        .sort((x, y) => x.position - y.position);
+      same.splice(same.indexOf(item), 1);
+      same.splice(Number(a.position), 0, item);
+      same.forEach((i, n) => (i.position = n));
+      return null;
+    }
     case "link_sessions":
     case "unlink_sessions":
     case "clear_captured_context":

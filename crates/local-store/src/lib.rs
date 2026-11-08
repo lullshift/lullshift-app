@@ -35,7 +35,8 @@ pub use companion::{
 
 pub use context::{
     Captured, ContextRecord, ContextSummary, Item, MAX_ASK_CHARS, MAX_INTENT_CHARS, MAX_ITEM_CHARS,
-    MAX_ITEMS_PER_SESSION, MAX_NOTES_CHARS, MAX_TITLE_CHARS, SessionLabels, TimelineRow,
+    MAX_ITEMS_PER_SESSION, MAX_NOTES_CHARS, MAX_TITLE_CHARS, NOTES_OVERVIEW_MAX_CHARS,
+    NOTES_OVERVIEW_MAX_SESSIONS, NotesEntry, NotesOverview, SessionLabels, TimelineRow,
 };
 
 use agent_core::{AgentEvent, EventType, SessionRecord, SessionState, apply};

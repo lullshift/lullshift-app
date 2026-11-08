@@ -641,6 +641,7 @@ pub fn run() {
             market::activity_uninstall,
             market::activity_set_enabled,
             context::session_detail,
+            context::notes_overview,
             context::set_session_notes,
             context::set_session_intent,
             context::set_session_title,

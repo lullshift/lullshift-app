@@ -52,6 +52,7 @@ fn main() {
             "activity_add_play",
             "activity_content",
             "session_detail",
+            "notes_overview",
             "set_session_notes",
             "set_session_intent",
             "set_session_title",

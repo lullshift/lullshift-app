@@ -143,7 +143,7 @@ export default function DetailPanel(props: Props) {
               <button
                 ref={renameBtn}
                 type="button"
-                className="btn-mini"
+                className="head-btn"
                 onClick={() => setRenaming(true)}
               >
                 Rename
@@ -165,7 +165,7 @@ export default function DetailPanel(props: Props) {
         </div>
         <button
           type="button"
-          className="pin-toggle"
+          className="head-btn pin-toggle"
           aria-pressed={pinned}
           title={
             pinned

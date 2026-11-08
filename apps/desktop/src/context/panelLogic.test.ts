@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invoke = vi.hoisted(() => vi.fn());
@@ -7,6 +9,7 @@ import type { SessionView } from "../sessions";
 import * as api from "./api";
 import type { SessionItem } from "./api";
 import {
+  ATTENTION_REASON_IDS,
   askFallback,
   checklistText,
   decideLayout,
@@ -135,6 +138,52 @@ describe("timeline labels", () => {
     });
     expect(askFallback([t("prompt_input_exit"), t("permission")])).toMatch(/permission/);
     expect(askFallback([])).toMatch(/didn't say why/);
+  });
+
+  it("words every needs-you reason the adapters emit", () => {
+    const entry = (reason: string | null) => ({
+      timestampUtc: "2026-11-05T12:00:00Z",
+      eventType: "needs_attention",
+      reason,
+    });
+    // Claude Code: PermissionRequest and the three notification types. Codex: permission.
+    const cases: [string, RegExp, string][] = [
+      ["permission", /permission/, "asked for permission"],
+      ["permission_prompt", /permission/, "asked for permission"],
+      ["idle_prompt", /waiting for your input/, "waiting for you"],
+      ["elicitation_dialog", /asking you a question/, "asked you a question"],
+    ];
+    for (const [reason, ask, label] of cases) {
+      expect(askFallback([entry(reason)]), reason).toMatch(ask);
+      expect(askFallback([entry(reason)]), reason).not.toMatch(/didn't say why/);
+      expect(timelineLabel(entry(reason)), reason).toBe(`Needed you (${label})`);
+    }
+    // Cursor, opencode and the log scan send no reason: honest fallback.
+    expect(askFallback([entry(null)])).toMatch(/didn't say why/);
+  });
+
+  it("covers every needs_attention reason found in the adapter sources", () => {
+    const read = (rel: string) =>
+      readFileSync(
+        fileURLToPath(new URL(`../../../../crates/agent-adapters/src/${rel}`, import.meta.url)),
+        "utf8",
+      );
+    const found = new Set<string>();
+    const claude = read("claude_code/map.rs");
+    for (const m of claude.matchAll(
+      /"permission_prompt"\s*\|\s*"idle_prompt"\s*\|\s*"elicitation_dialog"/g,
+    ))
+      m[0].match(/"(\w+)"/g)?.forEach((w) => found.add(w.replaceAll('"', "")));
+    // PermissionRequest (Claude Code) and Codex both insert reason "permission".
+    for (const rel of ["claude_code/map.rs", "codex/map.rs"])
+      if (/"reason"\.into\(\),\s*"permission"\.into\(\)/.test(read(rel))) found.add("permission");
+    expect([...found].sort()).toEqual([
+      "elicitation_dialog",
+      "idle_prompt",
+      "permission",
+      "permission_prompt",
+    ]);
+    for (const reason of found) expect(ATTENTION_REASON_IDS).toContain(reason);
   });
 });
 

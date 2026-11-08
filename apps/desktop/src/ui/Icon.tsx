@@ -107,6 +107,20 @@ const PATHS = {
       <path d="m16 16 4 4" />
     </>
   ),
+  up: <path d="m6 14 6-6 6 6" />,
+  down: <path d="m6 10 6 6 6-6" />,
+  trash: (
+    <>
+      <path d="M4.5 7h15M9.5 7V4.5h5V7" />
+      <path d="M6.5 7l.8 12.5h9.4L17.5 7M10 11v5M14 11v5" />
+    </>
+  ),
+  notes: (
+    <>
+      <path d="M6 3.5h9l4 4V20a.5.5 0 0 1-.5.5h-12A.5.5 0 0 1 6 20V3.5Z" />
+      <path d="M14.5 3.5v4.5H19M9 12h6M9 16h4" />
+    </>
+  ),
   pause: <path d="M9 6v12M15 6v12" />,
   play: <path d="M8 5.5v13l10-6.5-10-6.5Z" />,
   help: (
