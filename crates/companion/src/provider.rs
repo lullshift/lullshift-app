@@ -163,6 +163,9 @@ pub struct RequestPlan<'a> {
     /// `{type: adaptive, display: summarized}` (Claude 4.5 and earlier reject adaptive, 4.7 and
     /// later reject enabled).
     pub legacy_thinking: bool,
+    /// OpenAI Responses only: ask for `reasoning: {effort}` without `summary` (the organisation
+    /// may not get reasoning summaries).
+    pub no_summary: bool,
     pub max_output_tokens: u32,
 }
 
@@ -218,6 +221,7 @@ pub fn build_request(
             stream: false,
             reasoning: false,
             legacy_thinking: false,
+            no_summary: false,
             max_output_tokens,
         },
     )
@@ -325,6 +329,12 @@ pub fn build_plan_request(spec: &ProviderSpec, key: &str, plan: &RequestPlan<'_>
                 } else {
                     json!({ "type": "adaptive", "display": "summarized" })
                 };
+                if !plan.legacy_thinking {
+                    // `output_config.effort` (no beta header; every adaptive-thinking model
+                    // supports it). `low` keeps the thinking short so the reply is not starved
+                    // of `max_tokens`. The legacy form has its own `budget_tokens`.
+                    body["output_config"] = json!({ "effort": "low" });
+                }
             }
             if plan.stream {
                 body["stream"] = json!(true);
@@ -391,7 +401,11 @@ pub fn build_plan_request(spec: &ProviderSpec, key: &str, plan: &RequestPlan<'_>
                 // with a `reasoning...` param, and the caller retries once without it.
                 // `summary: "auto"` asks for a reasoning summary to show; a model or organisation
                 // that may not get one answers with a `reasoning...` param too.
-                body["reasoning"] = json!({ "effort": "low", "summary": "auto" });
+                body["reasoning"] = if plan.no_summary {
+                    json!({ "effort": "low" })
+                } else {
+                    json!({ "effort": "low", "summary": "auto" })
+                };
             }
             if plan.tools {
                 // `strict: false`: the API defaults to strict schemas, which need every property
@@ -786,6 +800,7 @@ mod tests {
                 stream,
                 reasoning: false,
                 legacy_thinking: false,
+                no_summary: false,
                 max_output_tokens: 64,
             },
         );

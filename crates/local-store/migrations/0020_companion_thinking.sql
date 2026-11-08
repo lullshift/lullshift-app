@@ -7,8 +7,8 @@
 --                reply text and NEVER sent back to a provider in later history.
 --   thinking_ms  how long the thinking took, in milliseconds, for the "Thought for 12 s" header.
 --
--- Existing rows keep NULL. Rollback: the columns are nullable and unread by older builds, so an
--- older build simply ignores them.
+-- Existing rows keep NULL. Rollback: an older build refuses a database at version 20 (TooNew);
+-- to go back, restore the backup the upgrade took before this step (schema version 19).
 ALTER TABLE companion_messages
     ADD COLUMN thinking TEXT
     CHECK (thinking IS NULL OR length(CAST(thinking AS BLOB)) <= 66000);

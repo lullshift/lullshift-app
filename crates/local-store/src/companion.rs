@@ -177,9 +177,13 @@ pub const MAX_THINKING_BYTES: usize = 64 * 1024;
 
 const THINKING_NOTE: &str = "\n\n[Thinking cut here.]";
 
+/// Longest thinking time stored (24 hours, in milliseconds); the column has the same CHECK.
+const MAX_THINKING_MS: i64 = 86_400_000;
+
 /// Cleans reasoning text the way reply text is cleaned (control characters except newline and
-/// tab, and bidi or invisible formatting characters, are dropped) and caps it. `None` for blank.
-pub fn clean_thinking(s: &str) -> Option<String> {
+/// tab, and bidi or invisible formatting characters, are dropped) and caps it. `cut` says the
+/// text was already cut by the core, so the note is added even if it fits. `None` for blank.
+pub fn clean_thinking(s: &str, cut: bool) -> Option<String> {
     let mut t: String = s
         .chars()
         .filter(|c| {
@@ -195,6 +199,8 @@ pub fn clean_thinking(s: &str) -> Option<String> {
             end -= 1;
         }
         t.truncate(end);
+        t.push_str(THINKING_NOTE);
+    } else if cut {
         t.push_str(THINKING_NOTE);
     }
     Some(t)
@@ -978,9 +984,10 @@ impl Store {
     }
 
     /// Like [`Self::companion_complete_send_flagged`], also storing the model's reasoning summary
-    /// with the reply: `thinking` is `(text, milliseconds)`. The text is cleaned (control and
-    /// invisible characters dropped) and capped at [`MAX_THINKING_BYTES`] on a character
-    /// boundary, with a note when cut; blank text is stored as nothing.
+    /// with the reply: `thinking` is `(text, milliseconds, cut)`, where `cut` says the core
+    /// already dropped some. The text is cleaned (control and invisible characters dropped) and
+    /// capped at [`MAX_THINKING_BYTES`] on a character boundary; a note is added when it was cut
+    /// here or by the core; blank text is stored as nothing. The time is clamped to 0..=24 h.
     #[allow(clippy::too_many_arguments)]
     pub fn companion_complete_send_thinking(
         &mut self,
@@ -990,10 +997,12 @@ impl Store {
         booked: (i64, i64),
         now: OffsetDateTime,
         no_stream: bool,
-        thinking: Option<(&str, i64)>,
+        thinking: Option<(&str, i64, bool)>,
         proceed: &dyn Fn() -> bool,
     ) -> Result<Option<CompanionMessage>> {
-        let thinking = thinking.and_then(|(t, ms)| clean_thinking(t).map(|t| (t, ms.max(0))));
+        let thinking = thinking.and_then(|(t, ms, cut)| {
+            clean_thinking(t, cut).map(|t| (t, ms.clamp(0, MAX_THINKING_MS)))
+        });
         let (input_tokens, output_tokens) = shown;
         let (booked_input, booked_output) = booked;
         let ts = fmt_ts(now)?;

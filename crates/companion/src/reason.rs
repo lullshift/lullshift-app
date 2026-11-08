@@ -188,8 +188,12 @@ pub struct ErrorFacts {
     pub param: Option<String>,
     pub code: Option<String>,
     pub err_type: Option<String>,
-    /// The (raw) message mentions "reasoning" or "thinking".
+    /// The (raw) message mentions "reasoning".
     pub mentions_reasoning: bool,
+    /// The (raw) message mentions "summary" (OpenAI: reasoning summaries may need verification).
+    pub mentions_summary: bool,
+    /// The (raw) message names an Anthropic thinking parameter (see [`names_thinking_param`]).
+    pub names_thinking_param: bool,
 }
 
 impl ErrorFacts {
@@ -205,16 +209,52 @@ impl ErrorFacts {
                     || self.err_type.as_deref() == Some("invalid_request_error")))
     }
 
+    /// OpenAI refused the reasoning `summary` option: a `reasoning.summary` param, or a message
+    /// that names the summary in an unsupported-parameter style 400.
+    pub fn refuses_summary(&self) -> bool {
+        self.param
+            .as_deref()
+            .is_some_and(|p| p.starts_with("reasoning.summary") || p == "summary")
+            || (self.mentions_summary
+                && (self.mentions_reasoning
+                    || self.code.as_deref() == Some("unsupported_parameter")
+                    || self.code.as_deref() == Some("unsupported_value")))
+    }
+
+    /// Anthropic refused the `thinking` (or `output_config.effort`) setting: the error must name
+    /// the parameter, not just use the word.
+    pub fn refuses_thinking(&self) -> bool {
+        self.names_thinking_param
+    }
+
     /// OpenAI refused `stream: true`.
     pub fn refuses_stream(&self) -> bool {
         self.param.as_deref() == Some("stream")
     }
 }
 
-/// The message names the reasoning option: OpenAI says "reasoning", Anthropic says "thinking".
+/// The message names the reasoning option (OpenAI says "reasoning").
 fn names_reasoning(m: &str) -> bool {
+    m.to_ascii_lowercase().contains("reasoning")
+}
+
+/// The message names an Anthropic thinking parameter: a `thinking` field path or key
+/// (`thinking.type`, `thinking: ...`, a quoted "thinking"), `budget_tokens`, `adaptive`, or
+/// `output_config.effort`. The bare word "thinking" in prose does not count.
+fn names_thinking_param(m: &str) -> bool {
     let l = m.to_ascii_lowercase();
-    l.contains("reasoning") || l.contains("thinking")
+    [
+        "thinking.",
+        "thinking:",
+        "\"thinking\"",
+        "`thinking`",
+        "'thinking'",
+        "budget_tokens",
+        "adaptive",
+        "output_config",
+    ]
+    .iter()
+    .any(|k| l.contains(k))
 }
 
 fn short_id(s: Option<&str>) -> Option<String> {
@@ -241,6 +281,8 @@ pub fn parse_with_facts(body: &[u8], key: &str, echoes: &Echoes) -> (Option<Reas
             Some(s.as_str()),
             ErrorFacts {
                 mentions_reasoning: names_reasoning(s),
+                mentions_summary: s.to_ascii_lowercase().contains("summary"),
+                names_thinking_param: names_thinking_param(s),
                 ..ErrorFacts::default()
             },
         ),
@@ -255,6 +297,10 @@ pub fn parse_with_facts(body: &[u8], key: &str, echoes: &Echoes) -> (Option<Reas
                     code: short_id(str_field(err, "code")),
                     err_type: short_id(str_field(err, "type")),
                     mentions_reasoning: str_field(err, "message").is_some_and(names_reasoning),
+                    mentions_summary: str_field(err, "message")
+                        .is_some_and(|m| m.to_ascii_lowercase().contains("summary")),
+                    names_thinking_param: str_field(err, "message")
+                        .is_some_and(names_thinking_param),
                 },
             )
         }

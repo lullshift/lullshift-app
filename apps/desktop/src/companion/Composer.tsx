@@ -419,7 +419,7 @@ export function Composer({
   const isDefault = sameChoice(choice, defaultChoice(profiles));
 
   return (
-    <div className="card composer">
+    <div className="composer">
       {profiles.length === 0 && (
         <Banner tone="info">
           Set up a provider to start.{" "}
@@ -439,7 +439,7 @@ export function Composer({
         </Banner>
       )}
 
-      <label className="field-label" htmlFor={textId}>
+      <label className="field-label visually-hidden" htmlFor={textId}>
         Message
       </label>
       <div className="composer-box">
@@ -453,7 +453,8 @@ export function Composer({
         <textarea
           id={textId}
           className="field textarea composer-text"
-          rows={4}
+          rows={2}
+          title={COMPOSER_HINT}
           maxLength={20000}
           value={text}
           readOnly={sending}
@@ -481,6 +482,7 @@ export function Composer({
             type="button"
             className="btn btn-quiet btn-small composer-model"
             aria-haspopup="dialog"
+            title={sendsToText(host)}
             disabled={sending || profiles.length === 0}
             onClick={() => setChoosing(true)}
           >
@@ -497,28 +499,26 @@ export function Composer({
           >
             Options…
           </button>
-          <span className="composer-chip composer-host">{sendsToText(host)}</span>
         </div>
       </div>
-      <p id={hintId} className="field-note composer-hint">
+      <span id={hintId} className="visually-hidden">
         {COMPOSER_HINT}
-      </p>
+      </span>
 
       {restoreNote && (
         <p className="field-note composer-remembered" role="status">
           {restoreNote}
         </p>
       )}
-      <p className="field-note composer-history">{historyText(historyCount, host)}</p>
 
       <div className="composer-actions">
-        <p className="field-note composer-summary">
-          {scope?.kind === "none" || !scope
-            ? scope
-              ? "This message sends only what you typed."
-              : "Finish choosing the context in Options, or remove it."
-            : `This message will also send: ${scopeLabel(scope.kind).toLowerCase()}. You will see it first.`}
-        </p>
+        {(!scope || scope.kind !== "none") && (
+          <p className="field-note composer-summary">
+            {scope
+              ? `This message will also send: ${scopeLabel(scope.kind).toLowerCase()}. You will see it first.`
+              : "Finish choosing the context in Options, or remove it."}
+          </p>
+        )}
         {sending && (
           <button type="button" className="btn btn-secondary" onClick={onCancel}>
             Cancel
@@ -551,10 +551,13 @@ export function Composer({
           </button>
         }
         description={
-          <p>
-            Choose what goes along with your next message. You will see the exact text before it is
-            sent.
-          </p>
+          <>
+            <p>
+              Choose what goes along with your next message. You will see the exact text before it
+              is sent.
+            </p>
+            <p className="options-history">{historyText(historyCount, host)}</p>
+          </>
         }
       >
         <ContextPicker draft={draft} onChange={setDraft} sessions={sessions} disabled={sending} />

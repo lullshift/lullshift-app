@@ -1549,7 +1549,11 @@ fn hints_for(core: &Core, profile_id: &str, model: &str) -> Learned {
 
 /// Remembers a refusal a call just taught, for the rest of this app run. Nothing is stored.
 fn learn(core: &Core, profile_id: &str, model: &str, learned: Learned) {
-    if !(learned.reasoning_refused || learned.stream_refused || learned.adaptive_refused) {
+    if !(learned.reasoning_refused
+        || learned.stream_refused
+        || learned.adaptive_refused
+        || learned.summary_refused)
+    {
         return;
     }
     if let Ok(mut h) = core.companion.hints.lock() {
@@ -1559,6 +1563,7 @@ fn learn(core: &Core, profile_id: &str, model: &str, learned: Learned) {
         e.reasoning_refused |= learned.reasoning_refused;
         e.stream_refused |= learned.stream_refused;
         e.adaptive_refused |= learned.adaptive_refused;
+        e.summary_refused |= learned.summary_refused;
     }
 }
 
@@ -1724,9 +1729,12 @@ fn deliver(
     let mut calls_used = 0usize;
     let (mut total_in, mut total_out) = (0i64, 0i64);
     let mut round_no: u32 = 0;
-    // The model's reasoning summary across the rounds of this message, and when it started and
-    // last grew (for "Thought for N s"). Held in memory only until the reply is stored.
+    // The model's reasoning summary across the rounds of this message, whether any of it was cut,
+    // and how long the thinking took: the sum of each round's first-to-last-piece span, so waits
+    // for an approval are left out. Held in memory only until the reply is stored.
     let mut all_thinking = String::new();
+    let mut thinking_cut = false;
+    let mut thought_ms: i64 = 0;
     let (mut think_first, mut think_last): (Option<Instant>, Option<Instant>) = (None, None);
     // Any call of this message arrived all at once (shown as a note next to the reply).
     let mut not_streamed = false;
@@ -1756,6 +1764,7 @@ fn deliver(
                     ProviderKind::OpenAiCompatible => false,
                 },
             legacy_thinking: hint.adaptive_refused,
+            no_summary: hint.summary_refused,
             max_output_tokens: kind.chat_output_cap(),
         };
         let queue = Arc::clone(&core.companion.late_usage);
@@ -1814,6 +1823,12 @@ fn deliver(
                     );
                     break CompanionError::cancelled();
                 }
+                if let (Some(a), Some(b)) = (think_first.take(), think_last.take()) {
+                    thought_ms = thought_ms.saturating_add(
+                        i64::try_from(b.duration_since(a).as_millis()).unwrap_or(0),
+                    );
+                }
+                thinking_cut |= reply.thinking_cut;
                 if !reply.thinking.is_empty() {
                     if !all_thinking.is_empty() {
                         all_thinking.push_str("\n\n");
@@ -1836,12 +1851,6 @@ fn deliver(
                     // the store lock: a cancel that came after the check above, followed by a
                     // newer message, can no longer let this reply land after that message.
                     let done = with_store(core, |s| {
-                        let thought_ms = match (think_first, think_last) {
-                            (Some(a), Some(b)) => {
-                                i64::try_from(b.duration_since(a).as_millis()).unwrap_or(0)
-                            }
-                            _ => 0,
-                        };
                         s.companion_complete_send_thinking(
                             user_message,
                             &reply.text,
@@ -1849,8 +1858,11 @@ fn deliver(
                             (reply.input_tokens, reply.output_tokens),
                             OffsetDateTime::now_utc(),
                             not_streamed,
-                            (!all_thinking.is_empty())
-                                .then_some((all_thinking.as_str(), thought_ms)),
+                            (!all_thinking.is_empty()).then_some((
+                                all_thinking.as_str(),
+                                thought_ms,
+                                thinking_cut,
+                            )),
                             &|| !guard.token().is_cancelled(),
                         )
                     });

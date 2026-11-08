@@ -129,28 +129,31 @@ fn failed_upgrade_rolls_back_and_a_later_open_recovers() {
 }
 
 #[test]
-fn an_older_build_ignores_the_new_columns() {
-    // Rollback: a database already at 20 still answers the pre-20 queries (the columns are
-    // nullable and nothing older selects them).
+fn an_older_build_refuses_a_version_20_database_and_the_backup_restores_it() {
+    // Rollback is "restore the backup": a build that only knows up to 19 refuses a v20 database
+    // (TooNew) instead of guessing, and the backup the upgrade took still opens with it.
     let dir = tempfile::tempdir().expect("dir");
     let path = dir.path().join("l.db");
     seed_old(&path);
-    drop(Store::open(&path).expect("open"));
+    let (s, report) = Store::open(&path).expect("open");
+    drop(s);
     let conn = Connection::open(&path).expect("raw");
-    let n: i64 = conn
-        .query_row(
-            "SELECT count(*) FROM companion_messages WHERE role = 'assistant' AND text = 'hello'",
-            [],
-            |r| r.get(0),
-        )
-        .expect("old-style query");
-    assert_eq!(n, 1);
-    conn.execute(
-        "INSERT INTO companion_messages (thread_id, role, text, scope_kind, status, created_utc)
-         VALUES (1, 'assistant', 'old build reply', 'none', 'sent', '2026-11-08T10:00:00Z')",
-        [],
-    )
-    .expect("old-style insert");
+    assert!(matches!(
+        migrate(&conn, &before_20(), None),
+        Err(StoreError::TooNew {
+            found: 20..,
+            supported: 19
+        })
+    ));
+    let bak = report.backup.expect("backup");
+    let old = Connection::open(&bak).expect("backup");
+    assert_eq!(version(&old), 19);
+    let again = migrate(&old, &before_20(), None).expect("old build opens the backup");
+    assert_eq!(again.from_version, again.to_version);
+    let n: i64 = old
+        .query_row("SELECT count(*) FROM companion_messages", [], |r| r.get(0))
+        .expect("count");
+    assert_eq!(n, 2);
 }
 
 fn open_new(dir: &std::path::Path) -> (Store, i64) {
@@ -198,7 +201,11 @@ fn thinking_is_stored_with_the_reply_apart_from_its_text() {
             (5, 7),
             T0,
             false,
-            Some(("Weigh the\u{7} options.\u{202e}\nSecond line", 12_345)),
+            Some((
+                "Weigh the\u{7} options.\u{202e}\nSecond line",
+                12_345,
+                false,
+            )),
             &|| true,
         )
         .expect("complete")
@@ -228,7 +235,7 @@ fn replies_without_thinking_store_none() {
             (1, 1),
             T0,
             false,
-            Some(("  \u{200b}\n ", 10)),
+            Some(("  \u{200b}\n ", 10, false)),
             &|| true,
         )
         .expect("complete")
@@ -247,7 +254,7 @@ fn replies_without_thinking_store_none() {
 fn thinking_is_capped_on_a_character_boundary_with_a_note() {
     // 'é' is two bytes, so the cap falls inside a character for an odd limit.
     let big = "é".repeat(MAX_THINKING_BYTES);
-    let t = clean_thinking(&big).expect("kept");
+    let t = clean_thinking(&big, false).expect("kept");
     assert!(t.len() < MAX_THINKING_BYTES + 64);
     assert!(t.ends_with("[Thinking cut here.]"));
     assert!(t.starts_with("éé"));
@@ -261,14 +268,14 @@ fn thinking_is_capped_on_a_character_boundary_with_a_note() {
             (1, 1),
             T0,
             false,
-            Some((&big, 1)),
+            Some((&big, 1, false)),
             &|| true,
         )
         .expect("complete")
         .expect("stored");
     assert_eq!(reply.thinking.as_deref(), Some(t.as_str()));
     // A short one is untouched.
-    assert_eq!(clean_thinking("short").as_deref(), Some("short"));
+    assert_eq!(clean_thinking("short", false).as_deref(), Some("short"));
 }
 
 #[test]
@@ -289,4 +296,45 @@ fn the_database_refuses_oversized_thinking() {
         [&big],
     );
     assert!(r.is_err());
+}
+
+#[test]
+fn a_cut_from_the_core_adds_the_note_and_the_time_is_clamped() {
+    assert_eq!(
+        clean_thinking("kept", true).as_deref(),
+        Some("kept\n\n[Thinking cut here.]")
+    );
+    let dir = tempfile::tempdir().expect("dir");
+    let (mut s, id) = open_new(dir.path());
+    let reply = s
+        .companion_complete_send_thinking(
+            id,
+            "r",
+            (1, 1),
+            (1, 1),
+            T0,
+            false,
+            Some(("kept", 9_000_000_000_000, true)),
+            &|| true,
+        )
+        .expect("complete")
+        .expect("a huge time must not fail the insert");
+    assert_eq!(reply.thinking_ms, Some(86_400_000));
+    assert!(reply.thinking.unwrap().ends_with("[Thinking cut here.]"));
+    let dir2 = tempfile::tempdir().expect("dir");
+    let (mut s2, id2) = open_new(dir2.path());
+    let r2 = s2
+        .companion_complete_send_thinking(
+            id2,
+            "r",
+            (1, 1),
+            (1, 1),
+            T0,
+            false,
+            Some(("kept", -5, false)),
+            &|| true,
+        )
+        .expect("complete")
+        .expect("stored");
+    assert_eq!(r2.thinking_ms, Some(0));
 }

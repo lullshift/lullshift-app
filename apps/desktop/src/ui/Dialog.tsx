@@ -41,7 +41,9 @@ export function Dialog({ open, title, onClose, description, children, actions, b
       aria-describedby={description ? descId : undefined}
       onCancel={(e) => {
         e.preventDefault();
-        if (!busy) onClose();
+        // A dialog rendered in a portal inside this one sends its `cancel` up the React tree:
+        // only a cancel aimed at this dialog closes it.
+        if (e.target === e.currentTarget && !busy) onClose();
       }}
       onClick={(e) => {
         // A click on the backdrop lands on the <dialog> element itself.

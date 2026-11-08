@@ -39,6 +39,8 @@ pub struct Learned {
     pub stream_refused: bool,
     /// Anthropic: `thinking: adaptive` was refused and the legacy `enabled` form was used.
     pub adaptive_refused: bool,
+    /// OpenAI: `reasoning.summary` was refused and `reasoning: {effort}` alone was used.
+    pub summary_refused: bool,
 }
 
 /// Most thinking text kept per reply (bytes). More is dropped and `thinking_cut` is set.
@@ -83,8 +85,11 @@ pub struct StreamFailure {
     /// The provider refused `stream: true` for this organisation (OpenAI, HTTP 400, `param` is
     /// `stream`). Set only on that refusal; `chat_stream` retries once without streaming.
     pub stream_refused: bool,
-    /// The provider refused `reasoning` (OpenAI, HTTP 400, `param` starts with `reasoning`).
+    /// The provider refused `reasoning` (OpenAI, HTTP 400, `param` starts with `reasoning`;
+    /// Anthropic, HTTP 400 naming a thinking parameter).
     pub reasoning_refused: bool,
+    /// OpenAI refused just the reasoning `summary` option.
+    pub summary_refused: bool,
     pub learned: Learned,
 }
 
@@ -98,6 +103,7 @@ impl StreamFailure {
             partial: String::new(),
             stream_refused: false,
             reasoning_refused: false,
+            summary_refused: false,
             learned: Learned::default(),
         }
     }
@@ -124,6 +130,8 @@ struct ErrCtx {
 }
 
 struct Tally {
+    /// Characters of thinking received (they are output tokens too, for the estimate).
+    thinking_chars: usize,
     input: Option<i64>,
     output: Option<i64>,
     output_final: bool,
@@ -183,7 +191,12 @@ fn stream_call(
         let official = status == 400 && kind == ProviderKind::OpenAi;
         let reasoning_400 =
             status == 400 && matches!(kind, ProviderKind::OpenAi | ProviderKind::Anthropic);
-        failure.reasoning_refused = reasoning_400 && facts.refuses_reasoning();
+        failure.reasoning_refused = reasoning_400
+            && match kind {
+                ProviderKind::Anthropic => facts.refuses_thinking(),
+                _ => facts.refuses_reasoning(),
+            };
+        failure.summary_refused = official && facts.refuses_summary();
         failure.stream_refused = official && facts.refuses_stream();
         return Err(failure);
     }
@@ -198,6 +211,7 @@ fn stream_call(
     let mut thinking_cut = false;
     let mut calls: Vec<ToolCall> = Vec::new();
     let mut tally = Tally {
+        thinking_chars: 0,
         input: None,
         output: None,
         output_final: false,
@@ -207,8 +221,9 @@ fn stream_call(
 
     let failure =
         |error: CompanionError, text: &str, calls: &[ToolCall], tally: &Tally, received: bool| {
-            let produced =
-                text.chars().count() + calls.iter().map(|c| c.arguments.len()).sum::<usize>();
+            let produced = text.chars().count()
+                + tally.thinking_chars
+                + calls.iter().map(|c| c.arguments.len()).sum::<usize>();
             let (input, output) = if received {
                 (
                     tally.input.unwrap_or_else(|| est_chars(sent_chars)),
@@ -229,6 +244,7 @@ fn stream_call(
                 partial: text.to_owned(),
                 stream_refused: false,
                 reasoning_refused: false,
+                summary_refused: false,
                 learned: Learned::default(),
             }
         };
@@ -450,6 +466,7 @@ fn stream_call(
                             thinking_cut = true;
                         }
                         if !clean.is_empty() {
+                            tally.thinking_chars += clean.chars().count();
                             thinking.push_str(&clean);
                             if handoff.load(Ordering::SeqCst) != ABANDONED {
                                 let _ = tx.send(Msg::Thinking(clean));
@@ -494,7 +511,9 @@ fn stream_call(
             received,
         ));
     }
-    let produced = text.chars().count() + calls.iter().map(|c| c.arguments.len()).sum::<usize>();
+    let produced = text.chars().count()
+        + tally.thinking_chars
+        + calls.iter().map(|c| c.arguments.len()).sum::<usize>();
     let input_tokens = tally.input.unwrap_or_else(|| est_chars(sent_chars));
     let output_tokens = if tally.output_final {
         tally.output.unwrap_or(0)
@@ -550,7 +569,10 @@ where
     let anthropic = spec.kind == ProviderKind::Anthropic;
     let reasoning0 = (kind_is_openai(&spec) && plan.reasoning)
         || (anthropic && plan.reasoning && crate::provider::anthropic_thinking_sent(plan));
-    let legacy0 = anthropic && reasoning0 && plan.legacy_thinking;
+    // The second step: Anthropic's legacy `enabled` form, OpenAI's `reasoning` without `summary`.
+    let openai = kind_is_openai(&spec);
+    let legacy0 =
+        reasoning0 && ((anthropic && plan.legacy_thinking) || (openai && plan.no_summary));
     let stream0 = plan.stream;
     let mut variants: Vec<((bool, bool, bool), BuiltRequest)> = Vec::new();
     let mut want = vec![(reasoning0, legacy0, stream0)];
@@ -565,7 +587,7 @@ where
             continue;
         }
         push((reasoning0, legacy0, st));
-        if anthropic && reasoning0 {
+        if (anthropic || openai) && reasoning0 {
             push((true, true, st));
         }
         if reasoning0 {
@@ -580,7 +602,8 @@ where
                 key.expose(),
                 &RequestPlan {
                     reasoning: r,
-                    legacy_thinking: l,
+                    legacy_thinking: l && anthropic,
+                    no_summary: l && openai,
                     stream: st,
                     ..*plan
                 },
@@ -654,16 +677,26 @@ where
                 break;
             }
             match &result {
-                // The model has no `reasoning` setting: repeat without it, once.
-                Err(f) if f.reasoning_refused && reasoning => {
-                    if kind == ProviderKind::Anthropic && !legacy {
-                        legacy = true;
+                // Anthropic: `adaptive` refused, try the legacy form. OpenAI: `summary` refused, try
+                // `reasoning: {effort}` alone.
+                Err(f)
+                    if reasoning
+                        && !legacy
+                        && ((kind == ProviderKind::Anthropic && f.reasoning_refused)
+                            || (kind == ProviderKind::OpenAi && f.summary_refused)) =>
+                {
+                    legacy = true;
+                    if kind == ProviderKind::Anthropic {
                         learned.adaptive_refused = true;
                     } else {
-                        reasoning = false;
-                        legacy = false;
-                        learned.reasoning_refused = true;
+                        learned.summary_refused = true;
                     }
+                }
+                // The model has no such setting at all: repeat without it, once.
+                Err(f) if f.reasoning_refused && reasoning => {
+                    reasoning = false;
+                    legacy = false;
+                    learned.reasoning_refused = true;
                 }
                 // OpenAI refuses `stream: true` (organisation not verified): repeat without it,
                 // once. The caller is told so it waits for the total time, not the first byte.
