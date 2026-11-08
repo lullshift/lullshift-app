@@ -21,7 +21,7 @@
 }
 
 /* Small windows: no fixed height; the page scrolls as one, as in the Sessions view. */
-@media (max-width: 720px), (max-height: 520px) {
+@media (max-width: 860px), (max-height: 520px) {
   .view.companion {
     height: auto;
   }
@@ -399,10 +399,6 @@
   font-size: var(--text-sm);
   font-weight: 600;
   overflow-wrap: anywhere;
-}
-
-.composer-host {
-  border-color: var(--accent);
 }
 
 .composer-select {
@@ -797,6 +793,13 @@
 .composer-box {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
+}
+
+@supports not (field-sizing: content) {
+  .composer-box .composer-text {
+    min-height: 4lh;
+    resize: vertical;
+  }
 }
 
 .composer-box .composer-text {

@@ -219,11 +219,13 @@ export function CatalogModelList({
                 role="option"
                 aria-selected={isChosen}
                 className={cls.join(" ")}
-                title={[m.name, m.id, modelFacts(m)].filter(Boolean).join(" · ")}
                 onMouseEnter={() => onActive?.(i)}
                 onClick={() => onChoose(m)}
               >
-                <span className="catalog-model-line">
+                <span
+                  className="catalog-model-line"
+                  title={[m.name, m.id].filter(Boolean).join(" · ")}
+                >
                   {m.name !== null && (
                     <>
                       <span className="catalog-model-name">{m.name}</span>{" "}

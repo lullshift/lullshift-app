@@ -294,7 +294,7 @@ describe("a chat-style layout", () => {
 
   it("prints no always-on help lines and no destination badge in the composer", async () => {
     await mountConversation();
-    for (const sel of [".composer-hint", ".composer-history", ".composer-host"]) {
+    for (const sel of [".composer-hint", ".composer-history"]) {
       expect(host.querySelector(sel)).toBeNull();
     }
     const visible = host.querySelector(".composer")!.cloneNode(true) as HTMLElement;

@@ -31,7 +31,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { CompanionSettings } from "./CompanionSettings";
-import { buttonIn, click, polyfillDialog, settle } from "./testDom";
+import { buttonIn, click, polyfillDialog, settle, typeInto } from "./testDom";
 
 polyfillDialog();
 
@@ -82,5 +82,26 @@ describe("provider dialog", () => {
     expect(save.getAttribute("form")).toBe(form.id);
     await click(buttonIn(dialog, "Cancel"));
     expect(openDialog()).toBeNull();
+  });
+
+  it("keeps the provider dialog open, with its text, when Esc closes the model picker", async () => {
+    await click(buttonIn(host, "Add a provider"));
+    const dialog = openDialog()!;
+    const name = dialog.querySelector<HTMLInputElement>('input[maxlength="60"]')!;
+    await typeInto(name, "My provider");
+    await click(buttonIn(dialog, "Choose from list…"));
+    const picker = [...document.querySelectorAll<HTMLDialogElement>("dialog[open]")].find((d) =>
+      d.querySelector(".picker"),
+    )!;
+    expect(picker).toBeDefined();
+    await act(async () => {
+      picker.dispatchEvent(new Event("cancel", { cancelable: true }));
+    });
+    await settle();
+    expect(document.querySelector(".picker")).toBeNull();
+    expect(openDialog()).toBe(dialog);
+    expect(dialog.querySelector<HTMLInputElement>('input[maxlength="60"]')!.value).toBe(
+      "My provider",
+    );
   });
 });
