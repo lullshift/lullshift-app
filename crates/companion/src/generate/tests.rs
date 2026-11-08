@@ -73,6 +73,8 @@ fn request(e: EngineKind) -> GenerationRequest {
 /// timings trimmed to the generation caps.
 fn as_generated(e: EngineKind, mut v: Value) -> Value {
     let o = v.as_object_mut().unwrap();
+    // `roundSize` (S13-T09) is an engine field the model never writes; sets are one round.
+    o.remove("roundSize");
     let size = *e.allowed_sizes().last().unwrap() as usize;
     let trim = |o: &mut serde_json::Map<String, Value>, k: &str| {
         if let Some(a) = o.get_mut(k).and_then(Value::as_array_mut) {
