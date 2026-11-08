@@ -49,7 +49,10 @@ use crate::error::{CompanionError, ErrorKind, ProviderReason};
 use crate::http::{HttpConfig, LateUsage};
 use crate::provider::{ChatMessage, ProviderKind, ProviderSpec, RequestPlan, Role};
 
-pub use body::{REFUSED, REFUSED_MOVEMENT, has_refused_phrase, refused_phrase_in};
+pub use body::{
+    REFUSED, REFUSED_BREATHING, REFUSED_MOVEMENT, body_problem, fold_ascii, has_refused_phrase,
+    refused_phrase_in,
+};
 pub use profiles::{
     BODY_MAX_SECONDS, MOVEMENT_CLOSING, MOVEMENT_MAX_REPS, MOVEMENT_REST_SECONDS, MOVEMENT_WAY_OUT,
     PAUSE_CLOSING,

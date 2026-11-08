@@ -1065,6 +1065,47 @@ fn body_sets_with_a_refused_phrase_in_any_string_fail() {
 }
 
 #[test]
+fn non_english_and_look_alike_text_fails_as_a_phrase_for_each_body_engine() {
+    let texts = [
+        "Nefesini 30 saniye tut",
+        "Springen Sie zehnmal",
+        "j\u{00fa}mp",
+        "ju\u{0301}mp",
+        "\u{ff4a}\u{ff55}\u{ff4d}\u{ff50}",
+        "\u{1d423}\u{1d42e}\u{1d426}\u{1d429}",
+        "\u{0458}ump",
+    ];
+    let movement = |t: &str| movement_reply(t);
+    let pause =
+        |t: &str| json!({"title": "Rest", "steps": [{"text": t, "seconds": 20}]}).to_string();
+    let breathing = |t: &str| {
+        json!({"title": "Calm", "phases": [{"cue": "In"}, {"cue": t}, {"cue": "Out"}, {"cue": "Rest"}]})
+            .to_string()
+    };
+    type Make<'a> = &'a dyn Fn(&str) -> String;
+    let cases: [(EngineKind, Make); 3] = [
+        (EngineKind::Movement, &movement),
+        (EngineKind::Pause, &pause),
+        (EngineKind::Breathing, &breathing),
+    ];
+    for (engine, make) in cases {
+        let req = checked(engine);
+        for t in texts {
+            assert_eq!(
+                check_reply(&req, &make(t), false, &accept).unwrap_err(),
+                Problem::Phrase,
+                "{engine:?}: {t}"
+            );
+        }
+        // Curly apostrophes are folded and accepted.
+        assert!(
+            check_reply(&req, &make("Don\u{2019}t lock your knees"), false, &accept).is_ok(),
+            "{engine:?}"
+        );
+    }
+}
+
+#[test]
 fn body_sets_over_the_timing_caps_fail() {
     let req = checked(EngineKind::Movement);
     for over in [
@@ -1113,7 +1154,11 @@ fn strings_of(v: &Value, out: &mut Vec<String>) {
     match v {
         Value::String(s) => out.push(s.clone()),
         Value::Array(a) => a.iter().for_each(|x| strings_of(x, out)),
-        Value::Object(o) => o.values().for_each(|x| strings_of(x, out)),
+        // `kind` is a host-owned enum (breathing phase kinds: "hold" is one), not model text.
+        Value::Object(o) => o
+            .iter()
+            .filter(|(k, _)| k.as_str() != "kind")
+            .for_each(|(_, x)| strings_of(x, out)),
         _ => {}
     }
 }
@@ -1137,8 +1182,9 @@ fn the_built_in_movement_breathing_and_pause_packs_contain_no_refused_phrase() {
             assert!(!all.is_empty());
             for s in all {
                 assert_eq!(refused_phrase_in(e, &s), None, "{p:?}: {s}");
+                // The ASCII rule (model-written text only, but the packs must pass it too).
+                assert!(fold_ascii(&s).is_some(), "{p:?}: not plain ASCII: {s}");
             }
-            assert!(!has_refused_phrase(e, &data));
             packs += 1;
         }
     }

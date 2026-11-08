@@ -410,8 +410,8 @@ fn offline_is_reported_as_offline() {
 #[test]
 fn a_breathing_set_is_filled_from_the_users_pattern() {
     let kind = ProviderKind::OpenAiCompatible;
-    let reply = json!({"title": "Settle", "phases": [{"cue": "In"}, {"cue": "Hold"},
-        {"cue": "Out"}, {"cue": "Hold"}], "closing": "Well done."})
+    let reply = json!({"title": "Settle", "phases": [{"cue": "In"}, {"cue": "Pause"},
+        {"cue": "Out"}, {"cue": "Rest"}], "closing": "Well done."})
     .to_string();
     let mock = start(vec![ok(kind, &reply, 5, 5)]);
     let req = GenerationRequest {
@@ -429,7 +429,7 @@ fn a_breathing_set_is_filled_from_the_users_pattern() {
     assert_eq!(out.data["rounds"], json!(8));
     assert_eq!(
         out.data["phases"][1],
-        json!({"kind": "hold", "seconds": 2, "cue": "Hold"})
+        json!({"kind": "hold", "seconds": 2, "cue": "Pause"})
     );
     let b = body_of(&mock.requests.lock().unwrap()[0]).to_string();
     assert!(
