@@ -167,6 +167,11 @@ pub struct RequestPlan<'a> {
     /// may not get reasoning summaries).
     pub no_summary: bool,
     pub max_output_tokens: u32,
+    /// Replaces the fixed chat system text. `None` sends [`SYSTEM_PROMPT`] or
+    /// [`SYSTEM_PROMPT_WITH_TOOLS`] exactly as before. Only host code sets it (the one-off
+    /// content generation of [`crate::generate`], ADR-028): it is never built from user,
+    /// provider or marketplace text.
+    pub system: Option<&'a str>,
 }
 
 /// A request ready to send. `headers` holds the auth header, which is the only place the key
@@ -223,6 +228,7 @@ pub fn build_request(
             legacy_thinking: false,
             no_summary: false,
             max_output_tokens,
+            system: None,
         },
     )
 }
@@ -286,11 +292,11 @@ pub fn build_plan_request(spec: &ProviderSpec, key: &str, plan: &RequestPlan<'_>
         msgs.append(&mut flatten_rounds(plan.rounds));
     }
     let base = spec.base_url.trim_end_matches('/');
-    let system = if plan.tools {
+    let system = plan.system.unwrap_or(if plan.tools {
         SYSTEM_PROMPT_WITH_TOOLS
     } else {
         SYSTEM_PROMPT
-    };
+    });
     match spec.kind {
         ProviderKind::Anthropic => {
             for r in replay {
@@ -802,6 +808,7 @@ mod tests {
                 legacy_thinking: false,
                 no_summary: false,
                 max_output_tokens: 64,
+                system: None,
             },
         );
         assert!(!String::from_utf8_lossy(&r.body).contains("KEY12345"));

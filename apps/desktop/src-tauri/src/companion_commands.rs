@@ -1967,6 +1967,7 @@ fn deliver(
             legacy_thinking: hint.adaptive_refused,
             no_summary: hint.summary_refused,
             max_output_tokens: kind.chat_output_cap(),
+            system: None,
         };
         let queue = Arc::clone(&core.companion.late_usage);
         let profile_id = prepared.profile.id.clone();

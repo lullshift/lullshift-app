@@ -148,6 +148,7 @@ fn run_opts(
         legacy_thinking: false,
         no_summary: false,
         max_output_tokens: 64,
+        system: None,
     };
     let mut deltas = Vec::new();
     let r = chat_stream(
@@ -497,6 +498,7 @@ fn cancel_returns_at_once_discards_late_chunks_and_books_usage() {
         legacy_thinking: false,
         no_summary: false,
         max_output_tokens: 64,
+        system: None,
     };
     let mut deltas: Vec<String> = Vec::new();
     let mut cancelled_at: Option<Instant> = None;
@@ -767,6 +769,7 @@ fn responses_tool_call_round_trip() {
             legacy_thinking: false,
             no_summary: false,
             max_output_tokens: 64,
+            system: None,
         },
         &cancel,
         |_| {},
@@ -797,6 +800,7 @@ fn responses_tool_call_round_trip() {
             legacy_thinking: false,
             no_summary: false,
             max_output_tokens: 64,
+            system: None,
         },
         &cancel,
         |_| {},
@@ -1451,6 +1455,7 @@ fn run_thinking(
             legacy_thinking: false,
             no_summary: false,
             max_output_tokens: 64,
+            system: None,
         },
         &plain(),
         |d| said.push(d.to_owned()),
