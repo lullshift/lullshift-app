@@ -345,3 +345,41 @@ Status: accepted. The owner asked that leaving a conversation before the reply i
 | The in-flight store is a second source of truth that can lie after a crash | It is memory only; the core's stored state decides after a restart |
 | A late chunk of a cancelled request appears in a newer reply | Events are matched by request id and ignored after the request ends |
 | A background approval is missed | A thread mark, a nav badge count and an assertive notice; the lookup still waits for the user and nothing is sent before the decision |
+
+## Amendment: Thinking (the model's reasoning, shown above the reply)
+
+Where this section differs from the text above, this section wins.
+
+### What and why
+
+When the chosen model reasons, the chat shows a **Thinking** section above the reply: streamed live, open while the model thinks, collapsed once reply text starts, header "Thinking…" / "Thought for 12 s", and still there after a reload. It is what the provider chooses to give (a summary, never promised to be the raw chain of thought).
+
+### Rules
+
+- **Apart from the reply.** Thinking is a separate stream piece (`Piece::Thinking`), a separate event (`StreamEvent::Thinking`) and a separate column. It is never part of the reply text, never in a copy of the reply, never counted in the reply caps, **never sent back to a provider** in later history or tool rounds (history is reply texts only), and never logged. Anthropic `signature_delta` and `redacted_thinking` are ignored whole.
+- **Cleaning and caps.** The same character-by-character cleaning as replies (control, bidi and invisible characters dropped). At most 64 KiB (`MAX_THINKING_BYTES`) per reply, cut on a character boundary with the note "[Thinking cut here.]"; the cap is applied in the core and again, with the note, by the store. The column also has a CHECK (66000 bytes).
+- **Display.** `ThinkingBlock.tsx`: plain React text (no HTML, links or formatting), a button with `aria-expanded`/`aria-controls`, muted token styling, no motion under reduced motion. The user's own click overrides the default open/closed state.
+- **Storage (migration 0020).** `companion_messages.thinking TEXT NULL` and `thinking_ms INTEGER NULL` on the assistant reply only. Old rows stay NULL; an older build ignores the columns (rollback needs no step). The live text is also kept in the in-flight store (memory only) so leaving and returning to a conversation keeps it. Across tool rounds the thinking is joined with a blank line.
+- **Not streamed.** The non-streaming retry (OpenAI) and non-streamed bodies carry no thinking; the reply works without a Thinking section.
+
+### Per provider
+
+- **OpenAI Responses:** `reasoning: {"effort": "low", "summary": "auto"}` on chat requests. `response.reasoning_summary_text.delta` (`delta`) is thinking; `response.reasoning_summary_part.added` after earlier thinking adds a blank line between summary parts. `response.reasoning_text.delta` (raw reasoning) is not in the published event list and is ignored. If the API answers HTTP 400 with a `reasoning...` param (a model without reasoning, or an organisation that may not get summaries) the existing one-time retry without `reasoning` applies and is remembered for the app run.
+- **Anthropic:** thinking is **requested only when models.dev, already in memory, says the model reasons** (`reasoning` flag; the list is memory-only and loaded on request, see decision 32). Unknown means not asked for, but thinking blocks that arrive anyway are shown. Request shape, in order: `thinking: {"type":"adaptive","display":"summarized"}` (Claude 4.6 and later; Claude 5 and later default to `display: omitted`, which streams empty thinking, so `summarized` is needed); on an HTTP 400 that names thinking or reasoning, once `thinking: {"type":"enabled","budget_tokens":2048}` (Claude 4.5 and earlier; 4.7 and later reject it); on a second such 400, no thinking. Each step is remembered per provider and model for the app run (`Learned.adaptive_refused`, `reasoning_refused`). `max_tokens` is the reply cap plus 2048 when thinking is requested (so `max_tokens > budget_tokens`). No `temperature`, `top_p` or `top_k` is ever sent (thinking forbids them; newer API versions reject them). Thinking is **not requested in a request that replays a tool round**: Anthropic then requires the earlier thinking blocks with their signatures, which Lullshift never keeps. The first request of a message may think; after an approved lookup the follow-up does not.
+- **OpenAI-compatible:** `delta.reasoning_content` or `delta.reasoning` (strings) is thinking; nothing extra is requested.
+
+### Threat model additions
+
+| Threat | Handling |
+|---|---|
+| Hostile text in thinking (markup, bidi tricks, control codes, a huge stream) | Plain React text only; the same cleaning as replies; 64 KiB cap in core and store; scrolled box with a height cap |
+| Thinking leaks to the provider again or into the reply | Separate piece, event and column; history is built from reply text only; tests check the request bodies and the reply text |
+| Thinking reaches logs | Never logged; events carry text only to the window that asked |
+| Anthropic signature or redacted data shown or stored | Ignored at the decoder |
+| A model rejects the thinking setting and the send fails | A 400 that names thinking/reasoning is retried at most twice more, in a fixed order; a plain 400 is not retried |
+
+### Sources checked (2026-11-08)
+
+- Anthropic, Extended thinking (`https://platform.claude.com/docs/en/build-with-claude/extended-thinking`) and Thinking (`.../thinking`): `thinking.type` `enabled` with `budget_tokens` (minimum 1024, below `max_tokens`) versus `adaptive`; `display` `summarized`/`omitted`; Claude 4.7 and later reject `enabled`; `thinking_delta` and `signature_delta` stream events and the `thinking` content block; temperature/top_k incompatible with thinking and rejected on newer API versions; thinking blocks must be passed back with tool results.
+- OpenAI OpenAPI description (`openai-openapi`, manual_spec): `Reasoning.summary` (`auto`, `concise`, `detailed`), `response.reasoning_summary_part.added` and `response.reasoning_summary_text.delta` (`item_id`, `output_index`, `summary_index`, `delta`). `response.reasoning_text.delta` was not found there.
+- **Not verified:** any live call; `reasoning_content`/`reasoning` field names on Chat Completions are the common convention of compatible servers (DeepSeek and others), not an OpenAI standard; whether a given OpenAI organisation needs verification for summaries (the retry handles a refusal either way). A live check is in manual test M12-28.

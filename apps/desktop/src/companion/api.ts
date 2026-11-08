@@ -148,6 +148,10 @@ export interface Message {
   toolNotices: ToolNoticeRecord[];
   /** A reply that arrived all at once because the request was not streamed. */
   notStreamed?: boolean;
+  /** The model's reasoning summary for this reply (plain text; never part of `text`). */
+  thinking?: string | null;
+  /** How long the thinking took, in milliseconds. */
+  thinkingMs?: number | null;
 }
 
 export type ToolNoticeReason = "unknown" | "malformed" | "limit";
@@ -190,6 +194,8 @@ export type StreamEvent =
   | { type: "started"; requestId: string }
   | { type: "round"; requestId: string; round: number }
   | { type: "delta"; requestId: string; text: string }
+  /** A piece of the model's reasoning summary, apart from the reply text. */
+  | { type: "thinking"; requestId: string; text: string }
   | {
       type: "toolRequest";
       requestId: string;

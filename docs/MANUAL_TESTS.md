@@ -1464,6 +1464,33 @@ Run on Windows, then macOS, then Linux, in light and dark.
 
 **Result:** \_\_\_
 
+## Companion thinking (ADR-020, Thinking)
+
+Added with the thinking section. The id is the next free M12 number at the time; renumber if another batch used it.
+
+### M12-28: The model's thinking in the chat
+
+Needs a key for a model that reasons, in each of: OpenAI (Responses API, for example a `gpt-5`-class model), Anthropic (for the thinking-on-by-default models use a Claude 5 model; for the older form use Claude Sonnet 4.5 or Haiku 4.5) and, if you have one, an OpenAI-compatible server that sends `reasoning_content` (for example DeepSeek). For Anthropic, first open Settings > Companion > "Load model list from models.dev" once in this app run, so the app knows the model reasons.
+
+1. Send a question that needs some thought ("Plan a 3-step way to split a monolith"). While the model thinks, a **Thinking…** section appears above the (not yet started) reply, **open**, and its text grows. When the first reply words arrive it **collapses** by itself and its header reads **Thought for N s**.
+2. Click the header (or Tab to it and press Enter or Space): it opens and shows the text as plain text with line breaks; press again: it closes. Open it, let the reply finish: it stays open (your choice wins).
+3. During step 1, switch to another conversation or view and come back before the reply ends: the thinking text so far is still there, and it keeps growing.
+4. Let the reply finish, then quit and start Lullshift, open the conversation: the reply still has its **Thought for N s** section, collapsed, above it. The thinking text is not part of the reply text (select the reply and copy: no thinking in it).
+5. Send a follow-up. In a debug build with network logging or a local proxy, check the request body: it contains none of the earlier thinking text (history is the reply texts only).
+6. OpenAI: if the organisation is not verified for reasoning summaries the first request is refused and the app retries once without `reasoning`; the reply works, with no Thinking section. Anthropic: a model that rejects the thinking setting is retried once with the older form and then without; the reply works.
+7. Anthropic with the model list **not** loaded: no thinking is requested, so no Thinking section (unless the model sends one anyway). Turn on reduced motion in the OS: the arrow in the header turns without animation. Check light and dark: the section is muted and readable.
+8. Turn on "Let the Companion look things up", ask something that needs a lookup, approve it: the reply works, and the thinking of the rounds is shown together.
+
+**Expected:**
+
+- **Steps 1 and 2:** live, open while thinking, collapsed when the reply starts, header with the duration, keyboard operable, user choice kept.
+- **Steps 3 and 4:** nothing lost when leaving; stored with the reply; never mixed into the reply text.
+- **Step 5:** thinking is never sent back to the provider.
+- **Steps 6 and 7:** a refusal costs one extra request at most and never an error; unknown models are not asked to think.
+- **Step 8:** lookups still work with thinking.
+
+**Result:** \_\_\_
+
 ## Website and demo mode
 
 ### W-1: Browser demo of the desktop UI

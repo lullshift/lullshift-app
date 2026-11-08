@@ -188,7 +188,7 @@ pub struct ErrorFacts {
     pub param: Option<String>,
     pub code: Option<String>,
     pub err_type: Option<String>,
-    /// The (raw) message mentions "reasoning".
+    /// The (raw) message mentions "reasoning" or "thinking".
     pub mentions_reasoning: bool,
 }
 
@@ -209,6 +209,12 @@ impl ErrorFacts {
     pub fn refuses_stream(&self) -> bool {
         self.param.as_deref() == Some("stream")
     }
+}
+
+/// The message names the reasoning option: OpenAI says "reasoning", Anthropic says "thinking".
+fn names_reasoning(m: &str) -> bool {
+    let l = m.to_ascii_lowercase();
+    l.contains("reasoning") || l.contains("thinking")
 }
 
 fn short_id(s: Option<&str>) -> Option<String> {
@@ -234,7 +240,7 @@ pub fn parse_with_facts(body: &[u8], key: &str, echoes: &Echoes) -> (Option<Reas
         serde_json::Value::String(s) => (
             Some(s.as_str()),
             ErrorFacts {
-                mentions_reasoning: s.to_ascii_lowercase().contains("reasoning"),
+                mentions_reasoning: names_reasoning(s),
                 ..ErrorFacts::default()
             },
         ),
@@ -248,8 +254,7 @@ pub fn parse_with_facts(body: &[u8], key: &str, echoes: &Echoes) -> (Option<Reas
                     param: short_id(str_field(err, "param")),
                     code: short_id(str_field(err, "code")),
                     err_type: short_id(str_field(err, "type")),
-                    mentions_reasoning: str_field(err, "message")
-                        .is_some_and(|m| m.to_ascii_lowercase().contains("reasoning")),
+                    mentions_reasoning: str_field(err, "message").is_some_and(names_reasoning),
                 },
             )
         }

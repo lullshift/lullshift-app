@@ -428,6 +428,13 @@ export interface PendingTool {
 export interface StreamState {
   requestId: string;
   text: string;
+  /** The model's reasoning summary so far (all rounds), shown apart from the reply. */
+  thinking: string;
+  /** When the first and the latest piece of thinking arrived (ms since the epoch). */
+  thinkingFirst: number | null;
+  thinkingLast: number | null;
+  /** The round the latest thinking belongs to. */
+  thinkingRound: number;
   round: number;
   /** A lookup waiting for Approve or Decline. */
   pending: PendingTool | null;
@@ -440,7 +447,26 @@ export interface StreamState {
 }
 
 export function initialStream(requestId: string): StreamState {
-  return { requestId, text: "", round: 1, pending: null, skipped: [], answered: [], notices: [] };
+  return {
+    requestId,
+    text: "",
+    thinking: "",
+    thinkingFirst: null,
+    thinkingRound: 1,
+    thinkingLast: null,
+    round: 1,
+    pending: null,
+    skipped: [],
+    answered: [],
+    notices: [],
+  };
+}
+
+/** How long the model has been thinking, in milliseconds, or null if it has not. */
+export function thinkingMs(s: StreamState): number | null {
+  return s.thinkingFirst !== null && s.thinkingLast !== null
+    ? s.thinkingLast - s.thinkingFirst
+    : null;
 }
 
 /**
@@ -457,6 +483,18 @@ export function reduceStream(s: StreamState, e: StreamEvent): StreamState {
       return { ...s, round: e.round, text: "", pending: null };
     case "delta":
       return { ...s, text: s.text + e.text };
+    case "thinking": {
+      const at = Date.now();
+      return {
+        ...s,
+        // A new round's thinking follows the last, set apart by a blank line.
+        thinking:
+          s.thinking + (s.thinking !== "" && s.round > s.thinkingRound ? "\n\n" : "") + e.text,
+        thinkingRound: s.round,
+        thinkingFirst: s.thinkingFirst ?? at,
+        thinkingLast: at,
+      };
+    }
     case "toolRequest":
       return {
         ...s,

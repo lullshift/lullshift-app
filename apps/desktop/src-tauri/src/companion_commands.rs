@@ -398,6 +398,10 @@ pub struct MessageDto {
     /// The reply arrived all at once because the request was not streamed (a delivery note
     /// only; never part of the text and never replayed).
     not_streamed: bool,
+    /// The model's reasoning summary for this reply (plain text; never part of `text`).
+    thinking: Option<String>,
+    /// How long the thinking took, in milliseconds.
+    thinking_ms: Option<i64>,
 }
 
 /// A call that was not run: why, and the tool name only if it was a short safe identifier.
@@ -512,6 +516,11 @@ pub enum StreamEvent {
         request_id: String,
         text: String,
     },
+    /// A piece of the model's reasoning summary, apart from the reply text.
+    Thinking {
+        request_id: String,
+        text: String,
+    },
     /// The model asked for a lookup. `result_text` is exactly what would be sent. Nothing is sent
     /// until the UI answers with `companion_tool_decision`.
     ToolRequest {
@@ -581,6 +590,8 @@ impl From<CompanionMessage> for MessageDto {
             tool_calls: Vec::new(),
             tool_notices: Vec::new(),
             not_streamed: m.no_stream,
+            thinking: m.thinking,
+            thinking_ms: m.thinking_ms,
         }
     }
 }
@@ -1509,6 +1520,23 @@ fn fail_message(core: &Core, user_message: i64, e: &CompanionError) {
     }
 }
 
+/// Whether models.dev (the list already in memory; nothing is fetched) says this Anthropic model
+/// reasons. Unknown (list not loaded, model not listed) is `false`: thinking is then not asked
+/// for, but thinking blocks that arrive anyway are still shown.
+fn catalog_says_reasoning(core: &Core, model: &str) -> bool {
+    core.companion
+        .catalog
+        .cached()
+        .ok()
+        .flatten()
+        .and_then(|l| {
+            l.catalog
+                .provider("anthropic")
+                .and_then(|p| p.models.iter().find(|m| m.id == model).map(|m| m.reasoning))
+        })
+        .unwrap_or(false)
+}
+
 /// What this model refused earlier in this app run (OpenAI Responses `reasoning`, `stream`).
 fn hints_for(core: &Core, profile_id: &str, model: &str) -> Learned {
     core.companion
@@ -1521,7 +1549,7 @@ fn hints_for(core: &Core, profile_id: &str, model: &str) -> Learned {
 
 /// Remembers a refusal a call just taught, for the rest of this app run. Nothing is stored.
 fn learn(core: &Core, profile_id: &str, model: &str, learned: Learned) {
-    if !(learned.reasoning_refused || learned.stream_refused) {
+    if !(learned.reasoning_refused || learned.stream_refused || learned.adaptive_refused) {
         return;
     }
     if let Ok(mut h) = core.companion.hints.lock() {
@@ -1530,6 +1558,7 @@ fn learn(core: &Core, profile_id: &str, model: &str, learned: Learned) {
             .or_default();
         e.reasoning_refused |= learned.reasoning_refused;
         e.stream_refused |= learned.stream_refused;
+        e.adaptive_refused |= learned.adaptive_refused;
     }
 }
 
@@ -1695,6 +1724,10 @@ fn deliver(
     let mut calls_used = 0usize;
     let (mut total_in, mut total_out) = (0i64, 0i64);
     let mut round_no: u32 = 0;
+    // The model's reasoning summary across the rounds of this message, and when it started and
+    // last grew (for "Thought for N s"). Held in memory only until the reply is stored.
+    let mut all_thinking = String::new();
+    let (mut think_first, mut think_last): (Option<Instant>, Option<Instant>) = (None, None);
     // Any call of this message arrived all at once (shown as a note next to the reply).
     let mut not_streamed = false;
     let err: CompanionError = loop {
@@ -1716,7 +1749,13 @@ fn deliver(
             rounds: &rounds,
             tools: offer,
             stream: !hint.stream_refused,
-            reasoning: kind == ProviderKind::OpenAi && !hint.reasoning_refused,
+            reasoning: !hint.reasoning_refused
+                && match kind {
+                    ProviderKind::OpenAi => true,
+                    ProviderKind::Anthropic => catalog_says_reasoning(core, &prepared.model),
+                    ProviderKind::OpenAiCompatible => false,
+                },
+            legacy_thinking: hint.adaptive_refused,
             max_output_tokens: kind.chat_output_cap(),
         };
         let queue = Arc::clone(&core.companion.late_usage);
@@ -1731,6 +1770,15 @@ fn deliver(
                 emit(StreamEvent::Delta {
                     request_id: request_id.to_owned(),
                     text: d.to_owned(),
+                });
+            },
+            |t| {
+                let now = Instant::now();
+                think_first.get_or_insert(now);
+                think_last = Some(now);
+                emit(StreamEvent::Thinking {
+                    request_id: request_id.to_owned(),
+                    text: t.to_owned(),
                 });
             },
             move |u| {
@@ -1766,6 +1814,12 @@ fn deliver(
                     );
                     break CompanionError::cancelled();
                 }
+                if !reply.thinking.is_empty() {
+                    if !all_thinking.is_empty() {
+                        all_thinking.push_str("\n\n");
+                    }
+                    all_thinking.push_str(&reply.thinking);
+                }
                 total_in = total_in.saturating_add(reply.input_tokens);
                 total_out = total_out.saturating_add(reply.output_tokens);
                 if reply.tool_calls.is_empty() || !offer {
@@ -1782,13 +1836,21 @@ fn deliver(
                     // the store lock: a cancel that came after the check above, followed by a
                     // newer message, can no longer let this reply land after that message.
                     let done = with_store(core, |s| {
-                        s.companion_complete_send_flagged(
+                        let thought_ms = match (think_first, think_last) {
+                            (Some(a), Some(b)) => {
+                                i64::try_from(b.duration_since(a).as_millis()).unwrap_or(0)
+                            }
+                            _ => 0,
+                        };
+                        s.companion_complete_send_thinking(
                             user_message,
                             &reply.text,
                             (total_in, total_out),
                             (reply.input_tokens, reply.output_tokens),
                             OffsetDateTime::now_utc(),
                             not_streamed,
+                            (!all_thinking.is_empty())
+                                .then_some((all_thinking.as_str(), thought_ms)),
                             &|| !guard.token().is_cancelled(),
                         )
                     });

@@ -31,7 +31,7 @@ pub mod stream;
 pub mod tools;
 pub mod url_check;
 
-pub use chat_stream::Learned;
+pub use chat_stream::{Learned, MAX_THINKING_BYTES};
 pub use chat_stream::{StreamFailure, StreamReply, chat_stream};
 pub use error::ProviderReason;
 pub use error::{CompanionError, ErrorKind};

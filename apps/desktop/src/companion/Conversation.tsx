@@ -29,8 +29,10 @@ import {
   plainLines,
   sharedLabel,
   streamStatus,
+  thinkingMs,
   withoutInFlightMessage,
 } from "./logic";
+import { ThinkingBlock } from "./ThinkingBlock";
 import { threadLabel } from "./ThreadList";
 import { ToolApprovalCard, ToolNotices, ToolRecords } from "./ToolCards";
 
@@ -89,6 +91,7 @@ function MessageItem({
   return (
     <li className={`msg ${mine ? "msg-user" : "msg-assistant"}`}>
       <span className="msg-who">{mine ? "You" : "Companion"}</span>
+      {!mine && <ThinkingBlock text={message.thinking ?? ""} ms={message.thinkingMs} />}
       {mine ? <PlainText text={message.text} /> : <ReplyText text={message.text} />}
       {!mine && (
         <p className="msg-model">
@@ -451,13 +454,18 @@ export function Conversation({
               <p className="msg-note">{stream && stream.text ? "Sent." : "Sending…"}</p>
             </li>
           )}
-          {stream && stream.text !== "" && (
+          {stream && (stream.text !== "" || stream.thinking !== "") && (
             // Not a live region: the text grows token by token. A short status sentence in the
             // hidden live region tells screen-reader users the reply is coming, and the finished
             // reply is announced once.
             <li className="msg msg-assistant msg-streaming" aria-busy="true">
               <span className="msg-who">Companion</span>
-              <ReplyText text={stream.text} streaming />
+              <ThinkingBlock
+                text={stream.thinking}
+                ms={thinkingMs(stream)}
+                active={stream.text === ""}
+              />
+              {stream.text !== "" && <ReplyText text={stream.text} streaming />}
               <p className="msg-note">Still writing. You can cancel at any time.</p>
             </li>
           )}

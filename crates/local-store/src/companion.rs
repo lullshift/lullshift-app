@@ -78,6 +78,11 @@ pub struct CompanionMessage {
     pub error_reason: Option<String>,
     /// A reply that arrived all at once because the request was not streamed (migration 19).
     pub no_stream: bool,
+    /// The model's reasoning summary, plain text (migration 20). Only on assistant replies. Never
+    /// part of `text`, never sent back to a provider.
+    pub thinking: Option<String>,
+    /// How long the thinking took, in milliseconds.
+    pub thinking_ms: Option<i64>,
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
     pub profile_id: Option<String>,
@@ -167,8 +172,36 @@ pub fn month_of(t: OffsetDateTime) -> String {
     format!("{:04}-{:02}", t.year(), u8::from(t.month()))
 }
 
+/// Most thinking text stored per reply, in bytes (a note is added when it is cut).
+pub const MAX_THINKING_BYTES: usize = 64 * 1024;
+
+const THINKING_NOTE: &str = "\n\n[Thinking cut here.]";
+
+/// Cleans reasoning text the way reply text is cleaned (control characters except newline and
+/// tab, and bidi or invisible formatting characters, are dropped) and caps it. `None` for blank.
+pub fn clean_thinking(s: &str) -> Option<String> {
+    let mut t: String = s
+        .chars()
+        .filter(|c| {
+            (!c.is_control() || *c == '\n' || *c == '\t') && !agent_core::text::is_invisible(*c)
+        })
+        .collect();
+    if t.trim().is_empty() {
+        return None;
+    }
+    if t.len() > MAX_THINKING_BYTES {
+        let mut end = MAX_THINKING_BYTES;
+        while !t.is_char_boundary(end) {
+            end -= 1;
+        }
+        t.truncate(end);
+        t.push_str(THINKING_NOTE);
+    }
+    Some(t)
+}
+
 const MSG_COLS: &str = "id, thread_id, role, text, attached_context, scope_kind, status, error_kind, \
-     error_message, input_tokens, output_tokens, profile_id, model, host, created_utc, \n     error_reason_by, error_reason, no_stream";
+     error_message, input_tokens, output_tokens, profile_id, model, host, created_utc, \n     error_reason_by, error_reason, no_stream, thinking, thinking_ms";
 
 fn msg_row(r: &Row<'_>) -> rusqlite::Result<CompanionMessage> {
     Ok(CompanionMessage {
@@ -190,6 +223,8 @@ fn msg_row(r: &Row<'_>) -> rusqlite::Result<CompanionMessage> {
         error_reason_by: r.get(15)?,
         error_reason: r.get(16)?,
         no_stream: r.get::<_, i64>(17)? != 0,
+        thinking: r.get(18)?,
+        thinking_ms: r.get(19)?,
     })
 }
 
@@ -930,6 +965,35 @@ impl Store {
         no_stream: bool,
         proceed: &dyn Fn() -> bool,
     ) -> Result<Option<CompanionMessage>> {
+        self.companion_complete_send_thinking(
+            user_message,
+            reply,
+            shown,
+            booked,
+            now,
+            no_stream,
+            None,
+            proceed,
+        )
+    }
+
+    /// Like [`Self::companion_complete_send_flagged`], also storing the model's reasoning summary
+    /// with the reply: `thinking` is `(text, milliseconds)`. The text is cleaned (control and
+    /// invisible characters dropped) and capped at [`MAX_THINKING_BYTES`] on a character
+    /// boundary, with a note when cut; blank text is stored as nothing.
+    #[allow(clippy::too_many_arguments)]
+    pub fn companion_complete_send_thinking(
+        &mut self,
+        user_message: i64,
+        reply: &str,
+        shown: (i64, i64),
+        booked: (i64, i64),
+        now: OffsetDateTime,
+        no_stream: bool,
+        thinking: Option<(&str, i64)>,
+        proceed: &dyn Fn() -> bool,
+    ) -> Result<Option<CompanionMessage>> {
+        let thinking = thinking.and_then(|(t, ms)| clean_thinking(t).map(|t| (t, ms.max(0))));
         let (input_tokens, output_tokens) = shown;
         let (booked_input, booked_output) = booked;
         let ts = fmt_ts(now)?;
@@ -955,8 +1019,8 @@ impl Store {
         tx.execute(
             "INSERT INTO companion_messages
                (thread_id, role, text, scope_kind, status, output_tokens, profile_id, model, host,
-                created_utc, no_stream)
-             VALUES (?1, 'assistant', ?2, 'none', 'sent', ?3, ?4, ?5, ?6, ?7, ?8)",
+                created_utc, no_stream, thinking, thinking_ms)
+             VALUES (?1, 'assistant', ?2, 'none', 'sent', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 thread,
                 reply,
@@ -965,7 +1029,9 @@ impl Store {
                 model,
                 host,
                 ts,
-                i64::from(no_stream)
+                i64::from(no_stream),
+                thinking.as_ref().map(|t| t.0.as_str()),
+                thinking.as_ref().map(|t| t.1)
             ],
         )
         .map_err(check_invalid)?;

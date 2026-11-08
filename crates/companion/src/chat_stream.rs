@@ -37,7 +37,12 @@ use crate::url_check::check_base_url;
 pub struct Learned {
     pub reasoning_refused: bool,
     pub stream_refused: bool,
+    /// Anthropic: `thinking: adaptive` was refused and the legacy `enabled` form was used.
+    pub adaptive_refused: bool,
 }
+
+/// Most thinking text kept per reply (bytes). More is dropped and `thinking_cut` is set.
+pub const MAX_THINKING_BYTES: usize = 64 * 1024;
 
 /// A finished (or cut) streamed reply.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +54,11 @@ pub struct StreamReply {
     pub learned: Learned,
     /// Cleaned text; may be empty when the model only asked for lookups.
     pub text: String,
+    /// Cleaned reasoning summary, shown apart from the reply. Never part of `text`, never sent
+    /// back to a provider. Capped at [`MAX_THINKING_BYTES`].
+    pub thinking: String,
+    /// More thinking arrived than was kept.
+    pub thinking_cut: bool,
     pub tool_calls: Vec<ToolCall>,
     pub input_tokens: i64,
     pub output_tokens: i64,
@@ -96,6 +106,7 @@ impl StreamFailure {
 enum Msg {
     Activity,
     Delta(String),
+    Thinking(String),
     /// The worker is about to send a request that cannot stream: the whole reply is produced
     /// before the first byte, so the caller must wait for the total timeout, not the first-byte one.
     Retrying,
@@ -170,7 +181,9 @@ fn stream_call(
         // The structured fields decide the retries even when the text was dropped (for example by
         // the echo check). Models without a `reasoning` setting answer in a few shapes.
         let official = status == 400 && kind == ProviderKind::OpenAi;
-        failure.reasoning_refused = official && facts.refuses_reasoning();
+        let reasoning_400 =
+            status == 400 && matches!(kind, ProviderKind::OpenAi | ProviderKind::Anthropic);
+        failure.reasoning_refused = reasoning_400 && facts.refuses_reasoning();
         failure.stream_refused = official && facts.refuses_stream();
         return Err(failure);
     }
@@ -181,6 +194,8 @@ fn stream_call(
         .is_some_and(|v| v.to_ascii_lowercase().starts_with("text/event-stream"));
 
     let mut text = String::new();
+    let mut thinking = String::new();
+    let mut thinking_cut = false;
     let mut calls: Vec<ToolCall> = Vec::new();
     let mut tally = Tally {
         input: None,
@@ -324,6 +339,8 @@ fn stream_call(
         return Ok(StreamReply {
             streamed: false,
             learned: Learned::default(),
+            thinking: String::new(),
+            thinking_cut: false,
             text: t,
             tool_calls,
             input_tokens,
@@ -421,6 +438,24 @@ fn stream_call(
                             break 'read;
                         }
                     }
+                    Piece::Thinking(t) => {
+                        let mut clean = clean_chunk(&t);
+                        let room = MAX_THINKING_BYTES.saturating_sub(thinking.len());
+                        if clean.len() > room {
+                            let mut end = room;
+                            while !clean.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            clean.truncate(end);
+                            thinking_cut = true;
+                        }
+                        if !clean.is_empty() {
+                            thinking.push_str(&clean);
+                            if handoff.load(Ordering::SeqCst) != ABANDONED {
+                                let _ = tx.send(Msg::Thinking(clean));
+                            }
+                        }
+                    }
                     Piece::Tool(c) => {
                         if tools_on {
                             calls.push(c);
@@ -469,6 +504,8 @@ fn stream_call(
     Ok(StreamReply {
         streamed: true,
         learned: Learned::default(),
+        thinking,
+        thinking_cut,
         text,
         tool_calls: calls,
         input_tokens,
@@ -480,21 +517,25 @@ fn stream_call(
 
 /// Streams one provider call.
 ///
-/// - `on_delta` gets each cleaned chunk on the calling thread, never after a cancel.
+/// - `on_delta` gets each cleaned chunk on the calling thread, never after a cancel;
+///   `on_thinking` gets each cleaned chunk of the reasoning summary the same way.
 /// - On cancel or silence timeout this returns at once; `on_abandoned` later runs on the worker
 ///   with what the call cost (the provider's numbers if it gave them, otherwise an estimate from
 ///   the request and the text received). It does not run when this returns normally.
-pub fn chat_stream<F, A>(
+#[allow(clippy::too_many_arguments)]
+pub fn chat_stream<F, T, A>(
     cfg: &HttpConfig,
     spec: &ProviderSpec,
     key: &Secret,
     plan: &RequestPlan<'_>,
     cancel: &CancelToken,
     mut on_delta: F,
+    mut on_thinking: T,
     on_abandoned: A,
 ) -> Result<StreamReply, StreamFailure>
 where
     F: FnMut(&str),
+    T: FnMut(&str),
     A: FnOnce(LateUsage) + Send + 'static,
 {
     let checked = check_base_url(&spec.base_url).map_err(StreamFailure::bare)?;
@@ -502,33 +543,45 @@ where
         base_url: checked.url,
         ..spec.clone()
     };
-    // OpenAI Responses only: the request may have to be repeated without `reasoning` (the model
-    // has no such setting) and/or without `stream` (the organisation may not stream). Each is
-    // tried once, so build the (at most four) variants now.
-    let reasoning0 = kind_is_openai(&spec) && plan.reasoning;
+    // The request may have to be repeated without `reasoning` (the model has no such setting),
+    // for Anthropic first with the legacy `thinking: enabled` form (the model rejects
+    // `adaptive`), and for OpenAI Responses without `stream` (the organisation may not stream).
+    // Each step is tried once, so build the variants now. Key: (reasoning, legacy, stream).
+    let anthropic = spec.kind == ProviderKind::Anthropic;
+    let reasoning0 = (kind_is_openai(&spec) && plan.reasoning)
+        || (anthropic && plan.reasoning && crate::provider::anthropic_thinking_sent(plan));
+    let legacy0 = anthropic && reasoning0 && plan.legacy_thinking;
     let stream0 = plan.stream;
-    let mut variants: Vec<((bool, bool), BuiltRequest)> = Vec::new();
-    let mut want = vec![(reasoning0, stream0)];
-    if kind_is_openai(&spec) {
+    let mut variants: Vec<((bool, bool, bool), BuiltRequest)> = Vec::new();
+    let mut want = vec![(reasoning0, legacy0, stream0)];
+    let mut push = |k: (bool, bool, bool)| {
+        if !want.contains(&k) {
+            want.push(k);
+        }
+    };
+    let can_retry_stream = kind_is_openai(&spec) && stream0;
+    for st in [stream0, false] {
+        if st != stream0 && !can_retry_stream {
+            continue;
+        }
+        push((reasoning0, legacy0, st));
+        if anthropic && reasoning0 {
+            push((true, true, st));
+        }
         if reasoning0 {
-            want.push((false, stream0));
-        }
-        if stream0 {
-            want.push((reasoning0, false));
-        }
-        if reasoning0 && stream0 {
-            want.push((false, false));
+            push((false, false, st));
         }
     }
-    for (r, s) in want {
+    for (r, l, st) in want {
         variants.push((
-            (r, s),
+            (r, l, st),
             build_plan_request(
                 &spec,
                 key.expose(),
                 &RequestPlan {
                     reasoning: r,
-                    stream: s,
+                    legacy_thinking: l,
+                    stream: st,
                     ..*plan
                 },
             ),
@@ -557,7 +610,11 @@ where
                     .flat_map(|r| std::iter::once(r.text.clone()).chain(r.results.iter().cloned())),
             ),
         )),
-        max_out: i64::from(plan.max_output_tokens),
+        max_out: i64::from(if anthropic {
+            crate::provider::anthropic_max_tokens(plan)
+        } else {
+            plan.max_output_tokens
+        }),
     };
     let kind = spec.kind;
     let tools_on = plan.tools;
@@ -567,13 +624,16 @@ where
     let handoff = Arc::new(AtomicU8::new(PENDING));
     let worker_handoff = Arc::clone(&handoff);
     std::thread::spawn(move || {
-        let (mut reasoning, mut stream) = (reasoning0, stream0);
+        let (mut reasoning, mut legacy, mut stream) = (reasoning0, legacy0, stream0);
         let mut learned = Learned::default();
         // A request that cannot stream costs the provider the whole reply before the first byte.
         let mut non_stream_sent = !stream0 && kind == ProviderKind::OpenAi;
         let mut result;
         loop {
-            let Some(pos) = variants.iter().position(|(k, _)| *k == (reasoning, stream)) else {
+            let Some(pos) = variants
+                .iter()
+                .position(|(k, _)| *k == (reasoning, legacy, stream))
+            else {
                 result = Err(StreamFailure::bare(CompanionError::internal()));
                 break;
             };
@@ -596,8 +656,14 @@ where
             match &result {
                 // The model has no `reasoning` setting: repeat without it, once.
                 Err(f) if f.reasoning_refused && reasoning => {
-                    reasoning = false;
-                    learned.reasoning_refused = true;
+                    if kind == ProviderKind::Anthropic && !legacy {
+                        legacy = true;
+                        learned.adaptive_refused = true;
+                    } else {
+                        reasoning = false;
+                        legacy = false;
+                        learned.reasoning_refused = true;
+                    }
                 }
                 // OpenAI refuses `stream: true` (organisation not verified): repeat without it,
                 // once. The caller is told so it waits for the total time, not the first byte.
@@ -659,6 +725,13 @@ where
                 seen = true;
                 if !cancel.is_cancelled() {
                     on_delta(&t);
+                }
+            }
+            Ok(Msg::Thinking(t)) => {
+                last = Instant::now();
+                seen = true;
+                if !cancel.is_cancelled() {
+                    on_thinking(&t);
                 }
             }
             Ok(Msg::Activity) => {

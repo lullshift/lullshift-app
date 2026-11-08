@@ -1539,6 +1539,7 @@ fn refused_options_are_remembered_per_provider_and_model_for_the_app_run_only() 
         Learned {
             reasoning_refused: false,
             stream_refused: true,
+            ..Learned::default()
         },
     );
     learn(
@@ -1548,6 +1549,7 @@ fn refused_options_are_remembered_per_provider_and_model_for_the_app_run_only() 
         Learned {
             reasoning_refused: true,
             stream_refused: false,
+            ..Learned::default()
         },
     );
     let h = hints_for(&core, "p1", "m1");

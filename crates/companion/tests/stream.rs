@@ -145,6 +145,7 @@ fn run_opts(
         tools,
         stream: opts.0,
         reasoning: opts.1,
+        legacy_thinking: false,
         max_output_tokens: 64,
     };
     let mut deltas = Vec::new();
@@ -155,6 +156,7 @@ fn run_opts(
         &plan,
         cancel,
         |d| deltas.push(d.to_owned()),
+        |_| {},
         move |u| {
             if let Some(tx) = late {
                 let _ = tx.send(u);
@@ -491,6 +493,7 @@ fn cancel_returns_at_once_discards_late_chunks_and_books_usage() {
         tools: false,
         stream: true,
         reasoning: false,
+        legacy_thinking: false,
         max_output_tokens: 64,
     };
     let mut deltas: Vec<String> = Vec::new();
@@ -508,6 +511,7 @@ fn cancel_returns_at_once_discards_late_chunks_and_books_usage() {
                 cancel.cancel();
             }
         },
+        |_| {},
         move |u| {
             let _ = tx.send(u);
         },
@@ -758,9 +762,11 @@ fn responses_tool_call_round_trip() {
             tools: true,
             stream: true,
             reasoning: false,
+            legacy_thinking: false,
             max_output_tokens: 64,
         },
         &cancel,
+        |_| {},
         |_| {},
         |_| {},
     )
@@ -785,9 +791,11 @@ fn responses_tool_call_round_trip() {
             tools: true,
             stream: true,
             reasoning: false,
+            legacy_thinking: false,
             max_output_tokens: 64,
         },
         &cancel,
+        |_| {},
         |_| {},
         |_| {},
     )
@@ -1388,4 +1396,228 @@ fn a_malformed_event_books_the_estimate_not_the_output_cap() {
         false,
     );
     assert!(r.unwrap_err().output_tokens < 64);
+}
+
+// ---- thinking (reasoning summary) -----------------------------------------------------------
+
+fn anthropic_thinking_stream() -> String {
+    [
+        r#"{"type":"message_start","message":{"usage":{"input_tokens":12,"output_tokens":1}}}"#,
+        r#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#,
+        r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Weigh the "}}"#,
+        r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"options.\u0007"}}"#,
+        r#"{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"SIGSECRET"}}"#,
+        r#"{"type":"content_block_stop","index":0}"#,
+        r#"{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}"#,
+        r#"{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Do A."}}"#,
+        r#"{"type":"content_block_stop","index":1}"#,
+        r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":9}}"#,
+        r#"{"type":"message_stop"}"#,
+    ]
+    .iter()
+    .map(|e| ev(e))
+    .collect()
+}
+
+type Thought = (
+    Result<companion::StreamReply, companion::StreamFailure>,
+    Vec<String>,
+    Vec<String>,
+);
+
+fn run_thinking(
+    mock: &Mock,
+    kind: ProviderKind,
+    rounds: &[companion::ToolExchange],
+    tools: bool,
+) -> Thought {
+    let key = Secret::parse(KEY).unwrap();
+    let m = msgs();
+    let (mut said, mut thought) = (Vec::new(), Vec::new());
+    let r = chat_stream(
+        &HttpConfig::default(),
+        &spec(kind, &mock.base),
+        &key,
+        &RequestPlan {
+            messages: &m,
+            rounds,
+            tools,
+            stream: true,
+            reasoning: true,
+            legacy_thinking: false,
+            max_output_tokens: 64,
+        },
+        &plain(),
+        |d| said.push(d.to_owned()),
+        |t| thought.push(t.to_owned()),
+        |_| {},
+    );
+    (r, said, thought)
+}
+
+#[test]
+fn anthropic_thinking_streams_apart_from_the_reply_and_adaptive_is_requested() {
+    let mock = start_scripted(vec![Resp::sse(&anthropic_thinking_stream())]);
+    let (r, said, thought) = run_thinking(&mock, ProviderKind::Anthropic, &[], false);
+    let r = r.unwrap();
+    assert_eq!(r.text, "Do A.");
+    assert_eq!(said.concat(), "Do A.");
+    assert_eq!(thought.concat(), "Weigh the options.");
+    assert_eq!(r.thinking, "Weigh the options.");
+    assert!(!r.text.contains("Weigh") && !r.thinking.contains("SIGSECRET"));
+    let reqs = mock.requests.lock().unwrap();
+    let b = body_of(&reqs[0]);
+    assert_eq!(b["thinking"]["type"], "adaptive");
+    assert_eq!(b["thinking"]["display"], "summarized");
+    assert!(b.get("temperature").is_none() && b.get("top_p").is_none());
+    assert_eq!(b["max_tokens"], 64 + 2048);
+}
+
+fn thinking_refused() -> Resp {
+    Resp::json(
+        400,
+        r#"{"type":"error","error":{"type":"invalid_request_error","message":"\"thinking.type.adaptive\" is not supported for this model."}}"#,
+    )
+}
+
+#[test]
+fn anthropic_falls_back_from_adaptive_to_enabled_to_none() {
+    // adaptive refused -> legacy enabled works.
+    let mock = start_scripted(vec![
+        thinking_refused(),
+        Resp::sse(&anthropic_thinking_stream()),
+    ]);
+    let (r, _, thought) = run_thinking(&mock, ProviderKind::Anthropic, &[], false);
+    let r = r.unwrap();
+    assert!(r.learned.adaptive_refused && !r.learned.reasoning_refused);
+    assert_eq!(thought.concat(), "Weigh the options.");
+    {
+        let reqs = mock.requests.lock().unwrap();
+        assert_eq!(reqs.len(), 2);
+        let b = body_of(&reqs[1]);
+        assert_eq!(b["thinking"]["type"], "enabled");
+        assert_eq!(b["thinking"]["budget_tokens"], 2048);
+        assert!(b["max_tokens"].as_u64().unwrap() > 2048);
+    }
+    // both refused -> no thinking at all, three requests at most.
+    let mock = start_scripted(vec![
+        thinking_refused(),
+        thinking_refused(),
+        Resp::sse(&anthropic_thinking_stream()),
+    ]);
+    let (r, _, _) = run_thinking(&mock, ProviderKind::Anthropic, &[], false);
+    let r = r.unwrap();
+    assert!(r.learned.reasoning_refused);
+    let reqs = mock.requests.lock().unwrap();
+    assert_eq!(reqs.len(), 3);
+    let last = body_of(&reqs[2]);
+    assert!(last.get("thinking").is_none());
+    assert_eq!(last["max_tokens"], 64);
+    drop(reqs);
+    // A plain 400 that does not mention thinking is not retried.
+    let mock = start_scripted(vec![Resp::json(
+        400,
+        r#"{"type":"error","error":{"type":"invalid_request_error","message":"max_tokens: too large"}}"#,
+    )]);
+    let (r, _, _) = run_thinking(&mock, ProviderKind::Anthropic, &[], false);
+    assert!(r.is_err());
+    assert_eq!(mock.requests.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn anthropic_in_a_tool_round_sends_no_thinking_and_history_never_carries_it() {
+    let call = ToolCall {
+        id: "toolu_1".to_owned(),
+        name: "suggest_break".to_owned(),
+        arguments: "{}".to_owned(),
+    };
+    let rounds = [companion::ToolExchange {
+        text: "Looking that up.".to_owned(),
+        calls: vec![call],
+        results: vec!["ok".to_owned()],
+    }];
+    let mock = start_scripted(vec![Resp::sse(&anthropic_thinking_stream())]);
+    let (r, _, thought) = run_thinking(&mock, ProviderKind::Anthropic, &rounds, true);
+    let r = r.unwrap();
+    let reqs = mock.requests.lock().unwrap();
+    let b = body_of(&reqs[0]);
+    assert!(b.get("thinking").is_none());
+    assert_eq!(b["max_tokens"], 64);
+    // Thinking that arrives anyway is still shown, and still not part of the reply.
+    assert_eq!(thought.concat(), "Weigh the options.");
+    assert_eq!(r.text, "Do A.");
+    drop(reqs);
+    // The final no-tools request flattens the round to text; none of it carries thinking.
+    let (_, _, _) = run_thinking(&mock, ProviderKind::Anthropic, &rounds, false);
+    let reqs = mock.requests.lock().unwrap();
+    assert!(!reqs[1].contains("Weigh the options"));
+    assert!(!reqs[1].contains("SIGSECRET"));
+    assert!(body_of(&reqs[1]).get("thinking").is_some());
+}
+
+#[test]
+fn responses_reasoning_summary_is_requested_and_streamed_as_thinking() {
+    let stream = [
+        r#"{"type":"response.reasoning_summary_part.added","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}"#,
+        r#"{"type":"response.reasoning_summary_text.delta","output_index":0,"summary_index":0,"delta":"Check the "}"#,
+        r#"{"type":"response.reasoning_summary_text.delta","output_index":0,"summary_index":0,"delta":"facts."}"#,
+        r#"{"type":"response.output_text.delta","output_index":1,"delta":"Answer."}"#,
+        r#"{"type":"response.completed","response":{"usage":{"input_tokens":4,"output_tokens":6}}}"#,
+    ]
+    .iter()
+    .map(|e| ev(e))
+    .collect::<String>();
+    let mock = start_scripted(vec![Resp::sse(&stream)]);
+    let (r, said, thought) = run_thinking(&mock, ProviderKind::OpenAi, &[], false);
+    let r = r.unwrap();
+    assert_eq!(r.text, "Answer.");
+    assert_eq!(said.concat(), "Answer.");
+    assert_eq!(thought.concat(), "Check the facts.");
+    assert_eq!(r.thinking, "Check the facts.");
+    let reqs = mock.requests.lock().unwrap();
+    let b = body_of(&reqs[0]);
+    assert_eq!(b["reasoning"]["effort"], "low");
+    assert_eq!(b["reasoning"]["summary"], "auto");
+}
+
+#[test]
+fn responses_summary_refused_retries_once_without_reasoning() {
+    let mock = start_scripted(vec![
+        Resp::json(
+            400,
+            r#"{"error":{"message":"Your organization must be verified to generate reasoning summaries.","type":"invalid_request_error","param":"reasoning.summary","code":"unsupported_value"}}"#,
+        ),
+        Resp::sse(&responses_text_stream()),
+    ]);
+    let (r, _, thought) = run_thinking(&mock, ProviderKind::OpenAi, &[], false);
+    let r = r.unwrap();
+    assert!(r.learned.reasoning_refused);
+    assert!(thought.is_empty() && r.thinking.is_empty());
+    let reqs = mock.requests.lock().unwrap();
+    assert_eq!(reqs.len(), 2);
+    assert!(body_of(&reqs[1]).get("reasoning").is_none());
+}
+
+#[test]
+fn compatible_reasoning_content_is_thinking_and_capped() {
+    let big = "x".repeat(4 * 1024);
+    let one = |field: &str, v: &str| {
+        ev(&format!(
+            r#"{{"choices":[{{"delta":{{"{field}":"{v}"}}}}]}}"#
+        ))
+    };
+    let body = one("reasoning_content", "plan ")
+        + &(0..20).map(|_| one("reasoning", &big)).collect::<String>()
+        + &ev(r#"{"choices":[{"delta":{"content":"Done."},"finish_reason":"stop"}]}"#)
+        + "data: [DONE]\n\n";
+    let mock = start_scripted(vec![Resp::sse(&body)]);
+    let (r, _, thought) = run_thinking(&mock, ProviderKind::OpenAiCompatible, &[], false);
+    let r = r.unwrap();
+    assert_eq!(r.text, "Done.");
+    assert!(thought.concat().starts_with("plan "));
+    assert!(r.thinking_cut);
+    assert_eq!(r.thinking.len(), companion::MAX_THINKING_BYTES);
+    let reqs = mock.requests.lock().unwrap();
+    assert!(body_of(&reqs[0]).get("thinking").is_none());
+    assert!(body_of(&reqs[0]).get("reasoning").is_none());
 }

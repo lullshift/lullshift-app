@@ -71,6 +71,42 @@ fn a_streamed_reply_is_cleaned_chunk_by_chunk_stored_and_booked_with_reported_us
 }
 
 #[test]
+fn thinking_is_streamed_as_its_own_event_stored_with_the_reply_and_never_replayed() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 5000);
+    let body = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Weigh \\u202ethis\\u0007.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"The answer.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+    let m = mock_sse(vec![body.to_owned(), body.to_owned()]);
+    let pid = profile(&core, &m.base, None);
+    let t = thread(&core);
+    let events = Mutex::new(Vec::new());
+    let reply = send_events(&core, t, &pid, "hi", &Scope::None, &|e| {
+        events.lock().expect("events").push(e);
+    })
+    .expect("send");
+    assert_eq!(reply.text, "The answer.");
+    assert_eq!(reply.thinking.as_deref(), Some("Weigh this."));
+    let thought: String = events
+        .lock()
+        .expect("events")
+        .iter()
+        .filter_map(|e| match e {
+            StreamEvent::Thinking { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(thought, "Weigh this.");
+    assert_eq!(deltas(&events), "The answer.");
+    // It is stored with the reply, not in its text, and survives a reload.
+    let ms = messages(&core, t).expect("m");
+    assert_eq!(ms[1].text, "The answer.");
+    assert_eq!(ms[1].thinking.as_deref(), Some("Weigh this."));
+    // A follow-up carries the earlier reply text but none of its thinking.
+    send_events(&core, t, &pid, "and then?", &Scope::None, &|_| {}).expect("second");
+    let second = body_n(&m, 1).to_string();
+    assert!(second.contains("The answer.") && !second.contains("Weigh this"));
+}
+
+#[test]
 fn a_dropped_stream_fails_the_message_keeps_no_partial_reply_and_counts_what_arrived() {
     let dir = tempfile::tempdir().expect("dir");
     let core = core_with(dir.path(), memory(), 5000);

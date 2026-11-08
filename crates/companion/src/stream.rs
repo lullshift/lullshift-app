@@ -28,6 +28,9 @@ pub const MAX_CALLS_PER_REPLY: usize = 8;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Piece {
     Text(String),
+    /// The model's reasoning (summary), shown apart from the reply. Never part of the reply text
+    /// and never sent back to a provider.
+    Thinking(String),
     Tool(ToolCall),
     /// Token numbers the provider reported. `output_final` is true when the output number is the
     /// provider's final count for the call.
@@ -82,6 +85,9 @@ pub struct Decoder {
     finished: bool,
     /// Responses API: some text was streamed.
     saw_text: bool,
+    /// Responses API: some reasoning summary was streamed (a new summary part is then separated
+    /// from the last one by a blank line).
+    saw_thinking: bool,
     /// Offer the model lookups; if not, any call it makes is ignored.
     tools: bool,
     /// The last usage the provider reported (Responses API: completed, incomplete or failed).
@@ -104,6 +110,7 @@ impl Decoder {
             seen_ids: std::collections::HashSet::new(),
             finished: false,
             saw_text: false,
+            saw_thinking: false,
             tools: true,
             usage_in: None,
             usage_out: None,
@@ -211,6 +218,13 @@ impl Decoder {
                             out.push(Piece::Text(t.to_owned()));
                         }
                     }
+                    Some("thinking") => {
+                        if let Some(t) = b.get("thinking").and_then(Value::as_str)
+                            && !t.is_empty()
+                        {
+                            out.push(Piece::Thinking(t.to_owned()));
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -222,6 +236,15 @@ impl Decoder {
                         let t = d.get("text").and_then(Value::as_str).ok_or_else(bad)?;
                         if !t.is_empty() {
                             out.push(Piece::Text(t.to_owned()));
+                        }
+                    }
+                    Some("thinking_delta") => {
+                        // Empty when the model's `display` is `omitted`; `signature_delta` is
+                        // ignored (it is only needed to send thinking back, which is never done).
+                        if let Some(t) = d.get("thinking").and_then(Value::as_str)
+                            && !t.is_empty()
+                        {
+                            out.push(Piece::Thinking(t.to_owned()));
                         }
                     }
                     Some("input_json_delta") => {
@@ -325,6 +348,22 @@ impl Decoder {
                     self.saw_text = true;
                     out.push(Piece::Text(t.to_owned()));
                 }
+            }
+            "response.reasoning_summary_text.delta" => {
+                if let Some(t) = v.get("delta").and_then(Value::as_str)
+                    && !t.is_empty()
+                {
+                    self.saw_thinking = true;
+                    out.push(Piece::Thinking(t.to_owned()));
+                }
+            }
+            "response.reasoning_summary_part.added" if self.saw_thinking => {
+                out.push(Piece::Thinking(
+                    "
+
+"
+                    .to_owned(),
+                ));
             }
             "response.output_item.added" if function_call(&v) => {
                 let item = v.get("item").ok_or_else(bad)?;
@@ -438,6 +477,15 @@ impl Decoder {
             return Ok(out); // the usage-only chunk has no choices
         };
         if let Some(d) = choice.get("delta") {
+            // Reasoning servers (DeepSeek-style `reasoning_content`, others `reasoning`).
+            for field in ["reasoning_content", "reasoning"] {
+                if let Some(t) = d.get(field).and_then(Value::as_str)
+                    && !t.is_empty()
+                {
+                    out.push(Piece::Thinking(t.to_owned()));
+                    break;
+                }
+            }
             if let Some(t) = d.get("content").and_then(Value::as_str)
                 && !t.is_empty()
             {
@@ -642,6 +690,94 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    fn thinking(p: &[Piece]) -> String {
+        p.iter()
+            .filter_map(|p| match p {
+                Piece::Thinking(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn anthropic_thinking_is_separate_from_text() {
+        let p = run(
+            ProviderKind::Anthropic,
+            &[
+                r#"{"type":"message_start","message":{"usage":{"input_tokens":5,"output_tokens":1}}}"#,
+                r#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#,
+                r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me "}}"#,
+                r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"think."}}"#,
+                r#"{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"SIGNATURE"}}"#,
+                r#"{"type":"content_block_stop","index":0}"#,
+                r#"{"type":"content_block_start","index":1,"content_block":{"type":"redacted_thinking","data":"XXXX"}}"#,
+                r#"{"type":"content_block_stop","index":1}"#,
+                r#"{"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}"#,
+                r#"{"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"Answer"}}"#,
+                r#"{"type":"content_block_stop","index":2}"#,
+                r#"{"type":"message_stop"}"#,
+            ],
+        )
+        .unwrap();
+        assert_eq!(thinking(&p), "Let me think.");
+        assert_eq!(text(&p), "Answer");
+        let all = format!("{p:?}");
+        assert!(!all.contains("SIGNATURE") && !all.contains("XXXX"));
+    }
+
+    #[test]
+    fn anthropic_omitted_thinking_streams_nothing() {
+        let p = run(
+            ProviderKind::Anthropic,
+            &[
+                r#"{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#,
+                r#"{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}}"#,
+                r#"{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"s"}}"#,
+                r#"{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"hi"}}"#,
+                r#"{"type":"message_stop"}"#,
+            ],
+        )
+        .unwrap();
+        assert_eq!(thinking(&p), "");
+        assert_eq!(text(&p), "hi");
+    }
+
+    #[test]
+    fn responses_reasoning_summary_is_thinking_with_part_breaks() {
+        let p = run(
+            ProviderKind::OpenAi,
+            &[
+                r#"{"type":"response.reasoning_summary_part.added","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}"#,
+                r#"{"type":"response.reasoning_summary_text.delta","output_index":0,"summary_index":0,"delta":"**First**"}"#,
+                r#"{"type":"response.reasoning_summary_text.done","output_index":0,"summary_index":0,"text":"**First**"}"#,
+                r#"{"type":"response.reasoning_summary_part.added","output_index":0,"summary_index":1,"part":{"type":"summary_text","text":""}}"#,
+                r#"{"type":"response.reasoning_summary_text.delta","output_index":0,"summary_index":1,"delta":"Second"}"#,
+                r#"{"type":"response.output_text.delta","output_index":1,"delta":"ok"}"#,
+                r#"{"type":"response.completed","response":{}}"#,
+            ],
+        )
+        .unwrap();
+        assert_eq!(thinking(&p), "**First**\n\nSecond");
+        assert_eq!(text(&p), "ok");
+    }
+
+    #[test]
+    fn chat_completions_reasoning_fields_are_thinking() {
+        let p = run(
+            ProviderKind::OpenAiCompatible,
+            &[
+                r#"{"choices":[{"delta":{"reasoning_content":"hm "}}]}"#,
+                r#"{"choices":[{"delta":{"reasoning":"ok"}}]}"#,
+                r#"{"choices":[{"delta":{"reasoning_content":null,"content":"Hi"}}]}"#,
+                r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+                "[DONE]",
+            ],
+        )
+        .unwrap();
+        assert_eq!(thinking(&p), "hm ok");
+        assert_eq!(text(&p), "Hi");
     }
 
     #[test]

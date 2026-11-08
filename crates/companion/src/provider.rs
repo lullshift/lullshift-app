@@ -49,6 +49,10 @@ pub const MAX_OUTPUT_TOKENS: u32 = 1024;
 /// tokens thinking before it writes. Still below any sensible monthly budget; the budget is
 /// checked before each call.
 pub const RESPONSES_MAX_OUTPUT_TOKENS: u32 = 8192;
+/// Extra output room for an Anthropic reply that may think first (also the `budget_tokens` of
+/// the legacy `thinking: enabled` form, whose minimum is 1024 and which must stay below
+/// `max_tokens`).
+pub const ANTHROPIC_THINKING_ROOM: u32 = 2048;
 /// Output cap for the connection test.
 pub const TEST_OUTPUT_TOKENS: u32 = 16;
 /// Replies longer than this are cut (characters).
@@ -150,9 +154,15 @@ pub struct RequestPlan<'a> {
     /// Offer the three lookups.
     pub tools: bool,
     pub stream: bool,
-    /// OpenAI Responses only: ask for `reasoning: {effort: "low"}`, so a model that thinks first
-    /// leaves room for the reply. Dropped (and remembered) when the model refuses it.
+    /// Ask the model to reason and show a summary of it. OpenAI Responses: `reasoning: {effort:
+    /// "low", summary: "auto"}`. Anthropic: `thinking` (only sent when no tool round is replayed,
+    /// since Anthropic then requires the earlier thinking blocks back, which are never kept).
+    /// Compatible servers: ignored. Dropped (and remembered) when the model refuses it.
     pub reasoning: bool,
+    /// Anthropic only: use the legacy `thinking: {type: enabled, budget_tokens}` instead of
+    /// `{type: adaptive, display: summarized}` (Claude 4.5 and earlier reject adaptive, 4.7 and
+    /// later reject enabled).
+    pub legacy_thinking: bool,
     pub max_output_tokens: u32,
 }
 
@@ -207,9 +217,26 @@ pub fn build_request(
             tools: false,
             stream: false,
             reasoning: false,
+            legacy_thinking: false,
             max_output_tokens,
         },
     )
+}
+
+/// Whether an Anthropic request carries a `thinking` setting: asked for, and no tool round
+/// replayed (those would need the earlier thinking blocks, which are never stored or sent).
+pub fn anthropic_thinking_sent(plan: &RequestPlan<'_>) -> bool {
+    plan.reasoning && !(plan.tools && !plan.rounds.is_empty())
+}
+
+/// `max_tokens` for an Anthropic request: the cap, plus room to think when it may.
+pub fn anthropic_max_tokens(plan: &RequestPlan<'_>) -> u32 {
+    if anthropic_thinking_sent(plan) {
+        plan.max_output_tokens
+            .saturating_add(ANTHROPIC_THINKING_ROOM)
+    } else {
+        plan.max_output_tokens
+    }
 }
 
 fn tool_input(arguments: &str) -> Value {
@@ -284,12 +311,21 @@ pub fn build_plan_request(spec: &ProviderSpec, key: &str, plan: &RequestPlan<'_>
                     .collect();
                 msgs.push(json!({ "role": "user", "content": results }));
             }
+            // No `temperature` / `top_p` / `top_k` is ever sent (thinking forbids them, and newer
+            // API versions reject them on every request).
             let mut body = json!({
                 "model": spec.model,
-                "max_tokens": plan.max_output_tokens,
+                "max_tokens": anthropic_max_tokens(plan),
                 "system": system,
                 "messages": msgs,
             });
+            if anthropic_thinking_sent(plan) {
+                body["thinking"] = if plan.legacy_thinking {
+                    json!({ "type": "enabled", "budget_tokens": ANTHROPIC_THINKING_ROOM })
+                } else {
+                    json!({ "type": "adaptive", "display": "summarized" })
+                };
+            }
             if plan.stream {
                 body["stream"] = json!(true);
             }
@@ -353,7 +389,9 @@ pub fn build_plan_request(spec: &ProviderSpec, key: &str, plan: &RequestPlan<'_>
             if plan.reasoning {
                 // No model list is hard-coded: a model that has no such setting answers HTTP 400
                 // with a `reasoning...` param, and the caller retries once without it.
-                body["reasoning"] = json!({ "effort": "low" });
+                // `summary: "auto"` asks for a reasoning summary to show; a model or organisation
+                // that may not get one answers with a `reasoning...` param too.
+                body["reasoning"] = json!({ "effort": "low", "summary": "auto" });
             }
             if plan.tools {
                 // `strict: false`: the API defaults to strict schemas, which need every property
@@ -747,6 +785,7 @@ mod tests {
                 tools,
                 stream,
                 reasoning: false,
+                legacy_thinking: false,
                 max_output_tokens: 64,
             },
         );
