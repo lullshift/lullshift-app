@@ -34,6 +34,7 @@ import {
   withoutInFlightMessage,
 } from "./logic";
 import { ThinkingBlock } from "./ThinkingBlock";
+import { liveKey, storedKey } from "./thinkingChoice";
 import { threadLabel } from "./ThreadList";
 import { ToolApprovalCard, ToolNotices, ToolRecords } from "./ToolCards";
 
@@ -138,7 +139,14 @@ function MessageItem({
           <PlainText text={message.text} />
         </div>
       ) : (
-        <ReplyText text={message.text} />
+        <>
+          <ThinkingBlock
+            text={message.thinking ?? ""}
+            ms={message.thinkingMs}
+            choiceKey={storedKey(message.id)}
+          />
+          <ReplyText text={message.text} />
+        </>
       )}
       {!mine && (
         <p className="msg-model">
@@ -501,12 +509,18 @@ export function Conversation({
                 <p className="msg-note">{stream && stream.text ? "Sent." : "Sending…"}</p>
               </MessageRow>
             )}
-            {stream && stream.text !== "" && (
+            {stream && (stream.text !== "" || stream.thinking !== "") && (
               // Not a live region: the text grows token by token. A short status sentence in the
               // hidden live region tells screen-reader users the reply is coming, and the finished
               // reply is announced once.
               <MessageRow mine={false} className="msg-streaming" busy>
-                <ReplyText text={stream.text} streaming />
+                <ThinkingBlock
+                  text={stream.thinking}
+                  ms={thinkingMs(stream)}
+                  active={stream.thinkingActive && !stream.pending}
+                  choiceKey={liveKey(stream.requestId)}
+                />
+                {stream.text !== "" && <ReplyText text={stream.text} streaming />}
                 <p className="msg-note">Still writing. You can cancel at any time.</p>
               </MessageRow>
             )}

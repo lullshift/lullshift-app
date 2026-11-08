@@ -22,6 +22,7 @@ import {
   type StreamEvent,
 } from "./api";
 import { openThread } from "./events";
+import { carryChoice } from "./thinkingChoice";
 import { initialStream, isContextChanged, reduceStream, type StreamState } from "./logic";
 
 /** How a request ended. `cancelled` is the user's own Cancel: no notice, nothing to open. */
@@ -257,6 +258,8 @@ export async function runRequest(
   let outcome: Outcome;
   try {
     const reply = await work(requestId, (e) => applyEvent(meta.threadId, e));
+    // The live Thinking block's open/closed choice carries over to the stored reply.
+    carryChoice(requestId, reply.id);
     const count = await storedCount(meta.threadId);
     outcome = {
       kind: "replied",

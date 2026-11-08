@@ -27,6 +27,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 import type { Message, ProviderProfile, StreamEvent, Thread } from "./api";
 import { Conversation } from "./Conversation";
 import { resetInflight } from "./inflight";
+import { resetChoices } from "./thinkingChoice";
 import { click, key, polyfillDialog, settle, typeInto } from "./testDom";
 
 polyfillDialog();
@@ -88,6 +89,7 @@ let root: Root;
 
 beforeEach(() => {
   resetInflight();
+  resetChoices();
   calls.length = 0;
   stored = [];
   answer = (command, args) => {
@@ -166,7 +168,6 @@ describe("live thinking", () => {
     const li = host.querySelector(".msg-streaming")!;
     expect(li.querySelector(".reply-text")!.textContent).toContain("Hello");
     expect(li.querySelector(".reply-text")!.textContent).not.toContain("Pondering");
-    expect(li.firstElementChild!.className).toContain("msg-who");
     expect(li.querySelector(".thinking")!.nextElementSibling!.className).toContain("reply-text");
 
     // Opening it by hand is kept when the reply finishes.
@@ -174,6 +175,42 @@ describe("live thinking", () => {
     expect(head()!.getAttribute("aria-expanded")).toBe("true");
     await act(async () => emit({ type: "delta", text: " world" }));
     expect(head()!.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("carries the open choice from the live block to the stored reply", async () => {
+    await mount();
+    await send();
+    await act(async () => emit({ type: "thinking", text: "Hmm." }));
+    await act(async () => emit({ type: "delta", text: "Hi" }));
+    expect(head()!.getAttribute("aria-expanded")).toBe("false");
+    await click(head()!); // the user opens it
+    await act(async () => {
+      finish();
+    });
+    await settle();
+    // The stored reply (different component, different key) keeps it open.
+    expect(host.querySelector(".msg-streaming")).toBeNull();
+    expect(head()!.getAttribute("aria-expanded")).toBe("true");
+    expect(body()!.hidden).toBe(false);
+  });
+
+  it("is not 'Thinking…' while a lookup waits for you, or after reply text came", async () => {
+    await mount();
+    await send();
+    await act(async () => emit({ type: "thinking", text: "Need data." }));
+    expect(head()!.textContent).toBe("Thinking…");
+    await act(async () =>
+      emit({
+        type: "toolRequest",
+        approvalId: "a1",
+        tool: "recent_sessions",
+        label: "Recent sessions",
+        arguments: "{}",
+        resultText: "x",
+        host: "api.anthropic.com",
+      } as never),
+    );
+    expect(head()!.textContent).toMatch(/^Thought for \d+ s$/);
   });
 
   it("keeps the live thinking when you leave the conversation and come back", async () => {

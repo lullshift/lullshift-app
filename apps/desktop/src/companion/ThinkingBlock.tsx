@@ -7,6 +7,7 @@
 
 import { useId, useState } from "react";
 import { stripInvisible } from "../format";
+import { getChoice, setChoice } from "./thinkingChoice";
 import "./thinking.css";
 
 /** "Thought for 12 s", "Thought for 2 min 5 s", or just "Thinking" when no time is known. */
@@ -24,6 +25,7 @@ export function ThinkingBlock({
   text,
   ms = null,
   active = false,
+  choiceKey,
 }: {
   /** The reasoning summary; plain text. Nothing renders when it is blank. */
   text: string;
@@ -31,10 +33,15 @@ export function ThinkingBlock({
   ms?: number | null;
   /** The model is still thinking: no reply text has started yet. Shown open, header "Thinking…". */
   active?: boolean;
+  /** Where the user's open/closed choice is remembered (memory only), so it survives the swap
+   * from the live block to the stored reply and leaving the conversation. */
+  choiceKey?: string;
 }) {
   const bodyId = useId();
   // null: follow the default (open while thinking, collapsed after). Set once the user clicks.
-  const [chosen, setChosen] = useState<boolean | null>(null);
+  const [chosen, setChosen] = useState<boolean | null>(() =>
+    choiceKey ? getChoice(choiceKey) : null,
+  );
   const clean = stripInvisible(text);
   if (clean.trim() === "") return null;
   const open = chosen ?? active;
@@ -45,7 +52,10 @@ export function ThinkingBlock({
         className="thinking-head"
         aria-expanded={open}
         aria-controls={bodyId}
-        onClick={() => setChosen(!open)}
+        onClick={() => {
+          setChosen(!open);
+          if (choiceKey) setChoice(choiceKey, !open);
+        }}
       >
         <span className="thinking-chevron" aria-hidden="true" />
         <span>{thinkingHeader(ms, active)}</span>

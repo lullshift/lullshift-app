@@ -465,9 +465,13 @@ export interface StreamState {
   text: string;
   /** The model's reasoning summary so far (all rounds), shown apart from the reply. */
   thinking: string;
-  /** When the first and the latest piece of thinking arrived (ms since the epoch). */
+  /** When the first and the latest piece of thinking of the current round arrived (epoch ms). */
   thinkingFirst: number | null;
   thinkingLast: number | null;
+  /** Thinking time of the earlier rounds, each first-to-last piece, so approval waits are left out. */
+  thinkingDoneMs: number;
+  /** Thinking arrived after the last reply text of this round and no lookup waits for you. */
+  thinkingActive: boolean;
   /** The round the latest thinking belongs to. */
   thinkingRound: number;
   round: number;
@@ -489,6 +493,8 @@ export function initialStream(requestId: string): StreamState {
     thinkingFirst: null,
     thinkingRound: 1,
     thinkingLast: null,
+    thinkingDoneMs: 0,
+    thinkingActive: false,
     round: 1,
     pending: null,
     skipped: [],
@@ -497,11 +503,15 @@ export function initialStream(requestId: string): StreamState {
   };
 }
 
-/** How long the model has been thinking, in milliseconds, or null if it has not. */
+/**
+ * How long the model has been thinking, in milliseconds, or null if it has not. The sum of each
+ * round's first-to-last piece, so the time you took to approve a lookup is not counted.
+ */
 export function thinkingMs(s: StreamState): number | null {
-  return s.thinkingFirst !== null && s.thinkingLast !== null
-    ? s.thinkingLast - s.thinkingFirst
-    : null;
+  if (s.thinking === "") return null;
+  const span =
+    s.thinkingFirst !== null && s.thinkingLast !== null ? s.thinkingLast - s.thinkingFirst : 0;
+  return s.thinkingDoneMs + span;
 }
 
 /**
@@ -515,9 +525,22 @@ export function reduceStream(s: StreamState, e: StreamEvent): StreamState {
       return s;
     case "round":
       // The next provider call starts a fresh text; what came before belonged to the call before.
-      return { ...s, round: e.round, text: "", pending: null };
+      return {
+        ...s,
+        round: e.round,
+        text: "",
+        pending: null,
+        thinkingDoneMs:
+          s.thinkingDoneMs +
+          (s.thinkingFirst !== null && s.thinkingLast !== null
+            ? s.thinkingLast - s.thinkingFirst
+            : 0),
+        thinkingFirst: null,
+        thinkingLast: null,
+        thinkingActive: false,
+      };
     case "delta":
-      return { ...s, text: s.text + e.text };
+      return { ...s, text: s.text + e.text, thinkingActive: false };
     case "thinking": {
       const at = Date.now();
       return {
@@ -528,11 +551,13 @@ export function reduceStream(s: StreamState, e: StreamEvent): StreamState {
         thinkingRound: s.round,
         thinkingFirst: s.thinkingFirst ?? at,
         thinkingLast: at,
+        thinkingActive: s.pending === null,
       };
     }
     case "toolRequest":
       return {
         ...s,
+        thinkingActive: false,
         pending: {
           approvalId: e.approvalId,
           tool: e.tool,
