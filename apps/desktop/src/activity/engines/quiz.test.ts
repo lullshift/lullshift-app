@@ -21,6 +21,7 @@ interface Quiz {
   title: string;
   intro?: string;
   shuffle?: boolean;
+  roundSize?: number;
   questions: Question[];
 }
 interface Step {
@@ -32,14 +33,20 @@ interface State {
   i: number;
   picked: number | null;
   results: boolean[];
+  seen?: number[];
 }
 interface Logic {
   SAMPLE: Quiz;
   validQuiz(c: unknown): boolean;
   imageOf(q: unknown): { src: string; alt: string } | null;
-  plan(quiz: Quiz, seed: number): Step[];
+  roundSizeOf(quiz: Quiz): number;
+  draw(n: number, k: number, seen: unknown[], rnd: () => number): number[];
+  remember(seen: number[], round: number[], n: number): number[];
+  plan(quiz: Quiz, seed: number, seen?: number[]): Step[];
   correctPosition(quiz: Quiz, steps: Step[], i: number): number;
-  initialState(seed: number): State;
+  initialState(seed: number, seen?: number[]): State;
+  freshState(quiz: Quiz, seed: number): State;
+  nextRound(quiz: Quiz, steps: Step[], state: State, seed: number): State;
   pick(quiz: Quiz, steps: Step[], state: State, shown: number): State | null;
   advance(steps: Step[], state: State): State | null;
   score(state: State): number;
@@ -166,6 +173,153 @@ describe("QuizLogic restoreState", () => {
   });
 });
 
+describe("QuizLogic rounds (roundSize, ADR-028 section 10)", () => {
+  const big = (roundSize?: number, shuffle = true, n = 12): Quiz => ({
+    ...quiz(shuffle, n),
+    ...(roundSize === undefined ? {} : { roundSize }),
+  });
+  const qs = (steps: Step[]) => steps.map((s) => s.q);
+  // Plays a whole round, always picking the first shown choice.
+  const playRound = (z: Quiz, steps: Step[], s: State): State => {
+    while (s.i < steps.length) {
+      s = L.pick(z, steps, s, 0) as State;
+      s = L.advance(steps, s) as State;
+    }
+    return s;
+  };
+
+  it("leaves a quiz without roundSize exactly as before", () => {
+    const z = big();
+    expect(L.roundSizeOf(z)).toBe(0);
+    expect(L.plan(z, 7)).toEqual(L.plan(z, 7, [3, 4, 5]));
+    expect(L.freshState(z, 7)).toEqual({ seed: 7, i: 0, picked: null, results: [] });
+    // Same shape after play and after "start again": no seen list appears.
+    const steps = L.plan(z, 7);
+    const done = playRound(z, steps, L.freshState(z, 7));
+    expect(Object.keys(done).sort()).toEqual(["i", "picked", "results", "seed"]);
+    expect(L.nextRound(z, steps, done, 9)).toEqual(L.initialState(9));
+    // An old save restores unchanged.
+    const old = { seed: 7, i: 2, picked: null, results: [true, false] };
+    expect(L.restoreState(z, old)).toEqual(old);
+  });
+
+  it("is deterministic for a seed and asks roundSize distinct questions", () => {
+    const z = big(8);
+    expect(L.roundSizeOf(z)).toBe(8);
+    const a = L.plan(z, 11, []);
+    expect(a).toEqual(L.plan(z, 11, []));
+    expect(a).toHaveLength(8);
+    expect(new Set(qs(a)).size).toBe(8);
+    for (const s of a) expect(s.q).toBeGreaterThanOrEqual(0);
+    for (const s of a) expect(s.q).toBeLessThan(12);
+    const seeds = [1, 2, 3, 4, 5].map((seed) => qs(L.plan(z, seed, [])).join());
+    expect(new Set(seeds).size).toBeGreaterThan(1);
+  });
+
+  it("keeps written order without the shuffle flag, and shuffles choices only with it", () => {
+    const z = big(5, false);
+    const steps = L.plan(z, 3, []);
+    expect(qs(steps)).toEqual([...qs(steps)].sort((x, y) => x - y));
+    for (const s of steps) expect(s.choices).toEqual([0, 1, 2]);
+  });
+
+  it("prefers questions not asked in recent rounds", () => {
+    const z = big(4);
+    const seen = [0, 1, 2, 3, 4, 5, 6, 7];
+    for (const seed of [1, 2, 3, 99, 4242]) {
+      expect(qs(L.plan(z, seed, seen)).sort((x, y) => x - y)).toEqual([8, 9, 10, 11]);
+    }
+  });
+
+  it("fills from the least recently seen when too few are unseen", () => {
+    const z = big(5);
+    // 10 and 11 are unseen; then the front of the list (least recent) fills the round.
+    const seen = [7, 3, 9, 0, 1, 2, 4, 5, 6, 8];
+    for (const seed of [1, 2, 3]) {
+      expect(qs(L.plan(z, seed, seen)).sort((x, y) => x - y)).toEqual([3, 7, 9, 10, 11]);
+    }
+    // Nothing unseen at all: the five least recent.
+    const all = [5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4];
+    expect(qs(L.plan(z, 1, all)).sort((x, y) => x - y)).toEqual([5, 6, 7, 8, 9]);
+  });
+
+  it("draws a whole pack once before repeating, and keeps the seen list bounded", () => {
+    const z = big(5);
+    let steps = L.plan(z, 1, []);
+    let s = L.freshState(z, 1);
+    const asked: number[] = [];
+    for (let round = 0; round < 30; round++) {
+      asked.push(...qs(steps));
+      s = playRound(z, steps, s);
+      s = L.nextRound(z, steps, s, round + 100);
+      expect(s.i).toBe(0);
+      expect(s.seen!.length).toBeLessThanOrEqual(12);
+      expect(new Set(s.seen).size).toBe(s.seen!.length);
+      steps = L.plan(z, s.seed, s.seen);
+    }
+    // Rounds one and two never repeat a question; with round three they cover the whole quiz.
+    expect(new Set(asked.slice(0, 10)).size).toBe(10);
+    expect(new Set(asked.slice(0, 15)).size).toBe(12);
+    // The just-finished round is the most recent part of seen.
+    expect(L.remember([1, 2, 3], [3, 4], 12)).toEqual([1, 2, 3, 4]);
+    expect(L.remember([0, 1, 2, 3, 4], [5, 6, 0], 6)).toEqual([2, 3, 4, 5, 6, 0]);
+  });
+
+  it("ignores seen entries that don't fit when drawing", () => {
+    const rnd = () => 0;
+    expect(L.draw(4, 3, [9, -1, 1.5, "x", 0, 0], rnd)).toEqual([1, 2, 3]);
+  });
+
+  it("resumes exactly the same round at the same place after a save", () => {
+    const z = big(6);
+    const first = L.plan(z, 5, []);
+    let s = L.freshState(z, 5);
+    s = playRound(z, first, s);
+    s = L.nextRound(z, first, s, 77);
+    const steps = L.plan(z, s.seed, s.seen);
+    s = L.pick(z, steps, s, 1) as State;
+    s = L.advance(steps, s) as State;
+    s = L.pick(z, steps, s, 2) as State;
+    const saved = JSON.parse(JSON.stringify(s)) as unknown;
+    const back = L.restoreState(z, saved) as State;
+    expect(back).toEqual(s);
+    expect(L.plan(z, back.seed, back.seen)).toEqual(steps);
+  });
+
+  it("refuses saves that don't fit a quiz with roundSize", () => {
+    const z = big(6);
+    const ok = { seed: 1, i: 0, picked: null, results: [], seen: [] };
+    expect(L.restoreState(z, ok)).toEqual(ok);
+    for (const bad of [
+      { seed: 1, i: 0, picked: null, results: [] }, // an older save: starts a new round
+      { ...ok, seen: [1, 1] },
+      { ...ok, seen: [12] },
+      { ...ok, seen: [-1] },
+      { ...ok, seen: [0.5] },
+      { ...ok, seen: "0,1" },
+      { ...ok, seen: Array.from({ length: 13 }, (_, i) => i) },
+      { ...ok, i: 7 },
+      { ...ok, i: 6, results: [true, true, true, true, true, true, true] },
+    ]) {
+      expect(L.restoreState(z, bad), JSON.stringify(bad)).toBeNull();
+    }
+    expect(L.restoreState(z, { ...ok, i: 6, results: Array(6).fill(true) })).not.toBeNull();
+  });
+
+  it("treats a roundSize at or above the question count as the whole quiz", () => {
+    for (const k of [12, 13, 40]) {
+      const z = big(k);
+      expect(L.roundSizeOf(z)).toBe(0);
+      expect(L.plan(z, 4, [])).toEqual(L.plan(big(), 4));
+      expect(L.validQuiz(z)).toBe(true);
+    }
+    expect(L.validQuiz(big(2))).toBe(false);
+    expect(L.validQuiz(big(41))).toBe(false);
+    expect(L.validQuiz(big(3.5))).toBe(false);
+    expect(L.validQuiz({ ...big(), roundSize: "8" })).toBe(false);
+  });
+});
+
 describe("QuizLogic validQuiz", () => {
   it("accepts the sample and rejects malformed quizzes", () => {
     expect(L.validQuiz(L.SAMPLE)).toBe(true);
@@ -269,6 +423,9 @@ describe("bundled quiz packs", () => {
       expect(data.questions.length).toBeGreaterThanOrEqual(8);
       expect(data.questions.length).toBeLessThanOrEqual(12);
       expect(new Set(data.questions.map((x) => x.answer)).size).toBeGreaterThan(1);
+      // ADR-028 section 10: packs with 12 or more questions draw rounds.
+      if (data.questions.length >= 12) expect(L.roundSizeOf(data)).toBe(data.roundSize);
+      else expect(data.roundSize).toBeUndefined();
       for (const x of data.questions) expect(new Set(x.choices).size).toBe(x.choices.length);
     });
   }

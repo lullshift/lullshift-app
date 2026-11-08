@@ -200,6 +200,31 @@ describe("validate (content pack data)", () => {
     expect(errors.split("cards[0].front contains").length).toBe(2);
   });
 
+  it("checks roundSize: the schema's range, and a warning above the item count (ADR-028 §10)", () => {
+    const dir = scaffold("content");
+    const deck = path.join(dir, "deck.json");
+    let count = 0;
+    const setRound = (value: unknown) =>
+      editJson(deck, (d) => {
+        count = (d.cards as unknown[]).length;
+        d.roundSize = value;
+      });
+    setRound(3);
+    let r = validateFolder(dir);
+    expect(r.errors).toEqual([]);
+    expect(r.warnings.join("\n")).not.toMatch(/roundSize/);
+    setRound(2);
+    expect(errorsOf(dir)).toMatch(/deck\.json: roundSize/);
+    setRound(4.5);
+    expect(errorsOf(dir)).toMatch(/deck\.json: roundSize/);
+    setRound(count + 1);
+    r = validateFolder(dir);
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toContain(
+      `deck.json: roundSize ${count + 1} is more than the ${count} cards, so every round shows all of them (set roundSize to at most ${count}, or leave it out)`,
+    );
+  });
+
   it("allows only data, a preview and notes in a pack (ADR-016)", () => {
     const dir = scaffold("content");
     writeFileSync(path.join(dir, "NOTES.md"), "ok");

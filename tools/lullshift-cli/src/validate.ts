@@ -9,6 +9,7 @@ import {
   SDK_VERSION,
   isReservedGeneratedId,
   packTextProblems,
+  roundSizeProblem,
 } from "@lullshift/activity-sdk";
 import {
   activityManifestSchema,
@@ -361,6 +362,10 @@ function checkContent(
     if (!problems.includes(shown)) problems.push(shown);
   }
   report.errors.push(...problems);
+  // roundSize (ADR-028 section 10) should be at most the item count, which a schema can't say.
+  // The app still accepts the pack and the engine plays every item each round, so: a warning.
+  const round = problems.length ? null : roundSizeProblem(`${engine.id}@${engine.major}`, data);
+  if (round) report.warnings.push(`${m.data}: ${round}`);
 }
 
 /** -1, 0 or 1, comparing MAJOR.MINOR.PATCH; pre-releases sort before their release. */

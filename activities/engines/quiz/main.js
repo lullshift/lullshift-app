@@ -31,8 +31,14 @@
   }
 
   function begin(seed) {
-    steps = L.plan(quiz, seed);
-    state = L.initialState(seed);
+    state = L.freshState(quiz, seed);
+    steps = L.plan(quiz, seed, state.seen);
+  }
+
+  // Start again: with roundSize, a new round drawn away from the questions just asked.
+  function nextRound(seed) {
+    state = L.nextRound(quiz, steps, state, seed);
+    steps = L.plan(quiz, seed, state.seen);
   }
 
   function tag(button, text) {
@@ -172,7 +178,7 @@
 
   el.next.addEventListener("click", goNext);
   el.again.addEventListener("click", function () {
-    begin(newSeed());
+    nextRound(newSeed());
     report();
     if (choiceButtons[0]) choiceButtons[0].focus();
   });
@@ -203,7 +209,7 @@
       quiz = L.validQuiz(init.content) ? init.content : L.SAMPLE;
       var restored = L.restoreState(quiz, init.restore);
       if (restored) {
-        steps = L.plan(quiz, restored.seed);
+        steps = L.plan(quiz, restored.seed, restored.seen);
         state = restored;
       } else {
         begin(newSeed());

@@ -1596,6 +1596,30 @@ Use light and dark, and once with the OS reduced-motion setting on. Start with n
 
 **Result:** \_\_\_
 
+## Rounds in quiz, teaser and card packs (ADR-028 section 10)
+
+### M13-01: A card pack with roundSize draws rounds and resumes the same one
+
+Setup: a build that includes S13-T09. The bundled **Wonder Facts** deck has 12 cards and `roundSize: 6`.
+
+1. Open Wonder Facts. Note the six card fronts as you press **Next** through the round, using only the keyboard (Tab, Enter, Left and Right arrows on the card).
+2. Press **Start again** and note the next six.
+3. Move to card 3 of this round and press **Show more**. Close the activity, open it again; then quit the app fully, start it again and open Wonder Facts.
+4. Finish the round and press **Start again** a few more times.
+5. Open a quiz pack and a teaser pack (none sets `roundSize`) and play one through.
+6. Turn on reduced motion in the operating system and repeat step 1.
+
+**Expected:**
+
+- **Step 1:** the progress reads "Card 1 of 6" to "Card 6 of 6", then "6 cards read".
+- **Step 2:** the second round shows the six cards not shown in the first (no card repeats).
+- **Step 3:** both times it reopens on card 3 of the same round, with the back shown, and the same six cards.
+- **Step 4:** each round has six different cards; over two rounds every card is shown once.
+- **Step 5:** quiz and teaser packs show all their items, as before ("Question 1 of 10", and so on).
+- **Step 6:** play is the same, with no animation.
+
+**Result:** \_\_\_
+
 ## Website and demo mode
 
 ### W-1: Browser demo of the desktop UI

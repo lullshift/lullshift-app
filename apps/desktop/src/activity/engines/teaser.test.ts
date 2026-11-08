@@ -21,6 +21,7 @@ interface Teaser {
 interface Pack {
   title: string;
   intro?: string;
+  roundSize?: number;
   teasers: Teaser[];
 }
 interface State {
@@ -28,6 +29,8 @@ interface State {
   hint: boolean;
   revealed: boolean;
   marks: (boolean | null)[];
+  seed?: number;
+  seen?: number[];
 }
 interface Logic {
   SAMPLE: Pack;
@@ -41,6 +44,13 @@ interface Logic {
   again(n: number): State;
   tally(s: State): { got: number; missed: number };
   restoreState(teasers: Teaser[], raw: unknown): State | null;
+  roundSizeOf(pack: Pack): number;
+  roundOf(pack: Pack, s: { seed?: number; seen?: number[] }): number[];
+  roundTeasers(pack: Pack, s: { seed?: number; seen?: number[] }): Teaser[];
+  remember(seen: number[], round: number[], n: number): number[];
+  freshState(pack: Pack, seed: number): State;
+  nextRound(pack: Pack, s: State, seed: number): State;
+  restorePack(pack: Pack, raw: unknown): State | null;
 }
 const L = (globalThis as unknown as { TeaserLogic: Logic }).TeaserLogic;
 
@@ -168,6 +178,117 @@ describe("TeaserLogic restoreState", () => {
   });
 });
 
+describe("TeaserLogic rounds (roundSize, ADR-028 section 10)", () => {
+  const pack = (roundSize?: number, n = 12): Pack => ({
+    title: "T",
+    ...(roundSize === undefined ? {} : { roundSize }),
+    teasers: Array.from({ length: n }, (_, i) => ({
+      question: `q${i}`,
+      ...(i % 2 ? { hint: `h${i}` } : {}),
+      answer: `a${i}`,
+      explanation: `e${i}`,
+    })),
+  });
+  const sorted = (a: number[]) => [...a].sort((x, y) => x - y);
+
+  it("leaves a pack without roundSize exactly as before", () => {
+    const p = pack();
+    expect(L.roundSizeOf(p)).toBe(0);
+    expect(L.freshState(p, 5)).toEqual(L.initialState(12));
+    expect(L.roundTeasers(p, {})).toEqual(p.teasers);
+    const played = L.mark(L.reveal(L.initialState(12), 12), 12, true);
+    expect(L.nextRound(p, played, 5)).toEqual(L.again(12));
+    // An old save restores unchanged, extra fields or not.
+    const old = { i: 2, hint: false, revealed: true, marks: Array(12).fill(null) };
+    expect(L.restorePack(p, old)).toEqual(old);
+    expect(L.restorePack(p, { ...old, seed: 3, seen: [1] })).toEqual(old);
+  });
+
+  it("is deterministic for a seed, draws roundSize teasers and keeps the written order", () => {
+    const p = pack(5);
+    const a = L.roundOf(p, { seed: 9, seen: [] });
+    expect(a).toEqual(L.roundOf(p, { seed: 9, seen: [] }));
+    expect(a).toHaveLength(5);
+    expect(new Set(a).size).toBe(5);
+    expect(a).toEqual(sorted(a));
+    const s = L.freshState(p, 9);
+    expect(s).toEqual({ i: 0, hint: false, revealed: false, marks: Array(5).fill(null), seed: 9, seen: [] });
+    const rounds = [1, 2, 3, 4, 5].map((seed) => L.roundOf(p, { seed, seen: [] }).join());
+    expect(new Set(rounds).size).toBeGreaterThan(1);
+  }); // prettier-ignore
+
+  it("prefers unseen teasers, then fills from the least recently seen", () => {
+    const p = pack(4);
+    for (const seed of [1, 2, 3, 77]) {
+      expect(L.roundOf(p, { seed, seen: [0, 1, 2, 3, 4, 5, 6, 7] })).toEqual([8, 9, 10, 11]);
+      expect(L.roundOf(p, { seed, seen: [6, 2, 0, 1, 3, 4, 5, 7, 8, 9] })).toEqual([2, 6, 10, 11]);
+    }
+  });
+
+  it("moves through rounds with a bounded seen list", () => {
+    const p = pack(5);
+    let s = L.freshState(p, 1);
+    const shown: number[] = [];
+    for (let round = 0; round < 20; round++) {
+      shown.push(...L.roundOf(p, s));
+      s = L.go(s, 5, 5);
+      s = L.nextRound(p, s, round + 50);
+      expect(s.i).toBe(0);
+      expect(s.marks).toEqual(Array(5).fill(null));
+      expect(s.seen!.length).toBeLessThanOrEqual(12);
+      expect(new Set(s.seen).size).toBe(s.seen!.length);
+    }
+    expect(new Set(shown.slice(0, 10)).size).toBe(10);
+    expect(new Set(shown.slice(0, 15)).size).toBe(12);
+    expect(L.remember([4, 5], [5, 6], 12)).toEqual([4, 5, 6]);
+  });
+
+  it("carries the round through play and resumes the same round at the same place", () => {
+    const p = pack(4);
+    let s = L.nextRound(p, L.freshState(p, 3), 8);
+    const items = L.roundTeasers(p, s);
+    s = L.go(s, 4, 1);
+    s = L.reveal(s, 4);
+    s = L.mark(s, 4, false);
+    s = L.go(s, 4, 2);
+    // Teaser 2 of the round has a hint only if its pack index is odd.
+    if (items[2]!.hint !== undefined) s = L.showHint(s, 4, items);
+    expect(s.seed).toBe(8);
+    const back = L.restorePack(p, JSON.parse(JSON.stringify(s)));
+    expect(back).toEqual(s);
+    expect(L.roundTeasers(p, back!)).toEqual(items);
+  });
+
+  it("refuses saves that don't fit a pack with roundSize", () => {
+    const p = pack(4);
+    const ok = L.freshState(p, 2);
+    expect(L.restorePack(p, ok)).toEqual(ok);
+    for (const bad of [
+      { i: 0, hint: false, revealed: false, marks: Array(12).fill(null) }, // older save
+      { ...ok, seed: -1 },
+      { ...ok, seed: 2.5 },
+      { ...ok, seen: [0, 0] },
+      { ...ok, seen: [12] },
+      { ...ok, seen: Array.from({ length: 13 }, (_, i) => i % 12) },
+      { ...ok, marks: Array(12).fill(null) },
+      { ...ok, i: 5 },
+    ]) {
+      expect(L.restorePack(p, bad), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it("treats a roundSize at or above the teaser count as the whole pack", () => {
+    for (const k of [12, 40]) {
+      expect(L.roundSizeOf(pack(k))).toBe(0);
+      expect(L.freshState(pack(k), 1)).toEqual(L.initialState(12));
+      expect(L.validTeasers(pack(k))).toBe(true);
+    }
+    expect(L.validTeasers(pack(2))).toBe(false);
+    expect(L.validTeasers(pack(41))).toBe(false);
+    expect(L.validTeasers({ ...pack(), roundSize: 4.5 })).toBe(false);
+  });
+});
+
 describe("TeaserLogic validTeasers", () => {
   it("accepts the sample and rejects malformed packs", () => {
     expect(L.validTeasers(L.SAMPLE)).toBe(true);
@@ -226,6 +347,8 @@ describe("bundled teaser packs", () => {
       expect(validate(data), JSON.stringify(validate.errors)).toBe(true);
       expect(data.teasers.length).toBeGreaterThanOrEqual(6);
       expect(data.teasers.length).toBeLessThanOrEqual(10);
+      // ADR-028 section 10: packs with 12 or more teasers would draw rounds; these have fewer.
+      expect(data.roundSize).toBeUndefined();
     });
   }
 });
