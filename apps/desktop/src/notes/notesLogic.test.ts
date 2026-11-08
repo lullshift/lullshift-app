@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NotesOverview, NotesSession, SessionItem } from "../context/api";
 import type { SessionView } from "../sessions";
-import { buildGroups, filterGroups, openItemCount, resultsLine, stateFilterOf } from "./notesLogic";
+import { buildGroups, filterGroups, resultsLine, stateFilterOf } from "./notesLogic";
 
 const item = (id: number, text: string, done = false): SessionItem => ({
   id,
@@ -80,11 +80,6 @@ describe("grouping", () => {
     expect(groups[2]!.session).toBeNull();
     expect(groups[2]!.state).toEqual({ label: "Unknown", tone: "neutral" });
     expect(stateFilterOf(null)).toBe("unknown");
-  });
-
-  it("counts open checklist items only", () => {
-    expect(openItemCount(overview)).toBe(2);
-    expect(openItemCount({ sessions: [], truncated: false })).toBe(0);
   });
 });
 

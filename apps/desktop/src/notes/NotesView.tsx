@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useState, type RefObject } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type RefObject } from "react";
 import {
   deleteSessionItem,
   moveSessionItem,
@@ -70,6 +70,13 @@ export default function NotesView({
     [groups, text, kind, state, typing],
   );
   const filtered = text.trim() !== "" || kind !== "all" || state !== "all";
+  const line = resultsLine(visible.length, groups.length, filtered);
+  // The live region is updated after typing pauses, so a screen reader is not interrupted per key.
+  const [announced, setAnnounced] = useState(line);
+  useEffect(() => {
+    const t = window.setTimeout(() => setAnnounced(line), 600);
+    return () => window.clearTimeout(t);
+  }, [line]);
 
   /** Runs one command, then re-reads. Returns false (and says why) if it failed. */
   const run = useCallback(
@@ -122,8 +129,8 @@ export default function NotesView({
       {error && <Banner tone="danger">{error}</Banner>}
       {overview?.truncated && (
         <Banner tone="info">
-          Showing your {overview.sessions.length} most recent sessions with notes. Older ones are
-          kept; open the session to see them.
+          Showing your {overview.sessions.length} most recent sessions with notes. Older notes are
+          kept in each session.
         </Banner>
       )}
 
@@ -180,7 +187,7 @@ export default function NotesView({
               ))}
             </div>
             <p className="notes-count" role="status">
-              {resultsLine(visible.length, groups.length, filtered)}
+              {announced}
             </p>
           </div>
 
@@ -200,6 +207,7 @@ export default function NotesView({
                   <Group
                     v={v}
                     now={now}
+                    searchId={searchId}
                     run={run}
                     onOpenSession={onOpenSession}
                     onTyping={setTyping}
@@ -220,7 +228,9 @@ function Group({
   run,
   onOpenSession,
   onTyping,
+  searchId,
 }: {
+  searchId: string;
   v: VisibleGroup;
   now: number;
   run: (fn: () => Promise<unknown>, fallback: string) => Promise<boolean>;
@@ -238,7 +248,10 @@ function Group({
       {showIntent && (
         <div
           onFocus={() => onTyping({ key: groupId(group), field: "intent" })}
-          onBlur={() => onTyping(null)}
+          onBlur={(e) => {
+            // Moving between this box's own controls is not leaving it.
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onTyping(null);
+          }}
         >
           <SavedText
             label="Your intent"
@@ -261,6 +274,7 @@ function Group({
           <ItemRows
             kind="checklist"
             items={items}
+            focusFallback={() => document.getElementById(searchId)?.focus()}
             onUpdate={(id, change) =>
               run(() => updateSessionItem(id, change), "That change wasn't saved. Try again.")
             }
@@ -275,7 +289,10 @@ function Group({
       {showNotes && (
         <div
           onFocus={() => onTyping({ key: groupId(group), field: "notes" })}
-          onBlur={() => onTyping(null)}
+          onBlur={(e) => {
+            // Moving between this box's own controls is not leaving it.
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onTyping(null);
+          }}
         >
           <SavedText
             label="Notes"

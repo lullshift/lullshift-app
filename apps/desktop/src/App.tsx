@@ -15,8 +15,7 @@ import type { PauseRequest } from "./activity/ActivityHost";
 import { createDashboardStore } from "./dashboardStore";
 import HomeView from "./home/HomeView";
 import NotesView from "./notes/NotesView";
-import { openItemCount } from "./notes/notesLogic";
-import { overviewOf, useNotesOverview } from "./notes/useNotesOverview";
+import { useNotesOpenCount, useNotesOverview } from "./notes/useNotesOverview";
 import SessionsView from "./SessionsView";
 import type { SessionKey } from "./context/api";
 import { viewKey } from "./context/panelLogic";
@@ -93,7 +92,8 @@ export default function App() {
   if (view !== "sessions" && openSession !== null) setOpenSession(null);
   // Bumps on each sessions-changed event so an open detail panel re-reads its session.
   const [changeTick, setChangeTick] = useState(0);
-  const notes = useNotesOverview(changeTick);
+  const notes = useNotesOverview(changeTick, view === "notes");
+  const notesOpen = useNotesOpenCount(changeTick);
   const reloadNotes = notes.reload;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -209,11 +209,9 @@ export default function App() {
 
   // Sidebar counts: what is in each library, and how many activities have a save.
   const libraryList = activityLoad.status === "ready" ? activityLoad.list : null;
-  const notesOverview = overviewOf(notes.load);
   const counts: Partial<Record<ViewId, number>> = {
     // Open checklist items; no count at all when there are none (and never an orange badge).
-    ...(notesOverview &&
-      openItemCount(notesOverview) > 0 && { notes: openItemCount(notesOverview) }),
+    ...(notesOpen !== null && notesOpen > 0 && { notes: notesOpen }),
     ...(libraryList && {
       play: onPage(libraryList, "play").length,
       rest: onPage(libraryList, "rest").length,

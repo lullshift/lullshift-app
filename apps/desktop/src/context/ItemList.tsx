@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import type { ItemKind, NextMoveCategory, SessionItem } from "./api";
 import { ItemRows } from "./ItemRows";
 import { CATEGORIES } from "./panelLogic";
@@ -38,6 +38,7 @@ export function ItemList({
   const [text, setText] = useState("");
   const [category, setCategory] = useState<NextMoveCategory>("question");
   const [status, setStatus] = useState("");
+  const addRef = useRef<HTMLInputElement>(null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -51,20 +52,19 @@ export function ItemList({
       <h3 id={headingId} className="detail-heading">
         {title}
       </h3>
-      {items.length === 0 ? (
-        <p className="detail-none">{emptyText}</p>
-      ) : (
-        <ItemRows
-          kind={kind}
-          items={items}
-          categories={categories}
-          copy={copy}
-          onStatus={setStatus}
-          onUpdate={onUpdate}
-          onDelete={onDelete}
-          onMove={onMove}
-        />
-      )}
+      {items.length === 0 && <p className="detail-none">{emptyText}</p>}
+      {/* Stays mounted when empty, so focus can move on after the last row is deleted. */}
+      <ItemRows
+        kind={kind}
+        items={items}
+        categories={categories}
+        copy={copy}
+        onStatus={setStatus}
+        focusFallback={() => addRef.current?.focus()}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
+        onMove={onMove}
+      />
       {copy && (
         <>
           <p className="detail-note">
@@ -93,6 +93,7 @@ export function ItemList({
         )}
         <input
           type="text"
+          ref={addRef}
           className="field item-add-text"
           aria-label={`Add to ${title}`}
           placeholder={placeholder}

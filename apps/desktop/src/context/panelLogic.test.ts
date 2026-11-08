@@ -169,14 +169,17 @@ describe("timeline labels", () => {
         "utf8",
       );
     const found = new Set<string>();
-    const claude = read("claude_code/map.rs");
-    for (const m of claude.matchAll(
-      /"permission_prompt"\s*\|\s*"idle_prompt"\s*\|\s*"elicitation_dialog"/g,
-    ))
-      m[0].match(/"(\w+)"/g)?.forEach((w) => found.add(w.replaceAll('"', "")));
-    // PermissionRequest (Claude Code) and Codex both insert reason "permission".
-    for (const rel of ["claude_code/map.rs", "codex/map.rs"])
-      if (/"reason"\.into\(\),\s*"permission"\.into\(\)/.test(read(rel))) found.add("permission");
+    for (const adapter of ["claude_code", "codex", "cursor", "opencode"]) {
+      const src = read(`${adapter}/map.rs`).split("#[cfg(test)]")[0]!;
+      // A literal reason inserted right before an arm returns NeedsAttention.
+      for (const m of src.matchAll(
+        /"reason"\.into\(\),\s*"(\w+)"\.into\(\)\);\s*EventType::NeedsAttention/g,
+      ))
+        found.add(m[1]!);
+      // A reason taken from a checked list (Claude Code notification types): every quoted word.
+      for (const m of src.matchAll(/matches!\(\s*kind,([^)]*)\)/g))
+        for (const w of m[1]!.matchAll(/"(\w+)"/g)) found.add(w[1]!);
+    }
     expect([...found].sort()).toEqual([
       "elicitation_dialog",
       "idle_prompt",

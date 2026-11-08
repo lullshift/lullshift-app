@@ -162,6 +162,11 @@ describe("Notes view", () => {
   it("searches case-insensitively across notes, items and names", async () => {
     await typeInto(search(), "BACKUP");
     expect(titles()).toEqual(["SQLite move"]);
+    // The live region waits for typing to pause.
+    expect(host.querySelector(".notes-count")?.textContent).not.toBe("1 of 3 sessions");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 700));
+    });
     expect(host.querySelector(".notes-count")?.textContent).toBe("1 of 3 sessions");
     await typeInto(search(), "profile");
     expect(titles()).toEqual(["Token refresh"]);
@@ -212,7 +217,7 @@ describe("Notes view", () => {
 
   it("an item edits in place and saves with Enter", async () => {
     const text = host.querySelector<HTMLButtonElement>(".notes-group .item-text")!;
-    await act(async () => text.focus());
+    await click(text);
     const input = host.querySelector<HTMLInputElement>("input.item-edit")!;
     await typeInto(input, "Refresh path is tested");
     await act(async () => {

@@ -678,63 +678,68 @@ impl Store {
         Ok(out)
     }
 
+    /// Unfinished checklist items across all sessions (the Notes badge). A COUNT, uncapped.
+    pub fn open_checklist_count(&self) -> Result<i64> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM session_items WHERE kind = 'checklist' AND done = 0",
+            [],
+            |r| r.get(0),
+        )?)
+    }
+
     /// Everything the user wrote across sessions, in one read: sessions (newest activity first)
     /// that have an intent of the user's own, notes or checklist items. At most
     /// [`NOTES_OVERVIEW_MAX_SESSIONS`] sessions and [`NOTES_OVERVIEW_MAX_CHARS`] characters; when
     /// a cap is hit, `truncated` is set and later (older) sessions are left out whole.
+    ///
+    /// The kept sessions are chosen first from keys and text lengths only; their text is then
+    /// read per session, so nothing else is loaded.
     pub fn notes_overview(&self) -> Result<NotesOverview> {
-        type Ctx = (Option<String>, Option<String>, String, Option<String>);
-        let mut contexts: HashMap<(String, String), Ctx> = HashMap::new();
+        // Characters of user text per session that has any (lengths only, no text).
+        let mut sizes: HashMap<(String, String), usize> = HashMap::new();
         let mut stmt = self.conn.prepare(
-            "SELECT provider, provider_session_id, user_intent, user_title, notes, agent_title
+            "SELECT provider, provider_session_id,
+                    CASE WHEN trim(coalesce(user_intent, '')) = '' THEN 0 ELSE length(user_intent) END
+                    + length(notes),
+                    (trim(coalesce(user_intent, '')) <> '' OR notes <> '')
              FROM session_context",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((
                 (r.get::<_, String>(0)?, r.get::<_, String>(1)?),
-                (
-                    r.get::<_, Option<String>>(2)?,
-                    r.get::<_, Option<String>>(3)?,
-                    r.get::<_, String>(4)?,
-                    r.get::<_, Option<String>>(5)?,
-                ),
+                usize::try_from(r.get::<_, i64>(2)?).unwrap_or(0),
+                r.get::<_, i64>(3)? != 0,
             ))
         })?;
         for row in rows {
-            let (key, ctx) = row?;
-            contexts.insert(key, ctx);
+            let (key, size, has) = row?;
+            if has {
+                sizes.insert(key, size);
+            }
         }
-        let mut lists: HashMap<(String, String), Vec<Item>> = HashMap::new();
-        let mut stmt = self.conn.prepare(&format!(
-            "SELECT {ITEM_COLUMNS}, provider, provider_session_id FROM session_items
-             WHERE kind = 'checklist' ORDER BY position, id"
-        ))?;
+        let mut stmt = self.conn.prepare(
+            "SELECT provider, provider_session_id, SUM(length(text)) FROM session_items
+             WHERE kind = 'checklist' GROUP BY provider, provider_session_id",
+        )?;
         let rows = stmt.query_map([], |r| {
             Ok((
-                item_row(r)?,
-                (r.get::<_, String>(7)?, r.get::<_, String>(8)?),
+                (r.get::<_, String>(0)?, r.get::<_, String>(1)?),
+                usize::try_from(r.get::<_, i64>(2)?).unwrap_or(0),
             ))
         })?;
         for row in rows {
-            let (item, key) = row?;
-            lists.entry(key).or_default().push(item);
+            let (key, size) = row?;
+            *sizes.entry(key).or_insert(0) += size;
         }
 
         let mut out = NotesOverview::default();
         let mut total = 0usize;
         // `sessions()` is already newest first.
         for rec in self.sessions()? {
-            let key = (rec.provider.clone(), rec.provider_session_id.clone());
-            let ctx = contexts.remove(&key);
-            let checklist = lists.remove(&key).unwrap_or_default();
-            let (intent, user_title, notes, agent_title) = ctx.unwrap_or_default();
-            let intent = intent.filter(|t| !t.trim().is_empty());
-            if intent.is_none() && notes.is_empty() && checklist.is_empty() {
+            let Some(&size) = sizes.get(&(rec.provider.clone(), rec.provider_session_id.clone()))
+            else {
                 continue;
-            }
-            let size = intent.as_deref().map_or(0, chars)
-                + chars(&notes)
-                + checklist.iter().map(|i| chars(&i.text)).sum::<usize>();
+            };
             if out.entries.len() >= NOTES_OVERVIEW_MAX_SESSIONS
                 || total.saturating_add(size) > NOTES_OVERVIEW_MAX_CHARS
             {
@@ -742,14 +747,21 @@ impl Store {
                 break;
             }
             total += size;
+            let (provider, id) = (rec.provider, rec.provider_session_id);
+            let ctx = self.context(&provider, &id)?.unwrap_or_default();
+            let checklist = self
+                .items(&provider, &id)?
+                .into_iter()
+                .filter(|i| i.kind == "checklist")
+                .collect();
             out.entries.push(NotesEntry {
-                provider: rec.provider,
-                session_id: rec.provider_session_id,
+                provider,
+                session_id: id,
                 last_received_utc: rec.last_received_utc,
-                user_title,
-                agent_title,
-                intent,
-                notes,
+                user_title: ctx.user_title,
+                agent_title: ctx.agent_title.map(|c| c.text),
+                intent: ctx.user_intent.filter(|t| !t.trim().is_empty()),
+                notes: ctx.notes,
                 checklist,
             });
         }

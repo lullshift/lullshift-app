@@ -127,6 +127,9 @@ export const sessionDetail = (s: SessionKey) => invoke<SessionDetail>("session_d
 /** Every session's intent, checklist and notes in one read (bounded in Rust). */
 export const notesOverview = () => invoke<NotesOverview>("notes_overview");
 
+/** Unfinished checklist items across all sessions: the Notes badge (a COUNT, uncapped). */
+export const notesOpenCount = () => invoke<number>("notes_open_count");
+
 export const setSessionNotes = (s: SessionKey, notes: string) =>
   invoke<null>("set_session_notes", { ...k(s), notes });
 

@@ -1130,6 +1130,13 @@ pub async fn notes_overview(core: CoreState<'_>) -> Result<NotesOverviewDto, Str
     blocking(move || with_store(&core, |s| notes_overview_dto(s))).await
 }
 
+/// The Notes badge: unfinished checklist items across all sessions. A COUNT (main window only).
+#[tauri::command]
+pub async fn notes_open_count(core: CoreState<'_>) -> Result<i64, String> {
+    let core = Arc::clone(&core);
+    blocking(move || with_store(&core, |s| s.open_checklist_count())).await
+}
+
 #[tauri::command]
 pub async fn set_session_notes(
     app: AppHandle,

@@ -6,6 +6,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+let overviewCalls = 0;
 const NOW = new Date().toISOString();
 const activity = (id: string, name: string, category: string, savedUtc: string | null = null) => ({
   id,
@@ -53,7 +54,10 @@ vi.mock("@tauri-apps/api/core", () => ({
           ipc: { status: "ok" },
           staleAfterSeconds: 600,
         });
+      case "notes_open_count":
+        return Promise.resolve(2);
       case "notes_overview":
+        overviewCalls += 1;
         return Promise.resolve({
           truncated: false,
           sessions: [
@@ -155,6 +159,10 @@ describe("navigation", () => {
     expect(nav("Continue").querySelector(".nav-count")?.textContent).toBe("2");
     expect(nav("Sessions").querySelector(".nav-badge")?.textContent).toContain("1");
     expect(nav("Play").querySelector(".nav-badge")).toBeNull();
+  });
+
+  it("reads the Notes badge with a count, not the whole overview, until Notes is opened", () => {
+    expect(overviewCalls).toBe(0);
   });
 
   it("counts open checklist items on Notes, never with the orange badge", () => {

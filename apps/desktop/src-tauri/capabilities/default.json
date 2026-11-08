@@ -52,6 +52,7 @@
     "allow-activity-content",
     "allow-session-detail",
     "allow-notes-overview",
+    "allow-notes-open-count",
     "allow-set-session-notes",
     "allow-set-session-intent",
     "allow-set-session-title",

@@ -53,6 +53,7 @@ fn main() {
             "activity_content",
             "session_detail",
             "notes_overview",
+            "notes_open_count",
             "set_session_notes",
             "set_session_intent",
             "set_session_title",

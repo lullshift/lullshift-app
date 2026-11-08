@@ -533,6 +533,27 @@ fn notes_overview_lists_sessions_with_text_newest_first_and_checklist_only() {
 }
 
 #[test]
+fn open_checklist_count_counts_every_unfinished_checklist_item_uncapped() {
+    let mut s = store_with(&["a", "b"]);
+    assert_eq!(s.open_checklist_count().expect("count"), 0);
+    let mut first = None;
+    for sess in ["a", "b"] {
+        for i in 0..150 {
+            let item = s
+                .add_item(P, sess, "checklist", None, &format!("c{i}"), T0)
+                .expect("item");
+            first.get_or_insert(item.id);
+        }
+    }
+    s.add_item(P, "a", "decision", None, "not counted", T0)
+        .expect("item");
+    s.update_item(first.expect("first"), None, Some(true))
+        .expect("done");
+    // 300 checklist items across two sessions (more than the overview's per-session view), one done.
+    assert_eq!(s.open_checklist_count().expect("count"), 299);
+}
+
+#[test]
 fn notes_overview_ignores_captured_intent() {
     let mut s = store_with(&["a"]);
     s.record_prompt(P, "a", "captured text", T0)

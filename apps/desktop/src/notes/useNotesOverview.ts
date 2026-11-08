@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { notesOverview, type NotesOverview } from "../context/api";
+import { notesOpenCount, notesOverview, type NotesOverview } from "../context/api";
 
 export type NotesLoad =
   | { status: "loading" }
@@ -11,7 +11,7 @@ export type NotesLoad =
  * sessions-changed event) or `reload()` is called after an edit. Rust stays authoritative: this
  * only holds the last snapshot, and a failed reload keeps showing the last good one.
  */
-export function useNotesOverview(tick: number) {
+export function useNotesOverview(tick: number, enabled = true) {
   const [load, setLoad] = useState<NotesLoad>({ status: "loading" });
   const generation = useRef(0);
 
@@ -30,11 +30,28 @@ export function useNotesOverview(tick: number) {
     }
   }, []);
 
+  // Only read while Notes is visible; the sessions-changed tick also picks up any note a closing
+  // session panel was still saving.
   useEffect(() => {
-    void reload();
-  }, [reload, tick]);
+    if (enabled) void reload();
+  }, [reload, tick, enabled]);
 
   return { load, reload };
+}
+
+/** The sidebar badge: a cheap COUNT of unfinished checklist items, or null while unknown. */
+export function useNotesOpenCount(tick: number): number | null {
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    let current = true;
+    notesOpenCount()
+      .then((n) => current && setCount(n))
+      .catch(() => current && setCount(null));
+    return () => {
+      current = false;
+    };
+  }, [tick]);
+  return count;
 }
 
 /** The overview to show: the current one, or the last good one after a failed reload. */

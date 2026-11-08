@@ -85,11 +85,6 @@ export function buildGroups(
   });
 }
 
-/** Unfinished checklist items across every session: the sidebar count. */
-export function openItemCount(overview: NotesOverview): number {
-  return overview.sessions.reduce((n, s) => n + s.checklist.filter((i) => !i.done).length, 0);
-}
-
 export interface NotesQuery {
   text: string;
   kind: KindFilter;

@@ -1551,9 +1551,9 @@ Needs a key for a model that reasons, in each of: OpenAI (Responses API, for exa
 Setup: at least two sessions with a user intent, a few "Before you answer" checklist items and a note (use the browser demo or real sessions). For step 7 use Claude Code with the Lullshift hooks installed.
 
 1. Open a session panel. Compare **Rename** and **Pin**; click Pin so it reads **Pinned** and compare again.
-2. In "Before you answer": there is no Edit button. Click an item's text, change it, press Enter. Click another item, change it, press Esc. Click a third, clear the text, press Enter. Click a fourth, change it, then click elsewhere.
-3. Tick and untick a checkbox. Focus an item row (Tab) and press Alt+Down, then Alt+Up. Use the arrow icon buttons too.
-4. Click the trash icon on an item, choose Cancel; click it again, choose Delete.
+2. In "Before you answer": there is no Edit button. Click an item's text (or Tab to it and press Enter, Space or F2), change it, press Enter. Click another item, change it, press Esc. Click a third, clear the text, press Enter. Click a fourth, change it, then click elsewhere.
+3. Tick and untick a checkbox. Focus an item's text (Tab) and press Alt+Down, then Alt+Up. Use the arrow icon buttons too.
+4. Click the trash icon on an item, choose Cancel; click it again, choose Delete. Check where keyboard focus lands. Tab through the items without typing.
 5. Open **Notes** in the sidebar. Check its position (right after Sessions), the count and that there is no orange badge.
 6. In Notes: type part of a note, an item and a session name in the search box (try capitals). Use each filter chip and the state chips. Edit a note, tick an item, edit and delete an item. Click **Open session** on a group. Clear the search with a word that matches nothing.
 7. Make Claude Code ask for a permission (for example a tool needing approval) and open that session while it waits.
@@ -1562,13 +1562,15 @@ Setup: at least two sessions with a user intent, a few "Before you answer" check
 **Expected:**
 
 - **Step 1:** the two buttons have the same height, padding and font, in both states.
-- **Step 2:** text becomes an input on focus or click. Enter saves; Esc restores the old text; the empty one is restored, not deleted; leaving the field saves the fourth. Focus returns to the row, which does not reopen the editor.
+- **Step 2:** the text becomes an input on click, Enter, Space or F2 (Tabbing through items changes nothing and saves nothing), with the caret at the end. Enter saves; Esc restores the old text; the empty one is restored, not deleted; leaving the field saves the fourth. Focus returns to the row, which does not reopen the editor.
 - **Step 3:** the checkbox toggles done and does not open the editor. Alt+Down and Alt+Up reorder and focus stays on the item. The icon buttons are named for screen readers and show the shortcut as a tooltip.
-- **Step 4:** nothing is deleted until you confirm; Cancel keeps the item.
+- **Step 4:** nothing is deleted until you confirm; Cancel keeps the item. After a delete, focus lands on the next item, else the previous, else the Add box (the search box in Notes).
 - **Step 5:** Notes follows Sessions, shows a grey count of open items (none when zero) and never the orange badge.
 - **Step 6:** results are grouped by session, newest first, with title, tool, state pill and time. Search and chips narrow them and the line under them says how many sessions are shown. Edits save like in the panel. Open session lands on that session's panel. No matches shows a "No matches" message with a button that clears the filters. With no notes at all the page explains where notes come from.
 - **Step 7:** "What it's asking" says "It's asking for your permission to continue.", never "didn't say why". A question dialog from the agent reads "It's asking you a question."
 - **Step 8:** Notes and the panel are readable in dark, with visible focus rings and no animation under reduced motion.
+
+**Result:** \_\_\_
 
 ## Companion layout and polish
 
