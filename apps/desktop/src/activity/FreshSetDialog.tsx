@@ -319,6 +319,7 @@ function FreshSetDialogFor({
             <div className="fresh-field">
               <label htmlFor={`${ids}-topic`}>Topic</label>
               <input
+                className="field"
                 id={`${ids}-topic`}
                 type="text"
                 value={topic}
@@ -339,6 +340,7 @@ function FreshSetDialogFor({
               <div className="fresh-field">
                 <label htmlFor={`${ids}-difficulty`}>Difficulty</label>
                 <select
+                  className="field"
                   id={`${ids}-difficulty`}
                   value={difficulty}
                   onChange={(e) => setDifficulty(e.target.value as Difficulty)}
@@ -361,6 +363,7 @@ function FreshSetDialogFor({
               <div className="fresh-field">
                 <label htmlFor={`${ids}-size`}>How many {engine.noun}</label>
                 <select
+                  className="field"
                   id={`${ids}-size`}
                   value={String(request.size)}
                   onChange={(e) => setSize(Number(e.target.value))}
@@ -378,6 +381,7 @@ function FreshSetDialogFor({
                 <div className="fresh-field">
                   <label htmlFor={`${ids}-pattern`}>Breathing pattern</label>
                   <select
+                    className="field"
                     id={`${ids}-pattern`}
                     value={pattern}
                     onChange={(e) => setPattern(e.target.value as BreathingPatternId)}
@@ -395,6 +399,7 @@ function FreshSetDialogFor({
                 <div className="fresh-field">
                   <label htmlFor={`${ids}-rounds`}>Rounds</label>
                   <select
+                    className="field"
                     id={`${ids}-rounds`}
                     value={String(rounds)}
                     onChange={(e) => setRounds(Number(e.target.value))}
@@ -410,7 +415,7 @@ function FreshSetDialogFor({
             )}
             <div className="fresh-field">
               <span id={`${ids}-model-label`}>Model</span>
-              <div className="actions">
+              <div className="fresh-model-row">
                 <span>
                   {profiles === null ? "Reading your models…" : choiceText(profiles, choice)}
                   {profiles && choice && !sameChoice(choice, defaultChoice(profiles)) && (
@@ -428,19 +433,22 @@ function FreshSetDialogFor({
               </div>
             </div>
             {!isBreathing && (
-              <label className="check-row">
-                <input
-                  type="checkbox"
-                  checked={avoid}
-                  onChange={(e) => setAvoid(e.target.checked)}
-                />{" "}
-                Don&apos;t repeat earlier {engine.noun}
-                <span className="field-note">
+              <div className="fresh-field">
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={avoid}
+                    aria-describedby={`${ids}-avoid-note`}
+                    onChange={(e) => setAvoid(e.target.checked)}
+                  />
+                  Don&apos;t repeat earlier {engine.noun}
+                </label>
+                <span className="field-note" id={`${ids}-avoid-note`}>
                   Sends up to 20 earlier {engine.noun} from your saved sets on this topic
                   {pack?.source?.builtin === true ? " and from this built-in pack" : ""}, so the new
                   set is different. These are text your model or Lullshift wrote, never yours.
                 </span>
-              </label>
+              </div>
             )}
             <p className="fresh-summary">
               {host ? `${sendsToText(host)}: ` : "Sent to your provider: "}

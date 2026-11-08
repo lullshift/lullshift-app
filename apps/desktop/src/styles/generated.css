@@ -21,6 +21,9 @@
 
 .ai-tag {
   display: inline-block;
+  justify-self: start;
+  align-self: flex-start;
+  width: fit-content;
   max-width: 100%;
   padding: 1px var(--space-2);
   border-radius: var(--radius-md);
@@ -142,4 +145,12 @@
     animation: none;
     transition: none;
   }
+}
+
+.fresh-model-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }

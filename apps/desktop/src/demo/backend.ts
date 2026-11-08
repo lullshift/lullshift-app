@@ -3,6 +3,7 @@
 // Dev only: loaded by demo.html, never by index.html, and not part of any build.
 
 import { mockIPC } from "@tauri-apps/api/mocks";
+import type { ActivityInfo } from "../activity/ActivityHost";
 import type { AdapterView } from "../adapters";
 import type { CatalogModel, Message, ModelCatalog, ProviderProfile } from "../companion/api";
 import type { ContextPrefs, SessionItem, UiPrefs } from "../context/api";
@@ -186,6 +187,135 @@ function demoContextPreview(scope: DemoScope) {
 
 const itemOwner = (id: unknown) => SESSIONS.find((s) => s.detail.items.some((i) => i.id === id));
 let nextItemId = 1000;
+
+// Model-written sets (ADR-028). `?gen` turns the main switch on, `?genbody` both switches,
+// `?genfail` makes every Fresh set request fail the checks so the calm card can be seen.
+let genPrefs = {
+  enabled: params.has("gen") || params.has("genbody"),
+  bodyEnabled: params.has("genbody"),
+};
+interface DemoSet {
+  info: ActivityInfo;
+  runUrl: string;
+  content: unknown;
+  items: string[];
+  skips: Set<number>;
+}
+const demoSets: DemoSet[] = [];
+const demoGenCancelled = new Set<string>();
+
+function demoSetContent(topic: string): { content: unknown; items: string[] } {
+  const questions = [
+    [
+      "Which of these is the largest animal alive today?",
+      ["Blue whale", "Whale shark", "Giant squid"],
+      0,
+      "Blue whales can be about 30 metres long.",
+    ],
+    [
+      "How many arms does an octopus have?",
+      ["Six", "Eight", "Ten"],
+      1,
+      "Octopuses have eight arms lined with suckers.",
+    ],
+    [
+      "What do sea turtles mostly breathe?",
+      ["Air", "Water", "Both equally"],
+      0,
+      "Sea turtles are reptiles and breathe air at the surface.",
+    ],
+    [
+      "Which animal is a mammal?",
+      ["Dolphin", "Shark", "Tuna"],
+      0,
+      "Dolphins breathe air and feed their young milk.",
+    ],
+    [
+      "What helps a fish stay at one depth?",
+      ["Swim bladder", "Gills", "Fins only"],
+      0,
+      "Many fish fill a swim bladder with gas to float level.",
+    ],
+  ] as const;
+  return {
+    content: {
+      title: topic,
+      intro: "Five gentle questions written by your model.",
+      shuffle: true,
+      questions: questions.map(([prompt, choices, answer, explanation]) => ({
+        prompt,
+        choices: [...choices],
+        answer,
+        explanation,
+      })),
+    },
+    items: questions.map((q) => q[0]),
+  };
+}
+
+function addDemoSet(topic: string, difficulty: string, model: string | null): DemoSet {
+  const quiz = CATALOG.find((x) => x.info.engine === "lullshift.quiz@1");
+  const id = `lullshift.generated.quiz.${Math.random().toString(36).slice(2, 14).padEnd(12, "0")}`;
+  const { content, items } = demoSetContent(topic);
+  const set: DemoSet = {
+    info: {
+      ...(quiz?.info as ActivityInfo),
+      id,
+      name: topic,
+      description: "A quiz set written by your model.",
+      savedUtc: null,
+      playedSeconds: 0,
+      preview: false,
+      source: { marketplaceId: "generated", builtin: false, commit: null },
+      generated: {
+        model,
+        engine: "lullshift.quiz@1",
+        createdUtc: new Date().toISOString(),
+        topic,
+        difficulty,
+        unusable: false,
+      },
+    } as ActivityInfo,
+    runUrl: quiz?.runUrl ?? "",
+    content,
+    items,
+    skips: new Set(),
+  };
+  demoSets.unshift(set);
+  return set;
+}
+if (params.has("gen") || params.has("genbody"))
+  addDemoSet("Sea creatures", "medium", "demo-model-large");
+const setById = (id: unknown) => demoSets.find((x) => x.info.id === id);
+
+async function demoGenerate(a: Args): Promise<ActivityInfo> {
+  const requestId = String(a.requestId);
+  const req = a.req as { engine: string; topic: string; difficulty: string; model: string | null };
+  const channel = a.onEvent as { onmessage?: (e: unknown) => void };
+  const emit = (e: Record<string, unknown>) => channel.onmessage?.({ requestId, ...e });
+  if (!genPrefs.enabled) {
+    throw { kind: "generationOff", message: "Model-written content is turned off in Settings." };
+  }
+  demoGenCancelled.delete(requestId);
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  emit({ type: "phase", phase: "waiting" });
+  await wait(1500);
+  if (demoGenCancelled.has(requestId))
+    throw { kind: "cancelled", message: "You cancelled this set." };
+  emit({ type: "phase", phase: "checking" });
+  await wait(600);
+  if (params.has("genfail")) {
+    emit({ type: "failed", kind: "didNotFit" });
+    throw {
+      kind: "didNotFit",
+      message:
+        "Your model's set didn't fit this activity, so Lullshift didn't start it. Nothing was lost.",
+    };
+  }
+  const set = addDemoSet(req.topic, req.difficulty, req.model ?? "demo-model-large");
+  emit({ type: "done", setId: set.info.id });
+  return set.info;
+}
 
 function activityInfo(id: unknown) {
   const a = byId(id);
@@ -383,15 +513,21 @@ function handle(cmd: string, a: Args): unknown {
     case "activities_list":
       return CATALOG.map((x) => activityInfo(x.info.id));
     case "activity_info":
-      return activityInfo(a.id);
+      return setById(a.id)?.info ?? activityInfo(a.id);
     case "activity_launch":
-      return byId(a.id)?.runUrl ?? null;
+      return setById(a.id)?.runUrl ?? byId(a.id)?.runUrl ?? null;
     case "activity_launch_end":
       return null;
     case "activity_preview":
-      return byId(a.id)?.previewUrl ?? null;
-    case "activity_content":
+      return setById(a.id) ? null : (byId(a.id)?.previewUrl ?? null);
+    case "activity_content": {
+      const set = setById(a.id);
+      if (set) {
+        const c = set.content as { questions: unknown[] };
+        return { ...c, questions: c.questions.filter((_, i) => !set.skips.has(i)) };
+      }
       return byId(a.id)?.content ?? null;
+    }
     case "activity_snapshot": {
       const s = snapshots.get(String(a.id));
       return s ? { snapshot: s } : null;
@@ -495,7 +631,55 @@ function handle(cmd: string, a: Args): unknown {
     case "companion_messages":
       return MESSAGES.filter((m) => m.threadId === a.threadId);
     case "companion_prefs":
-      return { toolsEnabled: false, lastScope: null };
+      return { toolsEnabled: false, lastScope: null, contentGeneration: { ...genPrefs } };
+    case "generation_set_settings":
+      genPrefs = { enabled: !!a.enabled, bodyEnabled: !!a.enabled && !!a.bodyEnabled };
+      return { ...genPrefs };
+    case "generation_preview":
+      return JSON.stringify(
+        {
+          model: "demo-model-large",
+          max_tokens: 6000,
+          system: "(the fixed instruction for this activity, written by Lullshift)",
+          messages: [
+            {
+              role: "user",
+              content: `Topic: ${JSON.stringify((a.req as { topic: string }).topic)}`,
+            },
+          ],
+        },
+        null,
+        2,
+      );
+    case "generate_set":
+      return demoGenerate(a);
+    case "generation_cancel":
+      demoGenCancelled.add(String(a.requestId));
+      return null;
+    case "generated_sets_list":
+      return demoSets
+        .filter(
+          (x) =>
+            !a.engine ||
+            x.info.generated?.engine === a.engine ||
+            x.info.generated?.engine.includes(`.${String(a.engine)}@`),
+        )
+        .map((x) => ({ ...x.info, savedUtc: snapshots.has(x.info.id) ? ago(0) : null }));
+    case "generated_set_delete": {
+      const i = demoSets.findIndex((x) => x.info.id === a.id);
+      if (i >= 0) demoSets.splice(i, 1);
+      return i >= 0;
+    }
+    case "generated_sets_delete_all": {
+      const n = demoSets.length;
+      demoSets.length = 0;
+      return n;
+    }
+    case "generated_set_items":
+      return setById(a.id)?.items ?? [];
+    case "generated_set_skip":
+      setById(a.id)?.skips.add(Number(a.itemIndex));
+      return null;
     case "companion_usage":
       return [
         {
