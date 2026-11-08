@@ -18,6 +18,7 @@
 pub mod budget;
 pub mod chat_stream;
 pub mod error;
+pub mod generate;
 pub mod http;
 pub mod keystore;
 pub mod models_dev;
