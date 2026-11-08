@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ellipsize } from "../format";
+import { updateUiPrefs, useUiPrefs } from "../uiPrefsStore";
 import type { SessionView } from "../sessions";
 import { Banner } from "../ui/Banner";
 import { Mascot } from "../ui/Mascot";
@@ -17,6 +18,8 @@ import {
   type StreamEvent,
   type Thread,
 } from "./api";
+import { useFollowScroll } from "./autoScroll";
+import { FollowIcon, GearIcon } from "./icons";
 import { Composer, type SendResult } from "./Composer";
 import { acknowledge, runRequest, useIsWatching, useThreadInflight } from "./inflight";
 import { answerBadgeText, effectiveChoice, retryChoice, type ModelChoice } from "./modelChoice";
@@ -253,7 +256,8 @@ export function Conversation({
   const finishedId = finished?.requestId ?? null;
   // The provider and model picked for the next message only; null means the default.
   const [picked, setPicked] = useState<ModelChoice | null>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const autoScroll = useUiPrefs().companionAutoScroll !== false;
   const choice = effectiveChoice(profiles, picked);
   const profile = profiles.find((p) => p.id === choice?.profileId) ?? null;
   const host = profile?.host ?? null;
@@ -301,9 +305,11 @@ export function Conversation({
     };
   }, [thread.id]);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, pendingText]);
+  // Auto-scroll: follow new messages and streaming text (see autoScroll.ts).
+  const followSignal = `${messages.length}|${pendingText ?? ""}|${stream?.text.length ?? 0}|${
+    stream?.thinking.length ?? 0
+  }|${stream?.pending ? 1 : 0}`;
+  const follow = useFollowScroll(messagesRef, autoScroll, followSignal);
 
   // A request of this thread ended (while this screen was open or not): read the stored result,
   // say how it went, and, once the user can see this thread, clear its unread mark.
@@ -369,6 +375,7 @@ export function Conversation({
     setContextOffer(null);
     setDeciding(false);
     composerHandled.current = false;
+    follow.resume();
     const outcome = await runRequest(
       {
         threadId: thread.id,
@@ -463,14 +470,45 @@ export function Conversation({
 
   return (
     <div className="conversation">
-      <h2 className="conversation-title">
-        <bdi>{threadLabel(thread)}</bdi>
-      </h2>
+      <div className="conversation-head">
+        <h2 className="conversation-title">
+          <bdi>{threadLabel(thread)}</bdi>
+        </h2>
+        <div className="conversation-toolbar" role="toolbar" aria-label="Conversation tools">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Auto-scroll"
+            aria-pressed={autoScroll}
+            title={autoScroll ? "Auto-scroll on" : "Auto-scroll off"}
+            onClick={() => void updateUiPrefs({ companionAutoScroll: !autoScroll })}
+          >
+            <FollowIcon />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Provider settings"
+            title="Provider settings"
+            onClick={onOpenSettings}
+          >
+            <GearIcon />
+          </button>
+        </div>
+      </div>
       <div className="visually-hidden" role="status" aria-live="polite">
         {status || live}
       </div>
 
-      <div className="messages" tabIndex={0} aria-label="Messages">
+      <div
+        ref={messagesRef}
+        className="messages"
+        tabIndex={0}
+        aria-label="Messages"
+        onScroll={follow.onScroll}
+        onWheel={follow.onWheel}
+        onKeyDown={follow.onKeyDown}
+      >
         <div className="messages-column">
           {load.status === "loading" && <p className="card-sub">Loading messages…</p>}
           {load.status === "error" && (
@@ -537,7 +575,6 @@ export function Conversation({
               onDecide={(approve) => void decide(approve)}
             />
           )}
-          <div ref={endRef} />
         </div>
       </div>
 

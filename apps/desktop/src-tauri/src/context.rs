@@ -154,6 +154,18 @@ pub struct UiPrefs {
     /// Missing in older preferences, which read as the quick window.
     #[serde(default)]
     pub tray_click: TrayClick,
+    /// The Companion's conversation list is collapsed to a narrow rail. Missing in older
+    /// preferences, which read as expanded.
+    #[serde(default)]
+    pub companion_panel_collapsed: bool,
+    /// The Companion's message list follows streaming output. Missing in older preferences,
+    /// which read as on.
+    #[serde(default = "default_true")]
+    pub companion_auto_scroll: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for UiPrefs {
@@ -166,6 +178,8 @@ impl Default for UiPrefs {
             dock_width: None,
             theme: Theme::System,
             tray_click: TrayClick::Quick,
+            companion_panel_collapsed: false,
+            companion_auto_scroll: true,
         }
     }
 }
@@ -206,6 +220,10 @@ impl UiPrefs {
             dock_width: field::<u32>(&map, "dockWidth").map(clamp_dock_width),
             theme: field(&map, "theme").unwrap_or(d.theme),
             tray_click: field(&map, "trayClick").unwrap_or(d.tray_click),
+            companion_panel_collapsed: field(&map, "companionPanelCollapsed")
+                .unwrap_or(d.companion_panel_collapsed),
+            companion_auto_scroll: field(&map, "companionAutoScroll")
+                .unwrap_or(d.companion_auto_scroll),
         }
     }
 
@@ -1781,6 +1799,32 @@ mod tests {
         };
         assert_eq!(saved.clamped().dock_width, Some(200));
         assert_eq!(UiPrefs::default().clamped().dock_width, None);
+    }
+
+    /// Companion panel and auto-scroll: old records read as expanded and auto-scroll on; bad
+    /// values fall back to the default without resetting other fields.
+    #[test]
+    fn companion_layout_prefs_default_and_tolerate_bad_values() {
+        let d = UiPrefs::default();
+        assert!(!d.companion_panel_collapsed);
+        assert!(d.companion_auto_scroll);
+        let old = UiPrefs::from_stored(Some(r#"{"detailPanelPinned":false}"#));
+        assert!(!old.companion_panel_collapsed);
+        assert!(old.companion_auto_scroll);
+        let set = UiPrefs::from_stored(Some(
+            r#"{"detailPanelPinned":false,"companionPanelCollapsed":true,"companionAutoScroll":false}"#,
+        ));
+        assert!(set.companion_panel_collapsed);
+        assert!(!set.companion_auto_scroll);
+        assert!(!set.detail_panel_pinned);
+        let bad = UiPrefs::from_stored(Some(
+            r#"{"detailPanelPinned":false,"companionPanelCollapsed":"yes","companionAutoScroll":3}"#,
+        ));
+        assert!(!bad.companion_panel_collapsed);
+        assert!(bad.companion_auto_scroll);
+        assert!(!bad.detail_panel_pinned);
+        let json = serde_json::to_string(&set).expect("json");
+        assert_eq!(UiPrefs::from_stored(Some(&json)), set);
     }
 
     #[test]

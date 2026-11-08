@@ -3,6 +3,7 @@ import { ellipsize, relativeTime, stripInvisible } from "../format";
 import { Dialog } from "../ui/Dialog";
 import { MenuButton } from "../ui/MenuButton";
 import type { Thread } from "./api";
+import { PanelIcon, PlusIcon } from "./icons";
 import { threadMark, useInflight, type ThreadMark } from "./inflight";
 
 const MARK_TEXT: Record<Exclude<ThreadMark, null>, string> = {
@@ -28,6 +29,9 @@ interface Props {
   threads: readonly Thread[];
   selectedId: number | null;
   now: number;
+  /** Collapsed to a narrow rail with just the expand and new-conversation buttons. */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
   onSelect: (id: number) => void;
   onCreate: () => void;
   onRename: (id: number, title: string) => void;
@@ -47,12 +51,15 @@ export function ThreadList({
   threads,
   selectedId,
   now,
+  collapsed,
+  onToggleCollapsed,
   onSelect,
   onCreate,
   onRename,
   onDelete,
 }: Props) {
   const inputId = useId();
+  const listId = useId();
   const inflight = useInflight();
   const [renaming, setRenaming] = useState<Thread | null>(null);
   const [draft, setDraft] = useState("");
@@ -70,14 +77,44 @@ export function ThreadList({
   };
 
   return (
-    <nav className="card thread-list" aria-label="Conversations">
-      <button type="button" className="btn btn-primary" onClick={onCreate}>
-        New conversation
-      </button>
-      {threads.length === 0 ? (
-        <p className="card-sub">No conversations yet.</p>
+    <nav
+      className={collapsed ? "card thread-list thread-list-rail" : "card thread-list"}
+      aria-label="Conversations"
+    >
+      <div className="thread-list-head">
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label={collapsed ? "Show conversations" : "Hide conversations"}
+          aria-expanded={!collapsed}
+          aria-controls={collapsed ? undefined : listId}
+          title={collapsed ? "Show conversations" : "Hide conversations"}
+          onClick={onToggleCollapsed}
+        >
+          <PanelIcon collapse={!collapsed} />
+        </button>
+        {collapsed ? (
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="New conversation"
+            title="New conversation"
+            onClick={onCreate}
+          >
+            <PlusIcon />
+          </button>
+        ) : (
+          <button type="button" className="btn btn-primary thread-new" onClick={onCreate}>
+            New conversation
+          </button>
+        )}
+      </div>
+      {collapsed ? null : threads.length === 0 ? (
+        <p id={listId} className="thread-empty">
+          Your conversations will show up here.
+        </p>
       ) : (
-        <ul className="thread-items">
+        <ul id={listId} className="thread-items">
           {threads.map((t) => (
             <li
               key={t.id}

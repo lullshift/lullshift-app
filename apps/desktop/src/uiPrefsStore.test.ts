@@ -32,6 +32,27 @@ describe("interface preferences", () => {
     });
   });
 
+  it("never saves defaults over preferences that failed to load", async () => {
+    await loadUiPrefs(() => Promise.reject(new Error("x")));
+    const save = vi.fn(() => Promise.resolve(null));
+    await updateUiPrefs({ theme: "dark" }, save);
+    expect(save).not.toHaveBeenCalled();
+    expect(uiPrefsStore.getState().prefs.theme).toBe("dark");
+  });
+
+  it("waits for a read in progress before saving, and keeps the change on top of it", async () => {
+    let finish: (p: typeof DEFAULT_UI_PREFS) => void = () => undefined;
+    void loadUiPrefs(() => new Promise((r) => (finish = r)));
+    const save = vi.fn(() => Promise.resolve(null));
+    const pending = updateUiPrefs({ theme: "dark" }, save);
+    expect(save).not.toHaveBeenCalled();
+    finish({ ...DEFAULT_UI_PREFS, detailPanelPinned: false });
+    await pending;
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ detailPanelPinned: false, theme: "dark" }),
+    );
+  });
+
   it("saves the whole set, so one setting never overwrites another", async () => {
     await loadUiPrefs(() =>
       Promise.resolve({

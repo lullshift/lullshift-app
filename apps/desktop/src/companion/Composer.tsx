@@ -512,6 +512,21 @@ export function Composer({
           >
             Options…
           </button>
+          <span className="composer-send">
+            {sending && (
+              <button type="button" className="btn btn-secondary btn-small" onClick={onCancel}>
+                Cancel
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-primary btn-small"
+              disabled={!ready}
+              onClick={submit}
+            >
+              {sending ? "Sending…" : scope && scope.kind !== "none" ? "Review and send" : "Send"}
+            </button>
+          </span>
         </div>
       </div>
       <span id={hintId} className="visually-hidden">
@@ -524,23 +539,13 @@ export function Composer({
         </p>
       )}
 
-      <div className="composer-actions">
-        {(!scope || scope.kind !== "none") && (
-          <p className="field-note composer-summary">
-            {scope
-              ? `This message will also send: ${scopeLabel(scope.kind).toLowerCase()}. You will see it first.`
-              : "Finish choosing the context in Options, or remove it."}
-          </p>
-        )}
-        {sending && (
-          <button type="button" className="btn btn-secondary" onClick={onCancel}>
-            Cancel
-          </button>
-        )}
-        <button type="button" className="btn btn-primary" disabled={!ready} onClick={submit}>
-          {sending ? "Sending…" : scope && scope.kind !== "none" ? "Review and send" : "Send"}
-        </button>
-      </div>
+      {(!scope || scope.kind !== "none") && (
+        <p className="field-note composer-summary">
+          {scope
+            ? `This message will also send: ${scopeLabel(scope.kind).toLowerCase()}. You will see it first.`
+            : "Finish choosing the context in Options, or remove it."}
+        </p>
+      )}
 
       <ModelChoiceDialog
         open={choosing}

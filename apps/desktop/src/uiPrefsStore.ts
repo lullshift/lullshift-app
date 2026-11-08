@@ -52,17 +52,27 @@ export function reloadUiPrefs(read: () => Promise<UiPrefs> = uiPrefs): Promise<v
   );
 }
 
-/** Applies a change at once and saves the whole set. A failed save keeps the change for now. */
-export function updateUiPrefs(
+/**
+ * Applies a change at once and saves the whole set. While the saved preferences are still being
+ * read, the save waits for them (so defaults never overwrite them). If they could not be read, the
+ * change stays in memory only and nothing is saved. A failed save keeps the change for now.
+ */
+export async function updateUiPrefs(
   change: Partial<UiPrefs>,
   save: (p: UiPrefs) => Promise<unknown> = setUiPrefs,
 ): Promise<void> {
-  const prefs = { ...uiPrefsStore.getState().prefs, ...change };
-  uiPrefsStore.setState({ prefs });
-  return save(prefs).then(
-    () => undefined,
-    () => undefined,
-  );
+  uiPrefsStore.setState({ prefs: { ...uiPrefsStore.getState().prefs, ...change } });
+  if (!uiPrefsStore.getState().loaded && loading) {
+    await loading;
+    uiPrefsStore.setState({ prefs: { ...uiPrefsStore.getState().prefs, ...change } });
+  }
+  const state = uiPrefsStore.getState();
+  if (state.loadFailed) return;
+  try {
+    await save(state.prefs);
+  } catch {
+    // Keep the change for now.
+  }
 }
 
 export function useUiPrefs(): UiPrefs {
