@@ -11,6 +11,19 @@ export const BRIDGE_PROTOCOL = 1;
 /** File name of the bridge client that every activity carries. */
 export const BRIDGE_FILE = "lullshift-bridge-v1.js";
 
+/**
+ * Activity ids under this prefix belong to sets the user's own model writes (ADR-028). The host
+ * makes them; no activity may use one.
+ */
+export const RESERVED_GENERATED_PREFIX = "lullshift.generated.";
+/** The one fixed message shown for a reserved id; the host's own check says the same words. */
+export const RESERVED_GENERATED_MESSAGE =
+  "activity ids starting with 'lullshift.generated.' are reserved for sets written by the user's own model, so this id can't be used";
+/** Whether `id` is under the reserved generated-set namespace. */
+export function isReservedGeneratedId(id: string): boolean {
+  return id.startsWith(RESERVED_GENERATED_PREFIX);
+}
+
 export type { ActivityManifestV1, Help };
 export type HelpControl = NonNullable<Help["controls"]>[number];
 

@@ -709,3 +709,71 @@ fn errors_never_contain_git_stderr_or_the_path() {
         "{text}"
     );
 }
+
+// ---- The reserved `lullshift.generated.` namespace (ADR-028, S13-T05) ----
+
+const GENERATED: &str = "lullshift.generated.quiz.abcdefghij12";
+
+#[test]
+fn a_pack_or_app_in_the_generated_namespace_is_refused_with_the_fixed_message() {
+    for files in [
+        cards_pack(DIR, GENERATED, "1.0.0", &[]),
+        vec![
+            F::new("packs/x/manifest.json", app_manifest(GENERATED).to_string()),
+            F::new("packs/x/index.html", "<!doctype html>"),
+        ],
+    ] {
+        // The manifest check refuses the id on its own, in case an index ever passes it ...
+        let manifest = files
+            .iter()
+            .find(|f| f.path.ends_with("manifest.json"))
+            .expect("manifest");
+        assert_eq!(
+            crate::pack::strict_manifest(&manifest.bytes).err(),
+            Some(PackError::ReservedId)
+        );
+        // ... and the index entry is checked first, so the whole pipeline stops there.
+        let env = Env::new();
+        match local_pipeline(&env, files, GENERATED, DIR) {
+            Err(Error::Index(IndexError::ReservedId)) => {}
+            other => panic!("expected ReservedId, got {:?}", other.map(|p| p.preview)),
+        }
+    }
+    for text in [
+        Error::Pack(PackError::ReservedId).to_string(),
+        Error::Index(IndexError::ReservedId).to_string(),
+    ] {
+        assert_eq!(text, crate::manifest::RESERVED_GENERATED_MESSAGE);
+        assert!(text.contains("lullshift.generated."));
+    }
+}
+
+#[test]
+fn an_id_that_only_resembles_the_namespace_is_not_refused() {
+    for id in [
+        "lullshift.generatedx.quiz",
+        "lullshift.generate.quiz",
+        "com.lullshift.generated.quiz",
+    ] {
+        assert!(!crate::manifest::is_reserved_generated_id(id), "{id}");
+    }
+    assert!(crate::manifest::is_reserved_generated_id(GENERATED));
+}
+
+#[test]
+fn parse_manifest_refuses_the_namespace_for_any_kind() {
+    let app = app_manifest(GENERATED).to_string();
+    assert!(crate::manifest::parse_manifest(&app).is_none());
+    assert!(crate::manifest::parse_manifest(&app.replace(GENERATED, "com.ok.game")).is_some());
+    let pack = cards_manifest(GENERATED, "1.0.0", &[]).to_string();
+    assert!(crate::manifest::parse_manifest(&pack).is_none());
+}
+
+#[test]
+fn an_index_listing_the_namespace_is_refused_with_the_fixed_message() {
+    let e = index_error(&format!(
+        r#"{{"schemaVersion":1,"name":"acme","activities":[{{"id":"{GENERATED}","source":{{"path":"packs/x"}}}}]}}"#
+    ));
+    assert_eq!(e, Error::Index(IndexError::ReservedId));
+    assert_eq!(e.to_string(), crate::manifest::RESERVED_GENERATED_MESSAGE);
+}

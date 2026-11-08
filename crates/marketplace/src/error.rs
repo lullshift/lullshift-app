@@ -221,6 +221,8 @@ pub enum IndexError {
     TooManyEntries,
     DuplicateId(String),
     BadId(String),
+    /// The id is under the namespace reserved for sets the user's model writes (ADR-028).
+    ReservedId,
     BadText(&'static str),
     Name(NameError),
     Entry {
@@ -242,6 +244,7 @@ impl fmt::Display for IndexError {
             Self::TooManyEntries => f.write_str("the marketplace index lists too many activities"),
             Self::DuplicateId(id) => write!(f, "the activity {id} is listed twice"),
             Self::BadId(id) => write!(f, "'{id}' isn't a valid activity id"),
+            Self::ReservedId => f.write_str(crate::manifest::RESERVED_GENERATED_MESSAGE),
             Self::BadText(which) => {
                 write!(
                     f,
@@ -270,6 +273,8 @@ pub enum PackError {
     DisallowedFile(String),
     MissingManifest,
     ManifestInvalid(&'static str),
+    /// The manifest's id is under the namespace reserved for sets the user's model writes.
+    ReservedId,
     IdMismatch {
         expected: String,
         found: String,
@@ -309,6 +314,7 @@ impl fmt::Display for PackError {
             }
             Self::MissingManifest => f.write_str("the activity has no manifest.json"),
             Self::ManifestInvalid(why) => write!(f, "manifest.json isn't valid: {why}"),
+            Self::ReservedId => f.write_str(crate::manifest::RESERVED_GENERATED_MESSAGE),
             Self::IdMismatch { expected, found } => {
                 write!(
                     f,
