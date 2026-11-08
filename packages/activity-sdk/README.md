@@ -217,6 +217,15 @@ Still treat `content` as untrusted text: render it with `textContent`, never `in
 
 **Showing a pack's pictures in an engine.** The app serves a pack's listed pictures at the pack's own address, so an engine shows one with a relative URL: `img.src = "images/hexagon.png"` (the path from the data, which the app has already checked is listed). Never build the URL from anything else, always set `alt` from the data, and handle `error` by showing the alt text instead. An engine must not have an `images/` folder of its own; the app never serves it for a pack.
 
+**Pack data types and rounds.** The SDK exports TypeScript types for the data of the engines that draw rounds: `QuizPackData`, `TeaserPackData` and `CardsPackData`. Their optional `roundSize` (3 or more, at most the number of items) makes each round show that many items, preferring ones not shown in recent rounds (ADR-028 section 10). A schema can't compare it with the item count, so `roundSizeProblem(engine, data)` does; `lullshift validate` reports its message as a warning.
+
+```ts
+import { roundSizeProblem, type CardsPackData } from "@lullshift/activity-sdk";
+
+const deck: CardsPackData = { title: "Wonder", roundSize: 6, cards: [{ front: "..." }] };
+roundSizeProblem("lullshift.cards@1", deck); // "roundSize 6 is more than the 1 cards, ..."
+```
+
 **Compatibility.** A change that would make any existing valid pack invalid, or change how it plays in a way that matters, needs a new major, which ships beside the old one. No major is removed within v1.
 
 Reference files:
