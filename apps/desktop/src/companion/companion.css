@@ -1165,8 +1165,17 @@
 
 /* Filter and sort: one button, a small popover under it. */
 .filter-menu {
-  position: relative;
   flex: 0 0 auto;
+}
+
+/* The popover hangs from the filter row and has its own scroll, so it never makes the dialog
+   body taller. */
+.picker .catalog-filters {
+  position: relative;
+}
+
+.picker .catalog-browse {
+  min-height: 14rem;
 }
 
 .filter-menu-button {
@@ -1191,6 +1200,8 @@
   display: grid;
   gap: var(--space-1);
   min-width: 15rem;
+  max-height: 12rem;
+  overflow-y: auto;
   padding: var(--space-3);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
@@ -1488,4 +1499,9 @@
 .session-pick-text {
   display: grid;
   gap: 2px;
+}
+
+.catalog-provider-hint {
+  grid-column: 1 / -1;
+  margin: 0;
 }

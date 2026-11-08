@@ -255,6 +255,7 @@ describe("picker layout and the merged Filter and sort menu", () => {
     const notes = host.querySelectorAll(".dialog-description p");
     expect(notes).toHaveLength(1);
     expect(notes[0]?.textContent).toBe(CATALOG_NOTE);
+    expect(CATALOG_NOTE).toContain("Sends one request to models.dev");
     const footer = host.querySelector(".dialog-actions")!;
     expect(footer.textContent).toContain("Loaded");
     expect(footer.textContent).toContain("1 provider");
@@ -266,7 +267,7 @@ describe("picker layout and the merged Filter and sort menu", () => {
 
   it("filters and sorts from one popover with checkboxes and a radio group", async () => {
     fakeCore();
-    await openPicker();
+    const { onClose } = await openPicker();
     expect(host.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
     const menu = buttonIn(host, "Filter and sort");
     expect(menu.getAttribute("aria-expanded")).toBe("false");
@@ -294,18 +295,33 @@ describe("picker layout and the merged Filter and sort menu", () => {
     expect(menu.querySelector("[aria-label='filters on']")).not.toBeNull();
 
     // Escape closes only the popover and returns focus to the button.
-    await key(reasoning, "Escape");
+    expect(await key(reasoning, "Escape")).toBe(false); // keydown was cancelled
     expect(host.querySelector(".filter-menu-panel")).toBeNull();
     expect(document.activeElement).toBe(menu);
     expect(menu.getAttribute("aria-expanded")).toBe("false");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(host.querySelector("dialog")?.hasAttribute("open")).toBe(true);
+
+    // Escape on the toggle button itself also closes only the popover.
+    await click(menu);
+    expect(host.querySelector(".filter-menu-panel")).not.toBeNull();
+    expect(await key(menu, "Escape")).toBe(false);
+    expect(host.querySelector(".filter-menu-panel")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    // With the popover closed, Escape is left alone for the dialog.
+    expect(await key(menu, "Escape")).toBe(true);
   });
 
-  it("keeps the typed-name row to one input and one button, with the help as placeholder", async () => {
+  it("keeps the typed-name row to one input and one button, with the help as visible text", async () => {
     fakeCore();
     await openPicker();
     const row = host.querySelector(".picker-typed-row")!;
     expect(row.querySelectorAll("input")).toHaveLength(1);
     expect(row.querySelectorAll("button")).toHaveLength(1);
     expect(row.querySelector("input")?.getAttribute("placeholder")).toContain("model name");
+    const hint = host.querySelector(
+      `#${row.querySelector("input")?.getAttribute("aria-describedby")}`,
+    );
+    expect(hint?.textContent).toContain("can't check it until you send or test");
   });
 });

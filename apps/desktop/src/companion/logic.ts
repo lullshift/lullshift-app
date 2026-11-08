@@ -706,7 +706,7 @@ export function approvalPrompt(p: Pick<PendingTool, "label" | "host">): string {
 
 export const CATALOG_LOAD_LABEL = "Load model list from models.dev";
 export const CATALOG_NOTE =
-  "List from models.dev (community, may be out of date). Your keys and messages aren't sent.";
+  "Sends one request to models.dev, a community list that may be out of date. Your keys and messages are not sent. Test connection checks a model works.";
 /** Most model rows drawn at once; the search narrows the rest. */
 export const CATALOG_MAX_ROWS = 200;
 

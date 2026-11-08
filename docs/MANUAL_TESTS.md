@@ -1561,10 +1561,10 @@ Use light and dark, and once with the OS reduced-motion setting on. Start with n
 
 - **Step 1:** a centred empty state with the mascot, one heading, one short line and one normal-size button; nothing stretched. The list says "Your conversations will show up here." and a stray text link or empty box is not left in the header.
 - **Step 2:** both buttons are icon-only with a tooltip and an accessible name; the toggle reports pressed or not; the gear opens the Companion settings.
-- **Step 3:** with it on, the list follows the text; scrolling up pauses following until you reach the bottom again; with it off, it never moves by itself; the choice survives a restart.
+- **Step 3:** with it on, the list follows the text; scrolling up pauses following until you reach the bottom again; with it off, streaming never moves the list (sending your own message scrolls once to show it); the choice survives a restart.
 - **Step 4:** the list folds to a narrow rail with a Show conversations button (expanded state announced) and a plus; the choice survives a restart.
 - **Step 5:** Send sits inside the box, bottom right, on the same row as the model chip and Options.
-- **Step 6:** one short muted line explains models.dev; the model list gets most of the height; one Filter and sort button (checkboxes and sort options, a dot when a filter is on; Esc closes only it); "Loaded ..." and Refresh are in the footer next to Cancel; typing a name is a single row.
+- **Step 6:** one short muted line says "Sends one request to models.dev, a community list that may be out of date. Your keys and messages are not sent. Test connection checks a model works."; the model list gets most of the height; one Filter and sort button (checkboxes and sort options, a dot when a filter is on; Esc closes only it); "Loaded ..." and Refresh are in the footer next to Cancel; typing a name is a single row.
 
 **Result:** \_\_\_
 

@@ -64,13 +64,12 @@ function FilterSortMenu({
   const id = useId();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (!panelRef.current?.contains(t) && !buttonRef.current?.contains(t)) setOpen(false);
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -78,7 +77,23 @@ function FilterSortMenu({
 
   const active = filters.tools || filters.reasoning || filters.hideOld;
   return (
-    <div className="filter-menu">
+    <div
+      ref={wrapRef}
+      className="filter-menu"
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && open) {
+          // Close the popover only, not the dialog around it.
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(false);
+          buttonRef.current?.focus();
+        }
+      }}
+      onBlur={(e) => {
+        const to = e.relatedTarget;
+        if (open && to instanceof Node && !wrapRef.current?.contains(to)) setOpen(false);
+      }}
+    >
       <button
         ref={buttonRef}
         type="button"
@@ -92,20 +107,10 @@ function FilterSortMenu({
       </button>
       {open && (
         <div
-          ref={panelRef}
           id={`${id}-panel`}
           className="filter-menu-panel"
           role="group"
           aria-label="Filter and sort"
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              // Close the popover only, not the dialog around it.
-              e.preventDefault();
-              e.stopPropagation();
-              setOpen(false);
-              buttonRef.current?.focus();
-            }
-          }}
         >
           <label className="check-row">
             <input
@@ -536,7 +541,7 @@ export function ModelPickerDialog({
               <span className="visually-hidden">models.dev provider</span>
               <select
                 className="field"
-                title="This only picks which list to browse. Lullshift never fills in the base URL from models.dev."
+                aria-describedby={`${id}-pp-hint`}
                 value={providerId}
                 onChange={(e) => {
                   setPickedProvider(e.target.value);
@@ -555,6 +560,9 @@ export function ModelPickerDialog({
                 ))}
               </select>
             </label>
+            <p id={`${id}-pp-hint`} className="field-note catalog-provider-hint">
+              Only picks which list to browse. The base URL is never filled in from models.dev.
+            </p>
           </div>
         )}
 
@@ -608,9 +616,9 @@ export function ModelPickerDialog({
               type="text"
               autoComplete="off"
               spellCheck={false}
-              placeholder="Or type a model name not in the list, exactly as the provider names it"
+              placeholder="Or type a model name that is not in the list"
               aria-invalid={typedProblem ? true : undefined}
-              aria-describedby={typedProblem ? `${id}-typed-hint` : undefined}
+              aria-describedby={`${id}-typed-hint`}
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               onKeyDown={(e) => {
@@ -624,11 +632,13 @@ export function ModelPickerDialog({
               Use this name
             </button>
           </div>
-          {typedProblem && (
-            <p id={`${id}-typed-hint`} className="field-note field-error">
-              {typedProblem}
-            </p>
-          )}
+          <p
+            id={`${id}-typed-hint`}
+            className={typedProblem ? "field-note field-error" : "field-note"}
+          >
+            {typedProblem ??
+              "Type it as the provider names it. Lullshift can't check it until you send or test."}
+          </p>
         </div>
       </div>
     </Dialog>

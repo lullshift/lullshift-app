@@ -59,6 +59,7 @@ export function ThreadList({
   onDelete,
 }: Props) {
   const inputId = useId();
+  const listId = useId();
   const inflight = useInflight();
   const [renaming, setRenaming] = useState<Thread | null>(null);
   const [draft, setDraft] = useState("");
@@ -86,6 +87,7 @@ export function ThreadList({
           className="icon-btn"
           aria-label={collapsed ? "Show conversations" : "Hide conversations"}
           aria-expanded={!collapsed}
+          aria-controls={collapsed ? undefined : listId}
           title={collapsed ? "Show conversations" : "Hide conversations"}
           onClick={onToggleCollapsed}
         >
@@ -108,9 +110,11 @@ export function ThreadList({
         )}
       </div>
       {collapsed ? null : threads.length === 0 ? (
-        <p className="thread-empty">Your conversations will show up here.</p>
+        <p id={listId} className="thread-empty">
+          Your conversations will show up here.
+        </p>
       ) : (
-        <ul className="thread-items">
+        <ul id={listId} className="thread-items">
           {threads.map((t) => (
             <li
               key={t.id}

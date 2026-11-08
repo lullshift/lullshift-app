@@ -506,6 +506,8 @@ export function Conversation({
         tabIndex={0}
         aria-label="Messages"
         onScroll={follow.onScroll}
+        onWheel={follow.onWheel}
+        onKeyDown={follow.onKeyDown}
       >
         <div className="messages-column">
           {load.status === "loading" && <p className="card-sub">Loading messages…</p>}

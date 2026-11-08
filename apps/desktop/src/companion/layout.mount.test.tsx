@@ -23,12 +23,12 @@ vi.mock("@tauri-apps/api/core", () => ({
   Channel: class {},
 }));
 
-import { resetUiPrefsForTests, uiPrefsStore } from "../uiPrefsStore";
+import { loadUiPrefs, resetUiPrefsForTests, uiPrefsStore } from "../uiPrefsStore";
 import type { Message, ProviderProfile, Thread } from "./api";
 import { isAtBottom, useFollowScroll } from "./autoScroll";
 import CompanionView from "./CompanionView";
 import { resetInflight } from "./inflight";
-import { buttonIn, click, polyfillDialog, settle } from "./testDom";
+import { buttonIn, click, key, polyfillDialog, settle } from "./testDom";
 
 polyfillDialog();
 
@@ -200,12 +200,14 @@ describe("conversation rail", () => {
     const layout = host.querySelector(".companion-layout")!;
     const toggle = buttonIn(host, "Hide conversations");
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelector(`#${toggle.getAttribute("aria-controls")}`)).not.toBeNull();
     expect(layout.className).toBe("companion-layout");
 
     await click(toggle);
     expect(layout.classList.contains("companion-layout-collapsed")).toBe(true);
     const rail = buttonIn(host, "Show conversations");
     expect(rail.getAttribute("aria-expanded")).toBe("false");
+    expect(rail.hasAttribute("aria-controls")).toBe(false);
     // Only the expand button and an icon-only new-conversation button remain in the rail.
     const nav = host.querySelector(".thread-list-head")!;
     expect([...nav.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual([
@@ -234,6 +236,18 @@ describe("conversation rail", () => {
   });
 });
 
+describe("preferences that could not be read", () => {
+  it("toggling the rail changes the view in memory but saves nothing", async () => {
+    threads = [thread(1, "One")];
+    const failing = () => Promise.reject(new Error("store_unavailable"));
+    await loadUiPrefs(failing);
+    await mountView();
+    await click(buttonIn(host, "Hide conversations"));
+    expect(host.querySelector(".companion-layout-collapsed")).not.toBeNull();
+    expect(calls.some(([c]) => c === "set_ui_prefs")).toBe(false);
+  });
+});
+
 describe("composer", () => {
   it("has Send inside the box, in the same row as the model chip and Options", async () => {
     threads = [thread(1, "One")];
@@ -251,12 +265,14 @@ describe("composer", () => {
 });
 
 describe("follow scroll", () => {
+  const resumeRef: { current: () => void } = { current: () => undefined };
   /** A scroll container whose geometry the test controls. */
   function Harness({ enabled, signal }: { enabled: boolean; signal: string }) {
     const ref = useRef<HTMLDivElement>(null);
-    const { onScroll } = useFollowScroll(ref, enabled, signal);
+    const f = useFollowScroll(ref, enabled, signal);
+    resumeRef.current = f.resume;
     return (
-      <div ref={ref} id="box" onScroll={onScroll}>
+      <div ref={ref} id="box" onScroll={f.onScroll} onWheel={f.onWheel} onKeyDown={f.onKeyDown}>
         x
       </div>
     );
@@ -316,6 +332,49 @@ describe("follow scroll", () => {
     box.state.height = 1800;
     await render(true, "d");
     expect(box.state.top).toBe(1400);
+  });
+
+  it("a small scroll up (10px) pauses following; wheel up and ArrowUp pause too", async () => {
+    await render(true, "a");
+    const box = fakeBox();
+    await render(true, "b");
+    expect(box.state.top).toBe(600);
+    await box.userScrollTo(590);
+    const writes = box.state.writes;
+    box.state.height = 1200;
+    await render(true, "c");
+    expect(box.state.writes).toBe(writes);
+
+    // Back at the bottom, then the wheel or ArrowUp pauses before any scroll event.
+    await box.userScrollTo(800);
+    box.state.height = 1300;
+    await render(true, "d");
+    expect(box.state.top).toBe(900);
+    await act(async () => {
+      box.el.dispatchEvent(new WheelEvent("wheel", { deltaY: -10, bubbles: true }));
+    });
+    const w2 = box.state.writes;
+    box.state.height = 1400;
+    await render(true, "e");
+    expect(box.state.writes).toBe(w2);
+    await box.userScrollTo(1000);
+    await key(box.el, "ArrowUp");
+    box.state.height = 1500;
+    await render(true, "f");
+    expect(box.state.writes).toBe(w2);
+  });
+
+  it("when off, sending scrolls once to show the message, then streaming does not follow", async () => {
+    await render(false, "a");
+    const box = fakeBox();
+    box.state.height = 2000;
+    resumeRef.current();
+    await render(false, "b");
+    expect(box.state.top).toBe(1600);
+    const writes = box.state.writes;
+    box.state.height = 2600;
+    await render(false, "c");
+    expect(box.state.writes).toBe(writes);
   });
 
   it("never moves by itself when off", async () => {
