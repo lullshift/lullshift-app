@@ -721,3 +721,48 @@ fn listing_filters_by_engine_short_name_or_reference_newest_first() {
         "unknown_engine"
     );
 }
+
+// ---- load-time re-check of body routines (ADR-028 section 3) ----
+
+fn movement(step: &str, reps: u64) -> Value {
+    json!({"title": "Desk moves",
+        "wayOut": "Stop at any time. If something hurts or feels wrong, stop and rest.",
+        "restSeconds": 15,
+        "closing": "That is the routine.",
+        "moves": [{"name": "Shrug", "steps": [step], "reps": reps}]})
+}
+
+#[test]
+fn a_stored_body_routine_is_checked_again_on_load() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core(&dir);
+    let ok = accept(
+        &core,
+        "movement",
+        movement("Lift and drop your shoulders.", 5),
+    );
+    assert!(content_for_core(&core, &ok).is_ok());
+    // Hand-edited rows (the database is untrusted): each hits a generation rule and the row is
+    // marked unusable. The engine schema alone would pass all of them.
+    for (what, data) in [
+        ("refused phrase", movement("Now jump up", 5)),
+        ("non-ASCII", movement("Nefes al, sonra ver \u{00fc}", 5)),
+        ("over the reps cap", movement("Lift and drop.", 15)),
+    ] {
+        let id = accept(&core, "movement", movement("Lift and drop.", 5));
+        tamper(&core, &id, "lullshift.movement@1", &data.to_string());
+        assert!(content_for_core(&core, &id).is_err(), "{what}");
+        assert!(row_unusable(&core, &id), "{what}");
+    }
+    let id = accept(&core, "movement", movement("Lift and drop.", 5));
+    let mut long = movement("Lift and drop.", 5);
+    long["moves"] = json!(vec![long["moves"][0].clone(); 9]);
+    tamper(&core, &id, "lullshift.movement@1", &long.to_string());
+    assert!(content_for_core(&core, &id).is_err(), "nine moves");
+    // Host-written text is left alone (the closing is the host's, not the model's).
+    let id = accept(&core, "movement", movement("Lift and drop.", 5));
+    let mut host = movement("Lift and drop.", 5);
+    host["closing"] = json!("Hold it for a moment, then carry on.");
+    tamper(&core, &id, "lullshift.movement@1", &host.to_string());
+    assert!(content_for_core(&core, &id).is_ok());
+}

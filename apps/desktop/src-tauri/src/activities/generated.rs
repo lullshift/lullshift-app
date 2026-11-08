@@ -179,7 +179,13 @@ pub(crate) fn content(core: &Core, handle: &Handle) -> Result<Value, ContentErro
     let checked = (row.engine == handle.engine_ref)
         .then(|| validate_data(schema, "the set", row.data_json.as_bytes()).ok())
         .flatten()
-        .filter(|data| pack_media::check_declared(&[], data).is_ok());
+        .filter(|data| pack_media::check_declared(&[], data).is_ok())
+        // Body routines are checked again against the generation rules (caps, refused phrases,
+        // plain ASCII) on the model-written fields; the host-written ones are left alone.
+        .filter(|data| {
+            ::companion::generate::EngineKind::from_engine_ref(handle.engine_ref)
+                .is_none_or(|e| !::companion::generate::body_problem(e, data))
+        });
     match checked {
         Some(data) => apply_skips(core, &handle.id, handle.engine_ref, data),
         None => {
