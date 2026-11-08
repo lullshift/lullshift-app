@@ -316,7 +316,20 @@ fn debug_output_hides_topic_data_and_model() {
 fn mark_unusable_sticks() {
     let mut s = Store::open_in_memory().expect("open");
     let a = add(&mut s, 1, QUIZ, 0);
+    assert_eq!(
+        s.generated_set_state(&a).expect("state"),
+        Some((QUIZ.to_owned(), false))
+    );
+    assert_eq!(
+        s.generated_set_state("lullshift.generated.quiz.nope")
+            .expect("state"),
+        None
+    );
     assert!(s.mark_generated_set_unusable(&a).expect("mark"));
+    assert_eq!(
+        s.generated_set_state(&a).expect("state"),
+        Some((QUIZ.to_owned(), true))
+    );
     assert!(s.generated_set(&a).expect("get").expect("some").unusable);
     assert!(
         !s.mark_generated_set_unusable("lullshift.generated.quiz.nope")

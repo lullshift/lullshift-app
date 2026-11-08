@@ -201,12 +201,26 @@ impl Store {
             .transpose()
     }
 
-    /// Saved sets, newest first; all, or only those of one engine (`id@major`).
+    /// A set's engine (`id@major`) and whether it is marked unusable, without reading its data.
+    /// For the per-request checks (the scheme handler asks on every file).
+    pub fn generated_set_state(&self, id: &str) -> Result<Option<(String, bool)>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT engine, unusable FROM generated_sets WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?)
+    }
+
+    /// Saved sets, newest first (by insertion order, so the order does not depend on how a
+    /// timestamp string sorts); all, or only those of one engine (`id@major`).
     pub fn generated_sets(&self, engine: Option<&str>) -> Result<Vec<GeneratedSet>> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {COLUMNS} FROM generated_sets
              WHERE (?1 IS NULL OR engine = ?1)
-             ORDER BY created_utc DESC, rowid DESC"
+             ORDER BY rowid DESC"
         ))?;
         let rows = stmt.query_map([engine], raw)?;
         rows.map(|r| build(r?)).collect()
@@ -291,7 +305,7 @@ impl Store {
                 "SELECT s.id FROM generated_sets s
                  WHERE s.engine = ?1
                    AND NOT EXISTS (SELECT 1 FROM activity_snapshots a WHERE a.activity_id = s.id)
-                 ORDER BY s.created_utc ASC, s.rowid ASC
+                 ORDER BY s.rowid ASC
                  LIMIT ?2",
                 params![engine, i64::try_from(excess).unwrap_or(i64::MAX)],
             )?;
