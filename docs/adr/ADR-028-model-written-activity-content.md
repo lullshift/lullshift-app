@@ -162,6 +162,30 @@ Separately from model writing, and useful without any network: the quiz, teaser 
 - **Personalised content from the user's current task** (for example a quiz about the library they're using): would send task text to the provider. Not part of this ADR; it would need its own opt-in on top of ADR-013's capture rules.
 - **Don't store sets (generate each time):** simpler, but no replay offline, more cost, and resume would break. Rejected.
 
+## Implementation notes (Sprint 13)
+
+Where these notes differ from the sections above, the notes describe what was built.
+
+- **Where things live.**
+  - `crates/companion/src/generate/` holds the profiles, generation schemas, request building, `preview_request_text`, reply checks and the refused-phrase list.
+  - `crates/local-store/src/generated_sets.rs` with migration 0021 holds the stored sets and skips.
+  - `apps/desktop/src-tauri/src/activities/generated.rs` holds set ids, serving and the re-check on every load.
+  - `apps/desktop/src-tauri/src/companion_commands/generate_sets.rs` holds the nine Tauri commands, permitted only for the main window.
+- **One schema gate.** The Companion crate checks generation schemas with `marketplace::data_schema`, the same `jsonschema` 0.60.2 gate with the same keyword subset and pattern translation as packs. No second validator was added.
+- **Generation schemas are derived from the engine schemas** with a list of allowed properties, and every string's `pattern` and `maxLength` is copied from the engine. A field added to an engine later, such as `roundSize`, never reaches the model.
+- **Breathing.** The model writes one cue per phase of the chosen pattern. The host joins the cues with its own kinds and seconds.
+- **Body difficulty.** Movement, breathing and pause requests always send "gentle".
+- **The topic and avoid items are sent as JSON strings** inside the user message, labelled as information only, so a quote or newline in them can't start a new instruction line. A topic over 80 characters is refused, not cut.
+- **The retry adds one fixed sentence** to the same user message. It contains no reply text and no engine error text, and a test checks this.
+- **Budget.** The budget check before each call receives the usage of the calls already made, so a first call that reaches the limit stops the retry. Cancelled or timed-out calls book their real usage when it arrives.
+- **Refused phrases.** The built-in movement, breathing and pause packs use "as far as feels easy", "feet on the floor", shoulder lifts and "Gentle squats". To let them pass, phrases were narrowed rather than the rule loosened: "as far as you can", "lie/sit on the floor", "lift weights/heavy/yourself", "deep/full squat". "Close your eyes" is refused only for movement, because `pause-eye-rest` uses it. Medical words are listed as explicit word forms, so "treaty" passes while "treat yourself" is refused.
+- **This looks wrong** opens a list of the set's items, and the user picks the wrong one. It is skipped from the next start: `activity_content` filters skipped items, and a set with nothing left is refused calmly. The sandboxed engine doesn't tell the host which item is showing, and adding that to the bridge wasn't worth it.
+- **Progress phases** are `waiting` (sending and writing), `checking` and `retrying`, then done or failed. Only one generation runs at a time.
+- **Serving.** For each file request, the `lullact` handler checks that the set exists, its engine matches and it isn't marked unusable. The data itself is checked by `activity_content` on every load, before any of it reaches the frame.
+- **`roundSize`.**
+  - "At most the item count" can't be written in the host's schema keyword subset. Engines play the whole pack when `roundSize` is too large, `lullshift validate` warns, and the bundled-pack check makes it an error (ADR-016 Sprint 13 amendment).
+  - Only `wonder-facts` (12 cards) had 12 or more items, so it is the only bundled pack with `roundSize` (6). Every other bundled pack has 6 to 11 items.
+
 ## Owner decisions (2026-11-08)
 
 1. **Engines:** all five reading engines, plus movement, breathing and pause behind a separate opt-in, with strict instructions to the model and a clear AI-generated label (sections 2, 2a, 3 and 8). The first draft had left the body engines out.
