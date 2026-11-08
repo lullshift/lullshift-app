@@ -1,5 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { companionPrefs } from "../companion/api";
+import {
+  GENERATION_ENGINE_ORDER,
+  GENERATION_OFF,
+  canGenerate,
+  generatedSetsList,
+  generationEngine,
+  generationPrefsOf,
+  type ContentGenerationPrefs,
+} from "../companion/generate";
 import { relativeTime } from "../format";
 import { activitySourceLabel } from "../marketplace/logic";
 import { ManagePanel } from "../marketplace/ManagePanel";
@@ -14,6 +24,8 @@ import {
   type HostControl,
   type PauseRequest,
 } from "./ActivityHost";
+import { FreshSetDialog } from "./FreshSetDialog";
+import { AiTag } from "./GeneratedBadge";
 import { HelpDialog } from "./HelpDialog";
 import {
   availableChips,
@@ -110,6 +122,27 @@ export default function ActivitiesView({
   }
   const [message, setMessage] = useState<string | null>(null);
   const [helpFor, setHelpFor] = useState<ActivityInfo | null>(null);
+  // Model-written sets (ADR-028): the switches and the saved sets. Both are read when this view
+  // shows and after anything that could change them; a failed read just means "none".
+  const [gen, setGen] = useState<ContentGenerationPrefs>(GENERATION_OFF);
+  const [sets, setSets] = useState<ActivityInfo[]>([]);
+  // The engine is kept after the dialog closes so it can return focus to the button that opened it.
+  const [fresh, setFresh] = useState<{
+    open: boolean;
+    engineRef: string;
+    pack: ActivityInfo | null;
+  } | null>(null);
+  const loadSets = useCallback(() => {
+    companionPrefs()
+      .then((p) => setGen(generationPrefsOf(p)))
+      .catch(() => setGen(GENERATION_OFF));
+    generatedSetsList()
+      .then((s) => setSets(Array.isArray(s) ? s : []))
+      .catch(() => setSets([]));
+  }, []);
+  useEffect(() => {
+    if (active) loadSets();
+  }, [active, load, loadSets]);
   const [manage, setManage] = useState<ManageTab | null>(null);
   const [filters, setFilters] = useState<Record<Page, { query: string; chip: string | null }>>({
     play: { query: "", chip: null },
@@ -214,6 +247,7 @@ export default function ActivitiesView({
           runningRef.current = null;
           setRunning(null);
           refresh();
+          loadSets();
         }}
         onGoToSessions={onGoToSessions}
       />
@@ -312,7 +346,7 @@ export default function ActivitiesView({
             )}
             {load.status === "ready" && page === "continue" && (
               <ContinuePage
-                list={list}
+                list={[...list, ...sets]}
                 now={now}
                 onResume={start}
                 onStartOver={(a) => void startOver(a)}
@@ -324,6 +358,9 @@ export default function ActivitiesView({
               <Library
                 page={page}
                 list={list}
+                sets={sets}
+                gen={gen}
+                onFresh={(engineRef, pack) => setFresh({ open: true, engineRef, pack })}
                 now={now}
                 filter={filters[page]}
                 onFilter={(f) => setFilters((all) => ({ ...all, [page]: f }))}
@@ -343,6 +380,20 @@ export default function ActivitiesView({
           category={helpFor?.category ?? ""}
           onClose={() => setHelpFor(null)}
         />
+        {fresh && (
+          <FreshSetDialog
+            open={fresh.open}
+            engineRef={fresh.engineRef}
+            pack={fresh.pack}
+            onClose={() => setFresh((f) => (f ? { ...f, open: false } : f))}
+            onWritten={() => {
+              refresh();
+              loadSets();
+            }}
+            onStart={start}
+            onPlayPack={start}
+          />
+        )}
       </section>
     </>
   );
@@ -400,6 +451,9 @@ function ContinuePage({
 function Library({
   page,
   list,
+  sets,
+  gen,
+  onFresh,
   now,
   filter,
   onFilter,
@@ -410,6 +464,10 @@ function Library({
 }: {
   page: Page;
   list: ActivityInfo[];
+  /** Saved model-written sets (not part of `list`). */
+  sets: ActivityInfo[];
+  gen: ContentGenerationPrefs;
+  onFresh: (engineRef: string, pack: ActivityInfo | null) => void;
   now: number;
   filter: { query: string; chip: string | null };
   onFilter: (f: { query: string; chip: string | null }) => void;
@@ -424,6 +482,12 @@ function Library({
   const shown = filterLibrary(list, page, filter.query, filter.chip);
   const filtering = filter.query.trim() !== "" || filter.chip !== null;
   const saved = savedNewestFirst(all).slice(0, 4);
+  // The page's model-written sets, by engine, matching the same search and chip.
+  const shownSets = filterLibrary(sets, page, filter.query, filter.chip);
+  const setGroups = GENERATION_ENGINE_ORDER.map((ref) => ({
+    ref,
+    items: shownSets.filter((s) => s.generated?.engine === ref),
+  })).filter((g) => g.items.length > 0);
 
   if (all.length === 0) {
     return (
@@ -520,11 +584,51 @@ function Library({
                 onStart={() => onStart(a)}
                 onStartOver={() => onStartOver(a)}
                 onHelp={() => onHelp(a)}
+                onFresh={
+                  a.engine && canGenerate(a.engine, gen) ? () => onFresh(a.engine!, a) : undefined
+                }
               />
             ))}
           </ul>
         )}
       </section>
+
+      {setGroups.length > 0 && (
+        <section aria-labelledby={`${page}-made`} className="library-section">
+          <h2 className="section-title" id={`${page}-made`}>
+            Made by your model
+          </h2>
+          {setGroups.map((g) => (
+            <div key={g.ref} className="generated-group">
+              <div className="generated-group-head">
+                <h3 className="activity-name">{generationEngine(g.ref)?.label}</h3>
+                {canGenerate(g.ref, gen) && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => onFresh(g.ref, null)}
+                  >
+                    Fresh set from my model
+                    <span className="visually-hidden"> ({generationEngine(g.ref)?.label})</span>
+                  </button>
+                )}
+              </div>
+              <ul className="activity-grid">
+                {g.items.map((a) => (
+                  <ActivityCard
+                    key={a.id}
+                    activity={a}
+                    now={now}
+                    onStart={() => onStart(a)}
+                    onStartOver={() => onStartOver(a)}
+                    onHelp={() => onHelp(a)}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </section>
+      )}
     </>
   );
 }
@@ -535,12 +639,15 @@ function ActivityCard({
   onStart,
   onStartOver,
   onHelp,
+  onFresh,
 }: {
   activity: ActivityInfo;
   now: number;
   onStart: () => void;
   onStartOver: () => void;
   onHelp: () => void;
+  /** Offered for a pack whose engine can have model-written sets while the switches allow it. */
+  onFresh?: () => void;
 }) {
   const preview = usePreview(a.id, a.preview);
   return (
@@ -551,10 +658,11 @@ function ActivityCard({
         </div>
       )}
       <span className="activity-kind">{kindLabel(a.category)}</span>
-      {activitySourceLabel(a.source, a.engine) && (
+      {!a.generated && activitySourceLabel(a.source, a.engine) && (
         <span className="activity-source">{activitySourceLabel(a.source, a.engine)}</span>
       )}
       <h3 className="activity-name">{a.name}</h3>
+      <AiTag info={a} />
       <p className="activity-desc">{a.description}</p>
       {a.savedUtc && <p className="activity-saved">Saved {relativeTime(a.savedUtc, now)}</p>}
       <div className="activity-actions">
@@ -572,6 +680,12 @@ function ActivityCard({
           <button type="button" className="btn btn-quiet" onClick={onStartOver}>
             Start over
             <span className="visually-hidden"> {a.name}</span>
+          </button>
+        )}
+        {onFresh && (
+          <button type="button" className="btn btn-quiet" onClick={onFresh}>
+            Fresh set from my model
+            <span className="visually-hidden"> ({a.name})</span>
           </button>
         )}
       </div>

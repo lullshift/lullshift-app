@@ -1182,7 +1182,7 @@ fn run_fake(
     req: &CheckedRequest,
     fake: &Fake,
     cancel: &crate::http::CancelToken,
-    budget: &mut dyn FnMut() -> Result<(), CompanionError>,
+    budget: &mut dyn FnMut(&[CallUsage]) -> Result<(), CompanionError>,
     engine_check: &dyn Fn(&Value) -> Result<(), Vec<String>>,
 ) -> (Result<Value, GenerateError>, Vec<CallUsage>) {
     let mut hooks = Hooks {
@@ -1217,7 +1217,7 @@ fn first_bad_then_good_retries_once_with_a_fixed_sentence_and_books_both_calls()
         &req,
         &fake,
         &Default::default(),
-        &mut || {
+        &mut |_| {
             calls += 1;
             Ok(())
         },
@@ -1255,7 +1255,7 @@ fn the_retry_sentence_names_the_kind_of_problem() {
     ] {
         let good = movement_reply("Lift and drop your shoulders.");
         let fake = Fake::new(vec![answer(first, 1, 1), answer(&good, 1, 1)]);
-        let (res, _) = run_fake(&req, &fake, &Default::default(), &mut || Ok(()), &accept);
+        let (res, _) = run_fake(&req, &fake, &Default::default(), &mut |_| Ok(()), &accept);
         assert!(res.is_ok());
         assert!(
             fake.sent.borrow()[1][1].content.contains(sentence),
@@ -1269,7 +1269,7 @@ fn the_retry_sentence_names_the_kind_of_problem() {
 fn two_bad_replies_give_did_not_fit_and_no_data() {
     let req = checked(EngineKind::Quiz);
     let fake = Fake::new(vec![answer("nope", 10, 5), answer(&bad_reply(), 11, 6)]);
-    let (res, used) = run_fake(&req, &fake, &Default::default(), &mut || Ok(()), &accept);
+    let (res, used) = run_fake(&req, &fake, &Default::default(), &mut |_| Ok(()), &accept);
     let e = res.unwrap_err();
     assert_eq!(e.kind, GenerateErrorKind::DidNotFit);
     assert_eq!(
@@ -1290,7 +1290,7 @@ fn a_cut_reply_and_an_engine_gate_failure_count_as_bad_replies() {
         usage: usage(1, 1),
     });
     let fake = Fake::new(vec![cut, answer(&good_quiz().to_string(), 1, 1)]);
-    let (res, _) = run_fake(&req, &fake, &Default::default(), &mut || Ok(()), &accept);
+    let (res, _) = run_fake(&req, &fake, &Default::default(), &mut |_| Ok(()), &accept);
     assert!(res.is_ok());
     assert!(fake.sent.borrow()[1][1].content.contains("too long"));
     // The host gate refusing twice.
@@ -1299,7 +1299,7 @@ fn a_cut_reply_and_an_engine_gate_failure_count_as_bad_replies() {
         answer(&good_quiz().to_string(), 1, 1),
     ]);
     let refuse = |_: &Value| Err(vec!["combining marks".to_owned()]);
-    let (res, _) = run_fake(&req, &fake, &Default::default(), &mut || Ok(()), &refuse);
+    let (res, _) = run_fake(&req, &fake, &Default::default(), &mut |_| Ok(()), &refuse);
     assert_eq!(res.unwrap_err().kind, GenerateErrorKind::DidNotFit);
 }
 
@@ -1312,7 +1312,7 @@ fn a_budget_refusal_before_the_retry_stops_with_the_first_call_booked() {
         &req,
         &fake,
         &Default::default(),
-        &mut || {
+        &mut |_| {
             n += 1;
             if n == 2 {
                 Err(CompanionError::budget_reached())
@@ -1331,7 +1331,7 @@ fn a_budget_refusal_before_the_retry_stops_with_the_first_call_booked() {
         &req,
         &fake,
         &Default::default(),
-        &mut || Err(CompanionError::budget_reached()),
+        &mut |_| Err(CompanionError::budget_reached()),
         &accept,
     );
     assert_eq!(res.unwrap_err().kind, GenerateErrorKind::BudgetRefused);
@@ -1344,7 +1344,7 @@ fn cancel_stops_before_a_call_and_between_calls() {
     let cancel = crate::http::CancelToken::new();
     cancel.cancel();
     let fake = Fake::new(vec![]);
-    let (res, used) = run_fake(&req, &fake, &cancel, &mut || Ok(()), &accept);
+    let (res, used) = run_fake(&req, &fake, &cancel, &mut |_| Ok(()), &accept);
     assert_eq!(res.unwrap_err().kind, GenerateErrorKind::Cancelled);
     assert!(used.is_empty() && fake.sent.borrow().is_empty());
 
@@ -1355,7 +1355,7 @@ fn cancel_stops_before_a_call_and_between_calls() {
     let fake = Fake::new(vec![answer(&good_quiz().to_string(), 7, 3)]);
     let mut hooks = Hooks {
         cancel: &cancel,
-        budget_check: &mut || Ok(()),
+        budget_check: &mut |_| Ok(()),
         engine_check: &accept,
         late_usage: ignore_late_usage(),
     };
@@ -1399,7 +1399,7 @@ fn provider_failures_map_to_kinds_keep_the_reason_and_book_usage_without_a_retry
             error: err.clone(),
             usage: usage(4, 2),
         })]);
-        let (res, used) = run_fake(&req, &fake, &Default::default(), &mut || Ok(()), &accept);
+        let (res, used) = run_fake(&req, &fake, &Default::default(), &mut |_| Ok(()), &accept);
         let e = res.unwrap_err();
         assert_eq!(e.kind, kind);
         assert_eq!(e.message, err.message);
@@ -1433,7 +1433,7 @@ fn the_engine_check_sees_the_filled_data() {
         Ok(())
     };
     let fake = Fake::new(vec![answer(&good_quiz().to_string(), 1, 1)]);
-    let (res, _) = run_fake(&req, &fake, &Default::default(), &mut || Ok(()), &check);
+    let (res, _) = run_fake(&req, &fake, &Default::default(), &mut |_| Ok(()), &check);
     let data = res.unwrap();
     assert_eq!(seen.borrow().as_ref().unwrap(), &data);
     assert_eq!(data["shuffle"], json!(true));

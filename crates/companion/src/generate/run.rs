@@ -19,8 +19,9 @@ use crate::secret::Secret;
 pub struct Hooks<'a> {
     /// Stops the request. Checked before each provider call and while one is in flight.
     pub cancel: &'a CancelToken,
-    /// Called before each provider call (the first and the retry). `Err` refuses the call.
-    pub budget_check: &'a mut dyn FnMut() -> Result<(), CompanionError>,
+    /// Called before each provider call (the first and the retry) with the usage of the calls
+    /// already made, which the caller may not have booked yet. `Err` refuses the call.
+    pub budget_check: &'a mut dyn FnMut(&[CallUsage]) -> Result<(), CompanionError>,
     /// The host's engine-schema gate and pack text checks, run on the data after the host
     /// fields were added. Only pass or fail is used; the messages are dropped.
     pub engine_check: &'a dyn Fn(&Value) -> Result<(), Vec<String>>,
@@ -80,7 +81,7 @@ pub(super) fn run_loop(
         if hooks.cancel.is_cancelled() {
             return (Err(GenerateError::cancelled()), usage);
         }
-        if let Err(e) = (hooks.budget_check)() {
+        if let Err(e) = (hooks.budget_check)(&usage) {
             let mut err = GenerateError::from_companion(e);
             err.kind = GenerateErrorKind::BudgetRefused;
             return (Err(err), usage);

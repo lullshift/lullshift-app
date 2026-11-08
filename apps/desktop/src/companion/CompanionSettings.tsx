@@ -28,6 +28,7 @@ import {
   type Usage,
 } from "./api";
 import { providersChanged } from "./events";
+import { GenerationSettings } from "./GenerationSettings";
 import {
   baseUrlHint,
   baseUrlProblem,
@@ -913,6 +914,8 @@ export function CompanionSettings() {
         }}
         say={setNotice}
       />
+
+      <GenerationSettings hasModel={profiles.some((p) => p.model.trim() !== "")} say={setNotice} />
 
       <Dialog
         open={deleting !== null}

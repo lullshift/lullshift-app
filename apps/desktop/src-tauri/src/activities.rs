@@ -152,11 +152,11 @@ pub struct ActivityInfo {
     /// Total time played, in seconds, measured by the host.
     pub(crate) played_seconds: i64,
     /// Content packs: the engine reference (`id@major`); None for apps.
-    engine: Option<String>,
+    pub(crate) engine: Option<String>,
     /// Where the activity came from.
     source: Source,
     /// Set for a set written by the user's own model (ADR-028); null for everything else.
-    generated: Option<generated::GeneratedInfo>,
+    pub(crate) generated: Option<generated::GeneratedInfo>,
 }
 
 /// Which marketplace an activity came from.

@@ -2446,3 +2446,66 @@ fn a_downgrade_to_an_older_commit_needs_consent_again() {
     assert_eq!(rec.commit_sha, v1);
     assert_eq!(rec.code_consent.expect("v1 consent").commit, v1);
 }
+
+/// S13-A04: a model-written set started from an installed third-party pack never puts that
+/// pack's title, description, tags or id in the request. The provider here is a loopback server
+/// that records what it receives.
+#[test]
+fn a_model_set_request_carries_no_text_of_an_installed_third_party_pack() {
+    use crate::companion_commands::generate_sets::{self as gsets, tests as gt};
+    const TITLE: &str = "CANARY-PACK-TITLE-ZX81";
+    const DESC: &str = "CANARY-PACK-DESCRIPTION-ZX81";
+    const TAG: &str = "canary-pack-tag-zx81";
+    let env = Env::new();
+    let repo = env.repo("market");
+    repo.write(
+        "packs/facts/manifest.json",
+        &json!({
+            "schemaVersion": 1, "kind": "content", "id": FACTS, "version": "1.0.0", "name": TITLE,
+            "description": DESC, "category": "break", "minHostVersion": "0.1.0",
+            "sdkVersion": "0.1.0", "permissions": [], "offline": true, "tags": [TAG],
+            "engine": "lullshift.cards@1", "data": "deck.json"
+        })
+        .to_string(),
+    );
+    repo.write("packs/facts/deck.json", DECK);
+    repo.write(
+        ".lullshift/marketplace.json",
+        &json!({
+            "schemaVersion": 1, "name": MARKET, "description": "Tools.", "owner": "Acme",
+            "activities": [{"id": FACTS, "source": {"path": "packs/facts"}}]
+        })
+        .to_string(),
+    );
+    repo.commit();
+    add(&env.core, &repo.url()).expect("add");
+    let preview = preview_install(&env.core, MARKET, FACTS).expect("preview");
+    install_pending(&env.core, &preview.token, false, false, Instant::now()).expect("install");
+    assert!(listed_ids(&env).contains(&FACTS.to_owned()), "installed");
+
+    let mock = gt::mock(vec![gt::Reply::Text(gt::cards_reply("Honey", 5))]);
+    gt::add_profile(&env.core, &mock.base, None);
+    gt::turn_on(&env.core, false);
+    let mut req = gt::dto("cards", "Honey");
+    req.size = 5;
+    req.avoid = true;
+    req.origin_pack = Some(FACTS.to_owned());
+    let emit = |_: gsets::GenerationEvent| {};
+    let info = gsets::write_set(&env.core, "req-00000001", &req, &emit).expect("set");
+    assert!(info.id().starts_with("lullshift.generated.cards."));
+
+    let sent = mock.bodies();
+    assert_eq!(sent.len(), 1);
+    let body = sent[0]
+        .split("\r\n\r\n")
+        .nth(1)
+        .expect("body")
+        .to_lowercase();
+    for banned in [TITLE, DESC, TAG, FACTS, "facts", "acme"] {
+        assert!(
+            !body.contains(&banned.to_lowercase()),
+            "{banned} reached the provider"
+        );
+    }
+    assert!(body.contains("honey"), "the user's own topic is there");
+}

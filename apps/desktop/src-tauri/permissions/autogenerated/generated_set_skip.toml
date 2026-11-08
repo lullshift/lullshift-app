@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-generated-set-skip"
+description = "Enables the generated_set_skip command without any pre-configured scope."
+commands.allow = ["generated_set_skip"]
+
+[[permission]]
+identifier = "deny-generated-set-skip"
+description = "Denies the generated_set_skip command without any pre-configured scope."
+commands.deny = ["generated_set_skip"]

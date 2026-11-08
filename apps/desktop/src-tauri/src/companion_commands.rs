@@ -45,6 +45,7 @@ use zeroize::Zeroize;
 
 use crate::Core;
 
+pub mod generate_sets;
 mod lookups;
 pub mod open_link;
 
@@ -107,6 +108,10 @@ pub struct CompanionState {
     hints: Mutex<HashMap<(String, String), Learned>>,
     /// The models.dev model list, in memory for this app run only (decision 32).
     pub(crate) catalog: CatalogCache,
+    /// HTTP limits for model-written sets (ADR-028 section 5).
+    gen_http: HttpConfig,
+    /// The set being written, by request id (at most one at a time).
+    generations: Mutex<HashMap<String, CancelToken>>,
 }
 
 impl CompanionState {
@@ -125,12 +130,19 @@ impl CompanionState {
             late_usage: Arc::new(Mutex::new(Vec::new())),
             hints: Mutex::new(HashMap::new()),
             catalog: CatalogCache::new(),
+            gen_http: ::companion::generate::generation_http_config(),
+            generations: Mutex::new(HashMap::new()),
         }
     }
 
     #[cfg(test)]
     pub fn with(keys: Arc<dyn KeyStore>, http: HttpConfig) -> Self {
-        Self::with_parts(keys, http)
+        let mut s = Self::with_parts(keys, http);
+        s.gen_http = HttpConfig {
+            max_reply_bytes: ::companion::generate::MAX_REPLY_BYTES,
+            ..http
+        };
+        s
     }
 
     /// Marks `thread` as busy with `request_id`, or says it already is. The mark is removed when
@@ -500,6 +512,10 @@ pub struct CompanionPrefs {
     /// is still shown and required before every send.
     #[serde(default, deserialize_with = "lenient_scope")]
     pub last_scope: Option<Scope>,
+    /// "Let my model write activity content" and its body-engine switch (ADR-028). Both off
+    /// unless the user turns them on.
+    #[serde(default)]
+    pub content_generation: generate_sets::ContentGenerationPrefs,
 }
 
 /// A remembered scope that no longer parses (for example one written by a different version) is
@@ -1661,6 +1677,17 @@ fn book(core: &Core, profile_id: &str, input: i64, output: i64) {
 /// Re-checks the monthly budget between provider calls of one reply, so lookups cannot run past
 /// it.
 fn budget_still_ok(core: &Core, profile: &CompanionProfile) -> Result<(), CompanionError> {
+    budget_still_ok_plus(core, profile, 0, 0)
+}
+
+/// [`budget_still_ok`] counting tokens of calls that are not booked yet (the first call of a
+/// model-written set, before its retry).
+fn budget_still_ok_plus(
+    core: &Core,
+    profile: &CompanionProfile,
+    more_input: i64,
+    more_output: i64,
+) -> Result<(), CompanionError> {
     flush_late_usage(core);
     let month = month_of(OffsetDateTime::now_utc());
     let used = with_store(core, |s| s.companion_usage(&month))
@@ -1668,7 +1695,11 @@ fn budget_still_ok(core: &Core, profile: &CompanionProfile) -> Result<(), Compan
         .into_iter()
         .find(|u| u.profile_id == profile.id);
     let (i, o) = used.map_or((0, 0), |u| (u.input_tokens, u.output_tokens));
-    budget::check(profile.monthly_token_budget, i, o)?;
+    budget::check(
+        profile.monthly_token_budget,
+        i.saturating_add(more_input),
+        o.saturating_add(more_output),
+    )?;
     Ok(())
 }
 

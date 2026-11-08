@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use companion::generate::{
-    BreathingChoice, BreathingPattern, Difficulty, EngineKind, GenerateErrorKind,
+    BreathingChoice, BreathingPattern, CallUsage, Difficulty, EngineKind, GenerateErrorKind,
     GenerationRequest, Hooks, generate, generate_with_http, generation_http_config,
     ignore_late_usage,
 };
@@ -146,7 +146,7 @@ fn run(
     kind: ProviderKind,
     req: &GenerationRequest,
     cancel: &CancelToken,
-    budget: &mut dyn FnMut() -> Result<(), CompanionError>,
+    budget: &mut dyn FnMut(&[CallUsage]) -> Result<(), CompanionError>,
 ) -> Result<companion::generate::GenerateOutput, companion::generate::GenerateFailure> {
     let key = Secret::parse(KEY).unwrap();
     let mut hooks = Hooks {
@@ -180,7 +180,7 @@ fn a_good_reply_comes_back_checked_with_its_usage_for_every_provider_kind() {
             kind,
             &quiz_request(),
             &CancelToken::new(),
-            &mut || Ok(()),
+            &mut |_| Ok(()),
         )
         .unwrap();
         assert_eq!(out.data["shuffle"], json!(true), "{kind:?}");
@@ -221,7 +221,7 @@ fn first_bad_then_good_sends_one_follow_up_without_the_reply_text() {
         kind,
         &quiz_request(),
         &CancelToken::new(),
-        &mut || Ok(()),
+        &mut |_| Ok(()),
     )
     .unwrap();
     assert_eq!(out.usage.len(), 2);
@@ -245,7 +245,7 @@ fn two_bad_replies_store_nothing_and_book_both_calls() {
         kind,
         &quiz_request(),
         &CancelToken::new(),
-        &mut || Ok(()),
+        &mut |_| Ok(()),
     )
     .unwrap_err();
     assert_eq!(fail.error.kind, GenerateErrorKind::DidNotFit);
@@ -263,7 +263,7 @@ fn a_budget_refusal_before_the_retry_sends_nothing_more() {
         kind,
         &quiz_request(),
         &CancelToken::new(),
-        &mut || {
+        &mut |_| {
             calls += 1;
             if calls > 1 {
                 Err(CompanionError::budget_reached())
@@ -284,7 +284,7 @@ fn an_invalid_request_is_refused_before_anything_is_sent() {
     let mock = start(vec![ok(kind, &good_quiz(), 1, 1)]);
     let mut bad = quiz_request();
     bad.size = 99;
-    let fail = run(&mock, kind, &bad, &CancelToken::new(), &mut || Ok(())).unwrap_err();
+    let fail = run(&mock, kind, &bad, &CancelToken::new(), &mut |_| Ok(())).unwrap_err();
     assert_eq!(fail.error.kind, GenerateErrorKind::InvalidRequest);
     assert!(fail.usage.is_empty());
     assert!(mock.requests.lock().unwrap().is_empty());
@@ -303,7 +303,7 @@ fn provider_errors_keep_the_reason_and_are_not_retried() {
         kind,
         &quiz_request(),
         &CancelToken::new(),
-        &mut || Ok(()),
+        &mut |_| Ok(()),
     )
     .unwrap_err();
     assert_eq!(fail.error.kind, GenerateErrorKind::KeyRejected);
@@ -328,7 +328,7 @@ fn no_first_byte_in_time_is_a_timeout() {
     let cancel = CancelToken::new();
     let mut hooks = Hooks {
         cancel: &cancel,
-        budget_check: &mut || Ok(()),
+        budget_check: &mut |_| Ok(()),
         engine_check: &accept,
         late_usage: ignore_late_usage(),
     };
@@ -366,7 +366,7 @@ fn cancel_returns_at_once_and_the_late_usage_is_handed_to_the_caller() {
     });
     let mut hooks = Hooks {
         cancel: &cancel,
-        budget_check: &mut || Ok(()),
+        budget_check: &mut |_| Ok(()),
         engine_check: &accept,
         late_usage: late,
     };
@@ -393,7 +393,7 @@ fn offline_is_reported_as_offline() {
     let cancel = CancelToken::new();
     let mut hooks = Hooks {
         cancel: &cancel,
-        budget_check: &mut || Ok(()),
+        budget_check: &mut |_| Ok(()),
         engine_check: &accept,
         late_usage: ignore_late_usage(),
     };
@@ -425,7 +425,7 @@ fn a_breathing_set_is_filled_from_the_users_pattern() {
             rounds: 8,
         }),
     };
-    let out = run(&mock, kind, &req, &CancelToken::new(), &mut || Ok(())).unwrap();
+    let out = run(&mock, kind, &req, &CancelToken::new(), &mut |_| Ok(())).unwrap();
     assert_eq!(out.data["rounds"], json!(8));
     assert_eq!(
         out.data["phases"][1],

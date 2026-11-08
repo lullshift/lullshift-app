@@ -90,26 +90,32 @@ export function ModelChoiceDialog({
   onPick,
   onClose,
   onOpenSettings,
+  forSet = false,
 }: {
   open: boolean;
   profiles: readonly ProviderProfile[];
   current: ModelChoice | null;
   onPick: (c: ModelChoice) => void;
   onClose: () => void;
-  onOpenSettings: () => void;
+  /** Absent where there is no settings page to go to (the Fresh set dialog). */
+  onOpenSettings?: () => void;
+  /** The pick is for one model-written set, not for the next message. */
+  forSet?: boolean;
 }) {
   const name = useId();
   const fallback = defaultChoice(profiles);
   return (
     <Dialog
       open={open}
-      title="Model for this message"
+      title={forSet ? "Model for this set" : "Model for this message"}
       onClose={onClose}
       actions={
         <>
-          <button type="button" className="btn btn-quiet" onClick={onOpenSettings}>
-            Manage models
-          </button>
+          {onOpenSettings && (
+            <button type="button" className="btn btn-quiet" onClick={onOpenSettings}>
+              Manage models
+            </button>
+          )}
           <button type="button" className="btn btn-primary" onClick={onClose}>
             Done
           </button>
@@ -117,8 +123,10 @@ export function ModelChoiceDialog({
       }
       description={
         <p>
-          Your pick is used for the next message only. After it is sent, Companion goes back to the
-          default: {choiceText(profiles, fallback)}.
+          {forSet
+            ? "Your pick is used for this set only."
+            : "Your pick is used for the next message only. After it is sent, Companion goes back to the"}{" "}
+          {forSet ? "The default is" : "default:"} {choiceText(profiles, fallback)}.
         </p>
       }
     >

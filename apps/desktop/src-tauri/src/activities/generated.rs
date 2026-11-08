@@ -16,10 +16,6 @@
 //!   neither handed to an engine nor has its engine files served;
 //! - topic, data and model name are never logged; errors carry fixed words only.
 
-// The Tauri commands that call the list, accept and delete functions arrive with the UI step
-// (S13-T06 to T08); until then only the tests and the scheme handler use them.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use std::borrow::Cow;
 
 use local_store::{GENERATED_ID_PREFIX, GeneratedSet, KEEP_GENERATED_SETS_PER_ENGINE};
@@ -185,11 +181,115 @@ pub(crate) fn content(core: &Core, handle: &Handle) -> Result<Value, ContentErro
         .flatten()
         .filter(|data| pack_media::check_declared(&[], data).is_ok());
     match checked {
-        Some(data) => Ok(data),
+        Some(data) => apply_skips(core, &handle.id, handle.engine_ref, data),
         None => {
             let _ = with_store(core, |s| s.mark_generated_set_unusable(&handle.id));
             Err(unusable_error())
         }
+    }
+}
+
+/// The array and the text field of each item, for the engines whose items the user can mark
+/// "This looks wrong" (quiz and teaser only).
+fn skippable(engine_ref: &str) -> Option<(&'static str, &'static str)> {
+    match engine_ref {
+        "lullshift.quiz@1" => Some(("questions", "prompt")),
+        "lullshift.teaser@1" => Some(("teasers", "question")),
+        _ => None,
+    }
+}
+
+/// Removes the items the user marked wrong (ADR-028 section 8) from checked data before the
+/// engine sees it. Skips take effect the next time a set starts. At least one item always stays;
+/// if every item was marked, the set is refused with a calm message.
+fn apply_skips(
+    core: &Core,
+    id: &str,
+    engine_ref: &str,
+    mut data: Value,
+) -> Result<Value, ContentError> {
+    let Some((list, _)) = skippable(engine_ref) else {
+        return Ok(data);
+    };
+    let skips = with_store(core, |s| s.generated_skips(id))
+        .map_err(|_| ContentError::new("internal", "the check didn't finish"))?;
+    if skips.is_empty() {
+        return Ok(data);
+    }
+    if let Some(items) = data.get_mut(list).and_then(Value::as_array_mut) {
+        let kept: Vec<Value> = items
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !skips.contains(&u32::try_from(*i).unwrap_or(u32::MAX)))
+            .map(|(_, v)| v.clone())
+            .collect();
+        if kept.is_empty() {
+            return Err(ContentError::new(
+                "generated_all_skipped",
+                "Every item in this set was marked as wrong. You can delete it in Settings.",
+            ));
+        }
+        *items = kept;
+    }
+    Ok(data)
+}
+
+/// The item prompts of a quiz or teaser set as plain text, in order, for the "This looks wrong"
+/// picker. Not cleaned of anything the data check did not already allow; empty for other engines.
+pub(crate) fn set_items(core: &Core, id: &str) -> Result<Vec<String>, String> {
+    let handle = resolve(core, id)?;
+    let Some((list, field)) = skippable(handle.engine_ref) else {
+        return Ok(Vec::new());
+    };
+    if handle.unusable {
+        return Err("generated_unusable".into());
+    }
+    let row =
+        with_store(core, |s| s.generated_set(id))?.ok_or_else(|| "unknown_activity".to_owned())?;
+    let data: Value = serde_json::from_str(&row.data_json).map_err(|_| "internal".to_owned())?;
+    Ok(data
+        .get(list)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|item| {
+            clean_line(
+                item.get(field).and_then(Value::as_str).unwrap_or_default(),
+                300,
+            )
+        })
+        .collect())
+}
+
+/// Marks item `index` of a quiz or teaser set as wrong; it is left out the next time the set
+/// starts. Nothing is sent anywhere.
+pub(crate) fn skip_item(core: &Core, id: &str, index: u32) -> Result<(), String> {
+    let count = set_items(core, id)?.len();
+    if usize::try_from(index).map_or(true, |i| i >= count) {
+        return Err("invalid_item".into());
+    }
+    with_store(core, |s| s.add_generated_skip(id, index))
+}
+
+/// The item prompts of a bundled (first-party) pack of `engine_short`, for the avoid list. An
+/// installed pack's text is never used: it is untrusted (ADR-028 section 4).
+pub(crate) fn builtin_pack_items(pack_id: &str, engine_short: &str) -> Vec<String> {
+    let (Some(reference), Some(kind)) = (
+        engine_ref(engine_short),
+        ::companion::generate::EngineKind::from_short(engine_short),
+    ) else {
+        return Vec::new();
+    };
+    let Some(pack) = super::runnable(pack_id) else {
+        return Vec::new();
+    };
+    if !matches!(pack.role, super::Role::Pack) || pack.manifest.engine.as_deref() != Some(reference)
+    {
+        return Vec::new();
+    }
+    match super::pack_content(pack) {
+        Ok((_, data)) => ::companion::generate::avoid_items(kind, data),
+        Err(_) => Vec::new(),
     }
 }
 
