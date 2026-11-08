@@ -4,6 +4,8 @@
   var L = globalThis.TeaserLogic;
   var pack = L.SAMPLE;
   var state = L.initialState(pack.teasers.length);
+  // The teasers of the current round: the whole pack, or a drawn round when it sets roundSize.
+  var items = pack.teasers;
 
   var el = {
     title: document.getElementById("title"),
@@ -25,8 +27,17 @@
     again: document.getElementById("again"),
   };
 
+  function newSeed() {
+    return Math.floor(Math.random() * 4294967296);
+  }
+
+  function setState(next) {
+    state = next;
+    items = L.roundTeasers(pack, state);
+  }
+
   function total() {
-    return pack.teasers.length;
+    return items.length;
   }
 
   function render() {
@@ -56,7 +67,7 @@
       el.again.hidden = false;
       return;
     }
-    var teaser = pack.teasers[state.i];
+    var teaser = items[state.i];
     el.progress.textContent = "Teaser " + (state.i + 1) + " of " + total();
     el.kind.hidden = teaser.kind === undefined;
     el.kind.textContent = teaser.kind ? L.KIND_LABELS[teaser.kind] : "";
@@ -99,14 +110,14 @@
   }
 
   el.hintBtn.addEventListener("click", function () {
-    if (update(L.showHint(state, total(), pack.teasers))) {
-      el.status.textContent = "Hint: " + pack.teasers[state.i].hint;
+    if (update(L.showHint(state, total(), items))) {
+      el.status.textContent = "Hint: " + items[state.i].hint;
       el.card.focus();
     }
   });
   el.reveal.addEventListener("click", function () {
     if (update(L.reveal(state, total()))) {
-      var t = pack.teasers[state.i];
+      var t = items[state.i];
       // Written after render(), which blanks the region, so the message is not erased.
       el.status.textContent = "Answer: " + t.answer + ". " + t.explanation;
       el.got.focus();
@@ -123,7 +134,7 @@
     (L.atEnd(state, total()) ? el.again : el.card).focus();
   });
   el.again.addEventListener("click", function () {
-    state = L.again(total());
+    setState(L.nextRound(pack, state, newSeed()));
     report();
     el.card.focus();
   });
@@ -143,7 +154,7 @@
       document.documentElement.setAttribute("data-theme", init.theme);
       document.documentElement.classList.toggle("reduced", init.reducedMotion);
       pack = L.validTeasers(init.content) ? init.content : L.SAMPLE;
-      state = L.restoreState(pack.teasers, init.restore) || L.initialState(total());
+      setState(L.restorePack(pack, init.restore) || L.freshState(pack, newSeed()));
       report();
     },
     saveState: function () {

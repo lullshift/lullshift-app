@@ -21,6 +21,12 @@
     "shuffle": {
       "type": "boolean"
     },
+    "roundSize": {
+      "description": "Optional: questions per round, drawn from the pack and preferring ones not asked in recent rounds. Should be at most the number of questions; the engine treats a larger value as the whole pack.",
+      "type": "integer",
+      "minimum": 3,
+      "maximum": 40
+    },
     "questions": {
       "type": "array",
       "minItems": 1,

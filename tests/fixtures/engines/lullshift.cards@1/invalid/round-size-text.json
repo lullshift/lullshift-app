@@ -1,0 +1,54 @@
+{
+  "title": "Round fixture",
+  "roundSize": "8",
+  "cards": [
+    {
+      "front": "Card 1: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 2: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 3: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 4: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 5: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 6: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 7: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 8: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 9: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 10: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 11: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 12: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    }
+  ]
+}

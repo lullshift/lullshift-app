@@ -1,0 +1,79 @@
+{
+  "title": "Round fixture",
+  "shuffle": true,
+  "roundSize": "8",
+  "questions": [
+    {
+      "prompt": "Round question 1: how many sides does a triangle have?",
+      "choices": ["2", "3", "4"],
+      "answer": 1,
+      "explanation": "A triangle has 3 sides."
+    },
+    {
+      "prompt": "Round question 2: how many sides does a square have?",
+      "choices": ["3", "4", "5"],
+      "answer": 1,
+      "explanation": "A square has 4 sides."
+    },
+    {
+      "prompt": "Round question 3: how many sides does a pentagon have?",
+      "choices": ["4", "5", "6"],
+      "answer": 1,
+      "explanation": "A pentagon has 5 sides."
+    },
+    {
+      "prompt": "Round question 4: how many sides does a hexagon have?",
+      "choices": ["5", "6", "7"],
+      "answer": 1,
+      "explanation": "A hexagon has 6 sides."
+    },
+    {
+      "prompt": "Round question 5: how many sides does a heptagon have?",
+      "choices": ["6", "7", "8"],
+      "answer": 1,
+      "explanation": "A heptagon has 7 sides."
+    },
+    {
+      "prompt": "Round question 6: how many sides does a octagon have?",
+      "choices": ["7", "8", "9"],
+      "answer": 1,
+      "explanation": "A octagon has 8 sides."
+    },
+    {
+      "prompt": "Round question 7: how many sides does a triangle have?",
+      "choices": ["2", "3", "4"],
+      "answer": 1,
+      "explanation": "A triangle has 3 sides."
+    },
+    {
+      "prompt": "Round question 8: how many sides does a square have?",
+      "choices": ["3", "4", "5"],
+      "answer": 1,
+      "explanation": "A square has 4 sides."
+    },
+    {
+      "prompt": "Round question 9: how many sides does a pentagon have?",
+      "choices": ["4", "5", "6"],
+      "answer": 1,
+      "explanation": "A pentagon has 5 sides."
+    },
+    {
+      "prompt": "Round question 10: how many sides does a hexagon have?",
+      "choices": ["5", "6", "7"],
+      "answer": 1,
+      "explanation": "A hexagon has 6 sides."
+    },
+    {
+      "prompt": "Round question 11: how many sides does a heptagon have?",
+      "choices": ["6", "7", "8"],
+      "answer": 1,
+      "explanation": "A heptagon has 7 sides."
+    },
+    {
+      "prompt": "Round question 12: how many sides does a octagon have?",
+      "choices": ["7", "8", "9"],
+      "answer": 1,
+      "explanation": "A octagon has 8 sides."
+    }
+  ]
+}

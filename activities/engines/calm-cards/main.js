@@ -1,9 +1,12 @@
 // Calm Cards, engine lullshift.cards@1 (ADR-016). The deck arrives as `content` in onInit.
 (function () {
   "use strict";
+  var L = globalThis.CardsLogic;
   var deck = null;
-  var index = 0;
-  var revealed = false;
+  // { index, revealed }, plus { seed, seen } when the deck sets roundSize (see logic.js).
+  var state = { index: 0, revealed: false };
+  // The cards of the current round: the whole deck, or a drawn round when it sets roundSize.
+  var cards = [];
 
   var el = {
     title: document.getElementById("title"),
@@ -18,29 +21,17 @@
     again: document.getElementById("again"),
   };
 
-  function isText(v, max) {
-    return typeof v === "string" && v.length > 0 && v.length <= max;
+  function newSeed() {
+    return Math.floor(Math.random() * 4294967296);
   }
 
-  // The host validates packs; this is a cheap second look so a bad deck never breaks the page.
-  function validDeck(c) {
-    if (!c || typeof c !== "object" || !isText(c.title, 80)) return false;
-    if (c.intro !== undefined && !isText(c.intro, 300)) return false;
-    if (!Array.isArray(c.cards) || c.cards.length < 1 || c.cards.length > 60) return false;
-    for (var i = 0; i < c.cards.length; i++) {
-      var k = c.cards[i];
-      if (!k || typeof k !== "object" || !isText(k.front, 200)) return false;
-      if (k.back !== undefined && !isText(k.back, 400)) return false;
-    }
-    return true;
+  function setState(next) {
+    state = next;
+    cards = deck ? L.roundCards(deck, state) : [];
   }
 
   function atEnd() {
-    return deck !== null && index >= deck.cards.length;
-  }
-
-  function state() {
-    return { index: index, revealed: revealed };
+    return deck !== null && state.index >= cards.length;
   }
 
   function render() {
@@ -57,7 +48,7 @@
       el.again.hidden = true;
       return;
     }
-    var total = deck.cards.length;
+    var total = cards.length;
     el.title.textContent = deck.title;
     el.intro.hidden = !deck.intro;
     el.intro.textContent = deck.intro || "";
@@ -73,59 +64,66 @@
       el.again.hidden = false;
       return;
     }
-    var card = deck.cards[index];
+    var card = cards[state.index];
     var hasBack = typeof card.back === "string";
     el.front.textContent = card.front;
-    el.back.textContent = hasBack && revealed ? card.back : "";
-    el.back.hidden = !(hasBack && revealed);
-    el.progress.textContent = "Card " + (index + 1) + " of " + total;
+    el.back.textContent = hasBack && state.revealed ? card.back : "";
+    el.back.hidden = !(hasBack && state.revealed);
+    el.progress.textContent = "Card " + (state.index + 1) + " of " + total;
     el.prev.hidden = false;
-    el.prev.disabled = index === 0;
+    el.prev.disabled = state.index === 0;
     el.more.hidden = !hasBack;
-    el.more.disabled = revealed;
+    el.more.disabled = state.revealed;
     el.next.hidden = false;
     el.again.hidden = true;
   }
 
   function report() {
     render();
-    LullshiftBridge.autosave(state());
+    LullshiftBridge.autosave(state);
     if (deck) {
       LullshiftBridge.summary([
         {
           label: atEnd() ? "Deck" : "Card",
-          value: atEnd() ? "finished" : index + 1 + " of " + deck.cards.length,
+          value: atEnd() ? "finished" : state.index + 1 + " of " + cards.length,
         },
       ]);
     }
   }
 
+  // Moves within the round, keeping the round fields as they are.
+  function moveTo(index, revealed) {
+    var next = {};
+    for (var key in state) next[key] = state[key];
+    next.index = index;
+    next.revealed = revealed;
+    state = next;
+  }
+
   function go(to) {
     if (!deck) return;
-    var target = Math.max(0, Math.min(deck.cards.length, to));
-    if (target === index) return;
-    index = target;
-    revealed = false;
+    var target = Math.max(0, Math.min(cards.length, to));
+    if (target === state.index) return;
+    moveTo(target, false);
     report();
   }
 
   el.prev.addEventListener("click", function () {
-    go(index - 1);
+    go(state.index - 1);
     el.card.focus();
   });
   el.next.addEventListener("click", function () {
-    go(index + 1);
+    go(state.index + 1);
     if (atEnd()) el.again.focus();
   });
   el.more.addEventListener("click", function () {
-    if (!deck || atEnd() || revealed) return;
-    revealed = true;
+    if (!deck || atEnd() || state.revealed) return;
+    moveTo(state.index, true);
     report();
     el.card.focus();
   });
   el.again.addEventListener("click", function () {
-    index = 0;
-    revealed = false;
+    if (deck) setState(L.nextRound(deck, state, newSeed()));
     report();
     el.card.focus();
   });
@@ -133,10 +131,10 @@
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (e.key === "ArrowLeft") {
       e.preventDefault();
-      go(index - 1);
+      go(state.index - 1);
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      go(index + 1);
+      go(state.index + 1);
     }
   });
 
@@ -144,22 +142,13 @@
     onInit: function (init) {
       document.documentElement.setAttribute("data-theme", init.theme);
       document.documentElement.classList.toggle("reduced", init.reducedMotion);
-      deck = validDeck(init.content) ? init.content : null;
-      index = 0;
-      revealed = false;
-      var r = init.restore;
-      if (deck && r && typeof r === "object") {
-        var i = typeof r.index === "number" && isFinite(r.index) ? Math.floor(r.index) : 0;
-        index = Math.max(0, Math.min(deck.cards.length, i));
-        revealed =
-          r.revealed === true &&
-          index < deck.cards.length &&
-          typeof deck.cards[index].back === "string";
-      }
+      deck = L.validDeck(init.content) ? init.content : null;
+      if (deck) setState(L.restore(deck, init.restore) || L.freshState(deck, newSeed()));
+      else setState({ index: 0, revealed: false });
       report();
     },
     saveState: function () {
-      return state();
+      return state;
     },
   });
   render();

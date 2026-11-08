@@ -1,0 +1,78 @@
+{
+  "title": "Round fixture",
+  "roundSize": "8",
+  "teasers": [
+    {
+      "question": "Round teaser 1: what is 2 doubled?",
+      "answer": "4",
+      "explanation": "Doubling 2 gives 4.",
+      "kind": "math"
+    },
+    {
+      "question": "Round teaser 2: what is 3 doubled?",
+      "answer": "6",
+      "explanation": "Doubling 3 gives 6.",
+      "kind": "math"
+    },
+    {
+      "question": "Round teaser 3: what is 4 doubled?",
+      "answer": "8",
+      "explanation": "Doubling 4 gives 8.",
+      "kind": "math"
+    },
+    {
+      "question": "Round teaser 4: what is 5 doubled?",
+      "answer": "10",
+      "explanation": "Doubling 5 gives 10.",
+      "kind": "math"
+    },
+    {
+      "question": "Round teaser 5: what is 6 doubled?",
+      "answer": "12",
+      "explanation": "Doubling 6 gives 12.",
+      "kind": "math"
+    },
+    {
+      "question": "Round teaser 6: what is 7 doubled?",
+      "answer": "14",
+      "explanation": "Doubling 7 gives 14.",
+      "kind": "math"
+    },
+    {
+      "question": "Round teaser 7: what is 8 doubled?",
+      "answer": "16",
+      "explanation": "Doubling 8 gives 16.",
+      "kind": "math"
+    },
+    {
+      "question": "Round teaser 8: what is 9 doubled?",
+      "answer": "18",
+      "explanation": "Doubling 9 gives 18.",
+      "kind": "math"
+    },
+    {
+      "question": "Round teaser 9: what is 10 doubled?",
+      "answer": "20",
+      "explanation": "Doubling 10 gives 20.",
+      "kind": "math"
+    },
+    {
+      "question": "Round teaser 10: what is 11 doubled?",
+      "answer": "22",
+      "explanation": "Doubling 11 gives 22.",
+      "kind": "math"
+    },
+    {
+      "question": "Round teaser 11: what is 12 doubled?",
+      "answer": "24",
+      "explanation": "Doubling 12 gives 24.",
+      "kind": "math"
+    },
+    {
+      "question": "Round teaser 12: what is 13 doubled?",
+      "answer": "26",
+      "explanation": "Doubling 13 gives 26.",
+      "kind": "math"
+    }
+  ]
+}

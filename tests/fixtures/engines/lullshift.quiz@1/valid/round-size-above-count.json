@@ -1,0 +1,31 @@
+{
+  "title": "Round fixture",
+  "shuffle": true,
+  "roundSize": 40,
+  "questions": [
+    {
+      "prompt": "Round question 1: how many sides does a triangle have?",
+      "choices": ["2", "3", "4"],
+      "answer": 1,
+      "explanation": "A triangle has 3 sides."
+    },
+    {
+      "prompt": "Round question 2: how many sides does a square have?",
+      "choices": ["3", "4", "5"],
+      "answer": 1,
+      "explanation": "A square has 4 sides."
+    },
+    {
+      "prompt": "Round question 3: how many sides does a pentagon have?",
+      "choices": ["4", "5", "6"],
+      "answer": 1,
+      "explanation": "A pentagon has 5 sides."
+    },
+    {
+      "prompt": "Round question 4: how many sides does a hexagon have?",
+      "choices": ["5", "6", "7"],
+      "answer": 1,
+      "explanation": "A hexagon has 6 sides."
+    }
+  ]
+}
