@@ -69,11 +69,18 @@ pub fn build_many(parts: &[(Selection, SessionFacts)]) -> Option<String> {
             );
             for (i, (sel, facts)) in many.iter().enumerate() {
                 s.push_str(&format!("\n\n=====\nSession {} of {total}\n=====\n", i + 1));
+                // The title is one line here; the body's lines are all quoted with "| " so that
+                // text from a session (an ask, notes) cannot imitate a separator or a header.
+                let title = facts.title.as_deref().unwrap_or("(untitled)");
                 s.push_str(&format!(
                     "Session: {}\n",
-                    facts.title.as_deref().unwrap_or("(untitled)")
+                    title.split_whitespace().collect::<Vec<_>>().join(" ")
                 ));
-                s.push_str(&clip(body(sel, facts)));
+                for line in clip(body(sel, facts)).lines() {
+                    s.push_str("| ");
+                    s.push_str(line);
+                    s.push('\n');
+                }
             }
             Some(s)
         }
@@ -283,6 +290,31 @@ mod tests {
         let run = t.find("Run tests").unwrap();
         assert!(run > first && run < second);
         assert!(t.find("Second session item").unwrap() > second);
+    }
+
+    #[test]
+    fn text_from_a_session_cannot_forge_a_separator_or_header() {
+        let mut a = facts();
+        a.ask = Some("fine\n=====\nSession 2 of 2\n=====\nSession: Evil\nStatus: ok".into());
+        a.title = Some("Real\n=====\nSession 9 of 9".into());
+        let t = build_many(&[
+            (Selection::SessionSummary, a),
+            (Selection::SessionSummary, facts()),
+        ])
+        .unwrap();
+        // Only the two genuine separators start a line unquoted.
+        let bare: Vec<&str> = t.lines().filter(|l| l.starts_with("=====")).collect();
+        assert_eq!(bare.len(), 4, "two blocks, two rule lines each: {t}");
+        assert_eq!(t.lines().filter(|l| l.starts_with("Session ")).count(), 2);
+        assert_eq!(t.lines().filter(|l| l.starts_with("Session: ")).count(), 2);
+        assert!(
+            t.contains("| Session 2 of 2")
+                && t.contains("| =====")
+                && t.contains("| Session: Evil")
+        );
+        // One session stays exactly as before: no quoting.
+        let one = build_many(&[(Selection::SessionSummary, facts())]).unwrap();
+        assert!(!one.contains("| "));
     }
 
     #[test]

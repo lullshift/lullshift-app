@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useSessionDetail } from "../context/useSessionDetail";
 import { ellipsize, providerName, sessionName } from "../format";
 import type { SessionView } from "../sessions";
@@ -228,6 +228,12 @@ export function ContextPicker({ draft, onChange, sessions, disabled }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   // A new key on each open gives the second modal a fresh copy of the current choice.
   const [pickerRun, setPickerRun] = useState(0);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  // Closing the second modal must hand focus back to the button that opened it.
+  const closePicker = () => {
+    setPickerOpen(false);
+    queueMicrotask(() => openerRef.current?.focus());
+  };
 
   const setKind = (kind: ScopeKind) =>
     onChange({
@@ -241,7 +247,7 @@ export function ContextPicker({ draft, onChange, sessions, disabled }: Props) {
       .filter((p) => !kept.some((s) => sameSession(s, p)))
       .map((p) => ({ ...p, notes: false, itemIds: [] as number[] }));
     onChange({ ...draft, sessions: [...kept, ...added] });
-    setPickerOpen(false);
+    closePicker();
   };
 
   const openPicker = () => {
@@ -285,7 +291,7 @@ export function ContextPicker({ draft, onChange, sessions, disabled }: Props) {
             <p className="card-sub">No sessions to choose from yet.</p>
           ) : (
             <div>
-              <button type="button" className="btn" onClick={openPicker}>
+              <button type="button" className="btn" ref={openerRef} onClick={openPicker}>
                 {draft.sessions.length === 0 ? "Choose sessions…" : "Change sessions…"}
               </button>
             </div>
@@ -332,7 +338,7 @@ export function ContextPicker({ draft, onChange, sessions, disabled }: Props) {
         open={pickerOpen}
         initial={draft.sessions}
         sessions={sessions}
-        onCancel={() => setPickerOpen(false)}
+        onCancel={closePicker}
         onConfirm={confirmPicked}
       />
     </fieldset>

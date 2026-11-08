@@ -2,7 +2,8 @@
 // models, keys, usage and the lookups switch. It reads the keychain, so it is only mounted while
 // that section is expanded.
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Banner } from "../ui/Banner";
 import { Dialog } from "../ui/Dialog";
 import {
@@ -66,13 +67,16 @@ type Boot =
 const KINDS: ProviderKind[] = ["anthropic", "openai", "openaiCompatible"];
 
 function ProfileForm({
+  formId,
   initial,
   onSaved,
-  onCancel,
+  onBusy,
 }: {
+  /** The id of the <form>, so the dialog's Save button (in its footer) can submit it. */
+  formId: string;
   initial: ProviderProfile | null;
   onSaved: (p: ProviderProfile) => void;
-  onCancel: () => void;
+  onBusy: (busy: boolean) => void;
 }) {
   const ids = useId();
   const [kind, setKind] = useState<ProviderKind>(initial?.kind ?? "anthropic");
@@ -86,7 +90,6 @@ function ProfileForm({
   );
   const [isDefault, setIsDefault] = useState(initial?.isDefault ?? false);
   const [problems, setProblems] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
   const compatible = kind === "openaiCompatible";
 
@@ -115,26 +118,25 @@ function ProfileForm({
       monthlyTokenBudget: parsed,
       isDefault,
     };
-    setBusy(true);
+    onBusy(true);
     try {
       onSaved(await companionSaveProfile(input));
     } catch (err) {
       setProblems([errorText(toCommandError(err))]);
     } finally {
-      setBusy(false);
+      onBusy(false);
     }
   };
 
   return (
     <form
-      className="card profile-form"
+      id={formId}
+      className="profile-form"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
     >
-      <h4 className="card-title">{initial ? `Edit ${initial.label}` : "Add a provider"}</h4>
-
       <label className="field-label" htmlFor={`${ids}-kind`}>
         Provider
       </label>
@@ -220,18 +222,24 @@ function ProfileForm({
           <p id={`${ids}-model-hint`} className="field-note">
             {MODEL_HINT} You can add more models after saving.
           </p>
-          {picking && (
-            <ModelPickerDialog
-              kind={kind}
-              title="Choose the first model"
-              chosen={model.trim()}
-              onChoose={(m) => {
-                setModel(m.model);
-                setPicking(false);
-              }}
-              onClose={() => setPicking(false)}
-            />
-          )}
+          {picking &&
+            // In the document body, not inside the form: Enter in the picker must not save it.
+            createPortal(
+              // Synthetic events cross portals: a submit inside the picker must never reach this form.
+              <div onSubmit={(e) => e.stopPropagation()}>
+                <ModelPickerDialog
+                  kind={kind}
+                  title="Choose the first model"
+                  chosen={model.trim()}
+                  onChoose={(m) => {
+                    setModel(m.model);
+                    setPicking(false);
+                  }}
+                  onClose={() => setPicking(false)}
+                />
+              </div>,
+              document.body,
+            )}
         </>
       )}
 
@@ -273,16 +281,100 @@ function ProfileForm({
           </ul>
         </Banner>
       )}
-
-      <div className="actions">
-        <button type="submit" className="btn btn-primary" disabled={busy}>
-          {busy ? "Saving…" : "Save provider"}
-        </button>
-        <button type="button" className="btn btn-quiet" disabled={busy} onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
     </form>
+  );
+}
+
+/**
+ * Adding or editing a provider happens in a modal dialog: focus is trapped, Esc closes it, and
+ * focus goes back to the button that opened it. After a new provider is saved the dialog stays
+ * open in edit mode so its key can be pasted right away.
+ */
+function ProviderDialog({
+  editing,
+  profile,
+  onClose,
+  onSaved,
+  onKeyChanged,
+  say,
+}: {
+  editing: Editing;
+  profile: ProviderProfile | null;
+  onClose: () => void;
+  onSaved: (p: ProviderProfile) => void;
+  onKeyChanged: () => Promise<void>;
+  say: (n: Notice) => void;
+}) {
+  const formId = useId();
+  const [busy, setBusy] = useState(false);
+  // The page behind a modal dialog can't be seen, so what the key panel says is shown here too.
+  const [local, setLocal] = useState<Notice | null>(null);
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [keyDirty, setKeyDirty] = useState(false);
+  // False once the dialog is closed, so a key request that answers later says nothing on the
+  // next opening.
+  const open = useRef(false);
+  useEffect(() => {
+    open.current = editing !== null;
+  }, [editing]);
+  const close = () => {
+    setLocal(null);
+    setKeyDirty(false);
+    setKeyBusy(false);
+    onClose();
+  };
+  return (
+    // Always rendered and opened by `editing`, so closing it returns focus to the button that
+    // opened it. The form inside is mounted only while open, so each opening starts fresh.
+    <Dialog
+      open={editing !== null}
+      title={profile ? `Edit ${profile.label}` : "Add a provider"}
+      busy={busy || keyBusy}
+      onClose={close}
+      actions={
+        <>
+          <button type="button" className="btn btn-quiet" disabled={busy} onClick={close}>
+            {profile ? "Close" : "Cancel"}
+          </button>
+          <button type="submit" form={formId} className="btn btn-primary" disabled={busy}>
+            {busy ? "Saving…" : "Save provider"}
+          </button>
+        </>
+      }
+    >
+      {editing && (
+        <div className="provider-dialog">
+          <ProfileForm
+            key={editing.mode === "edit" ? editing.id : "new"}
+            formId={formId}
+            initial={profile}
+            onSaved={onSaved}
+            onBusy={setBusy}
+          />
+          {profile && (
+            <KeyPanel
+              profile={profile}
+              onChanged={onKeyChanged}
+              onBusy={setKeyBusy}
+              onDirty={setKeyDirty}
+              say={(n) => {
+                if (open.current) setLocal(n);
+                say(n);
+              }}
+            />
+          )}
+          {keyDirty && <p className="field-note">Key not saved yet. Press Save key to keep it.</p>}
+          <div role="status" aria-live="polite">
+            {local && (
+              <Banner tone={local.tone}>
+                {local.text}
+                <ProviderSaid reason={local.reason} />
+              </Banner>
+            )}
+          </div>
+        </div>
+      )}
+    </Dialog>
   );
 }
 
@@ -395,10 +487,16 @@ export function ModelList({
 function KeyPanel({
   profile,
   onChanged,
+  onBusy,
+  onDirty,
   say,
 }: {
   profile: ProviderProfile;
   onChanged: () => Promise<void>;
+  /** A key request is running (the dialog must not close meanwhile). */
+  onBusy?: (busy: boolean) => void;
+  /** The key field has text that is not saved yet. Only the fact, never the text. */
+  onDirty?: (dirty: boolean) => void;
   say: (n: Notice) => void;
 }) {
   const inputId = useId();
@@ -406,7 +504,11 @@ function KeyPanel({
   // before the request is made and is never shown, logged or stored anywhere else.
   const [key, setKey] = useState("");
   const [fieldProblem, setFieldProblem] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"save" | "remove" | "test" | null>(null);
+  const [busy, setBusyState] = useState<"save" | "remove" | "test" | null>(null);
+  const setBusy = (b: "save" | "remove" | "test" | null) => {
+    setBusyState(b);
+    onBusy?.(b !== null);
+  };
   const [result, setResult] = useState<string | null>(null);
 
   const saveKey = async () => {
@@ -417,6 +519,7 @@ function KeyPanel({
     }
     const toSend = key;
     setKey("");
+    onDirty?.(false);
     setFieldProblem(null);
     setBusy("save");
     try {
@@ -489,7 +592,10 @@ function KeyPanel({
         aria-invalid={fieldProblem ? true : undefined}
         aria-describedby={`${inputId}-hint`}
         value={key}
-        onChange={(e) => setKey(e.target.value)}
+        onChange={(e) => {
+          setKey(e.target.value);
+          onDirty?.(e.target.value.length > 0);
+        }}
       />
       <p id={`${inputId}-hint`} className={fieldProblem ? "field-note field-error" : "field-note"}>
         {fieldProblem ??
@@ -775,33 +881,29 @@ export function CompanionSettings() {
         })}
       </ul>
 
-      {editing === null && (
-        <div className="actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setEditing({ mode: "new" })}
-          >
-            Add a provider
-          </button>
-        </div>
-      )}
+      <div className="actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => setEditing({ mode: "new" })}
+        >
+          Add a provider
+        </button>
+      </div>
 
-      {editing && (
-        <ProfileForm
-          key={editing.mode === "edit" ? editing.id : "new"}
-          initial={editingProfile}
-          onCancel={() => setEditing(null)}
-          onSaved={(saved) => {
-            setNotice({ tone: "success", text: `${saved.label} was saved.` });
-            setEditing({ mode: "edit", id: saved.id });
-            replace(saved);
-            void changed();
-          }}
-        />
-      )}
-
-      {editingProfile && <KeyPanel profile={editingProfile} onChanged={changed} say={setNotice} />}
+      <ProviderDialog
+        editing={editing}
+        profile={editingProfile}
+        onClose={() => setEditing(null)}
+        onSaved={(saved) => {
+          setNotice({ tone: "success", text: `${saved.label} was saved.` });
+          setEditing({ mode: "edit", id: saved.id });
+          replace(saved);
+          void changed();
+        }}
+        onKeyChanged={changed}
+        say={setNotice}
+      />
 
       <ToolsSetting
         enabled={toolsEnabled}

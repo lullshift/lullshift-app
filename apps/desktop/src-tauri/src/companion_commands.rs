@@ -48,6 +48,12 @@ use crate::Core;
 mod lookups;
 pub mod open_link;
 
+/// Most entries a scope may list before any other check (repeats included).
+const MAX_SCOPE_LIST: usize = 16;
+
+/// Most characters all sessions of one scope may add up to (each session is also cut on its own).
+const MAX_TOTAL_CONTEXT_CHARS: usize = 60_000;
+
 /// Most items one scope may pick.
 const MAX_SCOPE_ITEMS: usize = 200;
 
@@ -1329,8 +1335,81 @@ fn check_session_ref(provider: &str, session_id: &str) -> Res<()> {
 /// merged (first position kept; notes and item ticks combined), at most [`MAX_SCOPE_SESSIONS`]
 /// are accepted, and each must exist.
 fn attached_text(core: &Core, scope: &Scope) -> Res<Option<String>> {
+    let picks = normalized_picks(scope)?;
+    if picks.is_empty() {
+        return Ok(None);
+    }
+    let mut parts = Vec::with_capacity(picks.len());
+    for (provider, session_id, selection) in picks {
+        let facts = with_store(core, |s| session_facts(s, &provider, &session_id))?;
+        if let Selection::SelectedNotes { item_ids, .. } = &selection
+            && item_ids
+                .iter()
+                .any(|id| !facts.items.iter().any(|i| i.id == *id))
+        {
+            return Err(CommandError::invalid(
+                "One of the selected items no longer exists. Refresh and choose again.",
+            ));
+        }
+        parts.push((selection, facts));
+    }
+    let text = ::companion::scope::build_many(&parts);
+    if let Some(t) = &text
+        && t.chars().count() > MAX_TOTAL_CONTEXT_CHARS
+    {
+        return Err(CommandError::invalid(&format!(
+            "The chosen sessions add up to more than {MAX_TOTAL_CONTEXT_CHARS} characters. Remove a session or tick less."
+        )));
+    }
+    Ok(text)
+}
+
+/// The scope as it will be built: repeats merged, in the order given. This is what is remembered.
+fn normalized_scope(scope: &Scope) -> Res<Scope> {
+    let picks = normalized_picks(scope)?;
+    Ok(match scope {
+        Scope::None => Scope::None,
+        Scope::SessionSummary { .. } => Scope::SessionSummary {
+            sessions: picks
+                .into_iter()
+                .map(|(provider, session_id, _)| SessionRef {
+                    provider,
+                    session_id,
+                })
+                .collect(),
+        },
+        Scope::SelectedNotes { .. } => Scope::SelectedNotes {
+            sessions: picks
+                .into_iter()
+                .filter_map(|(provider, session_id, sel)| match sel {
+                    Selection::SelectedNotes { notes, item_ids } => Some(NotesPick {
+                        provider,
+                        session_id,
+                        notes,
+                        item_ids,
+                    }),
+                    _ => None,
+                })
+                .collect(),
+        },
+    })
+}
+
+/// Checks the scope's shape and returns one entry per distinct session. No store access.
+fn normalized_picks(scope: &Scope) -> Res<Vec<(String, String, Selection)>> {
+    let listed = match scope {
+        Scope::None => 0,
+        Scope::SessionSummary { sessions } => sessions.len(),
+        Scope::SelectedNotes { sessions } => sessions.len(),
+    };
+    // Refused before any per-entry work, so a huge list from the UI costs nothing.
+    if listed > MAX_SCOPE_LIST {
+        return Err(CommandError::invalid(&format!(
+            "Choose at most {MAX_SCOPE_SESSIONS} sessions to share from."
+        )));
+    }
     let picks: Vec<(String, String, Selection)> = match scope {
-        Scope::None => return Ok(None),
+        Scope::None => return Ok(Vec::new()),
         Scope::SessionSummary { sessions } => {
             let mut out: Vec<(String, String, Selection)> = Vec::new();
             for s in sessions {
@@ -1398,21 +1477,7 @@ fn attached_text(core: &Core, scope: &Scope) -> Res<Option<String>> {
             "Choose at most {MAX_SCOPE_SESSIONS} sessions to share from."
         )));
     }
-    let mut parts = Vec::with_capacity(picks.len());
-    for (provider, session_id, selection) in picks {
-        let facts = with_store(core, |s| session_facts(s, &provider, &session_id))?;
-        if let Selection::SelectedNotes { item_ids, .. } = &selection
-            && item_ids
-                .iter()
-                .any(|id| !facts.items.iter().any(|i| i.id == *id))
-        {
-            return Err(CommandError::invalid(
-                "One of the selected items no longer exists. Refresh and choose again.",
-            ));
-        }
-        parts.push((selection, facts));
-    }
-    Ok(::companion::scope::build_many(&parts))
+    Ok(picks)
 }
 
 fn session_facts(store: &Store, provider: &str, id: &str) -> Result<SessionFacts, StoreError> {
@@ -2009,7 +2074,7 @@ pub fn send(
             "The context changed since you previewed it. Review it again.",
         ));
     }
-    remember_scope(core, scope);
+    remember_scope(core, &normalized_scope(scope)?);
     let past = history(core, thread_id, None, &prepared.host)?;
     let id = with_store(core, |s| {
         s.companion_add_user_message(

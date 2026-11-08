@@ -50,6 +50,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import type { SessionView } from "../sessions";
+import { Dialog } from "../ui/Dialog";
 import { ContextPicker } from "./ContextPicker";
 import { buildScope, EMPTY_SCOPE, MAX_SCOPE_SESSIONS, type ScopeDraft } from "./logic";
 import { click, polyfillDialog, settle, typeInto } from "./testDom";
@@ -117,7 +118,8 @@ const radio = (label: string) => {
 };
 const pickerDialog = () =>
   [...host.querySelectorAll("dialog")].find(
-    (d) => d.querySelector(".session-picker") !== null,
+    (d) =>
+      d.querySelector(":scope > .dialog-body > .dialog-title")?.textContent === "Choose sessions",
   ) as HTMLDialogElement;
 const btn = (root: ParentNode, label: string) =>
   [...root.querySelectorAll("button")].find(
@@ -258,5 +260,41 @@ describe("no horizontal overflow", () => {
     expect(block(".scope-options > *,")).toMatch(/min-width:\s*0/);
     expect(block(".session-chip-text {")).toMatch(/text-overflow:\s*ellipsis/);
     expect(block(".dialog:has(.scope-picker),")).toMatch(/overflow-x:\s*hidden/);
+  });
+});
+
+describe("nested in the options dialog", () => {
+  function Nested() {
+    const [open, setOpen] = useState(true);
+    const [draft, setDraft] = useState<ScopeDraft>({ ...EMPTY_SCOPE, kind: "sessionSummary" });
+    return (
+      <Dialog
+        open={open}
+        title="Conversation options"
+        onClose={() => setOpen(false)}
+        actions={<button type="button">Done</button>}
+      >
+        <ContextPicker draft={draft} onChange={setDraft} sessions={SESSIONS} disabled={false} />
+      </Dialog>
+    );
+  }
+
+  it("Esc on the session picker closes only it, and focus returns to Choose sessions", async () => {
+    await act(async () => root.render(<Nested />));
+    const outer = [...host.querySelectorAll("dialog")].find((d) =>
+      d.textContent?.includes("Conversation options"),
+    ) as HTMLDialogElement;
+    expect(outer.hasAttribute("open")).toBe(true);
+    await click(btn(outer, "Choose sessions…"));
+    const inner = pickerDialog();
+    expect(inner.hasAttribute("open")).toBe(true);
+    // Worst case: the cancel event reaches the outer dialog as well.
+    await act(async () => {
+      inner.dispatchEvent(new Event("cancel", { bubbles: true, cancelable: true }));
+    });
+    await settle();
+    expect(inner.hasAttribute("open")).toBe(false);
+    expect(outer.hasAttribute("open")).toBe(true);
+    expect(document.activeElement?.textContent).toBe("Choose sessions…");
   });
 });

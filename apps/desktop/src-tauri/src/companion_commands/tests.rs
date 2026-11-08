@@ -1813,3 +1813,80 @@ fn the_session_cap_dedupe_and_unknown_keys_are_enforced() {
     };
     assert_eq!(kind(&k(blank).unwrap_err()), "invalidInput");
 }
+
+#[test]
+fn a_huge_list_is_refused_up_front_and_the_remembered_scope_is_deduped() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    seed_session(&core);
+    let long = Scope::SessionSummary {
+        sessions: (0..=MAX_SCOPE_LIST).map(|_| sref("s1")).collect(),
+    };
+    assert_eq!(
+        kind(&preview_context(&core, long).unwrap_err()),
+        "invalidInput"
+    );
+    // Within the list limit, repeats merge and the merged scope is what gets remembered.
+    let m = mock(vec![Sc::Ok]);
+    let pid = profile(&core, &m.base, None);
+    let t = thread(&core);
+    let one = id_of(&core, "ITEM-ONE");
+    let raw = Scope::SelectedNotes {
+        sessions: vec![pick("s1", false, vec![one]), pick("s1", true, vec![one])],
+    };
+    let hash = preview_context(&core, raw.clone()).unwrap().sha256.unwrap();
+    raw_send(&core, t, &pid, "hi", &raw, Some(&hash)).expect("send");
+    assert_eq!(
+        prefs(&core).last_scope,
+        Some(Scope::SelectedNotes {
+            sessions: vec![pick("s1", true, vec![one])]
+        })
+    );
+}
+
+#[test]
+fn the_total_across_sessions_is_capped_with_a_clear_error() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    for n in 1..=4 {
+        seed_other(&core, &format!("big{n}"), &format!("Big {n}"), "x");
+        with_store(&core, |s| {
+            s.set_notes(
+                "claude-code",
+                &format!("big{n}"),
+                &"n".repeat(19_000),
+                OffsetDateTime::now_utc(),
+            )
+        })
+        .expect("notes");
+    }
+    let notes = |ids: &[&str]| Scope::SelectedNotes {
+        sessions: ids.iter().map(|i| pick(i, true, vec![])).collect(),
+    };
+    assert!(preview_context(&core, notes(&["big1", "big2"])).is_ok());
+    let e = preview_context(&core, notes(&["big1", "big2", "big3", "big4"])).unwrap_err();
+    assert_eq!(kind(&e), "invalidInput");
+}
+
+#[test]
+fn send_refuses_when_the_session_order_differs_from_the_preview() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    seed_session(&core);
+    seed_other(&core, "s2", "Other work", "OTHER-ITEM");
+    let m = mock(vec![Sc::Ok]);
+    let pid = profile(&core, &m.base, None);
+    let t = thread(&core);
+    let ab = Scope::SessionSummary {
+        sessions: vec![sref("s1"), sref("s2")],
+    };
+    let ba = Scope::SessionSummary {
+        sessions: vec![sref("s2"), sref("s1")],
+    };
+    let hash = preview_context(&core, ab.clone()).unwrap().sha256.unwrap();
+    assert_eq!(
+        kind(&raw_send(&core, t, &pid, "hi", &ba, Some(&hash)).unwrap_err()),
+        "invalidInput"
+    );
+    raw_send(&core, t, &pid, "hi", &ab, Some(&hash)).expect("same order is fine");
+}
