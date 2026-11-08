@@ -146,13 +146,13 @@ describe("lookup notices", () => {
 });
 
 describe("remembered context choice", () => {
-  const summary: Scope = { kind: "sessionSummary", provider: "claude-code", sessionId: "s1" };
+  const summary: Scope = {
+    kind: "sessionSummary",
+    sessions: [{ provider: "claude-code", sessionId: "s1" }],
+  };
   const notes: Scope = {
     kind: "selectedNotes",
-    provider: "codex",
-    sessionId: "s2",
-    notes: true,
-    itemIds: [3, 1],
+    sessions: [{ provider: "codex", sessionId: "s2", notes: true, itemIds: [3, 1] }],
   };
 
   it("starts with the last choice when it is still available", () => {
@@ -160,7 +160,10 @@ describe("remembered context choice", () => {
     expect(r.draft.kind).toBe("sessionSummary");
     expect(r.note).toBeNull();
     expect(buildScope(r.draft)).toEqual(summary);
-    expect(buildScope(restoreScope(notes, true).draft)).toEqual({ ...notes, itemIds: [1, 3] });
+    expect(buildScope(restoreScope(notes, true).draft)).toEqual({
+      kind: "selectedNotes",
+      sessions: [{ provider: "codex", sessionId: "s2", notes: true, itemIds: [1, 3] }],
+    });
   });
 
   it("falls back to No context and says so when it is gone", () => {

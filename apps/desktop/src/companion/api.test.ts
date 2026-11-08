@@ -122,7 +122,7 @@ describe("companionSend", () => {
       "p",
       "m",
       "hi",
-      { kind: "sessionSummary", provider: "x", sessionId: "y" },
+      { kind: "sessionSummary", sessions: [{ provider: "x", sessionId: "y" }] },
       "ab12",
       "r-0123456789",
       () => undefined,

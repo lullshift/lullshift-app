@@ -88,16 +88,24 @@ export interface ProfileInput {
   isDefault: boolean;
 }
 
+export interface SessionRef {
+  provider: string;
+  sessionId: string;
+}
+
+export interface NotesPick extends SessionRef {
+  notes: boolean;
+  itemIds: number[];
+}
+
+/**
+ * The context to share. Up to `MAX_SCOPE_SESSIONS` sessions (ADR-020 amendment). The backend
+ * still reads the old single-session shape, but this is the shape that is written.
+ */
 export type Scope =
   | { kind: "none" }
-  | { kind: "sessionSummary"; provider: string; sessionId: string }
-  | {
-      kind: "selectedNotes";
-      provider: string;
-      sessionId: string;
-      notes: boolean;
-      itemIds: number[];
-    };
+  | { kind: "sessionSummary"; sessions: SessionRef[] }
+  | { kind: "selectedNotes"; sessions: NotesPick[] };
 
 export type ScopeKind = Scope["kind"];
 

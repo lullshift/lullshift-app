@@ -20,7 +20,9 @@ use std::time::{Duration, Instant};
 
 use ::companion::models_dev::{self, CatalogCache, CatalogModel};
 use ::companion::provider::TEST_OUTPUT_TOKENS;
-use ::companion::scope::{ItemFacts, Selection, SessionFacts, compose_user_content, trim_history};
+use ::companion::scope::{
+    ItemFacts, MAX_SCOPE_SESSIONS, Selection, SessionFacts, compose_user_content, trim_history,
+};
 use ::companion::tools::{
     DECLINED_TEXT, LIMIT_TEXT, MAX_TOOL_CALLS, MAX_TOOL_ROUNDS, Rejection, ToolName,
     UNAVAILABLE_TEXT, check_request, clean_result, safe_tool_name,
@@ -45,6 +47,12 @@ use crate::Core;
 
 mod lookups;
 pub mod open_link;
+
+/// Most entries a scope may list before any other check (repeats included).
+const MAX_SCOPE_LIST: usize = 16;
+
+/// Most characters all sessions of one scope may add up to (each session is also cut on its own).
+const MAX_TOTAL_CONTEXT_CHARS: usize = 60_000;
 
 /// Most items one scope may pick.
 const MAX_SCOPE_ITEMS: usize = 200;
@@ -490,8 +498,18 @@ pub struct CompanionPrefs {
     pub tools_enabled: bool,
     /// The context choice of the last message sent, used to start the next composer. The preview
     /// is still shown and required before every send.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_scope")]
     pub last_scope: Option<Scope>,
+}
+
+/// A remembered scope that no longer parses (for example one written by a different version) is
+/// dropped instead of failing the whole preferences record, so the lookups switch survives.
+fn lenient_scope<'de, D>(d: D) -> Result<Option<Scope>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let v = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(v.and_then(|v| serde_json::from_value::<Scope>(v).ok()))
 }
 
 /// What a streaming reply tells the UI. Every event carries the request id it belongs to; the UI
@@ -691,26 +709,106 @@ impl From<&CatalogModel> for CatalogModelDto {
     }
 }
 
+/// One session a scope covers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionRef {
+    pub provider: String,
+    pub session_id: String,
+}
+
+/// One session in a "selected notes" scope, with what was ticked from it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesPick {
+    pub provider: String,
+    pub session_id: String,
+    pub notes: bool,
+    pub item_ids: Vec<i64>,
+}
+
 /// Which Context Keeper data goes with a message. `none` is the default; nothing is attached
-/// unless the user picks one.
+/// unless the user picks one. Covers up to [`MAX_SCOPE_SESSIONS`] sessions (ADR-020 amendment).
+/// The old single-session shape (`provider` and `sessionId` on the scope itself) is still read;
+/// the new shape (`sessions: [...]`) is what is written.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    from = "ScopeWire"
+)]
+pub enum Scope {
+    None,
+    SessionSummary { sessions: Vec<SessionRef> },
+    SelectedNotes { sessions: Vec<NotesPick> },
+}
+
+/// Everything a stored or sent scope may look like: the new list form and the old one-session form.
+#[derive(Debug, Clone, Deserialize)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-pub enum Scope {
+enum ScopeWire {
     None,
     SessionSummary {
-        provider: String,
-        session_id: String,
+        #[serde(default)]
+        sessions: Vec<SessionRef>,
+        provider: Option<String>,
+        session_id: Option<String>,
     },
     SelectedNotes {
-        provider: String,
-        session_id: String,
-        notes: bool,
-        item_ids: Vec<i64>,
+        #[serde(default)]
+        sessions: Vec<NotesPick>,
+        provider: Option<String>,
+        session_id: Option<String>,
+        notes: Option<bool>,
+        item_ids: Option<Vec<i64>>,
     },
+}
+
+impl From<ScopeWire> for Scope {
+    fn from(w: ScopeWire) -> Self {
+        match w {
+            ScopeWire::None => Self::None,
+            ScopeWire::SessionSummary {
+                mut sessions,
+                provider,
+                session_id,
+            } => {
+                if let (true, Some(provider), Some(session_id)) =
+                    (sessions.is_empty(), provider, session_id)
+                {
+                    sessions.push(SessionRef {
+                        provider,
+                        session_id,
+                    });
+                }
+                Self::SessionSummary { sessions }
+            }
+            ScopeWire::SelectedNotes {
+                mut sessions,
+                provider,
+                session_id,
+                notes,
+                item_ids,
+            } => {
+                if let (true, Some(provider), Some(session_id)) =
+                    (sessions.is_empty(), provider, session_id)
+                {
+                    sessions.push(NotesPick {
+                        provider,
+                        session_id,
+                        notes: notes.unwrap_or(false),
+                        item_ids: item_ids.unwrap_or_default(),
+                    });
+                }
+                Self::SelectedNotes { sessions }
+            }
+        }
+    }
 }
 
 impl Scope {
@@ -1244,50 +1342,153 @@ fn check_session_ref(provider: &str, session_id: &str) -> Res<()> {
 }
 
 /// The text that goes with a message for `scope`, or `None` for `none`. Used by BOTH the preview
-/// and the send.
+/// and the send. Session keys come from the UI and are untrusted: each is checked, repeats are
+/// merged (first position kept; notes and item ticks combined), at most [`MAX_SCOPE_SESSIONS`]
+/// are accepted, and each must exist.
 fn attached_text(core: &Core, scope: &Scope) -> Res<Option<String>> {
-    let (provider, session_id, selection) = match scope {
-        Scope::None => return Ok(None),
-        Scope::SessionSummary {
-            provider,
-            session_id,
-        } => (provider, session_id, Selection::SessionSummary),
-        Scope::SelectedNotes {
-            provider,
-            session_id,
-            notes,
-            item_ids,
-        } => {
-            if item_ids.len() > MAX_SCOPE_ITEMS {
-                return Err(CommandError::invalid("Too many items are selected."));
+    let picks = normalized_picks(scope)?;
+    if picks.is_empty() {
+        return Ok(None);
+    }
+    let mut parts = Vec::with_capacity(picks.len());
+    for (provider, session_id, selection) in picks {
+        let facts = with_store(core, |s| session_facts(s, &provider, &session_id))?;
+        if let Selection::SelectedNotes { item_ids, .. } = &selection
+            && item_ids
+                .iter()
+                .any(|id| !facts.items.iter().any(|i| i.id == *id))
+        {
+            return Err(CommandError::invalid(
+                "One of the selected items no longer exists. Refresh and choose again.",
+            ));
+        }
+        parts.push((selection, facts));
+    }
+    let text = ::companion::scope::build_many(&parts);
+    if let Some(t) = &text
+        && t.chars().count() > MAX_TOTAL_CONTEXT_CHARS
+    {
+        return Err(CommandError::invalid(&format!(
+            "The chosen sessions add up to more than {MAX_TOTAL_CONTEXT_CHARS} characters. Remove a session or tick less."
+        )));
+    }
+    Ok(text)
+}
+
+/// The scope as it will be built: repeats merged, in the order given. This is what is remembered.
+fn normalized_scope(scope: &Scope) -> Res<Scope> {
+    let picks = normalized_picks(scope)?;
+    Ok(match scope {
+        Scope::None => Scope::None,
+        Scope::SessionSummary { .. } => Scope::SessionSummary {
+            sessions: picks
+                .into_iter()
+                .map(|(provider, session_id, _)| SessionRef {
+                    provider,
+                    session_id,
+                })
+                .collect(),
+        },
+        Scope::SelectedNotes { .. } => Scope::SelectedNotes {
+            sessions: picks
+                .into_iter()
+                .filter_map(|(provider, session_id, sel)| match sel {
+                    Selection::SelectedNotes { notes, item_ids } => Some(NotesPick {
+                        provider,
+                        session_id,
+                        notes,
+                        item_ids,
+                    }),
+                    _ => None,
+                })
+                .collect(),
+        },
+    })
+}
+
+/// Checks the scope's shape and returns one entry per distinct session. No store access.
+fn normalized_picks(scope: &Scope) -> Res<Vec<(String, String, Selection)>> {
+    let listed = match scope {
+        Scope::None => 0,
+        Scope::SessionSummary { sessions } => sessions.len(),
+        Scope::SelectedNotes { sessions } => sessions.len(),
+    };
+    // Refused before any per-entry work, so a huge list from the UI costs nothing.
+    if listed > MAX_SCOPE_LIST {
+        return Err(CommandError::invalid(&format!(
+            "Choose at most {MAX_SCOPE_SESSIONS} sessions to share from."
+        )));
+    }
+    let picks: Vec<(String, String, Selection)> = match scope {
+        Scope::None => return Ok(Vec::new()),
+        Scope::SessionSummary { sessions } => {
+            let mut out: Vec<(String, String, Selection)> = Vec::new();
+            for s in sessions {
+                check_session_ref(&s.provider, &s.session_id)?;
+                if !out
+                    .iter()
+                    .any(|(p, i, _)| *p == s.provider && *i == s.session_id)
+                {
+                    out.push((
+                        s.provider.clone(),
+                        s.session_id.clone(),
+                        Selection::SessionSummary,
+                    ));
+                }
             }
-            if !*notes && item_ids.is_empty() {
-                return Err(CommandError::invalid(
-                    "Choose the notes or at least one item to share.",
-                ));
+            out
+        }
+        Scope::SelectedNotes { sessions } => {
+            let mut out: Vec<(String, String, bool, Vec<i64>)> = Vec::new();
+            for s in sessions {
+                check_session_ref(&s.provider, &s.session_id)?;
+                if s.item_ids.len() > MAX_SCOPE_ITEMS {
+                    return Err(CommandError::invalid("Too many items are selected."));
+                }
+                match out
+                    .iter_mut()
+                    .find(|(p, i, _, _)| *p == s.provider && *i == s.session_id)
+                {
+                    Some((_, _, notes, ids)) => {
+                        *notes |= s.notes;
+                        for id in &s.item_ids {
+                            if !ids.contains(id) {
+                                ids.push(*id);
+                            }
+                        }
+                    }
+                    None => out.push((
+                        s.provider.clone(),
+                        s.session_id.clone(),
+                        s.notes,
+                        s.item_ids.clone(),
+                    )),
+                }
             }
-            (
-                provider,
-                session_id,
-                Selection::SelectedNotes {
-                    notes: *notes,
-                    item_ids: item_ids.clone(),
-                },
-            )
+            let mut picks = Vec::new();
+            for (p, i, notes, item_ids) in out {
+                if item_ids.len() > MAX_SCOPE_ITEMS {
+                    return Err(CommandError::invalid("Too many items are selected."));
+                }
+                if !notes && item_ids.is_empty() {
+                    return Err(CommandError::invalid(
+                        "Choose the notes or at least one item to share from each session.",
+                    ));
+                }
+                picks.push((p, i, Selection::SelectedNotes { notes, item_ids }));
+            }
+            picks
         }
     };
-    check_session_ref(provider, session_id)?;
-    let facts = with_store(core, |s| session_facts(s, provider, session_id))?;
-    if let Selection::SelectedNotes { item_ids, .. } = &selection
-        && item_ids
-            .iter()
-            .any(|id| !facts.items.iter().any(|i| i.id == *id))
-    {
-        return Err(CommandError::invalid(
-            "One of the selected items no longer exists. Refresh and choose again.",
-        ));
+    if picks.is_empty() {
+        return Err(CommandError::invalid("Choose a session to share from."));
     }
-    Ok(::companion::scope::build(&selection, &facts))
+    if picks.len() > MAX_SCOPE_SESSIONS {
+        return Err(CommandError::invalid(&format!(
+            "Choose at most {MAX_SCOPE_SESSIONS} sessions to share from."
+        )));
+    }
+    Ok(picks)
 }
 
 fn session_facts(store: &Store, provider: &str, id: &str) -> Result<SessionFacts, StoreError> {
@@ -1947,7 +2148,7 @@ pub fn send(
             "The context changed since you previewed it. Review it again.",
         ));
     }
-    remember_scope(core, scope);
+    remember_scope(core, &normalized_scope(scope)?);
     let past = history(core, thread_id, None, &prepared.host)?;
     let id = with_store(core, |s| {
         s.companion_add_user_message(

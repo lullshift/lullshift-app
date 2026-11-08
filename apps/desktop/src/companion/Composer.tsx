@@ -26,7 +26,9 @@ import {
   historyText,
   rememberedText,
   restoreScope,
+  sameSession,
   type ConfirmedPreview,
+  type DraftSession,
   type ScopeDraft,
 } from "./logic";
 import {
@@ -192,30 +194,30 @@ function BadgeItem({ b, disabled, onOpen }: { b: Badge; disabled: boolean; onOpe
   );
 }
 
-/** The ticked notes and items of a selected-notes draft. Mounted only when a session is chosen. */
+/** The ticked notes and items of one session of a selected-notes draft. */
 function NoteBadgeItems({
-  draft,
-  setDraft,
+  entry,
+  setEntry,
   disabled,
   onOpen,
 }: {
-  draft: ScopeDraft;
-  setDraft: (d: ScopeDraft) => void;
+  entry: DraftSession;
+  setEntry: (d: DraftSession) => void;
   disabled: boolean;
   onOpen: () => void;
 }) {
-  const { load } = useSessionDetail({ provider: draft.provider, sessionId: draft.sessionId }, 0);
+  const { load } = useSessionDetail({ provider: entry.provider, sessionId: entry.sessionId }, 0);
   const detail = load.status === "ready" ? load.detail : load.status === "error" ? load.last : null;
   const out: Badge[] = [];
-  if (draft.notes) {
+  if (entry.notes) {
     out.push({
       key: "notes",
       text: "Your notes",
       full: "Your notes",
-      remove: () => setDraft({ ...draft, notes: false }),
+      remove: () => setEntry({ ...entry, notes: false }),
     });
   }
-  for (const id of draft.itemIds) {
+  for (const id of entry.itemIds) {
     const item = detail?.items.find((i) => i.id === id);
     const full = item
       ? `${ITEM_KIND[item.kind] ?? "Item"}: ${item.text.replace(/\s+/g, " ")}`
@@ -224,7 +226,7 @@ function NoteBadgeItems({
       key: `item-${id}`,
       text: ellipsize(full, 40),
       full,
-      remove: () => setDraft({ ...draft, itemIds: draft.itemIds.filter((x) => x !== id) }),
+      remove: () => setEntry({ ...entry, itemIds: entry.itemIds.filter((x) => x !== id) }),
     });
   }
   return (
@@ -236,7 +238,7 @@ function NoteBadgeItems({
   );
 }
 
-/** The chosen options as badges: click one to change the options, × removes it. */
+/** The chosen options as badges: click one to change the options, x removes it. */
 export function OptionBadges({
   draft,
   setDraft,
@@ -251,15 +253,20 @@ export function OptionBadges({
   onOpen: () => void;
 }) {
   if (draft.kind === "none") return null;
-  const notesOn = draft.kind === "selectedNotes" && !!draft.provider && !!draft.sessionId;
-  const s = sessions.find(
-    (x) => x.provider === draft.provider && x.providerSessionId === draft.sessionId,
-  );
-  const where = s
-    ? `${ellipsize(sessionName(s).primary, 40)} (${providerName(s.provider)})`
-    : draft.sessionId
-      ? "a session"
-      : "no session chosen";
+  const names = draft.sessions.map((e) => {
+    const s = sessions.find(
+      (x) => x.provider === e.provider && x.providerSessionId === e.sessionId,
+    );
+    return s
+      ? `${ellipsize(sessionName(s).primary, 40)} (${providerName(s.provider)})`
+      : "a session";
+  });
+  const where =
+    draft.sessions.length === 0
+      ? "no session chosen"
+      : draft.sessions.length === 1
+        ? (names[0] ?? "a session")
+        : `${draft.sessions.length} sessions`;
   const full = `${scopeLabel(draft.kind)}: ${where}`;
   return (
     <ul className="option-badges" aria-label="Options for this message">
@@ -268,15 +275,21 @@ export function OptionBadges({
         disabled={disabled}
         onOpen={onOpen}
       />
-      {notesOn && (
-        <NoteBadgeItems
-          key={`${draft.provider}:${draft.sessionId}`}
-          draft={draft}
-          setDraft={setDraft}
-          disabled={disabled}
-          onOpen={onOpen}
-        />
-      )}
+      {draft.kind === "selectedNotes" &&
+        draft.sessions.map((e) => (
+          <NoteBadgeItems
+            key={`${e.provider}:${e.sessionId}`}
+            entry={e}
+            setEntry={(next) =>
+              setDraft({
+                ...draft,
+                sessions: draft.sessions.map((x) => (sameSession(x, next) ? next : x)),
+              })
+            }
+            disabled={disabled}
+            onOpen={onOpen}
+          />
+        ))}
     </ul>
   );
 }

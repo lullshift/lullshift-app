@@ -1,10 +1,20 @@
-import { useId } from "react";
+import { useId, useRef, useState } from "react";
 import { useSessionDetail } from "../context/useSessionDetail";
 import { ellipsize, providerName, sessionName } from "../format";
 import type { SessionView } from "../sessions";
 import { Banner } from "../ui/Banner";
+import { Dialog } from "../ui/Dialog";
 import type { ScopeKind } from "./api";
-import { SCOPE_KINDS, scopeHelp, scopeLabel, type ScopeDraft } from "./logic";
+import {
+  filterPickerSessions,
+  MAX_SCOPE_SESSIONS,
+  SCOPE_KINDS,
+  sameSession,
+  scopeHelp,
+  scopeLabel,
+  type DraftSession,
+  type ScopeDraft,
+} from "./logic";
 
 interface Props {
   draft: ScopeDraft;
@@ -19,17 +29,32 @@ const ITEM_KIND: Record<string, string> = {
   next_move: "Next move",
 };
 
+/** A session's display name for chips, lists and group headings. */
+export function pickedName(
+  entry: { provider: string; sessionId: string },
+  sessions: readonly SessionView[],
+): string {
+  const s = sessions.find(
+    (x) => x.provider === entry.provider && x.providerSessionId === entry.sessionId,
+  );
+  return s
+    ? `${ellipsize(sessionName(s).primary, 60)} (${providerName(s.provider)})`
+    : "A session that is no longer listed";
+}
+
 function NotesPicker({
-  draft,
+  entry,
+  label,
   onChange,
   disabled,
 }: {
-  draft: ScopeDraft;
-  onChange: (next: ScopeDraft) => void;
+  entry: DraftSession;
+  label: string;
+  onChange: (next: DraftSession) => void;
   disabled: boolean;
 }) {
   const { load, reload } = useSessionDetail(
-    { provider: draft.provider, sessionId: draft.sessionId },
+    { provider: entry.provider, sessionId: entry.sessionId },
     0,
   );
   if (load.status === "loading") return <p className="card-sub">Loading this session's notes…</p>;
@@ -51,18 +76,18 @@ function NotesPicker({
   }
   const toggleItem = (id: number, on: boolean) =>
     onChange({
-      ...draft,
-      itemIds: on ? [...draft.itemIds, id] : draft.itemIds.filter((x) => x !== id),
+      ...entry,
+      itemIds: on ? [...entry.itemIds, id] : entry.itemIds.filter((x) => x !== id),
     });
   return (
     <fieldset className="pick-list" disabled={disabled}>
-      <legend>Tick what to share</legend>
+      <legend>Tick what to share from {label}</legend>
       {hasNotes && (
         <label className="pick">
           <input
             type="checkbox"
-            checked={draft.notes}
-            onChange={(e) => onChange({ ...draft, notes: e.target.checked })}
+            checked={entry.notes}
+            onChange={(e) => onChange({ ...entry, notes: e.target.checked })}
           />
           <span>
             Your notes{" "}
@@ -76,7 +101,7 @@ function NotesPicker({
         <label key={item.id} className="pick">
           <input
             type="checkbox"
-            checked={draft.itemIds.includes(item.id)}
+            checked={entry.itemIds.includes(item.id)}
             onChange={(e) => toggleItem(item.id, e.target.checked)}
           />
           <span>
@@ -92,26 +117,152 @@ function NotesPicker({
   );
 }
 
+/**
+ * The second modal: search the sessions (locally, nothing is sent) and tick one or more. The
+ * choice only applies when "Use these sessions" is pressed; Cancel keeps the previous choice.
+ */
+function SessionPickerDialog({
+  open,
+  initial,
+  sessions,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  initial: readonly DraftSession[];
+  sessions: readonly SessionView[];
+  onCancel: () => void;
+  onConfirm: (picked: readonly { provider: string; sessionId: string }[]) => void;
+}) {
+  const searchId = useId();
+  const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<readonly { provider: string; sessionId: string }[]>(
+    initial.map((s) => ({ provider: s.provider, sessionId: s.sessionId })),
+  );
+  const shown = filterPickerSessions(sessions, query);
+  const full = picked.length >= MAX_SCOPE_SESSIONS;
+  const toggle = (s: SessionView, on: boolean) => {
+    const ref = { provider: s.provider, sessionId: s.providerSessionId };
+    setPicked((cur) => (on ? [...cur, ref] : cur.filter((x) => !sameSession(x, ref))));
+  };
+  return (
+    <Dialog
+      open={open}
+      title="Choose sessions"
+      onClose={onCancel}
+      actions={
+        <>
+          <button type="button" className="btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={picked.length === 0}
+            onClick={() => onConfirm(picked)}
+          >
+            Use these sessions
+          </button>
+        </>
+      }
+      description={
+        <p>
+          Tick one or more sessions, up to {MAX_SCOPE_SESSIONS}. Searching only filters this list on
+          your computer; nothing is sent.
+        </p>
+      }
+    >
+      <div className="session-picker">
+        <label className="field-label" htmlFor={searchId}>
+          Search sessions
+        </label>
+        <input
+          id={searchId}
+          type="search"
+          className="field session-search"
+          placeholder="Title, tool or session ID"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <p className="field-note" aria-live="polite">
+          {picked.length} of {MAX_SCOPE_SESSIONS} chosen
+          {full ? ". That is the most; untick one to choose another." : ""}
+        </p>
+        {sessions.length === 0 ? (
+          <p className="card-sub">No sessions to choose from yet.</p>
+        ) : shown.length === 0 ? (
+          <p className="card-sub">No session matches “{query.trim()}”.</p>
+        ) : (
+          <ul className="session-pick-list" aria-label="Sessions">
+            {shown.map((s) => {
+              const isOn = picked.some(
+                (x) => x.provider === s.provider && x.sessionId === s.providerSessionId,
+              );
+              return (
+                <li key={`${s.provider}:${s.providerSessionId}`}>
+                  <label className="pick">
+                    <input
+                      type="checkbox"
+                      checked={isOn}
+                      disabled={!isOn && full}
+                      onChange={(e) => toggle(s, e.target.checked)}
+                    />
+                    <span className="session-pick-text">
+                      <span className="scope-name">{sessionName(s).primary}</span>
+                      <span className="field-note">{sessionName(s).secondary}</span>
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
 /** The explicit scope picker. It always starts at "No context" (the parent resets it per send). */
 export function ContextPicker({ draft, onChange, sessions, disabled }: Props) {
   const groupName = useId();
-  const selectId = useId();
-  const sessionIndex = sessions.findIndex(
-    (s) => s.provider === draft.provider && s.providerSessionId === draft.sessionId,
-  );
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // A new key on each open gives the second modal a fresh copy of the current choice.
+  const [pickerRun, setPickerRun] = useState(0);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  // Closing the second modal must hand focus back to the button that opened it.
+  const closePicker = () => {
+    setPickerOpen(false);
+    queueMicrotask(() => openerRef.current?.focus());
+  };
 
-  const setKind = (kind: ScopeKind) => onChange({ ...draft, kind, notes: false, itemIds: [] });
+  const setKind = (kind: ScopeKind) =>
+    onChange({
+      kind,
+      sessions: draft.sessions.map((s) => ({ ...s, notes: false, itemIds: [] })),
+    });
 
-  const setSession = (value: string) => {
-    const s = sessions[Number(value)];
+  const confirmPicked = (picked: readonly { provider: string; sessionId: string }[]) => {
+    const kept = draft.sessions.filter((s) => picked.some((p) => sameSession(p, s)));
+    const added = picked
+      .filter((p) => !kept.some((s) => sameSession(s, p)))
+      .map((p) => ({ ...p, notes: false, itemIds: [] as number[] }));
+    onChange({ ...draft, sessions: [...kept, ...added] });
+    closePicker();
+  };
+
+  const openPicker = () => {
+    setPickerRun((n) => n + 1);
+    setPickerOpen(true);
+  };
+
+  const remove = (entry: DraftSession) =>
+    onChange({ ...draft, sessions: draft.sessions.filter((s) => !sameSession(s, entry)) });
+
+  const update = (next: DraftSession) =>
     onChange({
       ...draft,
-      provider: s?.provider ?? "",
-      sessionId: s?.providerSessionId ?? "",
-      notes: false,
-      itemIds: [],
+      sessions: draft.sessions.map((s) => (sameSession(s, next) ? next : s)),
     });
-  };
 
   return (
     <fieldset className="scope-picker" disabled={disabled}>
@@ -135,38 +286,61 @@ export function ContextPicker({ draft, onChange, sessions, disabled }: Props) {
 
       {draft.kind !== "none" && (
         <div className="scope-session">
-          <label className="field-label" htmlFor={selectId}>
-            Session
-          </label>
+          <span className="field-label">Sessions</span>
           {sessions.length === 0 ? (
             <p className="card-sub">No sessions to choose from yet.</p>
           ) : (
-            <select
-              id={selectId}
-              className="field"
-              value={sessionIndex >= 0 ? String(sessionIndex) : ""}
-              onChange={(e) => setSession(e.target.value)}
-            >
-              <option value="" disabled>
-                Choose a session…
-              </option>
-              {sessions.map((s, i) => (
-                <option key={`${s.provider}:${s.providerSessionId}`} value={String(i)}>
-                  {ellipsize(sessionName(s).primary, 70)} ({providerName(s.provider)})
-                </option>
-              ))}
-            </select>
+            <div>
+              <button type="button" className="btn" ref={openerRef} onClick={openPicker}>
+                {draft.sessions.length === 0 ? "Choose sessions…" : "Change sessions…"}
+              </button>
+            </div>
           )}
-          {draft.kind === "selectedNotes" && sessionIndex >= 0 && (
-            <NotesPicker
-              key={`${draft.provider}:${draft.sessionId}`}
-              draft={draft}
-              onChange={onChange}
-              disabled={disabled}
-            />
+          {draft.sessions.length > 0 && (
+            <ul className="session-chips" aria-label="Chosen sessions">
+              {draft.sessions.map((s) => {
+                const name = pickedName(s, sessions);
+                return (
+                  <li key={`${s.provider}:${s.sessionId}`} className="session-chip">
+                    <span className="session-chip-text" title={name}>
+                      {name}
+                    </span>
+                    <button
+                      type="button"
+                      className="session-chip-remove"
+                      aria-label={`Remove ${name}`}
+                      onClick={() => remove(s)}
+                    >
+                      <span aria-hidden="true">×</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
+          {draft.kind === "selectedNotes" &&
+            draft.sessions.map((s) => (
+              <div key={`${s.provider}:${s.sessionId}`} className="notes-group">
+                <h3 className="notes-group-title">{pickedName(s, sessions)}</h3>
+                <NotesPicker
+                  entry={s}
+                  label={pickedName(s, sessions)}
+                  onChange={update}
+                  disabled={disabled}
+                />
+              </div>
+            ))}
         </div>
       )}
+
+      <SessionPickerDialog
+        key={pickerRun}
+        open={pickerOpen}
+        initial={draft.sessions}
+        sessions={sessions}
+        onCancel={closePicker}
+        onConfirm={confirmPicked}
+      />
     </fieldset>
   );
 }

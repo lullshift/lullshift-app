@@ -1464,6 +1464,38 @@ Run on Windows, then macOS, then Linux, in light and dark.
 
 **Result:** \_\_\_
 
+## Companion: several sessions in one message (ADR-020 amendment)
+
+A separate batch from the numbered ones above. 
+
+### M12-29: Choose several sessions for the context of a message
+
+Have at least six sessions, some with long titles, from two different tools, and one with notes and checklist items. Run in light and dark, with the window narrow (about 700 px) and wide.
+
+1. In Companion, open **Options…** on the composer. Look at the dialog from top to bottom at both widths.
+2. Choose **Session summary**. Press **Choose sessions…**. A second window opens with a search box.
+3. Type part of a title in capitals, then the name of a tool, then part of a session ID. Clear the box. Nothing should be sent while you type (watch the network if you wish).
+4. Tick three sessions, then press **Cancel**. Open it again.
+5. Tick three sessions and press **Use these sessions**. Remove one with the × on its chip.
+6. Open the picker again and tick sessions until five are chosen.
+7. Switch to **Selected notes**. Choose two sessions. Tick the notes of the first and a checklist item of the second. Press **Done**.
+8. Press **Review and send**. Read the preview.
+9. Close the preview without sending. Remove one session chip so a session has nothing ticked, and check **Review and send** is not offered until it has.
+10. Quit and reopen the app, then open the Companion composer.
+
+**Expected:**
+
+- **Step 1:** there is no horizontal scroll bar at either width, even with long titles; long text wraps or is cut with an ellipsis.
+- **Step 2:** the picker is a modal list with checkboxes and a search box; there is no drop-down list.
+- **Step 3:** the list filters as you type, ignoring capitals; with no match it says so.
+- **Step 4:** Cancel leaves the previous choice unchanged.
+- **Step 5:** the chosen sessions show as chips in the options dialog and as a count in the badge under the composer.
+- **Step 6:** at five, the other sessions cannot be ticked and the dialog says five is the most.
+- **Step 7:** notes are grouped under each chosen session's name.
+- **Step 8:** the preview shows every session in its own block, labelled "Session 1 of 2" and so on, with the session title; it is the exact text that is sent.
+- **Step 9:** a session with nothing ticked blocks the send.
+- **Step 10:** the last choice, with all its sessions, is the starting choice; sessions that no longer exist make it fall back to No context with a note. An old single-session choice from before this version still loads.
+
 ### M12-28: Companion chat layout, provider dialog and model picker rows
 
 1. Open Companion with a conversation of at least ten messages (some long, one with a code block). Make the window tall, then short. Scroll the messages, then type a long multi-line message.

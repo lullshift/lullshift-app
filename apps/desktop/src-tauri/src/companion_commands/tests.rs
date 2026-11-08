@@ -256,20 +256,49 @@ fn id_of(core: &Core, text: &str) -> i64 {
         .id
 }
 
+fn sref(id: &str) -> SessionRef {
+    SessionRef {
+        provider: "claude-code".into(),
+        session_id: id.into(),
+    }
+}
+
 fn summary() -> Scope {
     Scope::SessionSummary {
-        provider: "claude-code".into(),
-        session_id: "s1".into(),
+        sessions: vec![sref("s1")],
     }
 }
 
 fn selected(notes: bool, item_ids: Vec<i64>) -> Scope {
     Scope::SelectedNotes {
+        sessions: vec![pick("s1", notes, item_ids)],
+    }
+}
+
+fn pick(id: &str, notes: bool, item_ids: Vec<i64>) -> NotesPick {
+    NotesPick {
         provider: "claude-code".into(),
-        session_id: "s1".into(),
+        session_id: id.into(),
         notes,
         item_ids,
     }
+}
+
+/// Another session with its own title and one item.
+fn seed_other(core: &Core, id: &str, title: &str, item: &str) {
+    let e = parse_event(&format!(
+        r#"{{"schemaVersion":1,"eventId":"00000000-0000-4000-8000-0000000000{n:02}","provider":"claude-code","providerSessionId":"{id}","eventType":"needs_attention","timestampUtc":"2026-11-05T10:00:00Z"}}"#,
+        n = 10 + id.len() + id.bytes().map(usize::from).sum::<usize>() % 80
+    ))
+    .expect("event");
+    let now = OffsetDateTime::now_utc();
+    with_store(core, |s| {
+        s.ingest(&e, now)?;
+        s.set_user_title("claude-code", id, title, now)?;
+        s.add_item("claude-code", id, "checklist", None, item, now)?;
+        Ok(())
+    })
+    .expect("seed other");
 }
 
 fn thread(core: &Core) -> i64 {
@@ -472,15 +501,16 @@ fn bad_scopes_are_refused() {
     assert_eq!(k(selected(false, vec![999_999])), "invalidInput");
     assert_eq!(
         k(Scope::SessionSummary {
-            provider: "claude-code".into(),
-            session_id: "nope".into()
+            sessions: vec![sref("nope")]
         }),
         "notFound"
     );
     assert_eq!(
         k(Scope::SessionSummary {
-            provider: String::new(),
-            session_id: "s1".into()
+            sessions: vec![SessionRef {
+                provider: String::new(),
+                session_id: "s1".into()
+            }]
         }),
         "invalidInput"
     );
@@ -489,13 +519,17 @@ fn bad_scopes_are_refused() {
 #[test]
 fn scope_json_matches_the_contract() {
     let s: Scope = serde_json::from_str(
-        r#"{"kind":"selectedNotes","provider":"p","sessionId":"s","notes":true,"itemIds":[1,2]}"#,
+        r#"{"kind":"selectedNotes","sessions":[{"provider":"p","sessionId":"s","notes":true,"itemIds":[1,2]}]}"#,
     )
     .expect("parse");
     assert_eq!(s.kind_str(), "selectedNotes");
     let v = serde_json::to_value(summary()).expect("json");
     assert_eq!(v["kind"], "sessionSummary");
-    assert_eq!(v["sessionId"], "s1");
+    assert_eq!(v["sessions"][0]["sessionId"], "s1");
+    assert!(
+        v.get("sessionId").is_none(),
+        "the old shape is read, never written"
+    );
     let n: Scope = serde_json::from_str(r#"{"kind":"none"}"#).expect("none");
     assert_eq!(n, Scope::None);
     assert!(serde_json::from_str::<Scope>(r#"{"kind":"everything"}"#).is_err());
@@ -1625,4 +1659,236 @@ fn a_failed_write_of_the_providers_words_still_marks_the_message_failed() {
         err.provider_reason.is_none(),
         "the refused words are not stored"
     );
+}
+
+// -- several sessions (ADR-020 amendment) ----------------------------------------------------
+
+#[test]
+fn old_single_session_scopes_still_deserialize_and_are_rewritten_in_the_new_shape() {
+    let old: Scope = serde_json::from_str(
+        r#"{"kind":"sessionSummary","provider":"claude-code","sessionId":"s1"}"#,
+    )
+    .expect("old summary");
+    assert_eq!(old, summary());
+    let old: Scope = serde_json::from_str(
+        r#"{"kind":"selectedNotes","provider":"claude-code","sessionId":"s1","notes":true,"itemIds":[3,4]}"#,
+    )
+    .expect("old notes");
+    assert_eq!(old, selected(true, vec![3, 4]));
+    let written = serde_json::to_value(&old).expect("json");
+    assert_eq!(written["sessions"][0]["itemIds"], serde_json::json!([3, 4]));
+    assert!(written.get("provider").is_none() && written.get("notes").is_none());
+    // The new shape round-trips.
+    let again: Scope = serde_json::from_value(written).expect("new");
+    assert_eq!(again, old);
+}
+
+#[test]
+fn stored_preferences_in_the_old_and_a_broken_shape_are_recovered() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    // Old shape stored by the previous version: read, and rewritten in the new shape on save.
+    with_store(&core, |s| {
+        s.set_preference(
+            COMPANION_PREFS_KEY,
+            r#"{"toolsEnabled":true,"lastScope":{"kind":"sessionSummary","provider":"claude-code","sessionId":"s1"}}"#,
+        )
+    })
+    .expect("store old");
+    let p = prefs(&core);
+    assert!(p.tools_enabled);
+    assert_eq!(p.last_scope, Some(summary()));
+    save_prefs(&core, &p).expect("save");
+    let stored = with_store(&core, |s| s.preference(COMPANION_PREFS_KEY))
+        .expect("pref")
+        .expect("some");
+    assert!(
+        stored.contains("\"sessions\"")
+            && !stored.contains("\"kind\":\"sessionSummary\",\"provider\"")
+    );
+    // A scope this version cannot read (a rollback after a newer shape, or damage) is dropped,
+    // and the rest of the record survives.
+    with_store(&core, |s| {
+        s.set_preference(
+            COMPANION_PREFS_KEY,
+            r#"{"toolsEnabled":true,"lastScope":{"kind":"somethingNew","x":1}}"#,
+        )
+    })
+    .expect("store odd");
+    let p = prefs(&core);
+    assert!(p.tools_enabled, "the lookups switch is not lost");
+    assert_eq!(p.last_scope, None);
+}
+
+#[test]
+fn several_sessions_show_every_block_in_the_preview() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    seed_session(&core);
+    seed_other(&core, "s2", "Other work", "OTHER-ITEM");
+    let sum = Scope::SessionSummary {
+        sessions: vec![sref("s1"), sref("s2")],
+    };
+    let t = preview_context(&core, sum).expect("preview").text;
+    assert!(t.contains("2 of their agent sessions"));
+    assert!(t.contains("Session 1 of 2") && t.contains("Session 2 of 2"));
+    assert!(t.contains("Title: Fix login") && t.contains("Title: Other work"));
+    let other = id_of_in(&core, "s2", "OTHER-ITEM");
+    let notes = Scope::SelectedNotes {
+        sessions: vec![
+            pick("s1", false, vec![id_of(&core, "ITEM-ONE")]),
+            pick("s2", false, vec![other]),
+        ],
+    };
+    let p = preview_context(&core, notes).expect("preview");
+    assert!(p.text.contains("ITEM-ONE") && p.text.contains("OTHER-ITEM"));
+    assert!(!p.text.contains("ITEM-TWO") && !p.text.contains("NOTES-SENTINEL"));
+    assert!(p.sha256.is_some());
+}
+
+fn id_of_in(core: &Core, session: &str, text: &str) -> i64 {
+    with_store(core, |s| s.items("claude-code", session))
+        .expect("items")
+        .iter()
+        .find(|i| i.text == text)
+        .expect("item")
+        .id
+}
+
+#[test]
+fn the_session_cap_dedupe_and_unknown_keys_are_enforced() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    seed_session(&core);
+    for n in 2..=6 {
+        seed_other(&core, &format!("s{n}"), &format!("T{n}"), &format!("I{n}"));
+    }
+    let k = |s: Scope| preview_context(&core, s);
+    // Five is the most.
+    let five = Scope::SessionSummary {
+        sessions: (1..=5).map(|n| sref(&format!("s{n}"))).collect(),
+    };
+    assert!(k(five).is_ok());
+    let six = Scope::SessionSummary {
+        sessions: (1..=6).map(|n| sref(&format!("s{n}"))).collect(),
+    };
+    let e = k(six).unwrap_err();
+    assert_eq!(kind(&e), "invalidInput");
+    // Repeats are merged and do not count twice.
+    let dup = Scope::SessionSummary {
+        sessions: vec![sref("s1"), sref("s1"), sref("s1")],
+    };
+    let t = k(dup).expect("deduped").text;
+    assert!(
+        !t.contains("Session 1 of"),
+        "one session is not labelled as many"
+    );
+    assert_eq!(t.matches("Title: Fix login").count(), 1);
+    // Duplicate note picks for one session are merged.
+    let one = id_of(&core, "ITEM-ONE");
+    let two = id_of(&core, "ITEM-TWO");
+    let merged = Scope::SelectedNotes {
+        sessions: vec![
+            pick("s1", false, vec![one]),
+            pick("s1", true, vec![two, one]),
+        ],
+    };
+    let t = k(merged).expect("merged").text;
+    assert!(t.contains("ITEM-ONE") && t.contains("ITEM-TWO") && t.contains("NOTES-SENTINEL"));
+    assert_eq!(t.matches("ITEM-ONE").count(), 1);
+    // An unknown key anywhere refuses the whole scope.
+    let unknown = Scope::SessionSummary {
+        sessions: vec![sref("s1"), sref("ghost")],
+    };
+    assert_eq!(kind(&k(unknown).unwrap_err()), "notFound");
+    // An item of one session cannot be smuggled in under another.
+    let other = id_of_in(&core, "s2", "I2");
+    let cross = Scope::SelectedNotes {
+        sessions: vec![pick("s1", true, vec![other])],
+    };
+    assert_eq!(kind(&k(cross).unwrap_err()), "invalidInput");
+    // Nothing chosen, or a session with nothing ticked, is refused.
+    let empty = Scope::SessionSummary { sessions: vec![] };
+    assert_eq!(kind(&k(empty).unwrap_err()), "invalidInput");
+    let blank = Scope::SelectedNotes {
+        sessions: vec![pick("s1", true, vec![]), pick("s2", false, vec![])],
+    };
+    assert_eq!(kind(&k(blank).unwrap_err()), "invalidInput");
+}
+
+#[test]
+fn a_huge_list_is_refused_up_front_and_the_remembered_scope_is_deduped() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    seed_session(&core);
+    let long = Scope::SessionSummary {
+        sessions: (0..=MAX_SCOPE_LIST).map(|_| sref("s1")).collect(),
+    };
+    assert_eq!(
+        kind(&preview_context(&core, long).unwrap_err()),
+        "invalidInput"
+    );
+    // Within the list limit, repeats merge and the merged scope is what gets remembered.
+    let m = mock(vec![Sc::Ok]);
+    let pid = profile(&core, &m.base, None);
+    let t = thread(&core);
+    let one = id_of(&core, "ITEM-ONE");
+    let raw = Scope::SelectedNotes {
+        sessions: vec![pick("s1", false, vec![one]), pick("s1", true, vec![one])],
+    };
+    let hash = preview_context(&core, raw.clone()).unwrap().sha256.unwrap();
+    raw_send(&core, t, &pid, "hi", &raw, Some(&hash)).expect("send");
+    assert_eq!(
+        prefs(&core).last_scope,
+        Some(Scope::SelectedNotes {
+            sessions: vec![pick("s1", true, vec![one])]
+        })
+    );
+}
+
+#[test]
+fn the_total_across_sessions_is_capped_with_a_clear_error() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    for n in 1..=4 {
+        seed_other(&core, &format!("big{n}"), &format!("Big {n}"), "x");
+        with_store(&core, |s| {
+            s.set_notes(
+                "claude-code",
+                &format!("big{n}"),
+                &"n".repeat(19_000),
+                OffsetDateTime::now_utc(),
+            )
+        })
+        .expect("notes");
+    }
+    let notes = |ids: &[&str]| Scope::SelectedNotes {
+        sessions: ids.iter().map(|i| pick(i, true, vec![])).collect(),
+    };
+    assert!(preview_context(&core, notes(&["big1", "big2"])).is_ok());
+    let e = preview_context(&core, notes(&["big1", "big2", "big3", "big4"])).unwrap_err();
+    assert_eq!(kind(&e), "invalidInput");
+}
+
+#[test]
+fn send_refuses_when_the_session_order_differs_from_the_preview() {
+    let dir = tempfile::tempdir().expect("dir");
+    let core = core_with(dir.path(), memory(), 2000);
+    seed_session(&core);
+    seed_other(&core, "s2", "Other work", "OTHER-ITEM");
+    let m = mock(vec![Sc::Ok]);
+    let pid = profile(&core, &m.base, None);
+    let t = thread(&core);
+    let ab = Scope::SessionSummary {
+        sessions: vec![sref("s1"), sref("s2")],
+    };
+    let ba = Scope::SessionSummary {
+        sessions: vec![sref("s2"), sref("s1")],
+    };
+    let hash = preview_context(&core, ab.clone()).unwrap().sha256.unwrap();
+    assert_eq!(
+        kind(&raw_send(&core, t, &pid, "hi", &ba, Some(&hash)).unwrap_err()),
+        "invalidInput"
+    );
+    raw_send(&core, t, &pid, "hi", &ab, Some(&hash)).expect("same order is fine");
 }

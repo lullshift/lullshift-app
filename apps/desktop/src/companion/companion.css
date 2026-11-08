@@ -1163,3 +1163,123 @@
 .provider-said-text {
   font-style: normal;
 }
+
+/* ---------- Conversation options: no sideways scrolling, session picker, chips ---------- */
+
+/* A fieldset's default min-inline-size is its content width, which pushed the dialog wide. */
+.scope-picker,
+.pick-list {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  min-inline-size: 0;
+}
+
+.scope-options,
+.scope-session,
+.session-picker,
+.notes-group {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.scope-options > *,
+.scope-session > *,
+.session-picker > *,
+.scope-option > span,
+.pick > span {
+  min-width: 0;
+}
+
+.scope-option,
+.pick {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.scope-picker .field,
+.session-picker .field {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.dialog:has(.scope-picker),
+.dialog:has(.session-picker) {
+  overflow-x: hidden;
+}
+
+.notes-group {
+  gap: var(--space-1);
+}
+
+.notes-group-title {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.session-chips,
+.session-pick-list {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-chips {
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.session-chip {
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.session-chip-text {
+  min-width: 0;
+  padding: 2px var(--space-1) 2px var(--space-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-chip-remove {
+  min-width: 28px;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.session-pick-list {
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 40vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.session-pick-list > li {
+  min-width: 0;
+}
+
+.session-pick-text {
+  display: grid;
+  gap: 2px;
+}
