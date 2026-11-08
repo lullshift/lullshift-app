@@ -3,7 +3,13 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { BRIDGE_FILE, SDK_VERSION, packTextProblems } from "@lullshift/activity-sdk";
+import {
+  BRIDGE_FILE,
+  RESERVED_GENERATED_MESSAGE,
+  SDK_VERSION,
+  isReservedGeneratedId,
+  packTextProblems,
+} from "@lullshift/activity-sdk";
 import {
   activityManifestSchema,
   createAjv,
@@ -139,6 +145,10 @@ export function validateFolder(dir: string, opts: { engines?: string[] } = {}): 
   }
   const m = checked.value;
   report.manifest = m;
+  if (isReservedGeneratedId(m.id)) {
+    errors.push(`manifest.json /id ${RESERVED_GENERATED_MESSAGE}`);
+    return report;
+  }
 
   // Declared files exist.
   if (m.kind === "app") {

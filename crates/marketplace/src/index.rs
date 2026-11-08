@@ -129,6 +129,9 @@ pub fn parse_index(bytes: &[u8], builtin: bool) -> Result<MarketplaceIndex, Erro
         if !valid_id(&e.id) {
             return Err(IndexError::BadId(show(&e.id)).into());
         }
+        if crate::manifest::is_reserved_generated_id(&e.id) {
+            return Err(IndexError::ReservedId.into());
+        }
         if entries.iter().any(|x| x.id == e.id) {
             return Err(IndexError::DuplicateId(e.id).into());
         }

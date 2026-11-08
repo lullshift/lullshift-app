@@ -219,6 +219,7 @@ pub fn parse_manifest(json: &str) -> Option<Manifest> {
     let ok = m.schema_version == 1
         && shape
         && valid_id(&m.id)
+        && !is_reserved_generated_id(&m.id)
         && plain(&m.name, 100)
         && (m.description.is_empty() || plain(&m.description, 500))
         && m.author
@@ -234,6 +235,19 @@ pub fn parse_manifest(json: &str) -> Option<Manifest> {
         && ["arcade", "break", "productivity", "interactive"].contains(&m.category.as_str())
         && m.permissions.iter().all(|p| p == "activity.storage");
     ok.then_some(m)
+}
+
+/// Activity ids under this prefix belong to sets the user's own model writes (ADR-028). The host
+/// makes them; no bundled or installed activity may use one, so a set's saved state, play time
+/// and launch can never collide with, or be claimed by, an activity from a marketplace.
+pub const RESERVED_GENERATED_PREFIX: &str = "lullshift.generated.";
+
+/// The one fixed message every check shows for a reserved id (host, marketplace and CLI alike).
+pub const RESERVED_GENERATED_MESSAGE: &str = "activity ids starting with 'lullshift.generated.' are reserved for sets written by the user's own model, so this id can't be used";
+
+/// Whether `id` is under the reserved generated-set namespace.
+pub fn is_reserved_generated_id(id: &str) -> bool {
+    id.starts_with(RESERVED_GENERATED_PREFIX)
 }
 
 /// Manifest ID pattern `^[a-z0-9]+(\.[a-z0-9-]+)+$`, at most 160 characters.

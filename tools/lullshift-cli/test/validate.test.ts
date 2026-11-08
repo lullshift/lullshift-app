@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { RESERVED_GENERATED_MESSAGE } from "@lullshift/activity-sdk";
 import { compareSemver, validateFolder } from "../src/validate.ts";
 import { editJson, scaffold } from "./helpers.ts";
 
@@ -30,6 +31,21 @@ describe("validate", () => {
     expect(errors).toMatch(/\/offline/);
     expect(errors).toMatch(/\/id/);
     expect(errors).toMatch(/additional properties/);
+  });
+
+  it("refuses the reserved generated-set namespace with the fixed message", () => {
+    for (const id of ["lullshift.generated.quiz.abcdefghij12", "lullshift.generated.x"]) {
+      const dir = scaffold();
+      editJson(manifestOf(dir), (m) => {
+        m.id = id;
+      });
+      expect(errorsOf(dir)).toContain(RESERVED_GENERATED_MESSAGE);
+    }
+    const ok = scaffold();
+    editJson(manifestOf(ok), (m) => {
+      m.id = "lullshift.generatedx.quiz";
+    });
+    expect(errorsOf(ok)).toBe("");
   });
 
   it("rejects unknown permissions", () => {
