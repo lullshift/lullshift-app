@@ -12,11 +12,16 @@ use std::path::{Path, PathBuf};
 
 mod companion;
 mod context;
+mod generated_sets;
 mod marketplaces;
 mod waits;
 pub use waits::{
     MIN_STRETCHES, WaitEstimate, WaitEvent, WorkStretch, estimates, fold_stretches,
     stretches_from_events,
+};
+
+pub use generated_sets::{
+    GENERATED_ID_PREFIX, GeneratedSet, KEEP_GENERATED_SETS_PER_ENGINE, NewGeneratedSet,
 };
 
 pub use marketplaces::{
@@ -132,6 +137,10 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 20,
         sql: include_str!("../migrations/0020_companion_thinking.sql"),
+    },
+    Migration {
+        version: 21,
+        sql: include_str!("../migrations/0021_generated_sets.sql"),
     },
 ];
 
