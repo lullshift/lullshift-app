@@ -31,7 +31,7 @@ use time::OffsetDateTime;
 
 use super::{
     CommandError, CoreState, Prepared, ProviderReasonDto, QueuedUsage, Res, book,
-    budget_still_ok_plus, check_request_id, kind_of, load_prefs, prepare, run, save_prefs,
+    budget_still_ok_plus, check_request_id, kind_of, load_prefs, prepare, run, update_prefs,
     with_store,
 };
 use crate::Core;
@@ -78,14 +78,32 @@ pub fn set_settings(core: &Core, enabled: bool, body_enabled: bool) -> Res<Conte
             "Turn on model-written activity content first.",
         ));
     }
-    let mut prefs = load_prefs(core);
-    prefs.content_generation = ContentGenerationPrefs {
+    let wanted = ContentGenerationPrefs {
         enabled,
         body_enabled,
     }
     .normalized();
-    save_prefs(core, &prefs)?;
+    // One read-modify-write under the store lock: it can't undo a concurrent tools or scope change.
+    let mut before = ContentGenerationPrefs::default();
+    let prefs = update_prefs(core, |p| {
+        before = p.content_generation.normalized();
+        p.content_generation = wanted;
+        true
+    })?;
+    // A switch going off stops a request already on its way (all of them: body requests are not
+    // told apart). The write path also re-reads the switches before it stores anything.
+    if (before.enabled && !wanted.enabled) || (before.body_enabled && !wanted.body_enabled) {
+        cancel_running(core);
+    }
     Ok(prefs.content_generation)
+}
+
+fn cancel_running(core: &Core) {
+    if let Ok(m) = core.companion.generations.lock() {
+        for token in m.values() {
+            token.cancel();
+        }
+    }
 }
 
 fn settings(core: &Core) -> ContentGenerationPrefs {
@@ -178,6 +196,7 @@ fn avoid_list(core: &Core, req: &GenerationRequest, origin: Option<&str>) -> Res
     let mut sets_rows = with_store(core, |s| s.generated_sets(Some(req.engine.engine_ref())))?;
     sets_rows.sort_by_key(|r| std::cmp::Reverse(r.created));
     let want = topic_key(&req.topic);
+    let check = sets::engine_check(req.engine.short());
     // Oldest first within the final list, so the "most recent 20" are the last 20.
     let mut items: Vec<String> = Vec::new();
     if let Some(pack) = origin {
@@ -188,7 +207,10 @@ fn avoid_list(core: &Core, req: &GenerationRequest, origin: Option<&str>) -> Res
         .iter()
         .filter(|r| !r.unusable && topic_key(&r.topic) == want)
     {
-        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&row.data_json) {
+        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&row.data_json)
+            && check(&data).is_ok()
+            && !::companion::generate::body_problem(req.engine, &data)
+        {
             let mut one = ::companion::generate::avoid_items(req.engine, &data);
             one.reverse();
             from_sets.extend(one);
@@ -371,7 +393,20 @@ pub fn write_set(
             return Err(e);
         }
     };
-    // A cancel that raced the end of the last call: nothing is stored.
+    // Nothing is stored when a switch this set needs was turned off while the model was
+    // answering, nor after a cancel that raced the end of the last call.
+    let now = settings(core);
+    if !now.enabled || (engine.is_body() && !now.body_enabled) {
+        let e = typed(
+            "generationOff",
+            if now.enabled { BODY_OFF_TEXT } else { OFF_TEXT },
+        );
+        emit(GenerationEvent::Failed {
+            request_id: request_id.to_owned(),
+            kind: e.kind,
+        });
+        return Err(e);
+    }
     if running.token.is_cancelled() {
         let e = CommandError::from(CompanionError::cancelled());
         emit(GenerationEvent::Failed {

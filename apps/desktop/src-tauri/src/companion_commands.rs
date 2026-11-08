@@ -1588,6 +1588,7 @@ fn load_prefs(core: &Core) -> CompanionPrefs {
         .unwrap_or_default()
 }
 
+#[cfg(test)]
 fn save_prefs(core: &Core, prefs: &CompanionPrefs) -> Res<()> {
     let json = serde_json::to_string(prefs).map_err(|_| CommandError::internal())?;
     with_store(core, |s| s.set_preference(COMPANION_PREFS_KEY, &json))
@@ -1597,21 +1598,45 @@ pub fn prefs(core: &Core) -> CompanionPrefs {
     load_prefs(core)
 }
 
+/// Every read-modify-write of [`CompanionPrefs`] goes through here: the whole blob is read,
+/// changed and written inside one store lock, so two writers (the tools switch, the remembered
+/// scope, the content-generation switches) can't overwrite each other's change with a stale
+/// copy. `change` returns true when it changed something worth saving.
+pub(crate) fn update_prefs(
+    core: &Core,
+    change: impl FnOnce(&mut CompanionPrefs) -> bool,
+) -> Res<CompanionPrefs> {
+    with_store(core, |s| {
+        let mut prefs = s
+            .preference(COMPANION_PREFS_KEY)?
+            .and_then(|j| serde_json::from_str::<CompanionPrefs>(&j).ok())
+            .unwrap_or_default();
+        if change(&mut prefs) {
+            let json = serde_json::to_string(&prefs)
+                .map_err(|_| StoreError::InvalidInput("the settings could not be written"))?;
+            s.set_preference(COMPANION_PREFS_KEY, &json)?;
+        }
+        Ok(prefs)
+    })
+}
+
 pub fn set_tools_enabled(core: &Core, enabled: bool) -> Res<CompanionPrefs> {
-    let mut p = load_prefs(core);
-    p.tools_enabled = enabled;
-    save_prefs(core, &p)?;
-    Ok(p)
+    update_prefs(core, |p| {
+        p.tools_enabled = enabled;
+        true
+    })
 }
 
 /// Remembers the context choice of a message that is about to be sent. Best effort: a failure to
 /// save it must not stop the message.
 fn remember_scope(core: &Core, scope: &Scope) {
-    let mut p = load_prefs(core);
-    if p.last_scope.as_ref() != Some(scope) {
+    let _ = update_prefs(core, |p| {
+        if p.last_scope.as_ref() == Some(scope) {
+            return false;
+        }
         p.last_scope = Some(scope.clone());
-        let _ = save_prefs(core, &p);
-    }
+        true
+    });
 }
 
 // ---- sending -----------------------------------------------------------------------------

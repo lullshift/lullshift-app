@@ -12,7 +12,9 @@ use ::companion::{HttpConfig, MemoryKeyStore};
 use serde_json::{Value, json};
 
 use super::*;
-use crate::companion_commands::{CompanionState, ProfileInput, save_profile, set_key};
+use crate::companion_commands::{
+    CompanionState, ProfileInput, save_prefs, save_profile, set_key, set_tools_enabled,
+};
 
 const KEY: &str = "sk-test-GENSECRET-0123456789";
 
@@ -742,4 +744,165 @@ fn sets_are_never_offered_by_suggestions_or_the_companion_lookups() {
     }
     let help = crate::companion_commands::lookups::activity_help(&acts, &id);
     assert_eq!(help.text, "No installed activity has that id.");
+}
+
+// ---- switches turned off while a request runs; concurrent preference writers; avoid rows ----
+
+fn movement_reply() -> String {
+    json!({"title": "Desk moves", "moves": [{"name": "Shrug", "steps": ["Lift and drop your shoulders."], "reps": 5}]})
+        .to_string()
+}
+
+fn wait_for_request(m: &Mock) {
+    let start = std::time::Instant::now();
+    while m.count() == 0 && start.elapsed() < Duration::from_secs(5) {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn turning_a_switch_off_while_the_provider_answers_stores_nothing() {
+    for body in [false, true] {
+        for via_set_settings in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let core = Arc::new(core_in(dir.path()));
+            let (engine, reply) = if body {
+                ("movement", movement_reply())
+            } else {
+                ("quiz", quiz_reply("Late", 5))
+            };
+            let m = mock(vec![Reply::Slow(reply, 1500)]);
+            add_profile(&core, &m.base, None);
+            turn_on(&core, body);
+            let worker = {
+                let core = Arc::clone(&core);
+                std::thread::spawn(move || {
+                    let (_, emit) = collect();
+                    write_set(&core, "req-00000001", &dto(engine, "x"), &emit)
+                })
+            };
+            wait_for_request(&m);
+            if via_set_settings {
+                // The command cancels the running request.
+                set_settings(&core, false, false).unwrap();
+            } else {
+                // A switch changed behind the running request's back (nothing cancels it): the
+                // write path reads the switches again and refuses to store.
+                update_prefs(&core, |p| {
+                    p.content_generation = ContentGenerationPrefs::default();
+                    true
+                })
+                .unwrap();
+            }
+            let e = worker.join().unwrap().expect_err("refused");
+            if via_set_settings {
+                assert_eq!(e.kind, "cancelled", "body {body}");
+            } else {
+                assert_eq!(e.kind, "generationOff", "body {body}");
+            }
+            assert_eq!(stored(&core), 0, "body {body} via {via_set_settings}");
+        }
+    }
+}
+
+#[test]
+fn only_the_body_switch_going_off_also_stops_the_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Arc::new(core_in(dir.path()));
+    let m = mock(vec![Reply::Slow(movement_reply(), 1500)]);
+    add_profile(&core, &m.base, None);
+    turn_on(&core, true);
+    let worker = {
+        let core = Arc::clone(&core);
+        std::thread::spawn(move || {
+            let (_, emit) = collect();
+            write_set(&core, "req-00000001", &dto("movement", "x"), &emit)
+        })
+    };
+    wait_for_request(&m);
+    update_prefs(&core, |p| {
+        p.content_generation.body_enabled = false;
+        true
+    })
+    .unwrap();
+    assert_eq!(err_kind(worker.join().unwrap()), "generationOff");
+    assert_eq!(stored(&core), 0);
+}
+
+#[test]
+fn other_preference_writers_cannot_turn_the_switches_back_on() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Arc::new(core_in(dir.path()));
+    add_profile(&core, "http://127.0.0.1:9/v1", None);
+    for _ in 0..20 {
+        turn_on(&core, true);
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flipper = {
+            let core = Arc::clone(&core);
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || {
+                let mut on = false;
+                while !stop.load(std::sync::atomic::Ordering::SeqCst) {
+                    on = !on;
+                    set_tools_enabled(&core, on).unwrap();
+                    let _ = update_prefs(&core, |p| {
+                        p.last_scope = None;
+                        true
+                    });
+                }
+            })
+        };
+        std::thread::sleep(Duration::from_millis(5));
+        set_settings(&core, false, false).unwrap();
+        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        flipper.join().unwrap();
+        let after = settings(&core);
+        assert!(!after.enabled && !after.body_enabled);
+    }
+}
+
+#[test]
+fn avoid_rows_that_fail_the_engine_check_are_skipped() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core_in(dir.path());
+    add_profile(&core, "http://127.0.0.1:9/v1", None);
+    let put = |id: &str, engine: &str, data: Value| {
+        with_store(&core, |s| {
+            s.insert_generated_set(&local_store::NewGeneratedSet {
+                id,
+                engine,
+                topic: "Desk",
+                difficulty: "gentle",
+                data_json: &data.to_string(),
+                created: OffsetDateTime::now_utc(),
+                provider_host: "h",
+                model: None,
+                origin_pack: None,
+            })
+        })
+        .unwrap();
+    };
+    let routine = |name: &str, step: &str| {
+        json!({"title": "T", "wayOut": "Stop at any time.", "restSeconds": 15, "closing": "Done.",
+            "moves": [{"name": name, "steps": [step], "reps": 5}]})
+    };
+    put(
+        "lullshift.generated.movement.aaaaaaaaaaaa",
+        "lullshift.movement@1",
+        routine("Good shrug", "Lift and drop."),
+    );
+    put(
+        "lullshift.generated.movement.bbbbbbbbbbbb",
+        "lullshift.movement@1",
+        routine("Bad jumper", "Now jump up"),
+    );
+    let req = base_request(&{
+        let mut d = dto("movement", "desk");
+        d.avoid = true;
+        d
+    })
+    .unwrap();
+    let avoid = avoid_list(&core, &req, None).unwrap();
+    assert!(avoid.iter().any(|a| a.contains("Good shrug")), "{avoid:?}");
+    assert!(avoid.iter().all(|a| !a.contains("Bad jumper")), "{avoid:?}");
 }
