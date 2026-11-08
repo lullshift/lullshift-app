@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ellipsize } from "../format";
 import type { SessionView } from "../sessions";
 import { Banner } from "../ui/Banner";
+import { Mascot } from "../ui/Mascot";
 import {
   companionCancel,
   companionMessages,
@@ -64,6 +65,48 @@ function PlainText({ text, className }: { text: string; className?: string }) {
   );
 }
 
+/** A small person icon for your own messages. Decorative: the row carries the name "You". */
+function PersonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="8" r="4" fill="currentColor" />
+      <path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/**
+ * The frame of one message: an avatar and a column. Your messages are right-aligned bubbles; the
+ * Companion's are left-aligned, full width, with no card. Everything the message shows goes in
+ * `children`, so what a row contains can change without touching the layout.
+ */
+function MessageRow({
+  mine,
+  className = "",
+  busy,
+  children,
+}: {
+  mine: boolean;
+  className?: string;
+  busy?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <li
+      className={`msg ${mine ? "msg-user" : "msg-assistant"} ${className}`.trim()}
+      aria-busy={busy ? true : undefined}
+    >
+      <span className="msg-avatar">
+        {mine ? <PersonIcon /> : <Mascot face="awake" size={28} />}
+      </span>
+      <div className="msg-main">
+        <span className="msg-who visually-hidden">{mine ? "You" : "Companion"}</span>
+        {children}
+      </div>
+    </li>
+  );
+}
+
 function MessageItem({
   message,
   profiles,
@@ -87,9 +130,14 @@ function MessageItem({
   const failed = mine && message.status === "failed";
   const unconfirmed = mine && message.status === "pending" && !retrying;
   return (
-    <li className={`msg ${mine ? "msg-user" : "msg-assistant"}`}>
-      <span className="msg-who">{mine ? "You" : "Companion"}</span>
-      {mine ? <PlainText text={message.text} /> : <ReplyText text={message.text} />}
+    <MessageRow mine={mine}>
+      {mine ? (
+        <div className="msg-bubble">
+          <PlainText text={message.text} />
+        </div>
+      ) : (
+        <ReplyText text={message.text} />
+      )}
       {!mine && (
         <p className="msg-model">
           <span className="visually-hidden">Answered by </span>
@@ -105,9 +153,6 @@ function MessageItem({
           </p>
           <PlainText text={message.attachedContext} className="msg-attached" />
         </details>
-      )}
-      {mine && message.scopeKind === "none" && (
-        <p className="msg-note">Nothing shared besides this message.</p>
       )}
       {mine && (message.toolCalls?.length ?? 0) > 0 && (
         <ToolRecords records={message.toolCalls} onStartActivity={onStartActivity} />
@@ -143,7 +188,7 @@ function MessageItem({
           </button>
         </div>
       )}
-    </li>
+    </MessageRow>
   );
 }
 
@@ -415,66 +460,69 @@ export function Conversation({
         {status || live}
       </div>
 
-      <div className="card messages" tabIndex={0} aria-label="Messages">
-        {load.status === "loading" && <p className="card-sub">Loading messages…</p>}
-        {load.status === "error" && (
-          <Banner tone="danger">
-            {load.text}{" "}
-            <button type="button" className="btn-link" onClick={() => void reload()}>
-              Try again
-            </button>
-          </Banner>
-        )}
-        {load.status === "ready" && messages.length === 0 && pendingText === null && (
-          <p className="card-sub">
-            Nothing here yet. Messages stay on this computer, except what you send to the provider.
-          </p>
-        )}
-        <ol className="msg-list">
-          {withoutInFlightMessage(messages, pendingText).map((m) => (
-            <MessageItem
-              key={m.id}
-              message={m}
-              profiles={profiles}
-              host={host}
-              retrying={retryingId === m.id}
-              canRetry={!sending}
-              onRetry={retry}
-              onOpenSettings={onOpenSettings}
-              onStartActivity={onStartActivity}
+      <div className="messages" tabIndex={0} aria-label="Messages">
+        <div className="messages-column">
+          {load.status === "loading" && <p className="card-sub">Loading messages…</p>}
+          {load.status === "error" && (
+            <Banner tone="danger">
+              {load.text}{" "}
+              <button type="button" className="btn-link" onClick={() => void reload()}>
+                Try again
+              </button>
+            </Banner>
+          )}
+          {load.status === "ready" && messages.length === 0 && pendingText === null && (
+            <p className="card-sub">
+              Nothing here yet. Messages stay on this computer, except what you send to the
+              provider.
+            </p>
+          )}
+          <ol className="msg-list">
+            {withoutInFlightMessage(messages, pendingText).map((m) => (
+              <MessageItem
+                key={m.id}
+                message={m}
+                profiles={profiles}
+                host={host}
+                retrying={retryingId === m.id}
+                canRetry={!sending}
+                onRetry={retry}
+                onOpenSettings={onOpenSettings}
+                onStartActivity={onStartActivity}
+              />
+            ))}
+            {pendingText !== null && (
+              <MessageRow mine className="msg-sending">
+                <div className="msg-bubble">
+                  <PlainText text={pendingText} />
+                </div>
+                <p className="msg-note">{stream && stream.text ? "Sent." : "Sending…"}</p>
+              </MessageRow>
+            )}
+            {stream && stream.text !== "" && (
+              // Not a live region: the text grows token by token. A short status sentence in the
+              // hidden live region tells screen-reader users the reply is coming, and the finished
+              // reply is announced once.
+              <MessageRow mine={false} className="msg-streaming" busy>
+                <ReplyText text={stream.text} streaming />
+                <p className="msg-note">Still writing. You can cancel at any time.</p>
+              </MessageRow>
+            )}
+            {stream && stream.notices.length > 0 && (
+              <li>
+                <ToolNotices notices={stream.notices} />
+              </li>
+            )}
+          </ol>
+          {stream?.pending && (
+            <ToolApprovalCard
+              pending={stream.pending}
+              busy={deciding}
+              onDecide={(approve) => void decide(approve)}
             />
-          ))}
-          {pendingText !== null && (
-            <li className="msg msg-user msg-sending">
-              <span className="msg-who">You</span>
-              <PlainText text={pendingText} />
-              <p className="msg-note">{stream && stream.text ? "Sent." : "Sending…"}</p>
-            </li>
           )}
-          {stream && stream.text !== "" && (
-            // Not a live region: the text grows token by token. A short status sentence in the
-            // hidden live region tells screen-reader users the reply is coming, and the finished
-            // reply is announced once.
-            <li className="msg msg-assistant msg-streaming" aria-busy="true">
-              <span className="msg-who">Companion</span>
-              <ReplyText text={stream.text} streaming />
-              <p className="msg-note">Still writing. You can cancel at any time.</p>
-            </li>
-          )}
-          {stream && stream.notices.length > 0 && (
-            <li>
-              <ToolNotices notices={stream.notices} />
-            </li>
-          )}
-        </ol>
-        {stream?.pending && (
-          <ToolApprovalCard
-            pending={stream.pending}
-            busy={deciding}
-            onDecide={(approve) => void decide(approve)}
-          />
-        )}
-        <div ref={endRef} />
+          <div ref={endRef} />
+        </div>
       </div>
 
       {contextOffer !== null && (

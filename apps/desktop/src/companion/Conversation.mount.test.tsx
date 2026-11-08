@@ -174,7 +174,11 @@ describe("Enter and Shift+Enter", () => {
     await key(textarea(), "Enter", { ctrlKey: true });
     await settle();
     expect(sends()).toHaveLength(2);
-    expect(host.textContent).toContain("Enter sends. Shift+Enter starts a new line.");
+    // The key help is reachable by assistive tech and as a tooltip, but not printed as a line.
+    const described = document.getElementById(textarea().getAttribute("aria-describedby")!)!;
+    expect(described.textContent).toBe("Enter sends. Shift+Enter starts a new line.");
+    expect(described.classList.contains("visually-hidden")).toBe(true);
+    expect(textarea().title).toBe("Enter sends. Shift+Enter starts a new line.");
   });
 });
 
@@ -258,6 +262,77 @@ describe("conversation options as badges", () => {
     expect(remove.getAttribute("aria-label")).toMatch(/^Remove Session summary: /);
     await click(remove);
     expect(host.querySelector(".option-badges")).toBeNull();
-    expect(host.textContent).toContain("This message sends only what you typed.");
+    expect(host.textContent).not.toContain("This message sends only what you typed.");
+  });
+});
+
+describe("a chat-style layout", () => {
+  it("keeps the message box outside the scrolling message list", async () => {
+    await mountConversation();
+    const scroller = host.querySelector(".messages")!;
+    expect(scroller).not.toBeNull();
+    expect(scroller.contains(textarea())).toBe(false);
+    expect(scroller.contains(host.querySelector(".composer"))).toBe(false);
+    const conversation = host.querySelector(".conversation")!;
+    expect(conversation.contains(scroller) && conversation.contains(textarea())).toBe(true);
+  });
+
+  it("right-aligns your messages as bubbles and leaves replies as plain full-width text", async () => {
+    await mountConversation();
+    const mine = host.querySelector(".msg-user")!;
+    expect(mine.querySelector(".msg-bubble")).not.toBeNull();
+    const theirs = host.querySelectorAll(".msg-assistant");
+    expect(theirs).toHaveLength(2);
+    for (const t of theirs) expect(t.querySelector(".msg-bubble")).toBeNull();
+    // Names stay available to assistive tech without printing a big label.
+    expect(mine.querySelector(".msg-who")?.textContent).toBe("You");
+    expect(mine.querySelector(".msg-who")?.classList.contains("visually-hidden")).toBe(true);
+    expect(theirs[0]!.querySelector(".msg-who")?.textContent).toBe("Companion");
+    expect(theirs[0]!.querySelector(".msg-avatar img")).not.toBeNull();
+    expect(mine.querySelector(".msg-avatar svg")).not.toBeNull();
+  });
+
+  it("prints no always-on help lines and no destination badge in the composer", async () => {
+    await mountConversation();
+    for (const sel of [".composer-hint", ".composer-history", ".composer-host"]) {
+      expect(host.querySelector(sel)).toBeNull();
+    }
+    const visible = host.querySelector(".composer")!.cloneNode(true) as HTMLElement;
+    visible.querySelectorAll(".visually-hidden, dialog").forEach((n) => n.remove());
+    const text = visible.textContent ?? "";
+    expect(text).not.toContain("Enter sends");
+    expect(text).not.toContain("earlier message");
+    expect(text).not.toContain("Sends to");
+    expect(text).not.toContain("only what you typed");
+    // The destination is still on the model chip, as a tooltip.
+    expect(modelButton().title).toBe("Sends to api.anthropic.com");
+  });
+
+  it("says how much history goes along in the options dialog", async () => {
+    await mountConversation();
+    await click(buttonIn(host, "Options…"));
+    const options = [...host.querySelectorAll("dialog")].find((d) =>
+      d.textContent?.includes("Conversation options"),
+    )!;
+    expect(options.querySelector(".options-history")?.textContent).toMatch(/earlier message/);
+  });
+
+  it("shows a quiet chip only on messages that shared context", async () => {
+    stored = [
+      msg(1, "user", "plain"),
+      msg(2, "assistant", "ok"),
+      msg(3, "user", "with context", {
+        scopeKind: "sessionSummary",
+        attachedContext: "Session: demo",
+      }),
+      msg(4, "assistant", "ok again"),
+    ];
+    await mountConversation();
+    const chips = host.querySelectorAll(".msg-shared");
+    expect(chips).toHaveLength(1);
+    expect(chips[0]!.closest(".msg-user")?.textContent).toContain("with context");
+    expect(chips[0]!.querySelector("summary")?.textContent).toMatch(/Shared/);
+    expect(chips[0]!.textContent).toContain("Session: demo");
+    expect(host.textContent).not.toContain("Nothing shared");
   });
 });

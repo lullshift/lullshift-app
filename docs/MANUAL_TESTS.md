@@ -1464,6 +1464,29 @@ Run on Windows, then macOS, then Linux, in light and dark.
 
 **Result:** \_\_\_
 
+### M12-28: Companion chat layout, provider dialog and model picker rows
+
+1. Open Companion with a conversation of at least ten messages (some long, one with a code block). Make the window tall, then short. Scroll the messages, then type a long multi-line message.
+2. Widen the window to full screen.
+3. Look at your own messages and the Companion's replies, in light and dark themes. Check the small avatars and tab to a message list, then to the message box.
+4. Look under the message box. Hover the message box and the model button. Press **Options…**.
+5. Send a message with **Session summary** context (preview, then send).
+6. In Settings > Companion press **Edit** on a provider, then **Add a provider**. Use Tab, Shift+Tab and Esc.
+7. In the provider dialog press **Choose from list…** (or **Add a model…** under a provider) and load the model list. Check a short window (about 600 px high) too.
+8. Turn on reduced motion in the operating system and repeat step 6.
+
+**Expected:**
+
+- **Steps 1 and 2:** the message box stays at the bottom and only the messages scroll; the page behind never scrolls; the thread list scrolls on its own; the conversation is a centred column about 800 px wide, never stretched.
+- **Step 3:** your messages are right-aligned bubbles (at most about three quarters of the width) with a person icon; replies are left-aligned, full width, with no card and the Lullshift mascot. There is no big uppercase "You" or "Companion"; a screen reader still reads both names. The message list shows a visible focus ring.
+- **Step 4:** no help text under the box, no "Sends to ..." badge, no history sentence. The tooltip on the box says Enter sends and Shift+Enter starts a new line; the model button's tooltip shows the destination host. **Options…** says in a plain sentence how many earlier messages go along.
+- **Step 5:** the exact-text preview and consent still appear before sending. Afterwards that message shows one small quiet "Shared with ...: Session summary" chip that opens the exact text sent; messages with no context show no line at all.
+- **Step 6:** both open in a modal dialog (never an inline form) with the key panel in edit mode; focus stays inside, Esc closes it, and focus returns to the button that opened it.
+- **Step 7:** the picker dialog has no scrollbar of its own at normal sizes; only the model list scrolls, the title, search and Cancel stay in place, and every model's second line (context size, price, date, tools) is shown in full, wrapping if needed, with the full text in a tooltip. On the short window the dialog scrolls rather than clipping.
+- **Step 8:** nothing relies on animation.
+
+**Result:** \_\_\_
+
 ## Website and demo mode
 
 ### W-1: Browser demo of the desktop UI

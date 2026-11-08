@@ -219,6 +219,7 @@ export function CatalogModelList({
                 role="option"
                 aria-selected={isChosen}
                 className={cls.join(" ")}
+                title={[m.name, m.id, modelFacts(m)].filter(Boolean).join(" · ")}
                 onMouseEnter={() => onActive?.(i)}
                 onClick={() => onChoose(m)}
               >
