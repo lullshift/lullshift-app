@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type RefObject } from "react";
 import type { SessionView } from "../sessions";
+import { updateUiPrefs, useUiPrefs } from "../uiPrefsStore";
 import { Banner } from "../ui/Banner";
+import { Mascot } from "../ui/Mascot";
 import {
   companionDeleteThread,
   companionNewThread,
@@ -59,6 +61,7 @@ export default function CompanionView({
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [live, setLive] = useState("");
+  const collapsed = useUiPrefs().companionPanelCollapsed === true;
 
   const reload = useCallback(async () => {
     try {
@@ -193,9 +196,6 @@ export default function CompanionView({
             you choose it, and you see it first.
           </p>
         </div>
-        <button type="button" className="btn-link companion-settings-link" onClick={onOpenSettings}>
-          Provider settings
-        </button>
       </header>
 
       <div className="visually-hidden" role="status" aria-live="polite">
@@ -217,11 +217,15 @@ export default function CompanionView({
       {notice && <Banner tone="danger">{notice}</Banner>}
 
       {boot.status === "ready" && (
-        <div className="companion-layout">
+        <div
+          className={collapsed ? "companion-layout companion-layout-collapsed" : "companion-layout"}
+        >
           <ThreadList
             threads={threads}
             selectedId={selectedId}
             now={now}
+            collapsed={collapsed}
+            onToggleCollapsed={() => void updateUiPrefs({ companionPanelCollapsed: !collapsed })}
             onSelect={setSelectedId}
             onCreate={() => void createThread()}
             onRename={(id, title) => void renameThread(id, title)}
@@ -240,21 +244,23 @@ export default function CompanionView({
               onActivity={() => void reloadThreads()}
             />
           ) : (
-            <div className="card companion-empty">
-              <p className="card-title">No conversation yet</p>
-              <p className="card-sub">
-                Start one to ask a question. Each message sends only what you type unless you choose
-                to add context.
+            <div className="companion-empty">
+              <Mascot face="asleep" size={72} />
+              <h2 className="companion-empty-title">
+                {threads.length === 0 ? "No conversations yet" : "No conversation selected"}
+              </h2>
+              <p className="companion-empty-text">
+                {threads.length === 0
+                  ? "Start one to ask a question. Only what you type is sent, unless you add context."
+                  : "Pick one from the list, or start a new one."}
               </p>
-              <div className="actions">
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => void createThread()}
-                >
-                  New conversation
-                </button>
-              </div>
+              <button
+                type="button"
+                className="btn btn-primary companion-empty-action"
+                onClick={() => void createThread()}
+              >
+                New conversation
+              </button>
             </div>
           )}
         </div>

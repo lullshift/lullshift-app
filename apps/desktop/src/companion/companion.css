@@ -40,11 +40,6 @@
   justify-content: space-between;
 }
 
-.companion-settings-link {
-  margin-top: var(--space-2);
-  font-size: var(--text-sm);
-}
-
 .btn-link:focus-visible,
 .menu-button:focus-visible,
 .menu-item:focus-visible,
@@ -194,9 +189,128 @@
   background: currentColor;
 }
 
+/* Empty state: compact and centred. Nothing stretches; the button keeps its own size. */
 .companion-empty {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-6) var(--space-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.companion-empty > * {
+  flex: 0 0 auto;
+}
+
+.companion-empty-title {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-lg);
+  font-weight: 650;
+}
+
+.companion-empty-text {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.companion-empty-action {
+  align-self: center;
+  width: auto;
+  margin-top: var(--space-3);
+}
+
+/* Small icon-only buttons (toolbar, conversation rail). */
+.icon-btn {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.icon-btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.conversation-head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.conversation-head .conversation-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.conversation-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+/* Conversation list: collapses to a narrow rail. */
+.companion-layout-collapsed {
+  grid-template-columns: 56px minmax(0, 1fr);
+}
+
+@media (max-width: 860px) {
+  .companion-layout-collapsed {
+    grid-template-columns: 1fr;
+  }
+}
+
+.thread-list-head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.thread-list-head .thread-new {
+  flex: 1 1 auto;
+}
+
+.thread-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.thread-list-rail {
+  padding: var(--space-2);
+}
+
+@media (min-width: 861px) {
+  .thread-list-rail .thread-list-head {
+    flex-direction: column;
+  }
 }
 
 /* ---------- Conversation ---------- */
@@ -821,6 +935,13 @@
   align-items: center;
 }
 
+.composer-send {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-left: auto;
+}
+
 .composer-model {
   max-width: 100%;
   overflow: hidden;
@@ -1033,8 +1154,89 @@
 }
 
 .picker .catalog-search {
-  flex: 1 1 100%;
+  flex: 1 1 12rem;
   min-width: 0;
+}
+
+.picker .catalog-filters {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+/* Filter and sort: one button, a small popover under it. */
+.filter-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.filter-menu-button {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  white-space: nowrap;
+}
+
+.filter-menu-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+
+.filter-menu-panel {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 5;
+  display: grid;
+  gap: var(--space-1);
+  min-width: 15rem;
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.filter-menu-sort {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2) 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.filter-menu-sort legend {
+  padding: 0;
+}
+
+.catalog-provider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: var(--space-2);
+}
+
+.catalog-provider label {
+  min-width: 0;
+}
+
+.picker-footer {
+  display: flex;
+  flex: 1 1 auto;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.picker-footer-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+  font-size: var(--text-sm);
 }
 
 .picker .catalog-sort {
@@ -1087,18 +1289,22 @@
 .picker-typed {
   display: grid;
   gap: var(--space-1);
-  padding-top: var(--space-3);
+  padding-top: var(--space-2);
   border-top: 1px solid var(--border);
 }
 
 .picker-typed-row {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
+.picker-typed-row .btn {
+  flex: 0 0 auto;
+}
+
 .picker-typed-row .field {
-  flex: 1 1 14rem;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .catalog-list:focus-visible {

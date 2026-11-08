@@ -93,6 +93,10 @@ export interface UiPrefs {
   theme?: Theme;
   /** Missing means the quick window. */
   trayClick?: TrayClick;
+  /** The Companion conversation list is collapsed to a rail. Missing means expanded. */
+  companionPanelCollapsed?: boolean;
+  /** The Companion message list follows streaming output. Missing means on. */
+  companionAutoScroll?: boolean;
 }
 
 const k = (s: SessionKey) => ({ provider: s.provider, sessionId: s.sessionId });

@@ -1544,6 +1544,30 @@ Needs a key for a model that reasons, in each of: OpenAI (Responses API, for exa
 
 **Result:** \_\_\_
 
+## Companion layout and polish
+
+### M12-31: Companion empty state, toolbar, conversation rail, composer and model picker
+
+Use light and dark, and once with the OS reduced-motion setting on. Start with no conversations (delete them all).
+
+1. Open Companion. Look at the right pane, then the left list.
+2. Start a conversation. In the title row on the right, hover and then Tab to the two icon buttons: Auto-scroll and Provider settings. Press the gear.
+3. Ask for a long answer. While it streams with Auto-scroll on, watch the list; then scroll up by hand mid-stream, wait, and scroll back to the bottom. Turn Auto-scroll off (button looks unpressed, tooltip says off) and ask again; then restart Lullshift and check the button.
+4. Press the panel button at the top of the conversation list (Hide conversations), then the plus in the narrow rail, then the panel button again (Show conversations). Collapse it, quit and start Lullshift, open Companion.
+5. Look at the message box: Send, the model chip and Options. Press Enter in the box to send.
+6. Open Settings > Companion and "Add a model" (and "Choose the first model" if shown). Look at the dialog, open Filter and sort, tick Reasoning, choose another sort, press Esc, then use Refresh and type a model name.
+
+**Expected:**
+
+- **Step 1:** a centred empty state with the mascot, one heading, one short line and one normal-size button; nothing stretched. The list says "Your conversations will show up here." and a stray text link or empty box is not left in the header.
+- **Step 2:** both buttons are icon-only with a tooltip and an accessible name; the toggle reports pressed or not; the gear opens the Companion settings.
+- **Step 3:** with it on, the list follows the text; scrolling up pauses following until you reach the bottom again; with it off, it never moves by itself; the choice survives a restart.
+- **Step 4:** the list folds to a narrow rail with a Show conversations button (expanded state announced) and a plus; the choice survives a restart.
+- **Step 5:** Send sits inside the box, bottom right, on the same row as the model chip and Options.
+- **Step 6:** one short muted line explains models.dev; the model list gets most of the height; one Filter and sort button (checkboxes and sort options, a dot when a filter is on; Esc closes only it); "Loaded ..." and Refresh are in the footer next to Cancel; typing a name is a single row.
+
+**Result:** \_\_\_
+
 ## Website and demo mode
 
 ### W-1: Browser demo of the desktop UI

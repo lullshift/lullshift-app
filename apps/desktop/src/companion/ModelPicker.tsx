@@ -26,10 +26,9 @@ import {
   type ProviderKind,
 } from "./api";
 import {
-  CATALOG_DISCLAIMER,
   CATALOG_MAX_ROWS,
+  CATALOG_NOTE,
   CATALOG_PROVIDER,
-  CATALOG_SENDS_TEXT,
   CATALOG_SORTS,
   catalogCountText,
   catalogErrorText,
@@ -50,7 +49,111 @@ function keepEnterInField(e: KeyboardEvent<HTMLInputElement>) {
   if (e.key === "Enter") e.preventDefault();
 }
 
-/** The filter controls. `onArrowDown` moves focus from the search box into the results. */
+/**
+ * One "Filter and sort" button that opens a small popover with the filter checkboxes and the sort
+ * choice (radio group). Escape or a click outside closes it; Escape returns focus to the button.
+ * A dot on the button says when a filter is on.
+ */
+function FilterSortMenu({
+  filters,
+  set,
+}: {
+  filters: CatalogFilters;
+  set: (patch: Partial<CatalogFilters>) => void;
+}) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!panelRef.current?.contains(t) && !buttonRef.current?.contains(t)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const active = filters.tools || filters.reasoning || filters.hideOld;
+  return (
+    <div className="filter-menu">
+      <button
+        ref={buttonRef}
+        type="button"
+        className="btn btn-secondary filter-menu-button"
+        aria-expanded={open}
+        aria-controls={open ? `${id}-panel` : undefined}
+        onClick={() => setOpen((o) => !o)}
+      >
+        Filter and sort
+        {active && <span className="filter-menu-dot" role="img" aria-label="filters on" />}
+      </button>
+      {open && (
+        <div
+          ref={panelRef}
+          id={`${id}-panel`}
+          className="filter-menu-panel"
+          role="group"
+          aria-label="Filter and sort"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              // Close the popover only, not the dialog around it.
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+              buttonRef.current?.focus();
+            }
+          }}
+        >
+          <label className="check-row">
+            <input
+              type="checkbox"
+              autoFocus
+              checked={filters.tools}
+              onChange={(e) => set({ tools: e.target.checked })}
+            />
+            Supports tools
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={filters.reasoning}
+              onChange={(e) => set({ reasoning: e.target.checked })}
+            />
+            Reasoning
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={filters.hideOld}
+              onChange={(e) => set({ hideOld: e.target.checked })}
+            />
+            Hide models older than a year
+          </label>
+          <fieldset className="filter-menu-sort">
+            <legend className="field-label">Sort</legend>
+            {CATALOG_SORTS.map((o) => (
+              <label key={o.value} className="check-row">
+                <input
+                  type="radio"
+                  name={`${id}-sort`}
+                  value={o.value}
+                  checked={filters.sort === o.value}
+                  onChange={() => set({ sort: o.value as CatalogSort })}
+                />
+                {o.label}
+              </label>
+            ))}
+          </fieldset>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The search box with the merged filter and sort menu beside it. */
 export function CatalogFilterBar({
   filters,
   onChange,
@@ -64,19 +167,18 @@ export function CatalogFilterBar({
   searchRef?: RefObject<HTMLInputElement | null>;
   listId?: string;
 }) {
-  const id = useId();
   const set = (patch: Partial<CatalogFilters>) => onChange({ ...filters, ...patch });
   return (
     <div className="catalog-filters" role="group" aria-label="Filter models">
       <label className="catalog-search">
-        <span className="field-label">Search models</span>
+        <span className="visually-hidden">Search models</span>
         <input
           ref={searchRef}
           className="field"
           type="search"
           autoComplete="off"
           spellCheck={false}
-          placeholder="Name, id or family"
+          placeholder="Search by name, id or family"
           aria-controls={listId}
           value={filters.text}
           onChange={(e) => set({ text: e.target.value })}
@@ -86,45 +188,7 @@ export function CatalogFilterBar({
           }}
         />
       </label>
-      <label className="check-row">
-        <input
-          type="checkbox"
-          checked={filters.tools}
-          onChange={(e) => set({ tools: e.target.checked })}
-        />
-        Supports tools
-      </label>
-      <label className="check-row">
-        <input
-          type="checkbox"
-          checked={filters.reasoning}
-          onChange={(e) => set({ reasoning: e.target.checked })}
-        />
-        Reasoning
-      </label>
-      <label className="check-row">
-        <input
-          type="checkbox"
-          checked={filters.hideOld}
-          onChange={(e) => set({ hideOld: e.target.checked })}
-        />
-        Hide models older than a year
-      </label>
-      <label className="catalog-sort" htmlFor={`${id}-sort`}>
-        <span className="field-label">Sort</span>
-        <select
-          id={`${id}-sort`}
-          className="field"
-          value={filters.sort}
-          onChange={(e) => set({ sort: e.target.value as CatalogSort })}
-        >
-          {CATALOG_SORTS.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <FilterSortMenu filters={filters} set={set} />
     </div>
   );
 }
@@ -408,39 +472,39 @@ export function ModelPickerDialog({
       busy={false}
       onClose={onClose}
       actions={
-        <button type="button" className="btn btn-quiet" onClick={onClose}>
-          Cancel
-        </button>
+        <div className="picker-footer">
+          <div className="picker-footer-info">
+            {busy === "checking" || busy === "load" ? (
+              <span className="catalog-loaded">Loading the model list…</span>
+            ) : catalog ? (
+              <span className="catalog-loaded">
+                {loadedAtText(catalog)} · {countOf(catalog.providers.length, "provider")}
+              </span>
+            ) : (
+              <span className="catalog-loaded">The model list isn't loaded.</span>
+            )}
+            <button
+              type="button"
+              className="btn btn-quiet btn-small"
+              disabled={busy !== null}
+              aria-describedby={`${id}-sends`}
+              onClick={() => void refresh()}
+            >
+              {busy === "refresh" ? "Refreshing…" : catalog ? "Refresh" : "Try again"}
+            </button>
+          </div>
+          <button type="button" className="btn btn-quiet" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
       }
       description={
-        <>
-          <p id={`${id}-sends`}>{CATALOG_SENDS_TEXT}</p>
-          <p className="field-note">{CATALOG_DISCLAIMER}</p>
-        </>
+        <p id={`${id}-sends`} className="field-note">
+          {CATALOG_NOTE}
+        </p>
       }
     >
       <div className="picker">
-        <div className="catalog-load">
-          {busy === "checking" || busy === "load" ? (
-            <span className="catalog-loaded">Loading the model list from models.dev…</span>
-          ) : catalog ? (
-            <span className="catalog-loaded">
-              {loadedAtText(catalog)} · {countOf(catalog.providers.length, "provider")}
-            </span>
-          ) : (
-            <span className="catalog-loaded">The model list isn't loaded.</span>
-          )}
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={busy !== null}
-            aria-describedby={`${id}-sends`}
-            onClick={() => void refresh()}
-          >
-            {busy === "refresh" ? "Refreshing…" : catalog ? "Refresh" : "Try again"}
-          </button>
-        </div>
-
         <p className="visually-hidden" role="status" aria-live="polite">
           {announce}
         </p>
@@ -455,48 +519,42 @@ export function ModelPickerDialog({
 
         {catalog && fixed === null && (
           <div className="catalog-provider">
-            <label className="field-label" htmlFor={`${id}-pq`}>
-              Find a models.dev provider
+            <label className="catalog-provider-search">
+              <span className="visually-hidden">Find a models.dev provider</span>
+              <input
+                className="field"
+                type="search"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Find a models.dev provider"
+                value={providerQuery}
+                onChange={(e) => setProviderQuery(e.target.value)}
+                onKeyDown={keepEnterInField}
+              />
             </label>
-            <input
-              id={`${id}-pq`}
-              className="field"
-              type="search"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="Name or id"
-              value={providerQuery}
-              onChange={(e) => setProviderQuery(e.target.value)}
-              onKeyDown={keepEnterInField}
-            />
-            <label className="field-label" htmlFor={`${id}-pp`}>
-              models.dev provider
-            </label>
-            <select
-              id={`${id}-pp`}
-              className="field"
-              aria-describedby={`${id}-pp-hint`}
-              value={providerId}
-              onChange={(e) => {
-                setPickedProvider(e.target.value);
-                setActive(0);
-              }}
-            >
-              <option value="">
-                {providers.length === 0
-                  ? "No provider matches"
-                  : `Choose one of ${countOf(providers.length, "provider")}…`}
-              </option>
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.id}, {countOf(p.modelCount, "model")})
+            <label className="catalog-provider-select">
+              <span className="visually-hidden">models.dev provider</span>
+              <select
+                className="field"
+                title="This only picks which list to browse. Lullshift never fills in the base URL from models.dev."
+                value={providerId}
+                onChange={(e) => {
+                  setPickedProvider(e.target.value);
+                  setActive(0);
+                }}
+              >
+                <option value="">
+                  {providers.length === 0
+                    ? "No provider matches"
+                    : `Choose one of ${countOf(providers.length, "provider")}…`}
                 </option>
-              ))}
-            </select>
-            <p id={`${id}-pp-hint`} className="field-note">
-              This only picks which list to browse. Lullshift never fills in the base URL from
-              models.dev.
-            </p>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.id}, {countOf(p.modelCount, "model")})
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         )}
 
@@ -540,18 +598,19 @@ export function ModelPickerDialog({
         )}
 
         <div className="picker-typed">
-          <label className="field-label" htmlFor={`${id}-typed`}>
-            Use a model name not in the list
-          </label>
           <div className="picker-typed-row">
+            <label className="visually-hidden" htmlFor={`${id}-typed`}>
+              Use a model name not in the list
+            </label>
             <input
               id={`${id}-typed`}
               className="field"
               type="text"
               autoComplete="off"
               spellCheck={false}
+              placeholder="Or type a model name not in the list, exactly as the provider names it"
               aria-invalid={typedProblem ? true : undefined}
-              aria-describedby={`${id}-typed-hint`}
+              aria-describedby={typedProblem ? `${id}-typed-hint` : undefined}
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               onKeyDown={(e) => {
@@ -565,13 +624,11 @@ export function ModelPickerDialog({
               Use this name
             </button>
           </div>
-          <p
-            id={`${id}-typed-hint`}
-            className={typedProblem ? "field-note field-error" : "field-note"}
-          >
-            {typedProblem ??
-              "Type it exactly as the provider names it. Lullshift can't check it until you send or test."}
-          </p>
+          {typedProblem && (
+            <p id={`${id}-typed-hint`} className="field-note field-error">
+              {typedProblem}
+            </p>
+          )}
         </div>
       </div>
     </Dialog>

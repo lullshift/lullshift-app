@@ -25,7 +25,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import type { CatalogModel, ModelCatalog } from "./api";
-import { CATALOG_MAX_ROWS, CATALOG_SENDS_TEXT, DEFAULT_CATALOG_FILTERS } from "./logic";
+import { CATALOG_MAX_ROWS, CATALOG_NOTE, DEFAULT_CATALOG_FILTERS } from "./logic";
 import { CatalogFilterBar, CatalogModelList, ModelPickerDialog } from "./ModelPicker";
 import { buttonIn, click, key, polyfillDialog, settle, typeInto } from "./testDom";
 
@@ -119,7 +119,7 @@ describe("ModelPickerDialog", () => {
       ["companion_catalog_models", { providerId: "anthropic" }],
     ]);
     // The privacy line is visible in the modal.
-    expect(host.textContent).toContain(CATALOG_SENDS_TEXT);
+    expect(host.textContent).toContain(CATALOG_NOTE);
     expect(host.querySelectorAll("[role=option]")).toHaveLength(2);
 
     // Close (unmount) and open again: memory only, no load.
@@ -237,20 +237,75 @@ describe("CatalogModelList", () => {
 });
 
 describe("CatalogFilterBar", () => {
-  it("labels every control", () => {
+  it("has a search box and one Filter and sort button, closed at first", () => {
     const html = renderToStaticMarkup(
       <CatalogFilterBar filters={DEFAULT_CATALOG_FILTERS} onChange={() => undefined} />,
     );
-    for (const label of [
-      "Search models",
-      "Supports tools",
-      "Reasoning",
-      "Hide models older than a year",
-      "Sort",
-      "Newest first",
-      "Cheapest input first",
-    ]) {
-      expect(html).toContain(label);
-    }
+    expect(html).toContain("Search models");
+    expect(html).toContain("Filter and sort");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('type="checkbox"');
+  });
+});
+
+describe("picker layout and the merged Filter and sort menu", () => {
+  it("shows one short note, with Refresh and the loaded time in the footer beside Cancel", async () => {
+    fakeCore();
+    await openPicker();
+    const notes = host.querySelectorAll(".dialog-description p");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.textContent).toBe(CATALOG_NOTE);
+    const footer = host.querySelector(".dialog-actions")!;
+    expect(footer.textContent).toContain("Loaded");
+    expect(footer.textContent).toContain("1 provider");
+    expect(buttonIn(footer, "Refresh")).toBeTruthy();
+    expect(buttonIn(footer, "Cancel")).toBeTruthy();
+    // Not in the body any more.
+    expect(host.querySelector(".dialog-body .picker")?.textContent).not.toContain("Refresh");
+  });
+
+  it("filters and sorts from one popover with checkboxes and a radio group", async () => {
+    fakeCore();
+    await openPicker();
+    expect(host.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+    const menu = buttonIn(host, "Filter and sort");
+    expect(menu.getAttribute("aria-expanded")).toBe("false");
+    await click(menu);
+    expect(menu.getAttribute("aria-expanded")).toBe("true");
+    const panel = host.querySelector(".filter-menu-panel")!;
+    expect(panel.querySelectorAll('input[type="checkbox"]')).toHaveLength(3);
+    const radios = [...panel.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    expect(radios.length).toBeGreaterThan(1);
+    expect(radios.filter((r) => r.checked)).toHaveLength(1);
+
+    // Sort: the other order puts the other model first.
+    const first = () => host.querySelector("[role=option] .catalog-model-id")?.textContent;
+    expect(first()).toBe("claude-new");
+    const other = radios.find((r) => !r.checked && r.value !== "newest")!;
+    await click(other);
+    expect(radios.filter((r) => r.checked)).toHaveLength(1);
+
+    // A filter narrows the list and puts a marker on the button.
+    const reasoning = [...panel.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find(
+      (c) => c.parentElement?.textContent?.includes("Reasoning"),
+    )!;
+    await click(reasoning);
+    expect(host.querySelectorAll("[role=option]")).toHaveLength(0);
+    expect(menu.querySelector("[aria-label='filters on']")).not.toBeNull();
+
+    // Escape closes only the popover and returns focus to the button.
+    await key(reasoning, "Escape");
+    expect(host.querySelector(".filter-menu-panel")).toBeNull();
+    expect(document.activeElement).toBe(menu);
+    expect(menu.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("keeps the typed-name row to one input and one button, with the help as placeholder", async () => {
+    fakeCore();
+    await openPicker();
+    const row = host.querySelector(".picker-typed-row")!;
+    expect(row.querySelectorAll("input")).toHaveLength(1);
+    expect(row.querySelectorAll("button")).toHaveLength(1);
+    expect(row.querySelector("input")?.getAttribute("placeholder")).toContain("model name");
   });
 });
