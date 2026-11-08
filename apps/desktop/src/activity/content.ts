@@ -71,6 +71,18 @@ export function describeContentError(error: unknown, engine: string | null): Con
           "This pack's files couldn't be read just now. Another program, such as a virus scanner, may be using them. Nothing was changed; try again in a moment.",
         detail: "",
       };
+    case "generated_unusable":
+      return {
+        message:
+          "This set from your model can't be used any more, so Lullshift didn't start it. You can delete it in Settings > Companion.",
+        detail: "",
+      };
+    case "generated_all_skipped":
+      return {
+        message:
+          "Every item in this set was marked as wrong, so there is nothing left to play. You can delete it in Settings > Companion.",
+        detail: "",
+      };
     case "data_missing":
     case "data_not_json":
     case "data_too_large":

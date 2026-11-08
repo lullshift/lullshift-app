@@ -24,8 +24,11 @@ import { Icon } from "../ui/Icon";
 import { Mascot } from "../ui/Mascot";
 import { loadContent, type ContentProblem } from "./content";
 import { HelpDialog } from "./HelpDialog";
+import { aiAccessibleName, generationEngine } from "../companion/generate";
+import { AiNotice, AiTag } from "./GeneratedBadge";
 import { helpLabel } from "./library";
 import { PausedStats } from "./PausedStats";
+import { ThisLooksWrongDialog } from "./ThisLooksWrong";
 import { usePreview } from "./usePreview";
 
 export interface ActivityInfo {
@@ -48,6 +51,22 @@ export interface ActivityInfo {
   engine: string | null;
   /** Where it came from. Absent in older builds. */
   source?: { marketplaceId: string; builtin: boolean; commit: string | null };
+  /** Set for a set written by the user's own model (ADR-028); null or absent for the rest. */
+  generated?: GeneratedInfo | null;
+}
+
+/** What the host knows about a model-written set. Plain text only: render it as text. */
+export interface GeneratedInfo {
+  /** The model's name as stored (at most 40 characters); null if unknown. */
+  model: string | null;
+  /** The engine reference (`id@major`). */
+  engine: string;
+  createdUtc: string;
+  /** What the user asked for. */
+  topic: string;
+  difficulty: string;
+  /** True if the set failed its check on load; it can only be deleted. */
+  unusable: boolean;
 }
 
 /** A pause the host forced; `seq` changes for every new request. */
@@ -153,6 +172,7 @@ export function ActivityHost({
   }, []);
   const launched = useRef(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [wrongOpen, setWrongOpen] = useState(false);
   const preview = usePreview(activity.id, activity.preview);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const restoreRef = useRef<unknown>(null);
@@ -528,11 +548,26 @@ export function ActivityHost({
     setHelpOpen(true);
   };
 
+  // "This looks wrong" (ADR-028): the user picks the item from the set's own list. Pausing first
+  // keeps the activity from running behind the dialog.
+  const openWrong = () => {
+    if (phaseRef.current.kind === "running") void freeze("user");
+    setWrongOpen(true);
+  };
+  const markable =
+    activity.generated != null &&
+    !activity.generated.unusable &&
+    generationEngine(activity.generated.engine)?.markable === true;
+
   // Third-party code and packs say where they came from (owner decision 27.5).
-  const sourceLabel = activitySourceLabel(activity.source, activity.engine);
+  const sourceLabel = activity.generated
+    ? null
+    : activitySourceLabel(activity.source, activity.engine);
+  // A model-written set's name starts with "AI-generated" for screen readers (ADR-028 section 8).
+  const accessibleName = aiAccessibleName(activity);
 
   return (
-    <section className="host" aria-label={activity.name}>
+    <section className="host" aria-label={accessibleName}>
       <header className="host-bar">
         <h2 className="host-title">{activity.name}</h2>
         {sourceLabel && <span className="host-source">{sourceLabel}</span>}
@@ -563,13 +598,26 @@ export function ActivityHost({
         </button>
       </header>
 
+      {activity.generated && (
+        <AiNotice
+          info={activity}
+          extra={
+            markable ? (
+              <button type="button" className="btn btn-quiet" onClick={openWrong}>
+                This looks wrong
+              </button>
+            ) : undefined
+          }
+        />
+      )}
+
       <div className="host-stage">
         {live && (
           <iframe
             key={nonce}
             ref={frameRef}
             className="host-frame"
-            title={activity.name}
+            title={accessibleName}
             src={`${frameUrl}#n=${nonce}`}
             onLoad={onFrameLoad}
             sandbox="allow-scripts"
@@ -582,6 +630,7 @@ export function ActivityHost({
             phase={phase}
             name={activity.name}
             category={activity.category}
+            info={activity}
             summary={summary}
             playedNow={playedNow}
             preview={preview}
@@ -616,6 +665,13 @@ export function ActivityHost({
         category={activity.category}
         onClose={() => setHelpOpen(false)}
       />
+      {markable && (
+        <ThisLooksWrongDialog
+          open={wrongOpen}
+          setId={activity.id}
+          onClose={() => setWrongOpen(false)}
+        />
+      )}
     </section>
   );
 }
@@ -658,6 +714,7 @@ function PausedCard({
   phase,
   name,
   category,
+  info,
   summary,
   playedNow,
   preview,
@@ -668,6 +725,8 @@ function PausedCard({
   phase: Extract<Phase, { kind: "paused" }>;
   name: string;
   category: string;
+  /** For the AI-generated tag of a model-written set. */
+  info: ActivityInfo;
   summary: SummaryItem[] | null;
   playedNow: number;
   preview: string | null;
@@ -707,6 +766,7 @@ function PausedCard({
                 ? `Paused while you were away. ${savedText}`
                 : savedText}
       </p>
+      <AiTag info={info} />
       <PausedStats name={name} summary={summary} playedNow={playedNow} preview={preview} />
       <div className="host-actions">
         {attention && (

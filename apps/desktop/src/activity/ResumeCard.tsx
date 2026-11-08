@@ -1,6 +1,7 @@
 import { relativeTime } from "../format";
 import { Icon } from "../ui/Icon";
 import type { ActivityInfo } from "./ActivityHost";
+import { AiTag } from "./GeneratedBadge";
 import { helpLabel, kindLabel } from "./library";
 import { usePreview } from "./usePreview";
 
@@ -29,6 +30,7 @@ export function ResumeCard({ activity: a, now, onResume, onStartOver, onHelp }: 
           {kindLabel(a.category)}
           {a.savedUtc ? ` · saved ${relativeTime(a.savedUtc, now)}` : ""}
         </p>
+        <AiTag info={a} />
       </div>
       <div className="resume-actions">
         <button type="button" className="btn btn-primary" onClick={onResume}>

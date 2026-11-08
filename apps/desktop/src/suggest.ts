@@ -20,6 +20,9 @@ export const PLAY_FROM_SECONDS = 4 * 60;
 
 export type SuggestionKind = "resume" | "rest" | "play";
 
+/** Every model-written set has an id under this reserved namespace (ADR-028 section 7). */
+const GENERATED_ID_PREFIX = "lullshift.generated.";
+
 export interface Suggestion<T> {
   activity: T;
   kind: SuggestionKind;
@@ -82,7 +85,10 @@ export interface SuggestInput<T> {
  * the preferred page's activities in the date-seeded order, then the other page's.
  */
 export function suggestionOrder<T extends Listed>(input: SuggestInput<T>): Suggestion<T>[] {
-  const { activities, estimateSeconds, anyWorking, seed } = input;
+  const { estimateSeconds, anyWorking, seed } = input;
+  // Model-written sets are never suggested (ADR-028 sections 2a and 8): the list should not hold
+  // them, and this guard keeps them out even if one slips in.
+  const activities = input.activities.filter((a) => !a.id.startsWith(GENERATED_ID_PREFIX));
   const want = preferredPage(estimateSeconds, anyWorking);
   const rest = (page: Page) =>
     seededOrder(
