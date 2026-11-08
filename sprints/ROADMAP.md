@@ -18,6 +18,7 @@
 | 10 | More adapters and content completion | Codex/Cursor adapters; content to 20 games / ~100 activities |
 | 11 | v1.0 release | Installers, signed updater, cross-platform QA, audits, docs |
 | 12 | Owner review changes | Decisions reviewed 2026-11-06: OpenCode adapter, sandbox, marketplace, Companion, game and content changes; the release follows |
+| 13 | Fresh content from your own model (planned, ADR-028 accepted) | Opt-in BYOK sets for quiz, teaser, calm cards, reflection and typing, plus movement, breathing and pause behind a second opt-in; labelled AI-generated, checked like packs; `roundSize` draws |
 
 ## Tracks and parallelism
 
