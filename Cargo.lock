@@ -693,6 +693,7 @@ version = "0.1.0"
 dependencies = [
  "agent-core",
  "keyring",
+ "marketplace",
  "serde",
  "serde_json",
  "ureq",
