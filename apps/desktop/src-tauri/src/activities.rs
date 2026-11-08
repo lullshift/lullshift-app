@@ -31,6 +31,7 @@ use serde_json::Value;
 use tauri::http::{Response, StatusCode, header};
 use time::OffsetDateTime;
 
+pub(crate) mod generated;
 pub(crate) mod installed;
 pub(crate) mod launch;
 
@@ -112,7 +113,8 @@ struct EngineFile {
 pub struct ContentError {
     /// `unknown_activity`, `engine_missing`, `engine_unusable`, `data_missing`,
     /// `data_too_large`, `data_not_json`, `data_invalid`, `damaged` (an installed pack's files
-    /// changed on disk since its check) or `internal`.
+    /// changed on disk since its check), `generated_unusable` (a model-written set that failed
+    /// its check on load, ADR-028) or `internal`.
     code: &'static str,
     detail: String,
 }
@@ -153,6 +155,8 @@ pub struct ActivityInfo {
     engine: Option<String>,
     /// Where the activity came from.
     source: Source,
+    /// Set for a set written by the user's own model (ADR-028); null for everything else.
+    generated: Option<generated::GeneratedInfo>,
 }
 
 /// Which marketplace an activity came from.
@@ -657,6 +661,17 @@ fn decide(core: Option<&Core>, request: &tauri::http::Request<Vec<u8>>) -> Decis
     if !core.launches.admit(id, std::time::Instant::now()) {
         return Decision::Limited;
     }
+    // A set (ADR-028) is served by its engine's files and nothing else; an unusable set, an
+    // unknown set and a set of another engine get nothing.
+    if generated::is_set_id(id) {
+        return match generated::serve(core, path) {
+            Some(found) => {
+                core.launches.charge(id, found.0.len());
+                Decision::Ok(found)
+            }
+            None => Decision::NotFound,
+        };
+    }
     let snap = core.library.snapshot(core).ok();
     match lookup_checked(snap.as_deref(), path) {
         Ok(Some(found)) => {
@@ -736,12 +751,23 @@ fn valid_key(key: &str) -> bool {
 enum Found {
     Bundled(&'static Activity),
     Installed(Arc<Served>),
+    /// A set written by the user's own model (ADR-028), run by a bundled engine.
+    Generated(generated::Handle),
 }
 
 /// Finds an activity by id. With `launch`, a bundled activity the user disabled is refused (it
 /// is hidden from the library and must not start); without it (saved state, play time) the
 /// activity only has to exist. Installed activities must be enabled, verified and runnable.
+/// An id under the reserved `lullshift.generated.` namespace is only ever a stored set: with
+/// `launch`, a set marked unusable is refused (`generated_unusable`).
 fn find(core: &Core, id: &str, launch: bool) -> Result<Found, String> {
+    if generated::is_set_id(id) {
+        let handle = generated::resolve(core, id)?;
+        if launch && handle.unusable {
+            return Err("generated_unusable".into());
+        }
+        return Ok(Found::Generated(handle));
+    }
     if let Some(a) = runnable(id) {
         if launch {
             let snap = core.library.snapshot(core)?;
@@ -763,6 +789,7 @@ fn found_has_storage(f: &Found) -> bool {
     match f {
         Found::Bundled(a) => has_storage(a),
         Found::Installed(s) => s.has_storage(),
+        Found::Generated(g) => generated::storage(g),
     }
 }
 
@@ -858,19 +885,26 @@ pub async fn activity_info(
     id: String,
 ) -> Result<ActivityInfo, String> {
     let core = Arc::clone(&core);
-    blocking(move || {
-        let found = find(&core, &id, true)?;
-        let saved = with_store(&core, |s| s.snapshot(&id))
-            .ok()
-            .flatten()
-            .map(|(_, t)| t);
-        let played = with_store(&core, |s| s.play_time(&id)).unwrap_or(0);
-        Ok(match found {
-            Found::Bundled(a) => info(a, saved, played),
-            Found::Installed(s) => installed_info(&s, saved, played),
-        })
+    blocking(move || info_for_core(&core, &id)).await
+}
+
+/// [`activity_info`] without Tauri.
+pub(crate) fn info_for_core(core: &Core, id: &str) -> Result<ActivityInfo, String> {
+    let found = find(core, id, true)?;
+    let saved = with_store(core, |s| s.snapshot(id))
+        .ok()
+        .flatten()
+        .map(|(_, t)| t);
+    let played = with_store(core, |s| s.play_time(id)).unwrap_or(0);
+    Ok(match found {
+        Found::Bundled(a) => info(a, saved, played),
+        Found::Installed(s) => installed_info(&s, saved, played),
+        Found::Generated(g) => {
+            let row = with_store(core, |s| s.generated_set(&g.id))?
+                .ok_or_else(|| "unknown_activity".to_owned())?;
+            generated::info(&row, g.engine, saved, played)
+        }
     })
-    .await
 }
 
 /// Starts a launch: a fresh key (revoking any earlier one for this activity) and the address of
@@ -916,6 +950,7 @@ fn info(a: &Activity, saved_utc: Option<String>, played_seconds: i64) -> Activit
         played_seconds,
         engine: m.engine.clone(),
         source: Source::bundled(),
+        generated: None,
     }
 }
 
@@ -957,6 +992,7 @@ fn installed_info(s: &Served, saved_utc: Option<String>, played_seconds: i64) ->
             builtin: false,
             commit: Some(s.commit.clone()),
         },
+        generated: None,
     }
 }
 
@@ -982,6 +1018,7 @@ pub(crate) fn content_for_core(core: &Core, id: &str) -> Result<Value, ContentEr
             Role::Pack => pack_content(a).map(|(_, data)| data.clone()),
             _ => Ok(Value::Null),
         },
+        Ok(Found::Generated(g)) => generated::content(core, &g),
         Ok(Found::Installed(s)) => match s.pack_data() {
             Ok(data) => data,
             Err(VerifyError::Mismatch) => {
@@ -999,6 +1036,7 @@ pub(crate) fn content_for_core(core: &Core, id: &str) -> Result<Value, ContentEr
             )),
         },
         Err(code) if code == "unknown_activity" => Err(ContentError::new("unknown_activity", "")),
+        Err(code) if code == "generated_unusable" => Err(generated::unusable_error()),
         Err(_) => Err(ContentError::new("internal", "the check didn't finish")),
     }
 }
@@ -1029,6 +1067,13 @@ pub async fn activity_preview(
 pub(crate) fn preview_for_core(core: &Core, id: &str) -> Result<Option<String>, String> {
     Ok(match find(core, id, false)? {
         Found::Bundled(a) => a.manifest.preview.as_deref().and_then(preview_data_url(a)),
+        // A set shows its engine's preview.
+        Found::Generated(g) => g
+            .engine
+            .manifest
+            .preview
+            .as_deref()
+            .and_then(preview_data_url(g.engine)),
         Found::Installed(s) => {
             let content_type = s
                 .manifest
@@ -1071,19 +1116,20 @@ pub async fn activity_add_play(
     launch: bool,
 ) -> Result<(), String> {
     let core = Arc::clone(&core);
-    blocking(move || {
-        find(&core, &id, false)?;
-        with_store(&core, |s| {
-            s.add_play_time(
-                &id,
-                seconds,
-                launch,
-                PLAY_ADD_MAX,
-                OffsetDateTime::now_utc(),
-            )
-        })
+    blocking(move || add_play_for_core(&core, &id, seconds, launch)).await
+}
+
+/// [`activity_add_play`] without Tauri.
+pub(crate) fn add_play_for_core(
+    core: &Core,
+    id: &str,
+    seconds: i64,
+    launch: bool,
+) -> Result<(), String> {
+    find(core, id, false)?;
+    with_store(core, |s| {
+        s.add_play_time(id, seconds, launch, PLAY_ADD_MAX, OffsetDateTime::now_utc())
     })
-    .await
 }
 
 /// Standard base64 with padding.
@@ -1169,16 +1215,18 @@ pub async fn activity_snapshot(
     id: String,
 ) -> Result<Option<Snapshot>, String> {
     let core = Arc::clone(&core);
-    blocking(move || {
-        find(&core, &id, false)?;
-        Ok(
-            with_store(&core, |s| s.snapshot(&id))?.map(|(snapshot, saved_utc)| Snapshot {
-                snapshot,
-                saved_utc,
-            }),
-        )
-    })
-    .await
+    blocking(move || snapshot_for_core(&core, &id)).await
+}
+
+/// [`activity_snapshot`] without Tauri.
+pub(crate) fn snapshot_for_core(core: &Core, id: &str) -> Result<Option<Snapshot>, String> {
+    find(core, id, false)?;
+    Ok(
+        with_store(core, |s| s.snapshot(id))?.map(|(snapshot, saved_utc)| Snapshot {
+            snapshot,
+            saved_utc,
+        }),
+    )
 }
 
 /// Saves an activity's state. Must be JSON and at most [`SNAPSHOT_MAX`] bytes; otherwise the
@@ -1190,21 +1238,23 @@ pub async fn activity_save_snapshot(
     snapshot: String,
 ) -> Result<(), String> {
     let core = Arc::clone(&core);
-    blocking(move || {
-        find(&core, &id, false)?;
-        if snapshot.len() > SNAPSHOT_MAX {
-            return Err("quota_exceeded".into());
-        }
-        // A null state would replace good progress with nothing; the host never sends one.
-        match serde_json::from_str::<serde_json::Value>(&snapshot) {
-            Ok(serde_json::Value::Null) | Err(_) => return Err("invalid_snapshot".into()),
-            Ok(_) => {}
-        }
-        with_store(&core, |s| {
-            s.save_snapshot(&id, &snapshot, OffsetDateTime::now_utc(), SNAPSHOT_MAX)
-        })
+    blocking(move || save_snapshot_for_core(&core, &id, &snapshot)).await
+}
+
+/// [`activity_save_snapshot`] without Tauri.
+pub(crate) fn save_snapshot_for_core(core: &Core, id: &str, snapshot: &str) -> Result<(), String> {
+    find(core, id, false)?;
+    if snapshot.len() > SNAPSHOT_MAX {
+        return Err("quota_exceeded".into());
+    }
+    // A null state would replace good progress with nothing; the host never sends one.
+    match serde_json::from_str::<serde_json::Value>(snapshot) {
+        Ok(serde_json::Value::Null) | Err(_) => return Err("invalid_snapshot".into()),
+        Ok(_) => {}
+    }
+    with_store(core, |s| {
+        s.save_snapshot(id, snapshot, OffsetDateTime::now_utc(), SNAPSHOT_MAX)
     })
-    .await
 }
 
 #[tauri::command]
@@ -1213,11 +1263,13 @@ pub async fn activity_clear_snapshot(
     id: String,
 ) -> Result<(), String> {
     let core = Arc::clone(&core);
-    blocking(move || {
-        find(&core, &id, false)?;
-        with_store(&core, |s| s.clear_snapshot(&id))
-    })
-    .await
+    blocking(move || clear_snapshot_for_core(&core, &id)).await
+}
+
+/// [`activity_clear_snapshot`] without Tauri.
+pub(crate) fn clear_snapshot_for_core(core: &Core, id: &str) -> Result<(), String> {
+    find(core, id, false)?;
+    with_store(core, |s| s.clear_snapshot(id))
 }
 
 #[cfg(test)]
