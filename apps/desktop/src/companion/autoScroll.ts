@@ -33,7 +33,9 @@ export function useFollowScroll(
   const lastTop = useRef(0);
   const revealOnce = useRef(false);
   const enabledRef = useRef(enabled);
-  enabledRef.current = enabled;
+  useLayoutEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
 
   const toBottom = useCallback(() => {
     const el = ref.current;
