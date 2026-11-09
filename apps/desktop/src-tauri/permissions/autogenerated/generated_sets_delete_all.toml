@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-generated-sets-delete-all"
+description = "Enables the generated_sets_delete_all command without any pre-configured scope."
+commands.allow = ["generated_sets_delete_all"]
+
+[[permission]]
+identifier = "deny-generated-sets-delete-all"
+description = "Denies the generated_sets_delete_all command without any pre-configured scope."
+commands.deny = ["generated_sets_delete_all"]

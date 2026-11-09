@@ -1,12 +1,12 @@
 // The simulator must catch broken activities, not just pass good ones. Runs only where a
 // Chromium-family browser is installed; otherwise the suite is skipped (and says so).
-import { writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { findBrowser } from "../src/browser.ts";
 import { diffPaths, simulate, type Outcome } from "../src/simulate.ts";
 import { validateFolder } from "../src/validate.ts";
-import { scaffold } from "./helpers.ts";
+import { editJson, scaffold } from "./helpers.ts";
 
 const browser = findBrowser();
 const TIMEOUT = 120_000;
@@ -96,6 +96,69 @@ describe.skipIf(!browser)(
         expect(level(noFocus, "keyboard")).toBe("error");
       },
       TIMEOUT,
+    );
+
+    it(
+      "restores the same round for packs that set roundSize (ADR-028 §10)",
+      async () => {
+        const packs: [string, string, object][] = [
+          [
+            "lullshift.quiz@1",
+            "quiz.json",
+            {
+              title: "Rounds",
+              shuffle: true,
+              roundSize: 4,
+              questions: Array.from({ length: 12 }, (_, i) => ({
+                prompt: `Question ${i + 1}`,
+                choices: ["One", "Two", "Three"],
+                answer: i % 3,
+                explanation: "Just so.",
+              })),
+            },
+          ],
+          [
+            "lullshift.teaser@1",
+            "teasers.json",
+            {
+              title: "Rounds",
+              roundSize: 3,
+              teasers: Array.from({ length: 12 }, (_, i) => ({
+                question: `Teaser ${i + 1}`,
+                answer: "Yes",
+                explanation: "Just so.",
+              })),
+            },
+          ],
+          [
+            "lullshift.cards@1",
+            "deck.json",
+            {
+              title: "Rounds",
+              roundSize: 5,
+              cards: Array.from({ length: 12 }, (_, i) => ({ front: `Card ${i + 1}` })),
+            },
+          ],
+        ];
+        for (const [engine, file, data] of packs) {
+          const dir = scaffold("content");
+          rmSync(path.join(dir, "deck.json"));
+          writeFileSync(path.join(dir, file), JSON.stringify(data));
+          editJson(path.join(dir, "manifest.json"), (m) => {
+            m.engine = engine;
+            m.data = file;
+          });
+          const report = validateFolder(dir);
+          expect(report.errors).toEqual([]);
+          const outcomes = await simulate(report, browser!);
+          expect(
+            outcomes.filter((o) => o.level === "error"),
+            engine,
+          ).toEqual([]);
+          expect(level(outcomes, "restore"), engine).toBe("pass");
+        }
+      },
+      TIMEOUT * 3,
     );
 
     it(

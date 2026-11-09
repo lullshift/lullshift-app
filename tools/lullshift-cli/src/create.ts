@@ -10,7 +10,13 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { BRIDGE_FILE, SDK_VERSION, isPlainText } from "@lullshift/activity-sdk";
+import {
+  BRIDGE_FILE,
+  RESERVED_GENERATED_MESSAGE,
+  SDK_VERSION,
+  isPlainText,
+  isReservedGeneratedId,
+} from "@lullshift/activity-sdk";
 import { validateMarketplaceIndex } from "@lullshift/agent-protocol";
 import { BRIDGE_PATH, KITS_DIR, TEMPLATES_DIR } from "./paths.ts";
 
@@ -64,6 +70,8 @@ export function checkCreateOptions(o: CreateOptions): string[] {
     problems.push(
       `--id ${o.id}: use reverse-DNS style, lower case, e.g. io.github.yourname.pebbles`,
     );
+  } else if (isReservedGeneratedId(o.id)) {
+    problems.push(`--id ${o.id}: ${RESERVED_GENERATED_MESSAGE}`);
   }
   if (!o.name.trim() || !isPlainText(o.name, 100)) {
     problems.push("--name: 1 to 100 characters of plain text");

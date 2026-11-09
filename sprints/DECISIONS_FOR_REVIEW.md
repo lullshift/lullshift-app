@@ -40,8 +40,8 @@ Logged while the sprints ran unattended (from 2026-11-05 evening). Each item sta
 | 34 | 12 | Import sessions from the agents' own logs | built (2026-11-07) |
 | 35 | 12 | Settle missed and silently ended sessions | built (2026-11-07) |
 | 36 | 12 | Companion rework (settings, models, conversation UI) | built (2026-11-07) |
-| 37 | 12 | OpenAI conversations fail; show the provider's reason | built while owner away (2026-11-07; review when back) |
-| 38 | 12 | Companion replies keep going in the background, with an in-app notice | built (2026-11-07; details for review) |
+| 37 | 12 | OpenAI conversations fail; show the provider's reason | keep (reviewed 2026-11-08) |
+| 38 | 12 | Companion replies keep going in the background, with an in-app notice | keep (reviewed 2026-11-08) |
 
 ## 1. OpenCode adapter (Sprint 05)
 
@@ -472,6 +472,8 @@ Build after decision 34 is merged.
 
 **Alternatives:** keep Chat Completions and only show the reason (simpler, but new models keep failing); or let you pick the API per provider.
 
+**Owner decision (2026-11-08):** keep as built.
+
 ## 38. Companion replies continue in the background (owner request, 2026-11-07)
 
 **Your request:** leaving a conversation must not stop a reply; show an in-app notice when it finishes.
@@ -480,3 +482,5 @@ Build after decision 34 is merged.
 
 **Being built:** in-flight replies are kept app-wide, so coming back shows the live text and Cancel; the thread list shows "Writing…" and a "New reply" mark; the Companion menu item gets a badge; a small in-app notice ("Companion replied in “<title>”", "needs your approval", "reply failed") with an Open button. The notice never shows reply content. An OS notification while the window is hidden is added only if it fits the existing notification settings (off unless you turn it on).
 
+
+**Owner decision (2026-11-08):** keep as built. The OS notification follows the existing notification setting.

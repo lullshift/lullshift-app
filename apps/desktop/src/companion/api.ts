@@ -230,6 +230,8 @@ export interface CompanionPrefs {
   toolsEnabled: boolean;
   /** The context choice of the last message sent. */
   lastScope: Scope | null;
+  /** "Let my model write activity content" and its body-routines switch (ADR-028). */
+  contentGeneration?: { enabled: boolean; bodyEnabled: boolean };
 }
 
 export interface Thread {

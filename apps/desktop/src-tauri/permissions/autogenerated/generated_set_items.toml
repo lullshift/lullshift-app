@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-generated-set-items"
+description = "Enables the generated_set_items command without any pre-configured scope."
+commands.allow = ["generated_set_items"]
+
+[[permission]]
+identifier = "deny-generated-set-items"
+description = "Denies the generated_set_items command without any pre-configured scope."
+commands.deny = ["generated_set_items"]

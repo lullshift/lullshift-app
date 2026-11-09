@@ -8,6 +8,7 @@ import {
   initMarketplace,
   nameFromFolder,
 } from "../src/create.ts";
+import { RESERVED_GENERATED_MESSAGE } from "@lullshift/activity-sdk";
 import { BRIDGE_PATH } from "../src/paths.ts";
 import { activityCsp } from "../src/serve.ts";
 import { scaffold, tempDir } from "./helpers.ts";
@@ -46,6 +47,19 @@ describe("create", () => {
     expect(
       checkCreateOptions({ ...base, engine: "lullshift.cards@1", id: "Bad Id" }).join(),
     ).toMatch(/--id/);
+  });
+
+  it("refuses the reserved generated-set namespace with the fixed message", () => {
+    const base = {
+      dir: "x",
+      kind: "content" as const,
+      name: "Ok",
+      author: "",
+      engine: "lullshift.cards@1",
+    };
+    const problems = checkCreateOptions({ ...base, id: "lullshift.generated.quiz.abc" });
+    expect(problems.join()).toContain(RESERVED_GENERATED_MESSAGE);
+    expect(checkCreateOptions({ ...base, id: "lullshift.generatedx.quiz" })).toEqual([]);
   });
 });
 

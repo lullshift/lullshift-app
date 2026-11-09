@@ -423,7 +423,7 @@ fn saved_state_for(
     })
 }
 
-fn clear_state_tx(tx: &rusqlite::Transaction<'_>, activity_id: &str) -> Result<()> {
+pub(crate) fn clear_state_tx(tx: &rusqlite::Transaction<'_>, activity_id: &str) -> Result<()> {
     for table in STATE_TABLES {
         tx.execute(
             &format!("DELETE FROM {table} WHERE activity_id = ?1"),

@@ -125,6 +125,24 @@ describe("seededOrder and dateSeed", () => {
   });
 });
 
+describe("model-written sets", () => {
+  it("are never suggested, even if one slips into the list or has the newest save", () => {
+    const set = a("lullshift.generated.movement.abcdefghij12", "break", "2026-11-08T10:00:00Z");
+    const input: SuggestInput<A> = {
+      activities: [...ACTIVITIES, set],
+      estimateSeconds: null,
+      anyWorking: true,
+      seed: 20261108,
+    };
+    expect(suggestionOrder(input).map((s) => s.activity.id)).not.toContain(set.id);
+    for (let i = 0; i < 20; i++) {
+      expect(pickSuggestion(input, i)?.activity.id.startsWith("lullshift.generated.")).toBe(false);
+    }
+    // Only sets: nothing to suggest.
+    expect(pickSuggestion({ ...input, activities: [set] }, 0)).toBeNull();
+  });
+});
+
 describe("waitFor and waitLine", () => {
   const est = [
     { provider: "claude-code", medianSeconds: 370, stretches: 12 },

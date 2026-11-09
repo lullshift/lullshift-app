@@ -1,6 +1,7 @@
 {
   "title": "Wonder Facts",
   "intro": "A few quiet facts, just for wonder. They are the kind that stay true.",
+  "roundSize": 6,
   "cards": [
     {
       "front": "Honey does not spoil easily",

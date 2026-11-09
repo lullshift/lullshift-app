@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { RESERVED_GENERATED_MESSAGE } from "@lullshift/activity-sdk";
 import { compareSemver, validateFolder } from "../src/validate.ts";
 import { editJson, scaffold } from "./helpers.ts";
 
@@ -30,6 +31,21 @@ describe("validate", () => {
     expect(errors).toMatch(/\/offline/);
     expect(errors).toMatch(/\/id/);
     expect(errors).toMatch(/additional properties/);
+  });
+
+  it("refuses the reserved generated-set namespace with the fixed message", () => {
+    for (const id of ["lullshift.generated.quiz.abcdefghij12", "lullshift.generated.x"]) {
+      const dir = scaffold();
+      editJson(manifestOf(dir), (m) => {
+        m.id = id;
+      });
+      expect(errorsOf(dir)).toContain(RESERVED_GENERATED_MESSAGE);
+    }
+    const ok = scaffold();
+    editJson(manifestOf(ok), (m) => {
+      m.id = "lullshift.generatedx.quiz";
+    });
+    expect(errorsOf(ok)).toBe("");
   });
 
   it("rejects unknown permissions", () => {
@@ -182,6 +198,31 @@ describe("validate (content pack data)", () => {
     );
     // Said once, not once per check.
     expect(errors.split("cards[0].front contains").length).toBe(2);
+  });
+
+  it("checks roundSize: the schema's range, and a warning above the item count (ADR-028 §10)", () => {
+    const dir = scaffold("content");
+    const deck = path.join(dir, "deck.json");
+    let count = 0;
+    const setRound = (value: unknown) =>
+      editJson(deck, (d) => {
+        count = (d.cards as unknown[]).length;
+        d.roundSize = value;
+      });
+    setRound(3);
+    let r = validateFolder(dir);
+    expect(r.errors).toEqual([]);
+    expect(r.warnings.join("\n")).not.toMatch(/roundSize/);
+    setRound(2);
+    expect(errorsOf(dir)).toMatch(/deck\.json: roundSize/);
+    setRound(4.5);
+    expect(errorsOf(dir)).toMatch(/deck\.json: roundSize/);
+    setRound(count + 1);
+    r = validateFolder(dir);
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toContain(
+      `deck.json: roundSize ${count + 1} is more than the ${count} cards, so every round shows all of them (set roundSize to at most ${count}, or leave it out)`,
+    );
   });
 
   it("allows only data, a preview and notes in a pack (ADR-016)", () => {

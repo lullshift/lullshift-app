@@ -403,5 +403,47 @@
     "schema": { "type": "string", "pattern": "^[^]$" },
     "data": "",
     "valid": false
+  },
+  {
+    "name": "roundSize-style whole number: at the minimum",
+    "schema": { "type": "integer", "minimum": 3, "maximum": 40 },
+    "data": 3,
+    "valid": true
+  },
+  {
+    "name": "roundSize-style whole number: at the maximum",
+    "schema": { "type": "integer", "minimum": 3, "maximum": 40 },
+    "data": 40,
+    "valid": true
+  },
+  {
+    "name": "roundSize-style whole number: below the minimum",
+    "schema": { "type": "integer", "minimum": 3, "maximum": 40 },
+    "data": 2,
+    "valid": false
+  },
+  {
+    "name": "roundSize-style whole number: above the maximum",
+    "schema": { "type": "integer", "minimum": 3, "maximum": 40 },
+    "data": 41,
+    "valid": false
+  },
+  {
+    "name": "roundSize-style whole number: a fraction is not whole",
+    "schema": { "type": "integer", "minimum": 3, "maximum": 40 },
+    "data": 3.5,
+    "valid": false
+  },
+  {
+    "name": "roundSize-style whole number: 8.0 counts as whole",
+    "schema": { "type": "integer", "minimum": 3, "maximum": 40 },
+    "data": 8.0,
+    "valid": true
+  },
+  {
+    "name": "roundSize-style whole number: text is not a number",
+    "schema": { "type": "integer", "minimum": 3, "maximum": 40 },
+    "data": "8",
+    "valid": false
   }
 ]

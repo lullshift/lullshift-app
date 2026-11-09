@@ -12,7 +12,7 @@ The only network traffic is **user-initiated**:
 
 - Git fetches of marketplaces the user added (system `git`, user's own credentials).
 - Update checks and downloads for the app itself (signed updater artifacts).
-- BYOK Companion calls to the AI provider the user configured.
+- BYOK Companion calls to the AI provider the user configured, including activity content the user asks the model to write (one request per button press, opt-in; ADR-028).
 - Only when the user opens the Companion model picker (first time per app run) or presses Refresh, the Companion model list from models.dev (one GET of `https://models.dev/api.json`, kept in memory; ADR-020, decisions 32 and 36).
 
 There is no telemetry by default; any future diagnostics must be opt-in (ADR-001).

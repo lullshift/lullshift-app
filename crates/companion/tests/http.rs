@@ -537,9 +537,25 @@ fn cancel_returns_at_once_while_the_provider_is_slow() {
 
 #[test]
 fn nothing_in_the_crate_logs() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    for entry in std::fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
+    // Every production source file, in sub-folders too (`generate/`). A file named `tests.rs` is
+    // a test module and may print.
+    fn files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                files(&path, out);
+            } else if path.file_name().is_some_and(|n| n != "tests.rs") {
+                out.push(path);
+            }
+        }
+    }
+    let mut all = Vec::new();
+    files(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut all,
+    );
+    assert!(all.iter().any(|p| p.ends_with("reply.rs")));
+    for path in all {
         let text = std::fs::read_to_string(&path).unwrap();
         // Test modules inside the files may print; look only at production code.
         let prod = text.split("#[cfg(test)]").next().unwrap();

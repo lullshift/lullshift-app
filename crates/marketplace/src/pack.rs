@@ -221,7 +221,7 @@ pub(crate) fn digest_of_hashes<'a>(
 
 /// Checks the fields `parse_manifest` leaves open, per the manifest schema: no unknown fields,
 /// `offline: true`, known permissions, unique tags and permissions. Returns the typed manifest.
-fn strict_manifest(bytes: &[u8]) -> Result<(Manifest, Value), PackError> {
+pub(crate) fn strict_manifest(bytes: &[u8]) -> Result<(Manifest, Value), PackError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|_| PackError::ManifestInvalid("it isn't UTF-8 text"))?;
     let value: Value = serde_json::from_str(text)
@@ -275,6 +275,13 @@ fn strict_manifest(bytes: &[u8]) -> Result<(Manifest, Value), PackError> {
         && !license.as_str().is_some_and(|l| l.len() <= 100)
     {
         return Err(PackError::ManifestInvalid("license isn't valid"));
+    }
+    if obj
+        .get("id")
+        .and_then(Value::as_str)
+        .is_some_and(crate::manifest::is_reserved_generated_id)
+    {
+        return Err(PackError::ReservedId);
     }
     let manifest = parse_manifest(text).ok_or(PackError::ManifestInvalid(
         "it doesn't follow the activity manifest rules",

@@ -1,0 +1,22 @@
+{
+  "title": "Round fixture",
+  "roundSize": 60,
+  "cards": [
+    {
+      "front": "Card 1: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 2: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 3: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    },
+    {
+      "front": "Card 4: notice one slow breath.",
+      "back": "Nothing to fix. Just notice it."
+    }
+  ]
+}

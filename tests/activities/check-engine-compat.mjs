@@ -5,7 +5,7 @@
 //     arrays have maxItems) and uses only keywords the app's own check understands;
 //   - tests/fixtures/engines/<id>@<major>/valid/*.json pass and invalid/*.json fail;
 // and every bundled content pack names a bundled engine and its data (at most 256 KiB) passes
-// that engine's schema. The shared parity corpus (tests/fixtures/schema-parity/cases.json) is
+// that engine's schema (and sets roundSize, if at all, to at most its item count). The shared parity corpus (tests/fixtures/schema-parity/cases.json) is
 // run through Ajv here and through the app's validator in `cargo test`. Problems are printed in
 // plain words: file, data path, message. Exit 1 on any problem.
 //   node tests/activities/check-engine-compat.mjs
@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAjv, dataPath, friendlyErrors } from "../../packages/agent-protocol/src/index.ts";
 import { packTextProblems } from "../../packages/activity-sdk/src/host/protocol.ts";
+import { roundSizeProblem } from "../../packages/activity-sdk/src/engines.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const rel = (p) => path.relative(root, p).replaceAll("\\", "/");
@@ -264,6 +265,10 @@ for (const engineDir of subdirs(path.join(root, "activities/content"))) {
       continue;
     }
     for (const line of dataProblems(engine.validate, data, m.data)) report(where, line);
+    // ADR-028 section 10: roundSize at most the item count. Creators get a warning from
+    // `lullshift validate`; bundled packs must simply follow it.
+    const round = roundSizeProblem(m.engine, data);
+    if (round) report(where, `${m.data}: ${round}`);
   }
 }
 
